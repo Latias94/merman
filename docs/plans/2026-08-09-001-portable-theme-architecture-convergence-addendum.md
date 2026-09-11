@@ -470,7 +470,7 @@ C6 and preset qualification have six deliberately separate layers:
    successful route receipt authorizes only that route's ownership cutover; it never counts toward
    the 18-cell C6a ledger, preset qualification, or C7a eligibility.
 4. **Target proof receipts** are opaque inputs produced and sealed once by the production document
-   and target adapters. With the private `internal-theme-acceptance` seam enabled, `merman-render`
+   and target adapters. With the private `merman_internal_theme_acceptance` cfg enabled by the workspace runner, `merman-render`
    captures one generic `SvgArtifactReceipt` while finalizing the renderer-owned
    `StandaloneSvgArtifact`; `RenderedDocument` retains and borrows that sealed receipt. It records
    family-neutral DOM, inline-style, stylesheet, text, and basic geometry facts and binds them to
@@ -495,7 +495,7 @@ The representative ledger began as a draft that executed the nine render groups 
 the final eligibility receipt. That historical state is now closed: the current private harness
 executes all 18 catalog cells and seals the exact versioned ledger with
 `C6aEligibilityReceipt`. The observation boundary remains private to the non-published harness and
-its hidden renderer feature: fixture crates retain only catalog/specification types, production
+its workspace-only renderer configuration: fixture crates retain only catalog/specification types, production
 adapters seal artifact digests and mechanism proofs, and unsupported enforced cells return an
 explicit runner error instead of being silently skipped. The harness additionally proves the
 current legacy-replacing typed-route

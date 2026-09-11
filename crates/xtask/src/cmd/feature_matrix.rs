@@ -38,14 +38,7 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-wasm",
 ];
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
-    (
-        "merman",
-        &[
-            "complete-svg",
-            "complete-svg-elk",
-            "internal-theme-acceptance",
-        ],
-    ),
+    ("merman", &["complete-svg", "complete-svg-elk"]),
     ("merman-analysis", &[]),
     ("merman-android-jni", &["native-runtime"]),
     ("merman-ascii", &[]),
@@ -53,10 +46,10 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-cli", &[]),
     ("merman-core", &["operation-deadlines", "test-support"]),
     ("merman-editor-core", &[]),
-    ("merman-export", &["internal-theme-acceptance"]),
+    ("merman-export", &[]),
     ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
-    ("merman-render", &["fuzzing", "internal-theme-acceptance"]),
+    ("merman-render", &["fuzzing"]),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     ("merman-uniffi", &["binding-generation", "native-runtime"]),
@@ -1627,34 +1620,23 @@ mod tests {
     }
 
     #[test]
-    fn public_feature_allowlist_accepts_declared_internal_features() {
-        let graph = graph(vec![
-            package(
-                "merman",
+    fn public_feature_allowlist_rejects_acceptance_feature_on_every_production_crate() {
+        for name in ["merman", "merman-export", "merman-render"] {
+            let graph = graph(vec![package(
+                name,
                 &[("default", &[]), ("internal-theme-acceptance", &[])],
-            ),
-            package(
-                "merman-export",
-                &[("default", &[]), ("internal-theme-acceptance", &[])],
-            ),
-            package(
-                "merman-render",
-                &[
-                    ("default", &[]),
-                    ("fuzzing", &[]),
-                    ("internal-theme-acceptance", &[]),
-                ],
-            ),
-        ]);
-
-        for package_name in ["merman", "merman-export", "merman-render"] {
+            )]);
             let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
                 .iter()
-                .find_map(|(candidate, extras)| (*candidate == package_name).then_some(*extras))
+                .find_map(|(candidate, extras)| (*candidate == name).then_some(*extras))
                 .unwrap();
-            graph
-                .validate_public_feature_allowlist(package_name, extras)
-                .unwrap();
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("internal-theme-acceptance"),
+                "{error}"
+            );
         }
     }
 

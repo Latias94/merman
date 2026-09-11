@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 use sha2::{Digest as _, Sha256};
 
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
@@ -27,7 +27,7 @@ pub(super) type SvgLine = Vec<SvgWord>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ArchitectureTextWriterFacts {
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) fragment_digest: [u8; 32],
     pub(super) run_count: usize,
 }
@@ -35,7 +35,7 @@ pub(super) struct ArchitectureTextWriterFacts {
 #[derive(Debug, Clone)]
 pub(super) struct ArchitectureTextWriterEmission {
     pub(super) bounds: Bounds,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) facts: ArchitectureTextWriterFacts,
 }
 
@@ -522,7 +522,7 @@ fn architecture_text_writer_facts(
     start: usize,
     run_count: usize,
 ) -> ArchitectureTextWriterFacts {
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     {
         let fragment = out.as_str().get(start..).unwrap_or_default();
         return ArchitectureTextWriterFacts {
@@ -531,7 +531,7 @@ fn architecture_text_writer_facts(
         };
     }
 
-    #[cfg(not(feature = "internal-theme-acceptance"))]
+    #[cfg(not(merman_internal_theme_acceptance))]
     {
         let _ = (out, start);
         ArchitectureTextWriterFacts { run_count }
@@ -565,14 +565,14 @@ pub(super) fn write_architecture_service_title(
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     let facts = write_svg_text_lines(out, &lines, inline_style);
-    #[cfg(not(feature = "internal-theme-acceptance"))]
+    #[cfg(not(merman_internal_theme_acceptance))]
     let _ = write_svg_text_lines(out, &lines, inline_style);
     out.push_str("</g></g>");
     ArchitectureTextWriterEmission {
         bounds: terminal_bounds,
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         facts,
     }
 }

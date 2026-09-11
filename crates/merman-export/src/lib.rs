@@ -10,12 +10,12 @@
 mod font_environment;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod native_filter_receipt;
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 mod raster_paint_cutover;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use font_environment::{ExportFontMode, ExportFontPlan};
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 #[doc(hidden)]
 pub use raster_paint_cutover::{
     EncodedRasterPaintCutoverPair, RasterPaintCutoverFacet, RasterPaintCutoverReceipt,
@@ -53,7 +53,7 @@ pub enum ExportError {
     InvalidSizing(&'static str),
     #[error("failed to encode PNG")]
     PngEncode,
-    #[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+    #[cfg(all(feature = "png", merman_internal_theme_acceptance))]
     #[error("invalid route-local raster paint proof: {0}")]
     RasterPaintCutover(&'static str),
     #[error("invalid raster matte color")]

@@ -50,12 +50,12 @@ pub mod sankey;
 pub mod sequence;
 pub mod state;
 pub mod svg;
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 mod svg_artifact_receipts;
 pub mod swimlane;
 pub mod text;
 mod theme;
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 mod theme_raster_paint;
 mod theme_route_cutover;
 pub mod timeline;
@@ -80,7 +80,7 @@ pub mod __private {
 
     pub use crate::native_filter_receipt::{NativeSvgFilterReceipt, NativeSvgHardShadow};
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub use crate::svg_artifact_receipts::{
         SvgArtifactReceipt, SvgAttributeObservation, SvgElementObservation, SvgFontFaceObservation,
         SvgStyleDeclarationObservation, SvgStyleRuleObservation, SvgStylesheetObservation,
@@ -92,13 +92,13 @@ pub mod __private {
         PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
     };
 
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub use crate::theme_route_cutover::{
         ArchitectureTextCutoverReceipt, ArchitectureTextCutoverRole,
         ArchitectureTextCutoverTerminal,
     };
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub use crate::theme_route_cutover::{
         ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
         ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
@@ -106,16 +106,16 @@ pub mod __private {
         ThemeRouteCutoverReceipt, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
     };
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub use crate::theme_raster_paint::{
         ThemeRasterPaintBinding, ThemeRasterPaintBindingReceipt, ThemeRasterPaintLineGeometry,
         ThemeRasterPaintTerminal, ThemeRasterPaintTerminalSemantic,
     };
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub use crate::diagram_theme::LegacyFamilyThemeBridgeInventory;
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub use crate::diagram_theme::{
         ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
         ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
@@ -125,21 +125,21 @@ pub mod __private {
 
     /// Returns the renderer-owned KTD23 tombstone identities without consulting the compatibility
     /// bridge or historical projection witness.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn ktd23_tombstone_theme_routes()
     -> Result<Vec<ThemeLegacyRouteId>, ThemeLegacyTombstoneInventoryError> {
         crate::diagram_theme::ktd23_tombstone_inventory()
     }
 
     /// Returns every currently typed route that replaces a concrete legacy bridge projection.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn legacy_replacing_typed_theme_routes()
     -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
         crate::diagram_theme::legacy_replacing_typed_routes()
     }
 
     /// Returns the production-owned fixed KTD23 retirement inventory.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn retired_legacy_theme_projection_inventory() -> Result<
         Vec<ThemeLegacyProjectionRetirementDescriptor>,
         ThemeLegacyProjectionRetirementInventoryError,
@@ -148,7 +148,7 @@ pub mod __private {
     }
 
     /// Seals the current empty-bridge receipt for every production-owned KTD23 route.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn retired_legacy_theme_projection_receipts() -> Result<
         Vec<ThemeLegacyProjectionRetirementReceipt>,
         ThemeLegacyProjectionRetirementInventoryError,
@@ -160,14 +160,14 @@ pub mod __private {
     ///
     /// These facts do not authorize bridge deletion. The acceptance layer must independently
     /// reconcile provider removal, migration ledgers, support claims, and release gates.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn legacy_family_theme_bridge_inventory()
     -> crate::diagram_theme::LegacyFamilyThemeBridgeInventory {
         crate::diagram_theme::legacy_family_theme_bridge_inventory()
     }
 
     /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub fn architecture_text_cutover_receipt(
         report: &FamilyRenderReport,
     ) -> Option<&ArchitectureTextCutoverReceipt> {

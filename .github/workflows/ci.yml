@@ -466,7 +466,7 @@ jobs:
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         shell: bash
         run: |
-          cargo nextest run --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --test legacy_projection_retirement \
             --cargo-quiet
 
@@ -497,21 +497,28 @@ jobs:
       - name: Test C6 cells, route-cutover authorization, and native export smoke
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py nextest run --locked \
+            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
+            --lib --cargo-quiet
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png --test c6_runtime \
             --cargo-quiet
-          cargo nextest run --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,layout-cytoscape --test route_cutover_runtime \
             --cargo-quiet
-          cargo nextest run --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,jpeg,pdf --test native_export_smoke \
             --cargo-quiet
+
+      - name: Verify published theme acceptance boundary
+        if: matrix.parity
+        run: python3 scripts/verify_theme_acceptance_boundary.py
 
       - name: Test theme authoring across SVG and PNG
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman \
-            --no-default-features --features svg,png,internal-theme-acceptance --test theme_authoring \
+          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
+            --no-default-features --features svg,png --test theme_authoring \
             --cargo-quiet
 
       - name: Test exact Rustdoc artifact recipe

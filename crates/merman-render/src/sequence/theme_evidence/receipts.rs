@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -85,7 +85,7 @@ impl SequenceActorThemeReceipt {
 #[derive(Debug, Clone, Default)]
 struct SequenceLineThemeReceipt {
     static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     static_selectors:
         BTreeMap<ResolvedStyleProperty, crate::theme_route_cutover::ThemeRouteCutoverSelector>,
     line_candidates: usize,
@@ -95,7 +95,7 @@ struct SequenceLineThemeReceipt {
 impl SequenceLineThemeReceipt {
     fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             for (property, origin) in [
                 (
@@ -137,7 +137,7 @@ impl SequenceLineThemeReceipt {
 
     fn merge(&mut self, other: Self) {
         self.static_winners.extend(other.static_winners);
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         self.static_selectors.extend(other.static_selectors);
         self.line_candidates = self.line_candidates.max(other.line_candidates);
         self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
@@ -156,7 +156,7 @@ impl SequenceLineThemeReceipt {
         self.line_candidates != 0 && self.emitted_lines == self.line_candidates
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     fn selector_for(
         &self,
         property: ResolvedStyleProperty,
@@ -168,9 +168,9 @@ impl SequenceLineThemeReceipt {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceLifelineThemeReceipt {
     line: SequenceLineThemeReceipt,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     raster_terminals: BTreeMap<String, crate::theme_raster_paint::ThemeRasterPaintTerminal>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     raster_terminals_invalid: bool,
 }
 
@@ -214,7 +214,7 @@ impl SequenceLifelineThemeReceipt {
         effective_stroke_width: f64,
     ) {
         self.line.record_line_emission();
-        #[cfg(not(feature = "internal-theme-acceptance"))]
+        #[cfg(not(merman_internal_theme_acceptance))]
         let _ = (
             actor_index,
             x1,
@@ -224,7 +224,7 @@ impl SequenceLifelineThemeReceipt {
             authored_stroke_width,
             effective_stroke_width,
         );
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             let terminal_id = format!("actor{actor_index}");
             let Some(terminal) =
@@ -254,7 +254,7 @@ impl SequenceLifelineThemeReceipt {
 
     pub(super) fn merge(&mut self, other: Self) {
         self.line.merge(other.line);
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             self.raster_terminals_invalid |= other.raster_terminals_invalid
                 || other
@@ -282,7 +282,7 @@ impl SequenceLifelineThemeReceipt {
         self.line.has_complete_emission()
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) fn raster_paint_terminals(
         &self,
     ) -> Option<Vec<crate::theme_raster_paint::ThemeRasterPaintTerminal>> {
@@ -292,7 +292,7 @@ impl SequenceLifelineThemeReceipt {
             .then(|| self.raster_terminals.values().cloned().collect())
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) fn raster_paint_selector(
         &self,
         property: ResolvedStyleProperty,

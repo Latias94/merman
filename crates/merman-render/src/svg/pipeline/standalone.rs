@@ -41,7 +41,7 @@ impl StandaloneSvgTerminalStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandaloneSvgArtifact {
     inner: StandaloneSvgArtifactKind,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     artifact_receipt: Option<crate::svg_artifact_receipts::SvgArtifactReceipt>,
 }
 
@@ -66,12 +66,12 @@ struct ObservedStandaloneSvg {
 
 impl StandaloneSvgArtifact {
     pub(crate) fn from_resvg_compatible(svg: ResvgCompatibleSvg) -> Self {
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         let artifact_receipt =
             crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(svg.as_str());
         Self {
             inner: StandaloneSvgArtifactKind::ResvgCompatible(svg),
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             artifact_receipt,
         }
     }
@@ -128,7 +128,7 @@ impl StandaloneSvgArtifact {
             }
             Err(error) => return Err(error),
         };
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         let artifact_receipt =
             crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(&svg);
         Ok(Self {
@@ -143,7 +143,7 @@ impl StandaloneSvgArtifact {
                 finalization_report,
                 resource_fingerprint,
             }),
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             artifact_receipt,
         })
     }
@@ -218,7 +218,7 @@ impl StandaloneSvgArtifact {
 
     /// Returns the renderer-owned observation of this exact finalized SVG when the private theme
     /// acceptance feature is enabled.
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub fn svg_artifact_receipt(
         &self,
     ) -> Option<&crate::svg_artifact_receipts::SvgArtifactReceipt> {
@@ -334,7 +334,7 @@ mod tests {
             StandaloneSvgTerminalStatus::ValidationFailed
         );
         assert!(artifact.finalization_report().is_none());
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         assert!(artifact.svg_artifact_receipt().is_none());
     }
 
@@ -359,7 +359,7 @@ mod tests {
         assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     #[test]
     fn finalized_svg_artifact_owns_the_generic_theme_receipt() {
         let session = crate::environment::RenderEnvironment::deterministic()

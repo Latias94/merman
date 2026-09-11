@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_core::OperationControl;
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 use sha2::{Digest as _, Sha256};
 
 use super::RenderError;
@@ -20,7 +20,7 @@ use super::target_admission::{
     document_portability_report, enforce_portability_requirement, standalone_svg_admission,
 };
 
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 #[derive(Debug, Clone)]
 pub struct ThemeRoutePngCutoverPair {
     solid: RasterOutput,
@@ -28,7 +28,7 @@ pub struct ThemeRoutePngCutoverPair {
     receipt: ThemeRoutePngCutoverReceipt,
 }
 
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 impl ThemeRoutePngCutoverPair {
     pub(crate) const fn solid(&self) -> &RasterOutput {
         &self.solid
@@ -43,7 +43,7 @@ impl ThemeRoutePngCutoverPair {
     }
 }
 
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ThemeRoutePngCutoverReceipt {
     solid_route_receipt_digest: [u8; 32],
@@ -56,7 +56,7 @@ struct ThemeRoutePngCutoverReceipt {
     digest: [u8; 32],
 }
 
-#[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+#[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 impl ThemeRoutePngCutoverReceipt {
     fn seal(
         solid_route_receipt_digest: [u8; 32],
@@ -126,9 +126,9 @@ pub struct RenderedDocument {
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     standalone_svg_admission: TargetAdmissionReceipt,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_route_cutover_receipts: Box<[merman_render::__private::ThemeRouteCutoverReceipt]>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_raster_paint_binding_receipts:
         Box<[merman_render::__private::ThemeRasterPaintBindingReceipt]>,
 }
@@ -233,10 +233,10 @@ impl RenderedDocument {
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         let theme_route_cutover_receipts =
             completion.theme_route_cutover_receipts().into_boxed_slice();
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         let theme_raster_paint_binding_receipts = completion
             .theme_raster_paint_binding_receipts()
             .into_boxed_slice();
@@ -270,9 +270,9 @@ impl RenderedDocument {
             evidence,
             portability,
             standalone_svg_admission,
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_route_cutover_receipts,
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_raster_paint_binding_receipts,
         }
     }
@@ -318,21 +318,21 @@ impl RenderedDocument {
         &self.standalone_svg_admission
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn theme_route_cutover_receipts(
         &self,
     ) -> &[merman_render::__private::ThemeRouteCutoverReceipt] {
         &self.theme_route_cutover_receipts
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn theme_raster_paint_binding_receipts(
         &self,
     ) -> &[merman_render::__private::ThemeRasterPaintBindingReceipt] {
         &self.theme_raster_paint_binding_receipts
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn svg_artifact_receipt(
         &self,
     ) -> Option<&merman_render::__private::SvgArtifactReceipt> {
@@ -422,7 +422,7 @@ impl RenderedDocument {
         })
     }
 
-    #[cfg(all(feature = "png", feature = "internal-theme-acceptance"))]
+    #[cfg(all(feature = "png", merman_internal_theme_acceptance))]
     pub(crate) fn export_theme_route_cutover_png_pair(
         solid_document: &RenderedDocument,
         transparent_document: &RenderedDocument,

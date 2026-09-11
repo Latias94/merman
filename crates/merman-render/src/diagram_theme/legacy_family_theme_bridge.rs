@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use std::collections::BTreeSet;
 
 use merman_core::__private::{
@@ -16,7 +16,7 @@ use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{FamilyThemeDisposition, FamilyThemeRuleFacet};
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::family_mechanism_matrix::{
     FamilyThemePaintKind, FamilyThemeSelectorShape, LegacyCompatibilityRouteKey,
     classify_rule_facet, legacy_compatibility_route_inventory,
@@ -26,23 +26,23 @@ use super::resolved::{ResolvedProperty, ResolvedThemeStyle};
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::Specified;
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::semantic::OrdinalSelector;
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use sha2::{Digest as _, Sha256};
 
 #[cfg(test)]
 use super::family_mechanism_matrix::FamilyThemeMechanism;
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::legacy_projection_retirement::{
     ThemeLegacyProjectionDisposition, ThemeLegacyProjectionObservation,
     ThemeLegacyProjectionProbeError, ThemeLegacyProjectionProbeReceipt, ThemeLegacyRouteValue,
     value_digest,
 };
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::legacy_tombstones::{ThemeLegacyRouteFacet, ThemeLegacyRouteSelector};
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
@@ -76,7 +76,7 @@ struct LegacyFamilyThemeArtifact {
     overlay: ThemeFamilyCompatibilityOverlay,
     #[cfg(test)]
     contribution_ids: BTreeSet<String>,
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
@@ -198,7 +198,7 @@ fn compile_selected_family(
 /// legacy route and the dispatch table must have no family left to send to the bridge. Keeping
 /// these facts together prevents a migration from updating one ledger while leaving the other
 /// executable.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LegacyFamilyThemeBridgeInventory {
     matrix_route_count: usize,
@@ -212,7 +212,7 @@ pub struct LegacyFamilyThemeBridgeInventory {
     dispatched_family_digest: [u8; 32],
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl LegacyFamilyThemeBridgeInventory {
     pub const fn matrix_route_count(self) -> usize {
         self.matrix_route_count
@@ -282,7 +282,7 @@ impl LegacyFamilyThemeBridgeInventory {
 /// This inventory proves only executable route ownership and dispatch consistency. It does not
 /// authorize deleting the bridge; the acceptance layer must also reconcile provider removal and
 /// the independent migration, support, and release ledgers.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub fn legacy_family_theme_bridge_inventory() -> LegacyFamilyThemeBridgeInventory {
     let matrix_routes = legacy_compatibility_route_inventory();
     let matrix_families = matrix_routes
@@ -321,7 +321,7 @@ pub fn legacy_family_theme_bridge_inventory() -> LegacyFamilyThemeBridgeInventor
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn digest_legacy_routes(routes: &[LegacyCompatibilityRouteKey]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, b"merman.legacy-family-theme-bridge.routes.v1");
@@ -335,7 +335,7 @@ fn digest_legacy_routes(routes: &[LegacyCompatibilityRouteKey]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn digest_family_set(label: &str, families: &BTreeSet<DiagramFamilyId>) -> [u8; 32] {
     let mut hasher = Sha256::new();
     update_len_prefixed(
@@ -350,7 +350,7 @@ fn digest_family_set(label: &str, families: &BTreeSet<DiagramFamilyId>) -> [u8; 
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_route_key(hasher: &mut Sha256, route: &LegacyCompatibilityRouteKey) {
     match route {
         LegacyCompatibilityRouteKey::BaseTypography { family, property } => {
@@ -383,7 +383,7 @@ fn update_route_key(hasher: &mut Sha256, route: &LegacyCompatibilityRouteKey) {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_selector(hasher: &mut Sha256, selector: FamilyThemeSelectorShape) {
     match selector {
         FamilyThemeSelectorShape::Static { variant } => {
@@ -408,7 +408,7 @@ fn update_selector(hasher: &mut Sha256, selector: FamilyThemeSelectorShape) {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_optional_variant(hasher: &mut Sha256, variant: Option<ThemeVariant>) {
     match variant {
         Some(variant) => {
@@ -419,7 +419,7 @@ fn update_optional_variant(hasher: &mut Sha256, variant: Option<ThemeVariant>) {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_rule_facet(hasher: &mut Sha256, facet: FamilyThemeRuleFacet) {
     match facet {
         FamilyThemeRuleFacet::Fill(kind) => {
@@ -447,7 +447,7 @@ fn update_rule_facet(hasher: &mut Sha256, facet: FamilyThemeRuleFacet) {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_paint_kind(hasher: &mut Sha256, kind: FamilyThemePaintKind) {
     let id = match kind {
         FamilyThemePaintKind::Clear => "clear",
@@ -460,12 +460,12 @@ fn update_paint_kind(hasher: &mut Sha256, kind: FamilyThemePaintKind) {
     update_len_prefixed(hasher, id.as_bytes());
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_len(hasher: &mut Sha256, value: usize) {
     hasher.update((value as u64).to_be_bytes());
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     update_len(hasher, bytes.len());
     hasher.update(bytes);
@@ -521,7 +521,7 @@ fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<Legacy
 /// Historical before/after policy deliberately lives in the independent acceptance crate. This
 /// function reports current production facts only, so adding a historical manifest row cannot
 /// change the runtime matrix or suppress a bridge projection.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(crate) fn legacy_projection_probe(
     id: super::legacy_tombstones::ThemeLegacyRouteId,
     value: ThemeLegacyRouteValue,
@@ -987,7 +987,7 @@ struct OverlayBuilder {
     overlay: ThemeFamilyCompatibilityOverlayBuilder,
     #[cfg(test)]
     contribution_ids: BTreeSet<String>,
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
@@ -1000,7 +1000,7 @@ impl OverlayBuilder {
             ),
             #[cfg(test)]
             contribution_ids: BTreeSet::new(),
-            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            #[cfg(any(test, merman_internal_theme_acceptance))]
             accepted_projections: BTreeSet::new(),
         }
     }
@@ -1017,7 +1017,7 @@ impl OverlayBuilder {
                 .insert(_receipt.opaque_id().to_string());
             debug_assert!(inserted, "core must reject duplicate contribution ids");
         }
-        #[cfg(any(test, feature = "internal-theme-acceptance"))]
+        #[cfg(any(test, merman_internal_theme_acceptance))]
         {
             self.accepted_projections.extend(_receipt.assignments().map(
                 |(assignment_path, value)| {
@@ -1037,7 +1037,7 @@ impl OverlayBuilder {
             overlay: self.overlay.finish(),
             #[cfg(test)]
             contribution_ids: self.contribution_ids,
-            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            #[cfg(any(test, merman_internal_theme_acceptance))]
             accepted_projections: self.accepted_projections,
         }
     }

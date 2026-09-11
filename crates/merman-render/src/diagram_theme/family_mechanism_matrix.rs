@@ -1,7 +1,7 @@
 use crate::DiagramFamilyId;
 #[cfg(test)]
 use crate::theme_route_cutover::ThemeRouteCutoverProjection;
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use crate::theme_route_cutover::{
     ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
     ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjectionSet, ThemeRouteCutoverSelector,
@@ -76,7 +76,7 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(crate) const ALL: [Self; 6] = [
         Self::Clear,
         Self::Transparent,
@@ -145,7 +145,7 @@ pub(crate) enum FamilyThemeSelectorShape {
 }
 
 impl FamilyThemeSelectorShape {
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) const fn is_static_unqualified(self) -> bool {
         matches!(self, Self::Static { variant: None })
     }
@@ -218,7 +218,7 @@ pub(crate) struct FamilyThemeRoute {
 /// Stable, index-free identity for one route that can still enter the legacy compatibility
 /// bridge. Rule indexes and binding indexes are compilation details, so the retirement gate uses
 /// this semantic key instead of copying a concrete recipe's positions.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum LegacyCompatibilityRouteKey {
     BaseTypography {
@@ -247,7 +247,7 @@ pub(crate) enum LegacyCompatibilityRouteKey {
 /// routes that have values, while bridge retirement must answer whether *any* valid input could
 /// still reach the compatibility lane. The domain is kept here next to the classifiers so a new
 /// mechanism cannot silently bypass the exit gate.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(crate) fn legacy_compatibility_route_inventory() -> Vec<LegacyCompatibilityRouteKey> {
     let mut routes = Vec::new();
     for &family in DiagramFamilyId::all() {
@@ -315,7 +315,7 @@ impl FamilyThemeRoute {
 ///
 /// Direct-only routes such as radius, dasharray, or Flowchart ordinal palettes are deliberately
 /// absent because they never had an equivalent bridge projection to retire.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(crate) fn legacy_replacing_typed_routes()
 -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
     let mut routes = Vec::new();
@@ -379,7 +379,7 @@ pub(crate) fn legacy_replacing_typed_routes()
     Ok(routes)
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn legacy_bridge_projections(
     family: DiagramFamilyId,
     target: ThemeTarget,
@@ -638,7 +638,7 @@ fn legacy_bridge_projections(
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 const fn selector_variant(selector: ThemeRouteCutoverSelector) -> Option<ThemeVariant> {
     match selector {
         ThemeRouteCutoverSelector::StaticUnqualified => None,
@@ -646,7 +646,7 @@ const fn selector_variant(selector: ThemeRouteCutoverSelector) -> Option<ThemeVa
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn gantt_task_projections(
     facet: ThemeRouteCutoverFacet,
     selector: ThemeRouteCutoverSelector,
@@ -1057,7 +1057,7 @@ pub(super) fn summarize_base_typography_support(
     summary
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
         visit(FamilyThemeSelectorShape::Static { variant });
@@ -1075,7 +1075,7 @@ fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn for_each_matrix_rule_facet(mut visit: impl FnMut(FamilyThemeRuleFacet)) {
     for kind in FamilyThemePaintKind::ALL {
         visit(FamilyThemeRuleFacet::Fill(kind));

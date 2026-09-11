@@ -258,11 +258,11 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                                 .then_some(service_title_style.as_deref())
                                 .flatten(),
                             bounds: service_title_bounds,
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: service_title_emission
                                 .as_ref()
                                 .map(|emission| emission.facts.fragment_digest),
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             run_count: service_title_emission
                                 .as_ref()
                                 .map_or(0, |emission| emission.facts.run_count),
@@ -449,7 +449,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
             } else {
                 (None, None)
             };
-            #[cfg(not(feature = "internal-theme-acceptance"))]
+            #[cfg(not(merman_internal_theme_acceptance))]
             let _ = group_writer_facts;
 
             out.push_str("</g>");
@@ -466,9 +466,9 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                             emitted: has_title,
                             style: has_title.then_some(group_title_style.as_deref()).flatten(),
                             bounds: group_title_bounds.as_ref(),
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: group_writer_facts.map(|facts| facts.fragment_digest),
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             run_count: group_writer_facts.map_or(0, |facts| facts.run_count),
                         },
                     },

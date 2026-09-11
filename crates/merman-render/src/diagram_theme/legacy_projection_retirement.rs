@@ -5,7 +5,7 @@ use super::legacy_tombstones::{
 };
 use super::semantic::{ThemeTarget, ThemeVariant};
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use sha2::{Digest as _, Sha256};
 
 /// Atomic scalar paint value classes used by the historical transition witness.
@@ -107,7 +107,7 @@ pub struct ThemeLegacyProjectionObservation {
 }
 
 impl ThemeLegacyProjectionObservation {
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(super) fn new(
         contribution_id: String,
         assignment_path: String,
@@ -148,7 +148,7 @@ pub struct ThemeLegacyProjectionRetirementReceipt {
 }
 
 impl ThemeLegacyProjectionRetirementReceipt {
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     fn seal(
         descriptor: ThemeLegacyProjectionRetirementDescriptor,
         transparent_probe_digest: [u8; 32],
@@ -178,7 +178,7 @@ impl ThemeLegacyProjectionRetirementReceipt {
 }
 
 impl ThemeLegacyProjectionProbeReceipt {
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(super) fn seal(
         id: ThemeLegacyRouteId,
         value: ThemeLegacyRouteValue,
@@ -728,7 +728,7 @@ const fn pattern(
 }
 
 /// Returns historical projection rows aligned to the renderer-owned KTD23 tombstone identities.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(crate) fn legacy_projection_retirement_inventory() -> Result<
     Vec<ThemeLegacyProjectionRetirementDescriptor>,
     ThemeLegacyProjectionRetirementInventoryError,
@@ -791,7 +791,7 @@ pub(crate) fn legacy_projection_retirement_inventory() -> Result<
 }
 
 /// Seals one opaque receipt per production-owned KTD23 route.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(crate) fn legacy_projection_retirement_receipts() -> Result<
     Vec<ThemeLegacyProjectionRetirementReceipt>,
     ThemeLegacyProjectionRetirementInventoryError,
@@ -851,7 +851,7 @@ pub(crate) fn legacy_projection_retirement_receipts() -> Result<
     Ok(receipts)
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn retirement_descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescriptor) -> [u8; 32] {
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, b"merman.theme-legacy-projection-retirement.v1");
@@ -877,7 +877,7 @@ fn retirement_descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescr
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn retirement_receipt_digest(
     descriptor: ThemeLegacyProjectionRetirementDescriptor,
     transparent_probe_digest: [u8; 32],
@@ -894,7 +894,7 @@ fn retirement_receipt_digest(
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn probe_digest(
     id: ThemeLegacyRouteId,
     value: ThemeLegacyRouteValue,
@@ -924,7 +924,7 @@ fn probe_digest(
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 pub(super) fn value_digest(value: &serde_json::Value) -> [u8; 32] {
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, b"merman.theme-legacy-projection-value.v1");
@@ -933,7 +933,7 @@ pub(super) fn value_digest(value: &serde_json::Value) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update((bytes.len() as u64).to_be_bytes());
     hasher.update(bytes);

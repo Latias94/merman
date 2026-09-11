@@ -226,9 +226,11 @@ authoring/consumer/preset gates are not complete. These counts do not establish 
 Route and raster-paint binding receipts are sealed by the opaque
 `FamilyRenderCompletion<ResvgCompatibleSvg>` before the facade separates the output and report.
 The former public seal functions accepting a report plus caller-provided artifact digests are
-removed. This closes arbitrary report/artifact pairing; it does not close the workspace-only
-publication gate. `internal-theme-acceptance` is still a selectable Cargo feature, and excluding
-that feature and its acceptance surface from published packages remains required before C7a freeze.
+removed. The `internal-theme-acceptance` Cargo feature is also removed. The private harness uses
+an explicit workspace cfg through `scripts/run_theme_acceptance.py`; producer Cargo packages
+exclude its independent acceptance modules. `scripts/verify_theme_acceptance_boundary.py` checks
+package lists and compiles a production consumer whose acceptance imports must fail. These
+boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
 The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
 and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound
@@ -274,7 +276,7 @@ Bridge inventory changes also require the `legacy_projection_retirement` integra
 whose frozen counts and digests are independent of the renderer library tests:
 
 ```sh
-cargo nextest run --locked -p merman-theme-acceptance \
+python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
   --no-default-features --features png,layout-cytoscape \
   --test legacy_projection_retirement --test route_cutover_runtime
 ```

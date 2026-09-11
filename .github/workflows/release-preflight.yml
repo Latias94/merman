@@ -196,14 +196,17 @@ jobs:
       - name: Verify native ABI projections
         run: cargo run --locked -p xtask -- verify-native-abi
 
+      - name: Verify published theme acceptance boundary
+        run: python3 scripts/verify_theme_acceptance_boundary.py
+
       - name: Test KTD23 legacy projection retirement
         run: |
-          cargo test --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --test legacy_projection_retirement
 
       - name: Test KTD17 theme route cutover authorization
         run: |
-          cargo test --locked -p merman-theme-acceptance \
+          python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --features png,layout-cytoscape \
             --test route_cutover_runtime
 

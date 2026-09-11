@@ -177,7 +177,7 @@ impl SequenceThemeEvidenceRecorder {
         Ok(())
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn raster_paint_binding_fact(
         &self,
     ) -> Option<crate::theme_raster_paint::ThemeRasterPaintBindingFact> {

@@ -674,9 +674,9 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                 write_architecture_arrow_polygon(out, arrow, rhs_arrow_style.as_deref());
             }
 
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             let mut label_fragment_digest = None;
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             let mut label_run_count = 0;
             if let Some(label_plan) = label_plan {
                 let _ = write!(
@@ -695,12 +695,12 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                         settings.text_style.font_size,
                     );
                 }
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 {
                     label_fragment_digest = Some(writer_facts.fragment_digest);
                     label_run_count = writer_facts.run_count;
                 }
-                #[cfg(not(feature = "internal-theme-acceptance"))]
+                #[cfg(not(merman_internal_theme_acceptance))]
                 let _ = writer_facts;
             }
 
@@ -726,9 +726,9 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                             emitted: has_label,
                             style: label_style.as_deref(),
                             bounds: label_bounds.as_ref(),
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: label_fragment_digest,
-                            #[cfg(feature = "internal-theme-acceptance")]
+                            #[cfg(merman_internal_theme_acceptance)]
                             run_count: label_run_count,
                         },
                         lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {

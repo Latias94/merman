@@ -89,7 +89,7 @@ impl ThemeEvidenceScopeProjection {
 }
 
 /// Workspace-only projection used by the non-published theme acceptance harness.
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub(crate) struct ThemeAcceptanceEvidenceProjection<'a> {
     pub(crate) root: ThemeEvidenceScopeProjection,
     pub(crate) family: ThemeEvidenceScopeProjection,
@@ -105,7 +105,7 @@ pub(crate) struct ThemeAcceptanceEvidenceProjection<'a> {
         &'a merman_render::diagram_theme::ThemeResourcePolicy,
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ThemeAcceptanceEvidenceSnapshot {
     root: ThemeEvidenceScopeProjection,
@@ -129,10 +129,10 @@ pub struct RenderEvidence {
     required_capabilities: Box<[merman_render::RenderCapability]>,
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt:
         Option<merman_render::__private::ArchitectureTextCutoverReceipt>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_acceptance: ThemeAcceptanceEvidenceSnapshot,
 }
 
@@ -158,7 +158,7 @@ impl RenderEvidence {
         let root_applied_capabilities =
             merman_render::__private::root_applied_capabilities(&family);
         let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
-        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         let architecture_text_cutover_receipt =
             merman_render::__private::architecture_text_cutover_receipt(&family).cloned();
         Self {
@@ -169,9 +169,9 @@ impl RenderEvidence {
             required_capabilities: required_capabilities.into_boxed_slice(),
             root_applied_capabilities,
             native_filter_receipt,
-            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt,
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_acceptance: ThemeAcceptanceEvidenceSnapshot {
                 root,
                 family: family_scope,
@@ -212,7 +212,7 @@ impl RenderEvidence {
         self.native_filter_receipt
     }
 
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub(crate) fn architecture_text_cutover_receipt(
         &self,
     ) -> Option<&merman_render::__private::ArchitectureTextCutoverReceipt> {
@@ -285,7 +285,7 @@ impl RenderEvidence {
         &self.root_applied_capabilities
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn theme_acceptance_evidence(&self) -> ThemeAcceptanceEvidenceProjection<'_> {
         ThemeAcceptanceEvidenceProjection {
             root: self.theme_acceptance.root,

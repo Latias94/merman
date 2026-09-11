@@ -56,9 +56,9 @@ pub(crate) struct ArchitectureTextTerminalEmission<'a> {
     pub(crate) emitted: bool,
     pub(crate) style: Option<&'a str>,
     pub(crate) bounds: Option<&'a Bounds>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fragment_digest: Option<[u8; 32]>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) run_count: usize,
 }
 
@@ -130,11 +130,11 @@ struct ArchitectureServiceSurfaceExpectation {
     title_fill: Option<ArchitectureExpectedPaint>,
     has_icon_text: bool,
     checkpointed: bool,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_bounds: Option<Bounds>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_fragment_digest: Option<[u8; 32]>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_run_count: usize,
 }
 
@@ -145,11 +145,11 @@ struct ArchitectureGroupTextExpectation {
     title_style: Option<Box<str>>,
     title_fill: Option<ArchitectureExpectedPaint>,
     checkpointed: bool,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_bounds: Option<Bounds>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_fragment_digest: Option<[u8; 32]>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     title_run_count: usize,
 }
 
@@ -167,11 +167,11 @@ struct ArchitectureEdgeSurfaceExpectation {
     rhs_arrow_style: Option<Box<str>>,
     rhs_arrow_fill: Option<ArchitectureExpectedPaint>,
     checkpointed: bool,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     label_bounds: Option<Bounds>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     label_fragment_digest: Option<[u8; 32]>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     label_run_count: usize,
 }
 
@@ -303,11 +303,11 @@ impl ArchitectureSurfaceThemeReceipt {
                 title_fill,
                 has_icon_text: service.has_icon_text,
                 checkpointed: false,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_bounds: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_fragment_digest: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_run_count: 0,
             });
         }
@@ -334,11 +334,11 @@ impl ArchitectureSurfaceThemeReceipt {
                 title_style,
                 title_fill,
                 checkpointed: false,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_bounds: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_fragment_digest: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 title_run_count: 0,
             });
         }
@@ -411,11 +411,11 @@ impl ArchitectureSurfaceThemeReceipt {
                 rhs_arrow_style,
                 rhs_arrow_fill,
                 checkpointed: false,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 label_bounds: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 label_fragment_digest: None,
-                #[cfg(feature = "internal-theme-acceptance")]
+                #[cfg(merman_internal_theme_acceptance)]
                 label_run_count: 0,
             });
         }
@@ -498,7 +498,7 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.title.bounds,
             &mut self.terminals_match,
         );
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             expectation.title_bounds = emission.title.bounds.cloned();
             expectation.title_fragment_digest = emission.title.fragment_digest;
@@ -548,7 +548,7 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.title.bounds,
             &mut self.terminals_match,
         );
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             expectation.title_bounds = emission.title.bounds.cloned();
             expectation.title_fragment_digest = emission.title.fragment_digest;
@@ -585,7 +585,7 @@ impl ArchitectureSurfaceThemeReceipt {
             emission.label.bounds,
             &mut self.terminals_match,
         );
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         {
             expectation.label_bounds = emission.label.bounds.cloned();
             expectation.label_fragment_digest = emission.label.fragment_digest;
@@ -665,7 +665,7 @@ impl ArchitectureSurfaceThemeReceipt {
         }
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) fn architecture_text_cutover_receipt(
         &self,
     ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {
@@ -711,7 +711,7 @@ impl ArchitectureSurfaceThemeReceipt {
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 fn append_text_cutover_terminal(
     terminals: &mut Vec<crate::__private::ArchitectureTextCutoverTerminal>,
     role: crate::__private::ArchitectureTextCutoverRole,

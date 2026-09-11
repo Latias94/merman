@@ -85,7 +85,7 @@ impl SvgArtifactReceipt {
     ///
     /// This constructor is deliberately unavailable to ordinary builds. Runtime acceptance must
     /// obtain the receipt from the finalized renderer artifact instead of observing arbitrary bytes.
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     #[doc(hidden)]
     pub fn observe_svg_for_test(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
         if artifact_digest == [0; 32]

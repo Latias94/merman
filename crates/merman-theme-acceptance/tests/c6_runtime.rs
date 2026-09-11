@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 use std::path::Path;
 
 use merman_theme_fixtures::{C6AcceptanceCatalog, ThemeFixtureCatalog};

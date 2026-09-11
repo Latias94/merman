@@ -331,12 +331,12 @@ pub(crate) struct FamilyStyleReport {
     output_mutated: bool,
     theme_required: Vec<FamilyThemeMechanismKey>,
     theme_applied: Vec<FamilyThemeMechanismKey>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_route_cutover_facts: Vec<crate::theme_route_cutover::ThemeRouteCutoverFact>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
@@ -374,12 +374,12 @@ impl FamilyStyleReport {
             output_mutated: plan.output_mutated,
             theme_required: plan.theme_evidence.required.clone(),
             theme_applied: plan.theme_evidence.applied.clone(),
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_route_cutover_facts: plan.theme_route_cutover_facts(),
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_raster_paint_binding_facts: plan.theme_raster_paint_binding_facts.clone(),
             native_filter_receipt: plan.native_filter_receipt,
-            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: plan.architecture_text_cutover_receipt.clone(),
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
@@ -404,11 +404,11 @@ impl FamilyStyleReport {
             }
         }
         self.native_filter_receipt = None;
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         self.theme_route_cutover_facts.clear();
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         self.theme_raster_paint_binding_facts.clear();
-        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         {
             self.architecture_text_cutover_receipt = None;
         }
@@ -446,7 +446,7 @@ impl FamilyStyleReport {
         self.native_filter_receipt
     }
 
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub(crate) fn architecture_text_cutover_receipt(
         &self,
     ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
@@ -532,7 +532,7 @@ impl FamilyStyleReport {
         }
     }
 
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub fn is_verified(&self) -> bool {
         self.verification() == FamilyStyleVerification::Verified
     }
@@ -646,19 +646,19 @@ impl FamilyRenderReport {
         self.style.family_id()
     }
 
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn theme_route_cutover_facts(
         &self,
     ) -> &[crate::theme_route_cutover::ThemeRouteCutoverFact] {
         &self.style.theme_route_cutover_facts
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(crate) fn theme_raster_paint_binding_facts(
         &self,
     ) -> &[crate::theme_raster_paint::ThemeRasterPaintBindingFact] {
@@ -675,7 +675,7 @@ impl FamilyRenderReport {
         self.style.native_filter_receipt()
     }
 
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub(crate) fn architecture_text_cutover_receipt(
         &self,
     ) -> Option<&crate::__private::ArchitectureTextCutoverReceipt> {
@@ -909,9 +909,9 @@ pub(crate) struct ResolvedFamilyStylePlan {
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     theme_raster_paint_binding_facts: Vec<crate::theme_raster_paint::ThemeRasterPaintBindingFact>,
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     architecture_text_cutover_receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
     output_mutated: bool,
     compatibility_residual_count: usize,
@@ -936,9 +936,9 @@ impl ResolvedFamilyStylePlan {
             theme_evidence,
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
-            #[cfg(feature = "internal-theme-acceptance")]
+            #[cfg(merman_internal_theme_acceptance)]
             theme_raster_paint_binding_facts: Vec::new(),
-            #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
             architecture_text_cutover_receipt: None,
             output_mutated: false,
             compatibility_residual_count: 0,
@@ -947,7 +947,7 @@ impl ResolvedFamilyStylePlan {
         }
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     fn theme_route_cutover_facts(&self) -> Vec<crate::theme_route_cutover::ThemeRouteCutoverFact> {
         self.resolved_theme
             .as_deref()
@@ -1048,7 +1048,7 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     fn record_theme_raster_paint_binding_fact(
         &mut self,
         fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
@@ -1071,7 +1071,7 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
-    #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     fn record_architecture_text_cutover_receipt(
         &mut self,
         receipt: Option<crate::__private::ArchitectureTextCutoverReceipt>,
@@ -1136,9 +1136,9 @@ impl ResolvedFamilyStylePlan {
     fn invalidate_for_output_mutation(&mut self) {
         self.output_mutated = true;
         self.native_filter_receipt = None;
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         self.theme_raster_paint_binding_facts.clear();
-        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         {
             self.architecture_text_cutover_receipt = None;
         }
@@ -1373,7 +1373,7 @@ impl FamilyRenderContext {
         self.style_plan.merge_sequence_evidence(evidence);
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     fn record_theme_raster_paint_binding_fact(
         &mut self,
         fact: crate::theme_raster_paint::ThemeRasterPaintBindingFact,
@@ -2423,7 +2423,7 @@ impl BuiltinFamilyArtifact {
         }
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     fn sequence_theme_raster_paint_binding_fact(
         &self,
     ) -> Option<crate::theme_raster_paint::ThemeRasterPaintBindingFact> {
@@ -2948,7 +2948,7 @@ impl<T> FamilyRenderCompletion<T> {
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 impl FamilyRenderCompletion<ResvgCompatibleSvg> {
     /// Returns route receipts bound to this completion's frozen report and SVG representations.
     ///
@@ -3470,7 +3470,7 @@ impl FamilyRenderArtifact {
         let sequence_theme_evidence = self
             .family
             .sequence_theme_evidence(self.context.resolved_theme());
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         let sequence_theme_raster_paint_binding_fact =
             self.family.sequence_theme_raster_paint_binding_fact();
         let class_theme_evidence = self.family.class_theme_evidence(
@@ -3516,7 +3516,7 @@ impl FamilyRenderArtifact {
         let ishikawa_theme_evidence = self.family.ishikawa_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
         let architecture_theme_evidence = self.family.architecture_theme_evidence();
-        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         let architecture_text_cutover_receipt = match &self.family {
             BuiltinFamilyArtifact::Architecture(artifact) => {
                 artifact.group_theme().architecture_text_cutover_receipt()
@@ -3542,7 +3542,7 @@ impl FamilyRenderArtifact {
         if let Some(evidence) = sequence_theme_evidence {
             context.merge_sequence_evidence(evidence);
         }
-        #[cfg(feature = "internal-theme-acceptance")]
+        #[cfg(merman_internal_theme_acceptance)]
         if let Some(fact) = sequence_theme_raster_paint_binding_fact {
             context.record_theme_raster_paint_binding_fact(fact);
         }
@@ -3637,7 +3637,7 @@ impl FamilyRenderArtifact {
         if let Some(evidence) = architecture_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::ARCHITECTURE, evidence);
         }
-        #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
         if context.family_id() == DiagramFamilyId::ARCHITECTURE {
             context
                 .style_plan

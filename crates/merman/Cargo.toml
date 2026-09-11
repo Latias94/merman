@@ -13,6 +13,7 @@ readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 exclude = [
+    "src/theme_acceptance.rs",
     "tests/mindmap_br_variants_031.rs",
     "tests/resvg_safe_fixture_smoke.rs",
     "tests/zed_mermaid_issue_fixtures.rs",
@@ -51,11 +52,6 @@ system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezon
 system-random = ["merman-core/system-random", "merman-render?/system-random"]
 system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
 svg = ["dep:merman-render", "dep:merman-theme-contract", "dep:sha2"]
-internal-theme-acceptance = [
-    "svg",
-    "merman-render/internal-theme-acceptance",
-    "merman-export?/internal-theme-acceptance",
-]
 analysis = ["dep:merman-analysis"]
 editor = ["analysis", "dep:merman-editor-core"]
 ascii = ["dep:merman-ascii"]
@@ -235,3 +231,6 @@ required-features = ["svg"]
 [[example]]
 name = "layout_work_calibration"
 required-features = ["complete-svg-elk"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

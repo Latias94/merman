@@ -124,7 +124,7 @@ impl ArchitectureSurfaceThemePlan {
         receipt.apply_to_evidence(evidence);
     }
 
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     pub(super) fn architecture_text_cutover_receipt(
         &self,
     ) -> Option<crate::__private::ArchitectureTextCutoverReceipt> {

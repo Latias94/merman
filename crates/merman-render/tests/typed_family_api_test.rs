@@ -194,7 +194,7 @@ fn state_prepared_artifact_renders_the_typed_family() {
     );
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[test]
 fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
     use merman_render::DiagramFamilyId;

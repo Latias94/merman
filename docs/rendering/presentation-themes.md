@@ -152,9 +152,10 @@ render can report application, residuals, host dependence, or portability.
 
 ## Private C6a Evidence Boundary
 
-`internal-theme-acceptance` is a workspace-only feature used by the non-published
-`merman-theme-acceptance` crate. It is not a public theme capability and it does not add a
-runtime dependency to ordinary `merman` builds. The feature exposes one generic,
+The non-published `merman-theme-acceptance` crate runs with the workspace-only
+`merman_internal_theme_acceptance` cfg through `scripts/run_theme_acceptance.py`.
+Production crates have no acceptance Cargo feature, and package manifests exclude the independent
+acceptance modules. This internal configuration exposes one generic,
 renderer-owned `SvgArtifactReceipt` through a hidden seam. The receipt is sealed when the
 renderer creates its finalized `StandaloneSvgArtifact`; the facade only retains and borrows that
 receipt. The acceptance harness can therefore inspect immutable facts from the finalized SVG

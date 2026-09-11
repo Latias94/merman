@@ -13,6 +13,8 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
 categories = ["visualization"]
 exclude = [
+  "src/svg_artifact_receipts.rs",
+  "src/theme_raster_paint.rs",
   "examples/*_debug_svg.rs",
   "examples/ratex_math_audit.rs",
   "tests/**",
@@ -26,7 +28,6 @@ wasm-inputs = ["assets/zenuml"]
 [features]
 default = []
 fuzzing = []
-internal-theme-acceptance = []
 system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]
@@ -82,3 +83,6 @@ futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

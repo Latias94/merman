@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 #[test]
 fn representative_native_exports_share_one_portable_document() {
     let summary = merman_theme_acceptance::run_representative_native_export_smoke()

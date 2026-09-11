@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 //! Non-published theme runtime acceptance harness.
 //!
 //! The crate exposes the C6 progress report, the exact native C6a eligibility seal, and the

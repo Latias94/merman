@@ -53,6 +53,9 @@ _SVG_PARITY_PREFIXES = (
 )
 _SVG_PARITY_EXACT_PATHS = frozenset(
     {
+        "scripts/run_theme_acceptance.py",
+        "scripts/test_run_theme_acceptance.py",
+        "scripts/verify_theme_acceptance_boundary.py",
         "crates/merman/Cargo.toml",
         "crates/merman/src/operation.rs",
         "crates/merman/src/render.rs",
@@ -137,6 +140,9 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {
+    "scripts/run_theme_acceptance.py": frozenset({"core", "hygiene"}),
+    "scripts/test_run_theme_acceptance.py": frozenset({"core", "hygiene"}),
+    "scripts/verify_theme_acceptance_boundary.py": frozenset({"core", "hygiene"}),
     "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/artifact_profile_recipe.py": frozenset(
         {

@@ -1,16 +1,16 @@
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use std::fmt;
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use crate::DiagramFamilyId;
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 use crate::diagram_theme::{
     FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind, FamilyThemeRuleFacet,
     ResolvedDiagramTheme,
 };
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use crate::diagram_theme::{ThemeTarget, ThemeVariant};
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 use sha2::{Digest as _, Sha256};
 
 /// Renderer-owned visual facts for one terminal covered by an Architecture Text cutover.
@@ -19,7 +19,7 @@ use sha2::{Digest as _, Sha256};
 /// target rectangle outside the SVG DOM. The non-published acceptance harness can consume these
 /// facts without reconstructing Architecture layout geometry or introducing `data-*` proof
 /// attributes into stable SVG output.
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ArchitectureTextCutoverRole {
     Service,
@@ -27,7 +27,7 @@ pub enum ArchitectureTextCutoverRole {
     EdgeLabel,
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 impl ArchitectureTextCutoverRole {
     const fn digest_name(self) -> &'static str {
         match self {
@@ -38,7 +38,7 @@ impl ArchitectureTextCutoverRole {
     }
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchitectureTextCutoverTerminal {
     role: ArchitectureTextCutoverRole,
@@ -49,7 +49,7 @@ pub struct ArchitectureTextCutoverTerminal {
     writer_run_count: usize,
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 impl ArchitectureTextCutoverTerminal {
     pub(crate) fn new(
         role: ArchitectureTextCutoverRole,
@@ -106,14 +106,14 @@ impl ArchitectureTextCutoverTerminal {
 }
 
 /// Opaque production receipt for the finalized Architecture Text cutover surface.
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchitectureTextCutoverReceipt {
     terminals: Box<[ArchitectureTextCutoverTerminal]>,
     digest: [u8; 32],
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 impl ArchitectureTextCutoverReceipt {
     pub(crate) fn seal(terminals: Vec<ArchitectureTextCutoverTerminal>) -> Option<Self> {
         if terminals.is_empty() {
@@ -155,11 +155,7 @@ impl ArchitectureTextCutoverReceipt {
     }
 }
 
-#[cfg(all(
-    test,
-    feature = "internal-theme-acceptance",
-    feature = "layout-cytoscape"
-))]
+#[cfg(all(test, merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 mod architecture_text_receipt_tests {
     use super::*;
 
@@ -225,19 +221,19 @@ mod architecture_text_receipt_tests {
     }
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 fn update_len(hasher: &mut Sha256, len: usize) {
     hasher.update(u64::try_from(len).unwrap_or(u64::MAX).to_be_bytes());
 }
 
-#[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
+#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     update_len(hasher, bytes.len());
     hasher.update(bytes);
 }
 
 /// Canonical selector class for one legacy bridge cutover witness.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeRouteCutoverSelector {
     /// A static rule with neither an ordinal selector nor an explicit variant.
@@ -246,7 +242,7 @@ pub enum ThemeRouteCutoverSelector {
     StaticVariant(ThemeVariant),
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverSelector {
     pub fn id(self) -> String {
         match self {
@@ -257,7 +253,7 @@ impl ThemeRouteCutoverSelector {
 }
 
 /// Theme facet proven by one legacy bridge cutover witness.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeRouteCutoverFacet {
     Fill,
@@ -265,7 +261,7 @@ pub enum ThemeRouteCutoverFacet {
 }
 
 /// Admitted value class proven by one legacy bridge cutover witness.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeRouteCutoverValue {
     Transparent,
@@ -276,7 +272,7 @@ pub enum ThemeRouteCutoverValue {
 ///
 /// Projection obligations deliberately do not participate in this identity. They are versioned
 /// authorization facts about the route and can change only through an explicit cutover migration.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeRouteCutoverId {
     family_id: DiagramFamilyId,
@@ -286,7 +282,7 @@ pub struct ThemeRouteCutoverId {
     value: ThemeRouteCutoverValue,
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverId {
     pub const fn new(
         family_id: DiagramFamilyId,
@@ -382,7 +378,7 @@ pub enum ThemeRouteCutoverProjection {
 }
 
 impl ThemeRouteCutoverProjection {
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     const ALL: [Self; 50] = [
         Self::NodeFill,
         Self::NodeStroke,
@@ -490,7 +486,7 @@ impl ThemeRouteCutoverProjection {
         }
     }
 
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub const fn action(self) -> ThemeRouteCutoverProjectionAction {
         match self {
             Self::MarkerPaintFromEdge | Self::C4TitleFillFallback => {
@@ -547,21 +543,21 @@ impl ThemeRouteCutoverProjection {
         }
     }
 
-    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     const fn bit(self) -> u64 {
         1 << self as u8
     }
 }
 
 /// What typed ownership must prove about a legacy projection.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeRouteCutoverProjectionAction {
     Replace,
     RetireFallback,
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverProjectionAction {
     pub const fn id(self) -> &'static str {
         match self {
@@ -572,11 +568,11 @@ impl ThemeRouteCutoverProjectionAction {
 }
 
 /// Fixed, canonical set of legacy projection obligations for one route.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeRouteCutoverProjectionSet(u64);
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_NODE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::NodeFill);
     pub const REPLACE_NODE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NodeStroke);
@@ -725,14 +721,14 @@ impl ThemeRouteCutoverProjectionSet {
 ///
 /// This is an inventory projection, not terminal evidence. Only the non-published C6 harness can
 /// combine it with finalized SVG and PNG receipts to authorize a cutover.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeRouteCutoverDescriptor {
     id: ThemeRouteCutoverId,
     projections: ThemeRouteCutoverProjectionSet,
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverDescriptor {
     pub(crate) const fn new(
         id: ThemeRouteCutoverId,
@@ -832,14 +828,14 @@ impl ThemeRouteCutoverDescriptor {
 }
 
 /// Renderer-owned route fact captured after the family adapter reports a terminal application.
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ThemeRouteCutoverFact {
     descriptor: ThemeRouteCutoverDescriptor,
     mechanism_index: usize,
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 impl ThemeRouteCutoverFact {
     pub(crate) const fn descriptor(self) -> ThemeRouteCutoverDescriptor {
         self.descriptor
@@ -854,7 +850,7 @@ impl ThemeRouteCutoverFact {
 ///
 /// The acceptance harness may correlate this receipt with the route manifest, but it cannot
 /// reconstruct the writer evidence or manufacture a passing digest from expectation fields.
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeRouteCutoverReceipt {
     descriptor: ThemeRouteCutoverDescriptor,
@@ -864,7 +860,7 @@ pub struct ThemeRouteCutoverReceipt {
     digest: [u8; 32],
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 impl ThemeRouteCutoverReceipt {
     pub(crate) fn seal(
         fact: ThemeRouteCutoverFact,
@@ -925,7 +921,7 @@ impl ThemeRouteCutoverReceipt {
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 fn route_cutover_receipt_digest(
     fact: ThemeRouteCutoverFact,
     artifact_digest: [u8; 32],
@@ -950,7 +946,7 @@ fn route_cutover_receipt_digest(
     hasher.finalize().into()
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     match facet {
         ThemeRouteCutoverFacet::Fill => "fill",
@@ -958,7 +954,7 @@ const fn route_facet_id(facet: ThemeRouteCutoverFacet) -> &'static str {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 const fn route_value_id(value: ThemeRouteCutoverValue) -> &'static str {
     match value {
         ThemeRouteCutoverValue::Transparent => "transparent",
@@ -966,7 +962,7 @@ const fn route_value_id(value: ThemeRouteCutoverValue) -> &'static str {
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub(crate) fn collect_theme_route_cutover_facts(
     theme: &ResolvedDiagramTheme,
     applied: &[FamilyThemeMechanismKey],
@@ -1009,7 +1005,7 @@ pub(crate) fn collect_theme_route_cutover_facts(
         .collect()
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 fn route_selector_matches(
     selector: crate::diagram_theme::FamilyThemeSelectorShape,
     expected: ThemeRouteCutoverSelector,
@@ -1025,7 +1021,7 @@ fn route_selector_matches(
     )
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 fn route_facet_matches(
     facet: FamilyThemeRuleFacet,
     descriptor: ThemeRouteCutoverDescriptor,
@@ -1041,7 +1037,7 @@ fn route_facet_matches(
     }
 }
 
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub(crate) fn seal_theme_route_cutover_receipts(
     facts: &[ThemeRouteCutoverFact],
     artifact_digest: [u8; 32],
@@ -1057,7 +1053,7 @@ pub(crate) fn seal_theme_route_cutover_receipts(
 }
 
 /// Failure to bind a typed legacy-replacing route to every bridge projection it owns.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeRouteCutoverInventoryError {
     family_id: DiagramFamilyId,
@@ -1066,7 +1062,7 @@ pub struct ThemeRouteCutoverInventoryError {
     facet: ThemeRouteCutoverFacet,
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl ThemeRouteCutoverInventoryError {
     pub(crate) const fn missing_projections(
         family_id: DiagramFamilyId,
@@ -1083,7 +1079,7 @@ impl ThemeRouteCutoverInventoryError {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl fmt::Display for ThemeRouteCutoverInventoryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1097,7 +1093,7 @@ impl fmt::Display for ThemeRouteCutoverInventoryError {
     }
 }
 
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 impl std::error::Error for ThemeRouteCutoverInventoryError {}
 
 #[cfg(test)]

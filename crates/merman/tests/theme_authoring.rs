@@ -506,7 +506,7 @@ fn assert_generated_rule_terminal(
         witness.diagram.name,
         witness.target.id(),
     );
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     {
         let family =
             merman::__theme_acceptance::theme_acceptance_evidence(render_evidence).family();
@@ -1445,7 +1445,7 @@ fn generated_authoring_root_and_typography_reach_terminal_witnesses() {
     let canvas_output =
         render_authoring_svg_output(&renderer, &AUTHORING_RENDER_WITNESSES[0], &canvas_theme);
     assert!(canvas_output.evidence().theme_evidence().is_verified());
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     {
         let root =
             merman::__theme_acceptance::theme_acceptance_evidence(canvas_output.evidence()).root();
@@ -1506,13 +1506,13 @@ fn assert_single_family_route_verified(output: &merman::SvgOutput, context: &str
 }
 
 fn assert_family_routes_verified(output: &merman::SvgOutput, expected_count: usize, context: &str) {
-    #[cfg(not(feature = "internal-theme-acceptance"))]
+    #[cfg(not(merman_internal_theme_acceptance))]
     let _ = expected_count;
     assert!(
         output.evidence().theme_evidence().is_verified(),
         "{context} must retain verified theme evidence",
     );
-    #[cfg(feature = "internal-theme-acceptance")]
+    #[cfg(merman_internal_theme_acceptance)]
     {
         let family =
             merman::__theme_acceptance::theme_acceptance_evidence(output.evidence()).family();

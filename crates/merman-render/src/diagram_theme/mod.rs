@@ -25,10 +25,10 @@ mod effects;
 mod family_mechanism_matrix;
 mod family_program;
 mod legacy_family_theme_bridge;
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_projection_retirement;
 // KTD23 route identities are renderer-owned and intentionally independent of the bridge.
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_tombstones;
 mod materializer;
 mod mechanisms;
@@ -87,28 +87,28 @@ pub use definition_admission::{
     materialize_theme_with_resource_policy,
 };
 pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
 };
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub use legacy_family_theme_bridge::{
     LegacyFamilyThemeBridgeInventory, legacy_family_theme_bridge_inventory,
 };
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[doc(hidden)]
 pub use legacy_projection_retirement::{
     ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
     ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
     ThemeLegacyRouteValue,
 };
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 pub(crate) use legacy_projection_retirement::{
     legacy_projection_retirement_inventory, legacy_projection_retirement_receipts,
 };
-#[cfg(feature = "internal-theme-acceptance")]
+#[cfg(merman_internal_theme_acceptance)]
 #[doc(hidden)]
 pub use legacy_tombstones::{
     ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector,

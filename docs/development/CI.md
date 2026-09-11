@@ -235,3 +235,31 @@ isolation, and npm provenance policy. GitHub Actions use current stable release 
 whose ref is part of their public interface retain readable tool or toolchain refs. The zizmor
 configuration accepts version refs without disabling its other workflow-security audits, and weekly
 Dependabot updates maintain the selected action versions.
+
+## Workspace Theme Acceptance
+
+Production crates expose no `internal-theme-acceptance` Cargo feature. The non-published
+`merman-theme-acceptance` harness and producer receipt seams use the explicit
+`merman_internal_theme_acceptance` cfg. Ordinary workspace builds omit that harness; its dedicated
+CI steps run both the library proofs and the target integration gates through:
+
+```text
+python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance
+```
+
+The launcher preserves caller Rust flags and enables the cfg for dependencies and doctests.
+Do not enable this cfg globally or use it for release builds. Public Cargo features, including
+feature unification, cannot enable it. Producer manifests exclude the independent acceptance
+modules from Cargo packages, so forcing the cfg cannot reconstruct those modules from a published
+crate. The private harness itself has `publish = false`.
+
+```text
+python3 scripts/verify_theme_acceptance_boundary.py
+```
+
+This gate checks Cargo's package file lists and the absence of the retired feature, then compiles
+an independent Cargo consumer with every public feature of the three producer crates enabled.
+Production types must resolve and
+acceptance imports must fail with unresolved-import diagnostics. It uses compiler results rather
+than attempting to infer Rust visibility from source text. Both PR parity CI and release preflight
+own this gate. It is separate from native C6a and preset qualification.

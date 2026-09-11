@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 use merman_theme_acceptance::{
     RouteCutoverAuthorizationReport, RouteCutoverRuntimeError, run_route_cutover_authorization,
 };

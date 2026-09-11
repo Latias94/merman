@@ -18,9 +18,9 @@ pdf = ["dep:lopdf", "merman/pdf", "merman-export/pdf"]
 layout-cytoscape = ["merman/layout-cytoscape", "merman-render/layout-cytoscape"]
 
 [dependencies]
-merman = { workspace = true, features = ["internal-theme-acceptance"] }
+merman = { workspace = true, features = ["svg"] }
 merman-export.workspace = true
-merman-render = { workspace = true, features = ["internal-theme-acceptance"] }
+merman-render.workspace = true
 merman-theme-fixtures = { path = "../merman-theme-fixtures" }
 image = { workspace = true, optional = true }
 lopdf = { workspace = true, optional = true }
@@ -44,3 +44,6 @@ required-features = ["png", "layout-cytoscape"]
 [[test]]
 name = "native_export_smoke"
 required-features = ["png", "jpeg", "pdf"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

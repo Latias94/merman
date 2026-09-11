@@ -1,3 +1,5 @@
+#![cfg(merman_internal_theme_acceptance)]
+
 use merman_theme_acceptance::{
     LegacyProjectionRetirementAuthorization, authorize_legacy_projection_retirements,
 };
