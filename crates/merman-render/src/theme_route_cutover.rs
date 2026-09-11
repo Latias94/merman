@@ -378,11 +378,12 @@ pub enum ThemeRouteCutoverProjection {
     RadarLinePaint = 50,
     RadarAxisPaint = 51,
     RadarTextPaint = 52,
+    ClusterLabelFill = 53,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 53] = [
+    const ALL: [Self; 54] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -436,6 +437,7 @@ impl ThemeRouteCutoverProjection {
         Self::RadarLinePaint,
         Self::RadarAxisPaint,
         Self::RadarTextPaint,
+        Self::ClusterLabelFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -469,6 +471,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskSuccessFill => "task.success.fill",
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
+            Self::ClusterLabelFill => "cluster-label.fill",
             Self::EdgeLabelFill => "edge-label.fill",
             Self::ErTableOddFill => "table.odd.fill",
             Self::ErTableEvenFill => "table.even.fill",
@@ -529,6 +532,7 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskSuccessFill
             | Self::GanttTaskErrorFill
             | Self::NodeLabelFill
+            | Self::ClusterLabelFill
             | Self::EdgeLabelFill
             | Self::PieSliceFill
             | Self::RequirementStroke
@@ -617,6 +621,11 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_RADAR_AXIS_PAINT: Self = Self(
         ThemeRouteCutoverProjection::RadarLinePaint.bit()
             | ThemeRouteCutoverProjection::RadarAxisPaint.bit(),
+    );
+    pub const REPLACE_FLOWCHART_TEXT_FILL: Self = Self(
+        ThemeRouteCutoverProjection::NodeLabelFill.bit()
+            | ThemeRouteCutoverProjection::TitleFill.bit()
+            | ThemeRouteCutoverProjection::ClusterLabelFill.bit(),
     );
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
     pub const REPLACE_GITGRAPH_TEXT_FILL: Self = Self(
@@ -1395,6 +1404,29 @@ mod tests {
                 ),
             ],
         );
+    }
+
+    #[test]
+    fn flowchart_generic_text_replaces_all_inherited_color_projections() {
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_FLOWCHART_TEXT_FILL
+            .iter()
+            .map(|projection| (projection.contribution_id(), projection.action()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            projections,
+            vec![
+                ("title.fill", ThemeRouteCutoverProjectionAction::Replace),
+                (
+                    "node-label.fill",
+                    ThemeRouteCutoverProjectionAction::Replace
+                ),
+                (
+                    "cluster-label.fill",
+                    ThemeRouteCutoverProjectionAction::Replace
+                ),
+            ]
+        );
+        assert_eq!(ThemeRouteCutoverProjection::ClusterLabelFill as u8, 53);
     }
 
     #[test]

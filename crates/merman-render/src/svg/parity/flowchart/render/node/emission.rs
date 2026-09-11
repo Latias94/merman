@@ -102,6 +102,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeLabelEmissionReceipt {
     source_typography: FlowchartNodeFacetReach,
     prepared_typography: Option<FlowchartNodeFacetReach>,
     label_fill: Option<FlowchartNodeFacetReach>,
+    text_paint_facts: Option<crate::flowchart::FlowchartTextPaintFacts>,
     html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus,
     html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus,
 }
@@ -124,6 +125,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             source_typography: FlowchartNodeFacetReach::Verified,
             prepared_typography: None,
             label_fill: None,
+            text_paint_facts: None,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
@@ -134,6 +136,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             source_typography: FlowchartNodeFacetReach::Unverified,
             prepared_typography: None,
             label_fill: None,
+            text_paint_facts: None,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
@@ -155,6 +158,20 @@ impl FlowchartNodeLabelEmissionReceipt {
     ) -> Self {
         self.label_fill = Self::facet_reach(applicable, verified);
         self
+    }
+
+    pub(in crate::svg::parity::flowchart) fn with_text_paint_facts(
+        mut self,
+        facts: Option<crate::flowchart::FlowchartTextPaintFacts>,
+    ) -> Self {
+        self.text_paint_facts = facts;
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn text_paint_facts(
+        self,
+    ) -> Option<crate::flowchart::FlowchartTextPaintFacts> {
+        self.text_paint_facts
     }
 
     pub(in crate::svg::parity::flowchart) const fn with_html_typography_statuses(

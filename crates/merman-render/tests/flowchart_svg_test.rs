@@ -6455,3 +6455,190 @@ fn flowchart_title_fill_yields_to_assigned_class_tspan_color() {
         assert_eq!(evidence.not_applicable_count(), 1);
     }
 }
+
+#[test]
+fn flowchart_and_swimlane_generic_text_fill_has_typed_terminal_evidence() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha] -->|Advance| B[Beta]\nend\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                    );
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("generic text paint must have direct terminal evidence");
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    for label in ["Alpha", "Beta", "Advance", "Group title", "Diagram title"] {
+                        assert!(
+                            document
+                                .descendants()
+                                .filter(|node| node.has_tag_name("text")
+                                    || node.has_tag_name("p")
+                                    || node.has_tag_name("span"))
+                                .any(|node| node
+                                    .descendants()
+                                    .filter(|child| child.is_text())
+                                    .filter_map(|child| child.text())
+                                    .collect::<String>()
+                                    .contains(label)),
+                            "missing {label}: {}",
+                            rendered.svg()
+                        );
+                    }
+                    assert!(rendered.svg().contains("#2468ac"));
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        1,
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_generic_text_fill_shadowed_by_role_winners_is_not_applicable() {
+    let source = "flowchart TD\nA[Alpha]\n";
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        ),
+    ]);
+    let rendered = prepare_flowchart_family_with_theme(source, &theme)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("unused generic fallback must not block strict rendering");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_generic_text_fill_keeps_unconsumed_sibling_and_ordinal_residuals() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let source = "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n";
+    let fill = || CanvasPaint::solid("#2468ac").unwrap();
+    for rules in [
+        vec![ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default()
+                .with_fill(fill())
+                .with_stroke(fill()),
+        )],
+        vec![
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(fill()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::Exact(2)),
+        ],
+    ] {
+        let theme = flowchart_title_theme(rules);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert!(
+            evidence.theme_residual_count() > 0,
+            "unconsumed text facets must remain residual"
+        );
+        let strict = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert!(strict.is_err());
+    }
+}
+
+#[test]
+fn flowchart_generic_text_fill_overwritten_ordinal_is_not_applicable() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::Exact(2)),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    let rendered =
+        prepare_flowchart_family_with_theme("flowchart TD\nA[Alpha] --> B[Beta]\n", &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("fully overwritten ordinal must not block generic text paint");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn flowchart_generic_text_uses_the_emitted_markdown_edge_color_owner() {
+    let source = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Alpha] -->|`**Advance**`| B[Beta]\nlinkStyle 0 color:#22c55e\n";
+    let theme = flowchart_title_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+        ),
+    ]);
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        source,
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let edge_label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("edgeLabel"))
+        .expect("edge label");
+    let emitted_source_color = edge_label.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#22c55e"))
+    });
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(
+        evidence.applied_count(),
+        if emitted_source_color { 1 } else { 2 }
+    );
+    assert_eq!(
+        evidence.not_applicable_count(),
+        usize::from(emitted_source_color)
+    );
+    assert_eq!(evidence.theme_residual_count(), 0);
+}

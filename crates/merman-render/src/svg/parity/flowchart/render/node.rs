@@ -325,6 +325,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         dy: 0.0,
     };
 
+    if ctx.text_surface_paint.generic_text.requested() {
+        ctx.work_meter.charge(label.text.len())?;
+    }
     let (shape_outcome, no_label) = if shape == "collapsedGroup" {
         // Mermaid's collapsedGroup appends its separator and ellipsis after the labelHelper
         // output. The dedicated renderer currently writes into String, so keep the bounded output
@@ -379,6 +382,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     };
 
     if let Some(label_receipt) = label_receipt {
+        ctx.text_surface_paint.generic_text.record_label(
+            crate::flowchart::FlowchartTextPaintChannel::Node,
+            label_receipt
+                .text_paint_facts()
+                .unwrap_or_else(crate::flowchart::FlowchartTextPaintFacts::unknown),
+            compiled_styles.source_label_foreground_status(),
+            ctx.work_meter,
+        )?;
         ctx.record_base_typography_label_emission(
             crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
                 ctx.svg_label_sidecar.and_then(|sidecar| {

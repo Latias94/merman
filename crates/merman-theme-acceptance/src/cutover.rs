@@ -23,6 +23,8 @@ use merman_render::__private::{
     legacy_replacing_typed_theme_routes,
 };
 
+const FLOWCHART_TEXT_SOURCE: &str = "---\ntitle: Diagram title\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha] -->|Advance| B[Beta]\nend\n";
+const SWIMLANE_TEXT_SOURCE: &str = "---\ntitle: Diagram title\nconfig:\n  layout: swimlane\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha] -->|Advance| B[Beta]\nend\n";
 const FLOWCHART_NODE_SOURCE: &str = "flowchart LR\nA[Alpha]\nB[Beta]\n";
 const FLOWCHART_NODE_LABEL_SOURCE: &str = r#"---
 config:
@@ -429,7 +431,7 @@ impl CutoverWitnessProfile {
         if matches!(
             route.family_id(),
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-        ) && route.target() == ThemeTarget::Title
+        ) && matches!(route.target(), ThemeTarget::Title | ThemeTarget::Text)
         {
             return &Self::TEXT_LOOKS;
         }
@@ -530,6 +532,12 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(FLOWCHART_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SWIMLANE_TEXT_SOURCE)
+        }
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(FLOWCHART_CLUSTER_SOURCE)
         }
@@ -1947,6 +1955,87 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_text_channels_have_independent_native_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for (channel, flowchart_source, swimlane_source) in [
+                (
+                    "node",
+                    "---\n---\nflowchart TD\nA[Alpha]\n",
+                    "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
+                ),
+                (
+                    "edge",
+                    "---\n---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\nstyle A color:#112233\nstyle B color:#112233\n",
+                    "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\nstyle A color:#112233\nstyle B color:#112233\n",
+                ),
+                (
+                    "cluster",
+                    "---\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nstyle A color:#112233\n",
+                    "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nstyle A color:#112233\n",
+                ),
+                (
+                    "diagram-title",
+                    "---\ntitle: Diagram title\n---\nflowchart TD\nA[Alpha]\nstyle A color:#112233\n",
+                    "---\ntitle: Diagram title\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\nstyle A color:#112233\n",
+                ),
+            ] {
+                let source = if family == DiagramFamilyId::SWIMLANE {
+                    swimlane_source
+                } else {
+                    flowchart_source
+                };
+                for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                    for selector in [
+                        ThemeRouteCutoverSelector::StaticUnqualified,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                    ] {
+                        let render = |value| {
+                            let route = inventory
+                                .iter()
+                                .copied()
+                                .find(|route| {
+                                    route.family_id() == family
+                                        && route.target() == ThemeTarget::Text
+                                        && route.facet() == ThemeRouteCutoverFacet::Fill
+                                        && route.selector() == selector
+                                        && route.value() == value
+                                })
+                                .expect("Flowchart text fill route");
+                            let id = CutoverWitnessId::new(route, profile);
+                            let case = super::CutoverCase { id, source };
+                            let rendered = super::render_cutover_case(case, vec![route])
+                                .unwrap_or_else(|error| {
+                                    panic!("{family}/{channel}/{profile:?}: {error}")
+                                });
+                            (route, rendered.document)
+                        };
+                        let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                        let (transparent_route, transparent) =
+                            render(ThemeRouteCutoverValue::Transparent);
+                        let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                            &solid,
+                            &transparent,
+                            solid_route,
+                            transparent_route,
+                            &merman_export::RasterOptions::default().with_scale(2.0),
+                            merman::OperationControl::new(),
+                        )
+                        .unwrap_or_else(|error| panic!("{family}/{channel}/{profile:?}: {error}"));
+                        for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                            super::validate_cutover_target_receipt(
+                                CutoverTargetAdmissionContract::PortableNativePngV1,
+                                receipt,
+                            )
+                            .expect("isolated text channel must satisfy native target admission");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -1967,11 +2056,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_384_routes_and_526_artifact_witnesses() {
+    fn route_inventory_retains_392_routes_and_550_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 384);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 526);
+        assert_eq!(inventory.len(), 392);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 550);
     }
 
     #[test]

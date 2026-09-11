@@ -293,13 +293,14 @@ pub(super) fn render_flowchart_svg_model(
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
-    let title_paint = crate::flowchart::FlowchartTitlePaintPlan::resolve(
+    let text_surface_paint = crate::flowchart::FlowchartTextSurfacePaintPlan::resolve(
         options.resolved_theme(),
         effective_config,
+        node_label_fill_config_override,
         options.work_meter(),
     )?;
     let ctx = FlowchartRenderCtx {
-        title_paint: &title_paint,
+        text_surface_paint: &text_surface_paint,
         model,
         diagram_id,
         diagram_type,
@@ -383,7 +384,8 @@ pub(super) fn render_flowchart_svg_model(
         hierarchy_plan.rendered_cluster_ids(),
         ctx.work_meter,
     )?;
-    title_paint.begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
+    text_surface_paint
+        .begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
 
     let mut edge_path_cache: FxHashMap<
@@ -474,8 +476,9 @@ pub(super) fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
-        Some(&title_paint),
+        Some(&text_surface_paint),
     )?;
+    text_surface_paint.generic_text.record_stylesheet_emission();
     if swimlane_layout.is_some() {
         super::swimlane::write_swimlane_css(&mut out, diagram_id);
     }
@@ -538,6 +541,14 @@ pub(super) fn render_flowchart_svg_model(
             fmt(title_y),
             escape_xml_display(title)
         );
+        text_surface_paint.generic_text.record_label(
+            crate::flowchart::FlowchartTextPaintChannel::DiagramTitle,
+            crate::flowchart::FlowchartTextPaintFacts::from_visible(
+                &crate::text::VisibleTextStyleFacts::plain_text(title),
+            ),
+            crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            ctx.work_meter,
+        )?;
         if !title.trim().is_empty() {
             ctx.record_base_typography_label_emission(
                 crate::flowchart::FlowchartBaseTypographyLabelEmission::diagram_title(),
@@ -583,8 +594,8 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     let rooted = root_document.complete(out.finish()?)?;
-    if title_paint.requested() {
-        theme_evidence.record_title_evidence(title_paint.finish_evidence());
+    if text_surface_paint.requested() {
+        theme_evidence.record_title_evidence(text_surface_paint.finish_evidence());
     }
     Ok(rooted)
 }

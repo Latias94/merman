@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 71;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 72;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    147, 82, 6, 230, 53, 17, 201, 189, 6, 66, 73, 193, 91, 111, 206, 242, 17, 114, 157, 153, 89,
-    153, 6, 138, 229, 71, 205, 59, 146, 232, 184, 219,
+    247, 28, 208, 138, 66, 170, 62, 228, 107, 196, 152, 74, 0, 25, 100, 15, 243, 45, 195, 159, 66,
+    247, 192, 216, 235, 135, 241, 135, 228, 59, 223, 230,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 53] = [
+); 54] = [
+    (
+        ThemeRouteCutoverProjection::ClusterLabelFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::RadarTextPaint,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -437,7 +441,73 @@ const RADAR_AXIS_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
 const RADAR_TEXT_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RadarTextPaint];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 384] = [
+const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::NodeLabelFill,
+    ThemeRouteCutoverProjection::TitleFill,
+    ThemeRouteCutoverProjection::ClusterLabelFill,
+];
+
+const ACTIVE_ROUTES: [RouteAuthorization; 392] = [
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        FLOWCHART_TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Title,

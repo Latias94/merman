@@ -66,7 +66,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 assert_eq!(
                     observation.bridge_residual_count(),
                     if family == DiagramFamilyId::FLOWCHART {
-                        3
+                        1
                     } else {
                         0
                     }

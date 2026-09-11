@@ -12,11 +12,11 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 27/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 6/33; 150 routes | Block 44, Class 26, Flowchart 24, Quadrant Chart 16, Swimlane 24, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 6/33; 142 routes | Block 44, Class 26, Flowchart 20, Quadrant Chart 16, Swimlane 20, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 69 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v71; 384 routes / 526 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 70 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v72; 392 routes / 550 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
@@ -26,7 +26,11 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 71 adds four Radar Text.fill routes (solid/transparent, unqualified/Default).
+output files. Version 72 adds eight Flowchart/Swimlane Text.fill routes (solid/transparent,
+unqualified/Default). Classic, Neo, and HandDrawn witnesses bind the node-label, title, and
+cluster-label projection obligations; additional PNG pairs isolate node, edge-label, cluster-title,
+and diagram-title glyphs. Specific roles and explicit source/config owners retain precedence.
+Ordinal and unconsumed sibling facets retain residuals. Version 71 adds four Radar Text.fill routes (solid/transparent, unqualified/Default).
 Classic SVG/PNG witnesses cover inherited axis/legend text and the title fill fallback.
 Radar no longer has a family bridge dispatch. Version 70 adds eight Radar Axis.fill/stroke static routes (solid/transparent,
 unqualified/Default), with Classic SVG and native PNG evidence for axis-line stroke. The label
@@ -34,8 +38,8 @@ CSS `color` projection is preserved; it does not become a new label `fill` consu
 and `axisColor` remain independently owned. Version 69 adds two Radar Title.fill Default routes.
 Version 68 adds four Flowchart and four Swimlane Title.fill routes with Classic,
 Neo, and HandDrawn witnesses for cluster and swimlane titles. Their typed classification suppresses
-only those winners in the shared bridge; Class, Block, and generic Text fallback still retain their
-existing title-color projections. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
+only those winners in the shared bridge. Version 72 also replaces Flowchart/Swimlane generic
+Text fallback; Class and Block retain their existing title-color projections. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
 solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
 text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
 four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
@@ -250,7 +254,8 @@ State, and Sequence sources, then exports each completed document to PNG. On 202
 and 48 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
 requests (two compatibility residuals per family). Native candidates omit those requests.
 All recipes leave font resources to the host; standalone SVG fonts are not self-contained and
-native text retains host font dependencies. Flowchart still reports three bridge residuals.
+native text retains host font dependencies. Flowchart still reports one bridge residual for EdgeLabelBackground.fill; generic Text.fill
+no longer projects its node/title/cluster compatibility colors.
 Sequence's generic `Text.fill` fallback is now NotApplicable in this fixed source because completed
 role-label writers cover every text fill. Missing role, title, or autonumber fill coverage and
 non-fill facets retain their residuals; generic Text remains Unsupported when it would win.

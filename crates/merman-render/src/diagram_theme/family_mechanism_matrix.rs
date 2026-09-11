@@ -400,6 +400,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Text,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_FLOWCHART_TEXT_FILL),
 
         (
             DiagramFamilyId::FLOWCHART
@@ -1587,22 +1592,21 @@ pub(super) fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    ) && matches!(target, ThemeTarget::Cluster | ThemeTarget::Title)
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
-        && matches!(
-            facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::Stroke(
+    ) && matches!(
+        target,
+        ThemeTarget::Cluster | ThemeTarget::Title | ThemeTarget::Text
+    ) && matches!(
+        selector,
+        FamilyThemeSelectorShape::Static {
+            variant: None | Some(ThemeVariant::Default)
+        }
+    ) && matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid)
+            | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
-        )
-        && (target != ThemeTarget::Title || matches!(facet, FamilyThemeRuleFacet::Fill(_)))
+    ) && (target == ThemeTarget::Cluster || matches!(facet, FamilyThemeRuleFacet::Fill(_)))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }

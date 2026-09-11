@@ -17,7 +17,9 @@ use crate::text::VisibleTextStyleFacts;
 
 /// A shared CSS color is resolved once; actual label writers own applicability and ordinals.
 #[derive(Debug)]
-pub(crate) struct FlowchartTitlePaintPlan {
+pub(crate) struct FlowchartTextSurfacePaintPlan {
+    pub(crate) generic_text: super::FlowchartTextPaintPlan,
+    evidence: FamilyThemeEvidence,
     theme: Option<ResolvedDiagramTheme>,
     style: Option<ResolvedThemeStyle>,
     fill: Option<DirectStaticPaint>,
@@ -26,12 +28,18 @@ pub(crate) struct FlowchartTitlePaintPlan {
     terminal: Mutex<Option<FlowchartTitlePaintReceipt>>,
 }
 
-impl FlowchartTitlePaintPlan {
+impl FlowchartTextSurfacePaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
+        node_config_owned: bool,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        // All collaborating consumers retain the same complete family request set, even when
+        // their own target filter is empty.
+        let evidence = FamilyThemeEvidence::from_theme(theme);
+        let generic_text =
+            super::FlowchartTextPaintPlan::resolve(theme, config, node_config_owned, work)?;
         let theme = theme.filter(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 matches!(
@@ -67,6 +75,8 @@ impl FlowchartTitlePaintPlan {
             )
         });
         Ok(Self {
+            generic_text,
+            evidence,
             theme: theme.cloned(),
             style,
             fill,
@@ -84,7 +94,7 @@ impl FlowchartTitlePaintPlan {
     }
 
     pub(crate) fn requested(&self) -> bool {
-        self.theme.is_some()
+        self.theme.is_some() || self.generic_text.requested()
     }
 
     pub(crate) fn begin_terminal_emission(
@@ -98,9 +108,7 @@ impl FlowchartTitlePaintPlan {
         work.charge(
             self.theme
                 .as_ref()
-                .expect("requested title plan")
-                .family_mechanism_routes()
-                .len(),
+                .map_or(0, |theme| theme.family_mechanism_routes().len()),
         )?;
         let mut terminals = BTreeMap::new();
         let mut valid = true;
@@ -116,7 +124,7 @@ impl FlowchartTitlePaintPlan {
         *terminal = Some(FlowchartTitlePaintReceipt {
             terminals,
             valid,
-            css_counts: [0; 2],
+            css_emitted: [false; 2],
             ordinal: 0,
             winners: BTreeSet::new(),
             unknown_fill_winners: BTreeSet::new(),
@@ -137,9 +145,13 @@ impl FlowchartTitlePaintPlan {
         let color = if self.config_owned {
             configured
         } else {
-            self.fill
-                .as_ref()
-                .map_or(configured, DirectStaticPaint::css)
+            self.fill.as_ref().map_or_else(
+                || {
+                    self.generic_text
+                        .color(super::FlowchartTextPaintChannel::Cluster, configured)
+                },
+                DirectStaticPaint::css,
+            )
         };
         let property = if html { "color" } else { "fill" };
         let result = write!(out, "{property}:{color};");
@@ -149,7 +161,7 @@ impl FlowchartTitlePaintPlan {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
         {
-            terminal.css_counts[usize::from(html)] += 1;
+            terminal.css_emitted[usize::from(html)] |= result.is_ok();
             terminal.valid &= result.is_ok();
         }
         result
@@ -182,6 +194,15 @@ impl FlowchartTitlePaintPlan {
         if facts.parse_valid() && !facts.has_visible_runs() {
             return Ok(());
         }
+        self.generic_text.record_label(
+            super::FlowchartTextPaintChannel::Cluster,
+            super::FlowchartTextPaintFacts::from_visible(facts),
+            source,
+            work,
+        )?;
+        let Some(theme) = self.theme.as_ref() else {
+            return Ok(());
+        };
         terminal.ordinal += 1;
         let source_owned =
             self.config_owned || source == super::FlowchartSourceFacetStatus::Admitted;
@@ -190,7 +211,6 @@ impl FlowchartTitlePaintPlan {
             || facts.unverified_portable_color_run_count() != 0;
         let inherited = !source_owned && facts.inherited_color_run_count() != 0;
         let fill_applies = !source_owned && (inherited || unverified);
-        let theme = self.theme.as_ref().expect("requested title plan");
         let ordinal_style;
         let style = if self.ordinal_rules {
             ordinal_style = theme.text_style_with_work_meter(
@@ -230,10 +250,7 @@ impl FlowchartTitlePaintPlan {
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = FamilyThemeEvidence::from_theme(self.theme.as_ref());
-        let Some(theme) = self.theme.as_ref() else {
-            return evidence;
-        };
+        let mut evidence = self.evidence.clone();
         let receipt = self
             .terminal
             .lock()
@@ -242,11 +259,17 @@ impl FlowchartTitlePaintPlan {
             return evidence;
         };
         if !terminal.valid
-            || terminal.css_counts != [2, 2]
+            || terminal.css_emitted != [true, true]
             || !terminal.terminals.values().all(|seen| *seen)
         {
             return evidence;
         }
+        if self.generic_text.requested() {
+            evidence.merge_accounted_from(self.generic_text.finish_evidence());
+        }
+        let Some(theme) = self.theme.as_ref() else {
+            return evidence;
+        };
         let mut observations = BTreeMap::<usize, (bool, Option<FamilyThemeResidualReason>)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -329,11 +352,77 @@ impl FlowchartTitlePaintPlan {
 struct FlowchartTitlePaintReceipt {
     terminals: BTreeMap<String, bool>,
     valid: bool,
-    css_counts: [usize; 2],
+    css_emitted: [bool; 2],
     ordinal: usize,
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     unknown_fill_winners: BTreeSet<usize>,
     typed_fill_consumed: bool,
     palette_applies: bool,
     bindings: BTreeSet<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+
+    #[test]
+    fn text_and_title_consumers_preserve_the_complete_family_request_set() {
+        for targets in [
+            vec![ThemeTarget::Text],
+            vec![ThemeTarget::Title],
+            vec![ThemeTarget::Text, ThemeTarget::Title],
+        ] {
+            let mut rules = ThemeRuleSet::default();
+            for target in &targets {
+                rules = rules.with_rule(ThemeRule::new(
+                    *target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                ));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(rules))
+                .unwrap()
+                .resolve(crate::DiagramFamilyId::FLOWCHART);
+            let work = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let plan = FlowchartTextSurfacePaintPlan::resolve(
+                Some(&theme),
+                &MermaidConfig::default(),
+                false,
+                &work,
+            )
+            .unwrap();
+            plan.begin_terminal_emission(std::iter::empty::<&str>(), &work)
+                .unwrap();
+            let mut css = String::new();
+            plan.write_css(&mut css, "black", false).unwrap();
+            plan.write_css(&mut css, "black", true).unwrap();
+            plan.generic_text.record_stylesheet_emission();
+            plan.generic_text
+                .record_label(
+                    super::super::FlowchartTextPaintChannel::Node,
+                    super::super::FlowchartTextPaintFacts::from_visible(
+                        &VisibleTextStyleFacts::plain_text("node"),
+                    ),
+                    super::super::FlowchartSourceFacetStatus::Absent,
+                    &work,
+                )
+                .unwrap();
+            let mut family = FamilyThemeEvidence::from_theme(Some(&theme));
+            family.merge_accounted_from(plan.finish_evidence());
+            assert_eq!(
+                family.applied().len(),
+                usize::from(targets.contains(&ThemeTarget::Text))
+            );
+            assert_eq!(
+                family.not_applicable_mechanisms().len(),
+                usize::from(targets.contains(&ThemeTarget::Title))
+            );
+        }
+    }
 }

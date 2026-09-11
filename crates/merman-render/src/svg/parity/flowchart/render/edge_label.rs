@@ -17,18 +17,23 @@ fn edge_label_emission_receipt(
     } else {
         FlowchartEdgeLabelEmissionReceipt::unverified()
     };
-    receipt.with_prepared_typography_reach(
-        typography_applicable,
-        prepared.is_some_and(
-            crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
-        ),
-    )
+    receipt
+        .with_prepared_typography_reach(
+            typography_applicable,
+            prepared.is_some_and(
+                crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
+            ),
+        )
+        // Ordinary SVG Markdown writes no compiled label style. HTML and prepared SVG
+        // writers transport the source foreground with the same label-style receipt.
+        .with_label_fill_reach(typography_applicable, source_typography_verified)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn record_edge_label_emission(
     ctx: &FlowchartRenderCtx<'_>,
     edge_id: &str,
+    visible_text: &str,
     compiled_styles: Option<&FlowchartCompiledStyles>,
     typed_font_stack_selected: bool,
     typed_font_size_selected: bool,
@@ -36,6 +41,24 @@ fn record_edge_label_emission(
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
 ) -> crate::Result<()> {
+    if ctx.text_surface_paint.generic_text.requested() {
+        ctx.work_meter.charge(visible_text.len())?;
+        ctx.work_meter.charge(sanitized_xhtml.map_or(0, str::len))?;
+        let facts = if let Some(html) = sanitized_xhtml {
+            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(html)
+        } else {
+            crate::text::VisibleTextStyleFacts::plain_text(visible_text)
+        };
+        ctx.text_surface_paint.generic_text.record_label(
+            crate::flowchart::FlowchartTextPaintChannel::Edge,
+            crate::flowchart::FlowchartTextPaintFacts::from_visible(&facts),
+            compiled_styles.map_or(
+                crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                |styles| styles.emitted_source_label_foreground_status(receipt),
+            ),
+            ctx.work_meter,
+        )?;
+    }
     let html_typography_statuses = sanitized_xhtml.map_or(
         (
             crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -333,23 +356,25 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         &label_text_plain,
         ctx.edge_html_labels,
     );
-    let record_label_emission = |source_typography_verified, sanitized_xhtml: Option<&str>| {
-        let receipt = edge_label_emission_receipt(
-            source_typography_verified,
-            typography_applicable,
-            prepared_svg_label.as_ref(),
-        );
-        record_edge_label_emission(
-            ctx,
-            edge.id.as_str(),
-            Some(compiled_label_styles),
-            typed_font_stack_selected,
-            typed_font_size_selected,
-            typography_applicable,
-            receipt,
-            sanitized_xhtml,
-        )
-    };
+    let record_label_emission =
+        |source_typography_verified, sanitized_xhtml: Option<&str>, visible: bool| {
+            let receipt = edge_label_emission_receipt(
+                source_typography_verified,
+                typography_applicable,
+                prepared_svg_label.as_ref(),
+            );
+            record_edge_label_emission(
+                ctx,
+                edge.id.as_str(),
+                if visible { &label_text_plain } else { "" },
+                Some(compiled_label_styles),
+                typed_font_stack_selected,
+                typed_font_size_selected,
+                typography_applicable,
+                receipt,
+                sanitized_xhtml,
+            )
+        };
 
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
@@ -430,7 +455,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             );
                         }
                         out.push_str("</g></g></g>");
-                        record_label_emission(label_type != "markdown", None)?;
+                        record_label_emission(label_type != "markdown", None, true)?;
                         return Ok(());
                     }
                 } else {
@@ -475,7 +500,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                     }
                     out.push_str("</g></g></g>");
-                    record_label_emission(label_type != "markdown", None)?;
+                    record_label_emission(label_type != "markdown", None, true)?;
                     return Ok(());
                 }
             }
@@ -532,7 +557,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                 }
                 out.push_str("</g></g></g>");
-                record_label_emission(label_type != "markdown", None)?;
+                record_label_emission(label_type != "markdown", None, true)?;
                 return Ok(());
             }
         }
@@ -544,7 +569,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
-        record_label_emission(false, None)?;
+        record_label_emission(false, None, false)?;
         return Ok(());
     }
 
@@ -607,7 +632,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html))?;
+            record_label_emission(true, Some(&label_html), true)?;
             return Ok(());
         }
 
@@ -681,7 +706,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html))?;
+            record_label_emission(true, Some(&label_html), true)?;
             return Ok(());
         }
     }
@@ -693,7 +718,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         escape_xml_display(&div_style_prefix),
         span_style_attr
     );
-    record_label_emission(true, None)?;
+    record_label_emission(true, None, false)?;
     Ok(())
 }
 
@@ -757,6 +782,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             record_edge_label_emission(
                 ctx,
                 edge.id.as_str(),
+                if prepared.is_some() || sanitized_xhtml.is_some() {
+                    &label_text_plain
+                } else {
+                    ""
+                },
                 compiled_label_styles,
                 typed_font_stack_selected,
                 typed_font_size_selected,
@@ -903,6 +933,91 @@ mod tests {
             label_path_was_explicitly_updated: false,
             emitted_d_for_label: None,
             bounds_skipped_for_viewbox: false,
+        }
+    }
+
+    #[test]
+    fn svg_markdown_does_not_claim_an_unemitted_source_foreground() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch, ThemeTarget,
+        };
+        use crate::flowchart::{
+            FlowchartSourceFacetStatus, FlowchartTextPaintChannel, FlowchartTextPaintFacts,
+            FlowchartTextPaintPlan,
+        };
+        let compiled = crate::svg::parity::flowchart::style::flowchart_compile_styles(
+            &IndexMap::new(),
+            &[],
+            &["color:#ac6824".to_owned()],
+            &[],
+        );
+        assert_eq!(
+            compiled.source_label_foreground_status(),
+            FlowchartSourceFacetStatus::Admitted
+        );
+        let markdown = "**Advance**";
+        let mut svg = String::new();
+        write_flowchart_svg_text_markdown_wrapped_centered(
+            &mut svg,
+            markdown,
+            true,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &crate::text::TextStyle::default(),
+            Some(200.0),
+        );
+        assert!(svg.contains("Advance"));
+        assert!(!svg.contains("#ac6824"));
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::FLOWCHART);
+        let work = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        for source_style_emitted in [false, true] {
+            let receipt = edge_label_emission_receipt(source_style_emitted, true, None);
+            let source = compiled.emitted_source_label_foreground_status(receipt);
+            assert_eq!(
+                source,
+                if source_style_emitted {
+                    FlowchartSourceFacetStatus::Admitted
+                } else {
+                    FlowchartSourceFacetStatus::Absent
+                }
+            );
+            let plan = FlowchartTextPaintPlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::default(),
+                false,
+                &work,
+            )
+            .unwrap();
+            plan.record_stylesheet_emission();
+            plan.record_label(
+                FlowchartTextPaintChannel::Edge,
+                FlowchartTextPaintFacts::from_visible(
+                    &crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(markdown),
+                ),
+                source,
+                &work,
+            )
+            .unwrap();
+            let evidence = plan.finish_evidence();
+            assert_eq!(evidence.applied().len(), usize::from(!source_style_emitted));
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                usize::from(source_style_emitted)
+            );
+            assert!(evidence.residuals().is_empty());
         }
     }
 

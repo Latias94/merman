@@ -186,5 +186,9 @@ pub(crate) use theme_evidence::{
     FlowchartThemeFacetEmission,
 };
 
-mod title_paint;
-pub(crate) use title_paint::FlowchartTitlePaintPlan;
+mod text_paint;
+pub(crate) use text_paint::{
+    FlowchartTextPaintChannel, FlowchartTextPaintFacts, FlowchartTextPaintPlan,
+};
+mod text_surface_paint;
+pub(crate) use text_surface_paint::FlowchartTextSurfacePaintPlan;

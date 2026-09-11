@@ -200,7 +200,7 @@ pub(in crate::svg::parity) fn write_flowchart_css<DiagramId, DropShadowId, DropS
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
-    title_paint: Option<&crate::flowchart::FlowchartTitlePaintPlan>,
+    text_surface_paint: Option<&crate::flowchart::FlowchartTextSurfacePaintPlan>,
 ) -> Result<()>
 where
     DiagramId: SvgDiagramIdValue,
@@ -213,8 +213,18 @@ where
     let arrowhead_color = theme.arrowhead_color.as_str();
     let node_border = theme.node_border.as_str();
     let main_bkg = theme.main_bkg.as_str();
-    let text_color = theme.common.text_color.as_str();
-    let node_text_color = theme.node_text_color.as_str();
+    let text_color = text_surface_paint.map_or(theme.common.text_color.as_str(), |plan| {
+        plan.generic_text.color(
+            crate::flowchart::FlowchartTextPaintChannel::DiagramTitle,
+            theme.common.text_color.as_str(),
+        )
+    });
+    let node_text_color = text_surface_paint.map_or(theme.node_text_color.as_str(), |plan| {
+        plan.generic_text.color(
+            crate::flowchart::FlowchartTextPaintChannel::Node,
+            theme.node_text_color.as_str(),
+        )
+    });
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
     let radius = theme.radius.as_str();
@@ -277,13 +287,23 @@ where
         node_text_color
     );
     let _ = write!(out, "#{id} .cluster-label text{{");
-    write_cluster_title_paint(out, title_paint, title_color, false);
+    write_cluster_title_paint(out, text_surface_paint, title_color, false);
     let _ = write!(out, "}}#{id} .cluster-label span{{");
-    write_cluster_title_paint(out, title_paint, title_color, true);
+    write_cluster_title_paint(out, text_surface_paint, title_color, true);
     let _ = write!(
         out,
         "}}#{id} .cluster-label span p{{background-color:transparent;}}#{id} .label text,#{id} span{{fill:{node_text_color};color:{node_text_color};}}"
     );
+    if let Some(plan) = text_surface_paint.filter(|plan| plan.generic_text.requested()) {
+        let edge_text_color = plan.generic_text.color(
+            crate::flowchart::FlowchartTextPaintChannel::Edge,
+            theme.node_text_color.as_str(),
+        );
+        let _ = write!(
+            out,
+            "#{id} .edgeLabel .label,#{id} .edgeLabel .label text,#{id} .edgeLabel span{{fill:{edge_text_color};color:{edge_text_color};}}"
+        );
+    }
     let _ = write!(
         &mut *out,
         r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
@@ -310,9 +330,9 @@ where
         out,
         "#{id} .cluster rect{{fill:{cluster_bkg};stroke:{cluster_border};stroke-width:1px;}}#{id} .cluster text{{"
     );
-    write_cluster_title_paint(out, title_paint, title_color, false);
+    write_cluster_title_paint(out, text_surface_paint, title_color, false);
     let _ = write!(out, "}}#{id} .cluster span{{");
-    write_cluster_title_paint(out, title_paint, title_color, true);
+    write_cluster_title_paint(out, text_surface_paint, title_color, true);
     out.push('}');
     let _ = write!(
         &mut *out,
@@ -408,7 +428,7 @@ where
 
 fn write_cluster_title_paint(
     out: &mut impl std::fmt::Write,
-    plan: Option<&crate::flowchart::FlowchartTitlePaintPlan>,
+    plan: Option<&crate::flowchart::FlowchartTextSurfacePaintPlan>,
     configured: &str,
     html: bool,
 ) {

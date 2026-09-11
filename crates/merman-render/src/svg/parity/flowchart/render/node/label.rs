@@ -187,6 +187,11 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             )
             .with_label_fill_reach(typography_applicable, true)
             .with_html_typography_statuses(html_font_stack, html_font_size)
+            .with_text_paint_facts(ctx.text_surface_paint.generic_text.requested().then(|| {
+                crate::flowchart::FlowchartTextPaintFacts::from_visible(
+                    &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(label_html.as_ref()),
+                )
+            }))
     }
 }
 
@@ -316,11 +321,22 @@ fn render_flowchart_node_label_with_wrapper(
     } else {
         "label"
     };
+    let mut text_paint_facts = None;
     let mut html_typography_statuses = (
         crate::flowchart::FlowchartSourceFacetStatus::Absent,
         crate::flowchart::FlowchartSourceFacetStatus::Absent,
     );
     if !ctx.node_html_labels {
+        if ctx.text_surface_paint.generic_text.requested() {
+            let facts = if label.label_type == "markdown" {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(label.text)
+            } else {
+                crate::text::VisibleTextStyleFacts::plain_text(&label_text_plain)
+            };
+            text_paint_facts = Some(crate::flowchart::FlowchartTextPaintFacts::from_visible(
+                &facts,
+            ));
+        }
         let label_group_style = prepared_svg_label.as_ref().map_or_else(
             || common.label_emission.final_style(None),
             |plan| common.label_emission.final_style(Some(plan)),
@@ -370,6 +386,11 @@ fn render_flowchart_node_label_with_wrapper(
                 prepared_math,
             )
         });
+        if ctx.text_surface_paint.generic_text.requested() {
+            text_paint_facts = Some(crate::flowchart::FlowchartTextPaintFacts::from_visible(
+                &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(label_html.as_ref()),
+            ));
+        }
         html_typography_statuses =
             crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
                 label_html.as_ref(),
@@ -475,6 +496,7 @@ fn render_flowchart_node_label_with_wrapper(
         )
         .with_label_fill_reach(typography_applicable, true)
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
+        .with_text_paint_facts(text_paint_facts)
 }
 
 fn append_typed_label_fill(style: &mut String, fill: &str) {
