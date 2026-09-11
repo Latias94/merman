@@ -192,3 +192,6 @@ pub(crate) use text_paint::{
 };
 mod text_surface_paint;
 pub(crate) use text_surface_paint::FlowchartTextSurfacePaintPlan;
+
+mod label_background;
+pub(crate) use label_background::FlowchartLabelBackgroundPlan;

@@ -464,6 +464,11 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE)
         }
         (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_LABEL_BACKGROUND_FILL),
+        (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::EdgeLabelBackground,
             ThemeRouteCutoverFacet::Fill,
@@ -1425,6 +1430,25 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::INFO
         && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::EdgeLabelBackground
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -5727,6 +5751,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::FLOWCHART,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Transparent,
+                vec!["edge-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Solid,
+                vec!["edge-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
                 ThemeTarget::Cluster,
                 Fill,
                 Transparent,
@@ -5766,6 +5804,20 @@ mod tests {
                 Fill,
                 Solid,
                 vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
             ),
             (
                 DiagramFamilyId::GANTT,
@@ -6601,6 +6653,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::SWIMLANE,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Transparent,
+                vec!["edge-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Solid,
+                vec!["edge-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
                 ThemeTarget::Cluster,
                 Fill,
                 Transparent,
@@ -6640,6 +6706,20 @@ mod tests {
                 Fill,
                 Solid,
                 vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
             ),
             (
                 DiagramFamilyId::TIMELINE,
@@ -6862,14 +6942,14 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 192);
+        assert_eq!(qualified.len(), 200);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
                     .iter()
                     .filter(|route| route.family_id() == family)
                     .count(),
-                14,
+                18,
                 "family={family:?}"
             );
         }
@@ -7013,8 +7093,10 @@ mod tests {
                 };
                 assert_eq!(projections, [expected]);
             }
-            let expected_projection_count = if route.family_id() == DiagramFamilyId::GIT_GRAPH
-                && route.target() == ThemeTarget::Text
+            let expected_projection_count = if matches!(
+                route.family_id(),
+                DiagramFamilyId::GIT_GRAPH | DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            ) && route.target() == ThemeTarget::Text
             {
                 3
             } else if (route.family_id() == DiagramFamilyId::RADAR
@@ -7035,7 +7117,31 @@ mod tests {
                 expected_projection_count,
                 "route={route:?}"
             );
-            if route.family_id() == DiagramFamilyId::C4 {
+            if matches!(
+                route.family_id(),
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            ) && matches!(
+                route.target(),
+                ThemeTarget::Text | ThemeTarget::EdgeLabelBackground
+            ) {
+                assert_eq!(
+                    route.selector(),
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                );
+                assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    projections,
+                    if route.target() == ThemeTarget::Text {
+                        vec![
+                            ThemeRouteCutoverProjection::TitleFill,
+                            ThemeRouteCutoverProjection::NodeLabelFill,
+                            ThemeRouteCutoverProjection::ClusterLabelFill,
+                        ]
+                    } else {
+                        vec![ThemeRouteCutoverProjection::EdgeLabelBackgroundFill]
+                    }
+                );
+            } else if route.family_id() == DiagramFamilyId::C4 {
                 assert_eq!(route.target(), ThemeTarget::Text);
                 assert_eq!(
                     route.selector(),
@@ -7476,9 +7582,9 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 44),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::FLOWCHART, 24),
+                (DiagramFamilyId::FLOWCHART, 16),
                 (DiagramFamilyId::QUADRANT_CHART, 16),
-                (DiagramFamilyId::SWIMLANE, 24),
+                (DiagramFamilyId::SWIMLANE, 16),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
             .into_iter()

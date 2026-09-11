@@ -479,6 +479,7 @@ pub(super) fn render_flowchart_svg_model(
         Some(&text_surface_paint),
     )?;
     text_surface_paint.generic_text.record_stylesheet_emission();
+    text_surface_paint.background.record_stylesheet();
     if swimlane_layout.is_some() {
         super::swimlane::write_swimlane_css(&mut out, diagram_id);
     }

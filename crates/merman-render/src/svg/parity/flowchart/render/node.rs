@@ -382,6 +382,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     };
 
     if let Some(label_receipt) = label_receipt {
+        ctx.text_surface_paint.background.record_terminal(
+            label_receipt.background_has_area(),
+            label_receipt.background_has_area(),
+            ctx.work_meter,
+        )?;
         ctx.text_surface_paint.generic_text.record_label(
             crate::flowchart::FlowchartTextPaintChannel::Node,
             label_receipt

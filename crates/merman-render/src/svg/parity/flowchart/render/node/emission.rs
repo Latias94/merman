@@ -103,6 +103,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeLabelEmissionReceipt {
     prepared_typography: Option<FlowchartNodeFacetReach>,
     label_fill: Option<FlowchartNodeFacetReach>,
     text_paint_facts: Option<crate::flowchart::FlowchartTextPaintFacts>,
+    background_has_area: bool,
     html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus,
     html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus,
 }
@@ -126,6 +127,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             prepared_typography: None,
             label_fill: None,
             text_paint_facts: None,
+            background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
@@ -137,6 +139,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             prepared_typography: None,
             label_fill: None,
             text_paint_facts: None,
+            background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
@@ -158,6 +161,15 @@ impl FlowchartNodeLabelEmissionReceipt {
     ) -> Self {
         self.label_fill = Self::facet_reach(applicable, verified);
         self
+    }
+
+    pub(in crate::svg::parity::flowchart) fn with_background_area(mut self, area: bool) -> Self {
+        self.background_has_area = area;
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) fn background_has_area(self) -> bool {
+        self.background_has_area
     }
 
     pub(in crate::svg::parity::flowchart) fn with_text_paint_facts(

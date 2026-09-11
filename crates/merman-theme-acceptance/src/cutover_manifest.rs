@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 72;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 73;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    247, 28, 208, 138, 66, 170, 62, 228, 107, 196, 152, 74, 0, 25, 100, 15, 243, 45, 195, 159, 66,
-    247, 192, 216, 235, 135, 241, 135, 228, 59, 223, 230,
+    156, 246, 23, 187, 35, 146, 185, 115, 26, 56, 128, 195, 11, 227, 2, 40, 115, 228, 0, 39, 21,
+    32, 219, 26, 105, 224, 230, 164, 134, 32, 5, 31,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 54] = [
+); 55] = [
+    (
+        ThemeRouteCutoverProjection::EdgeLabelBackgroundFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::ClusterLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -447,7 +451,67 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 392] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 400] = [
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Text,

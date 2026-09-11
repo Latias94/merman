@@ -39,7 +39,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
-                let family_complete = native_candidate && family != DiagramFamilyId::FLOWCHART;
+                let family_complete = native_candidate;
                 assert_eq!(
                     observation.status(),
                     if family_complete {
@@ -63,14 +63,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                     if native_candidate { 0 } else { 2 },
                     "only retained recipes request base/dark-mode compatibility"
                 );
-                assert_eq!(
-                    observation.bridge_residual_count(),
-                    if family == DiagramFamilyId::FLOWCHART {
-                        1
-                    } else {
-                        0
-                    }
-                );
+                assert_eq!(observation.bridge_residual_count(), 0);
                 assert_eq!(
                     observation.theme_residual_count(),
                     0,

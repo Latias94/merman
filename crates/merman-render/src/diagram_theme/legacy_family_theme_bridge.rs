@@ -2127,14 +2127,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 142);
+        assert_eq!(status.matrix_route_count(), 134);
         assert_eq!(status.matrix_family_count(), 6);
         assert_eq!(status.dispatched_family_count(), 6);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                170, 105, 212, 243, 250, 63, 178, 90, 71, 59, 70, 45, 176, 145, 174, 170, 164, 100,
-                86, 40, 64, 58, 32, 65, 10, 119, 189, 8, 159, 236, 124, 249
+                53, 185, 222, 133, 190, 132, 39, 149, 63, 37, 210, 176, 4, 76, 151, 18, 92, 166,
+                124, 54, 42, 225, 203, 160, 168, 42, 34, 131, 26, 229, 203, 37
             ]
         );
         assert_eq!(
@@ -4082,7 +4082,7 @@ gitGraph
                     let typed = matches!(
                         family,
                         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-                    ) && target == ThemeTarget::Title;
+                    );
                     assert_eq!(
                         artifact
                             .contribution_ids

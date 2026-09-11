@@ -431,8 +431,10 @@ impl CutoverWitnessProfile {
         if matches!(
             route.family_id(),
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-        ) && matches!(route.target(), ThemeTarget::Title | ThemeTarget::Text)
-        {
+        ) && matches!(
+            route.target(),
+            ThemeTarget::Title | ThemeTarget::Text | ThemeTarget::EdgeLabelBackground
+        ) {
             return &Self::TEXT_LOOKS;
         }
         if (matches!(
@@ -532,6 +534,19 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok("flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
+        ),
+
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(FLOWCHART_TEXT_SOURCE)
         }
@@ -1330,6 +1345,11 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             "altSectionBkgColor": "transparent",
             "gridColor": "transparent"
         }),
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::EdgeLabelBackground) => serde_json::json!({
+            // Isolate the translucent label background from the automatic lane's fill. The
+            // native proof then observes its actual paint without modeling alpha compositing.
+            "clusterBkg": "transparent"
+        }),
         (DiagramFamilyId::ER, ThemeTarget::Text) => serde_json::json!({
             // Keep the control surface opaque and identical to the entity surface so the
             // route proof observes the Text terminal instead of reimplementing rgba
@@ -2036,6 +2056,46 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_background_cutover_has_native_terminal_proof() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                let render = |value| {
+                    let route = inventory
+                        .iter()
+                        .copied()
+                        .find(|route| {
+                            route.family_id() == family
+                                && route.target() == ThemeTarget::EdgeLabelBackground
+                                && route.selector() == ThemeRouteCutoverSelector::StaticUnqualified
+                                && route.value() == value
+                        })
+                        .expect("background route");
+                    let id = CutoverWitnessId::new(route, profile);
+                    let case = super::CutoverCase {
+                        id,
+                        source: super::source_for_witness(id).unwrap(),
+                    };
+                    let rendered = super::render_cutover_case(case, vec![route])
+                        .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+                    (route, rendered.document)
+                };
+                let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                let (transparent_route, transparent) = render(ThemeRouteCutoverValue::Transparent);
+                merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                    &solid,
+                    &transparent,
+                    solid_route,
+                    transparent_route,
+                    &merman_export::RasterOptions::default().with_scale(2.0),
+                    merman::OperationControl::new(),
+                )
+                .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -2056,11 +2116,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_392_routes_and_550_artifact_witnesses() {
+    fn route_inventory_retains_400_routes_and_574_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 392);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 550);
+        assert_eq!(inventory.len(), 400);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 574);
     }
 
     #[test]

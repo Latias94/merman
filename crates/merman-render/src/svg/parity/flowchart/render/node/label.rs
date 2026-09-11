@@ -179,6 +179,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                 label_html.as_ref(),
             );
         super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+            .with_background_area(width > 0.0 && height > 0.0)
             .with_prepared_typography_reach(
                 typography_applicable,
                 prepared_svg_label.as_ref().is_some_and(

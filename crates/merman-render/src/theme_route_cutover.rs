@@ -379,11 +379,12 @@ pub enum ThemeRouteCutoverProjection {
     RadarAxisPaint = 51,
     RadarTextPaint = 52,
     ClusterLabelFill = 53,
+    EdgeLabelBackgroundFill = 54,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 54] = [
+    const ALL: [Self; 55] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -438,6 +439,7 @@ impl ThemeRouteCutoverProjection {
         Self::RadarAxisPaint,
         Self::RadarTextPaint,
         Self::ClusterLabelFill,
+        Self::EdgeLabelBackgroundFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -472,6 +474,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
             Self::ClusterLabelFill => "cluster-label.fill",
+            Self::EdgeLabelBackgroundFill => "edge-label-background.fill",
             Self::EdgeLabelFill => "edge-label.fill",
             Self::ErTableOddFill => "table.odd.fill",
             Self::ErTableEvenFill => "table.even.fill",
@@ -533,6 +536,7 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskErrorFill
             | Self::NodeLabelFill
             | Self::ClusterLabelFill
+            | Self::EdgeLabelBackgroundFill
             | Self::EdgeLabelFill
             | Self::PieSliceFill
             | Self::RequirementStroke
@@ -594,6 +598,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_NODE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NodeStroke);
     pub const REPLACE_NODE_LABEL_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::NodeLabelFill);
+    pub const REPLACE_EDGE_LABEL_BACKGROUND_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::EdgeLabelBackgroundFill);
     pub const REPLACE_EDGE_LABEL_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::EdgeLabelFill);
     pub const REPLACE_EDGE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::EdgeStroke);

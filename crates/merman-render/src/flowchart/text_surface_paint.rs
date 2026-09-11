@@ -18,6 +18,7 @@ use crate::text::VisibleTextStyleFacts;
 /// A shared CSS color is resolved once; actual label writers own applicability and ordinals.
 #[derive(Debug)]
 pub(crate) struct FlowchartTextSurfacePaintPlan {
+    pub(crate) background: super::FlowchartLabelBackgroundPlan,
     pub(crate) generic_text: super::FlowchartTextPaintPlan,
     evidence: FamilyThemeEvidence,
     theme: Option<ResolvedDiagramTheme>,
@@ -38,6 +39,7 @@ impl FlowchartTextSurfacePaintPlan {
         // All collaborating consumers retain the same complete family request set, even when
         // their own target filter is empty.
         let evidence = FamilyThemeEvidence::from_theme(theme);
+        let background = super::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?;
         let generic_text =
             super::FlowchartTextPaintPlan::resolve(theme, config, node_config_owned, work)?;
         let theme = theme.filter(|theme| {
@@ -75,6 +77,7 @@ impl FlowchartTextSurfacePaintPlan {
             )
         });
         Ok(Self {
+            background,
             generic_text,
             evidence,
             theme: theme.cloned(),
@@ -94,7 +97,7 @@ impl FlowchartTextSurfacePaintPlan {
     }
 
     pub(crate) fn requested(&self) -> bool {
-        self.theme.is_some() || self.generic_text.requested()
+        self.theme.is_some() || self.generic_text.requested() || self.background.requested()
     }
 
     pub(crate) fn begin_terminal_emission(
@@ -263,6 +266,9 @@ impl FlowchartTextSurfacePaintPlan {
             || !terminal.terminals.values().all(|seen| *seen)
         {
             return evidence;
+        }
+        if self.background.requested() {
+            evidence.merge_accounted_from(self.background.finish_evidence());
         }
         if self.generic_text.requested() {
             evidence.merge_accounted_from(self.generic_text.finish_evidence());

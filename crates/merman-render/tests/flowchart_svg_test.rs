@@ -6642,3 +6642,188 @@ fn flowchart_generic_text_uses_the_emitted_markdown_edge_color_owner() {
     );
     assert_eq!(evidence.theme_residual_count(), 0);
 }
+
+#[test]
+fn flowchart_and_swimlane_edge_label_background_fill_has_typed_terminal_evidence() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::EdgeLabelBackground,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                    );
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("edge label background must have direct terminal evidence");
+                    assert!(rendered.svg().contains("#2468ac"));
+                    if swimlane {
+                        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        assert!(doc.descendants().any(|node| node.has_tag_name("rect")
+                            && node.attribute("class") == Some("background")
+                            && ["width", "height"].iter().all(|name| {
+                                node.attribute(*name)
+                                    .and_then(|value| value.parse::<f64>().ok())
+                                    .is_some_and(|value| value > 1.0)
+                            })));
+                    }
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        1,
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_background_unconsumed_sibling_and_ordinal_remain_residual() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    for source in [
+        "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\nB -->|Finish| C[Gamma]\n",
+        "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha] -->|Advance| B[Beta]\nB -->|Finish| C[Gamma]\n",
+    ] {
+        let fill = || CanvasPaint::solid("#2468ac").unwrap();
+        for rules in [
+            vec![
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(fill()),
+                )
+                .with_ordinal(OrdinalSelector::Exact(1)),
+            ],
+            vec![ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_stroke(fill()),
+            )],
+            vec![ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default()
+                    .with_fill(fill())
+                    .with_stroke(fill()),
+            )],
+            vec![
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(fill()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+                )
+                .with_ordinal(OrdinalSelector::Exact(2)),
+            ],
+        ] {
+            let theme = flowchart_title_theme(rules);
+            let rendered = prepare_flowchart_family_with_theme_and_portability(
+                source,
+                &theme,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert!(evidence.theme_residual_count() > 0, "source={source}");
+            let strict = prepare_flowchart_family_with_theme(source, &theme)
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+            assert!(strict.is_err());
+        }
+    }
+}
+
+#[test]
+fn flowchart_background_requires_a_real_terminal_and_respects_config_owner() {
+    let theme = flowchart_title_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        for (source, engine) in [
+            ("flowchart TD\nA[Alpha] --> B[Beta]\n", Engine::new()),
+            (
+                "flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n",
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "theme": "base", "themeVariables": {"edgeLabelBackground": "#ac6824"}
+                }))),
+            ),
+        ] {
+            let source = format!("{prefix}{source}");
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0, "source={source}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn flowchart_background_covers_special_node_labels_without_an_edge() {
+    let theme = flowchart_title_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for source in [
+        "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label', form: 'square' }\n",
+        "flowchart TD\nA@{ icon: 'missing:icon', label: 'Special label' }\n",
+    ] {
+        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(rendered.svg().contains("labelBkg"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn flowchart_background_overwritten_ordinal_is_not_applicable() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let ordinal = ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ac6824").unwrap()),
+    )
+    .with_ordinal(OrdinalSelector::Exact(1));
+    let winner = ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+    );
+    let theme = flowchart_title_theme([ordinal, winner]);
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        let source = format!("{prefix}flowchart TD\nA[Alpha] -->|Advance| B[Beta]\n");
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("overwritten ordinal must not block the static transparent winner");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

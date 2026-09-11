@@ -232,7 +232,10 @@ where
     let neo = theme.common.is_neo();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
-    let edge_label_background = theme.edge_label_background.as_str();
+    let edge_label_background = text_surface_paint
+        .map_or(theme.edge_label_background.as_str(), |plan| {
+            plan.background.color(theme.edge_label_background.as_str())
+        });
     let tertiary = theme.tertiary.as_str();
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();

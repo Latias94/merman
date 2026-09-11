@@ -159,6 +159,10 @@ fn padded_html_edge_label_background(
         return String::new();
     }
 
+    centered_label_background(width, height)
+}
+
+fn centered_label_background(width: f64, height: f64) -> String {
     format!(
         r#"<rect class="background" x="{}" y="{}" width="{}" height="{}"/>"#,
         fmt_display(-width / 2.0),
@@ -356,25 +360,32 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         &label_text_plain,
         ctx.edge_html_labels,
     );
-    let record_label_emission =
-        |source_typography_verified, sanitized_xhtml: Option<&str>, visible: bool| {
-            let receipt = edge_label_emission_receipt(
-                source_typography_verified,
-                typography_applicable,
-                prepared_svg_label.as_ref(),
-            );
-            record_edge_label_emission(
-                ctx,
-                edge.id.as_str(),
-                if visible { &label_text_plain } else { "" },
-                Some(compiled_label_styles),
-                typed_font_stack_selected,
-                typed_font_size_selected,
-                typography_applicable,
-                receipt,
-                sanitized_xhtml,
-            )
-        };
+    let record_label_emission = |source_typography_verified,
+                                 sanitized_xhtml: Option<&str>,
+                                 visible: bool,
+                                 background_area: bool| {
+        let receipt = edge_label_emission_receipt(
+            source_typography_verified,
+            typography_applicable,
+            prepared_svg_label.as_ref(),
+        );
+        ctx.text_surface_paint.background.record_terminal(
+            background_area,
+            background_area,
+            ctx.work_meter,
+        )?;
+        record_edge_label_emission(
+            ctx,
+            edge.id.as_str(),
+            if visible { &label_text_plain } else { "" },
+            Some(compiled_label_styles),
+            typed_font_stack_selected,
+            typed_font_size_selected,
+            typography_applicable,
+            receipt,
+            sanitized_xhtml,
+        )
+    };
 
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
@@ -455,7 +466,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             );
                         }
                         out.push_str("</g></g></g>");
-                        record_label_emission(label_type != "markdown", None, true)?;
+                        record_label_emission(
+                            label_type != "markdown",
+                            None,
+                            true,
+                            label_box.background_width > 0.0 && label_box.background_height > 0.0,
+                        )?;
                         return Ok(());
                     }
                 } else {
@@ -500,7 +516,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                     }
                     out.push_str("</g></g></g>");
-                    record_label_emission(label_type != "markdown", None, true)?;
+                    record_label_emission(
+                        label_type != "markdown",
+                        None,
+                        true,
+                        label_box.background_width > 0.0 && label_box.background_height > 0.0,
+                    )?;
                     return Ok(());
                 }
             }
@@ -557,7 +578,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                 }
                 out.push_str("</g></g></g>");
-                record_label_emission(label_type != "markdown", None, true)?;
+                record_label_emission(
+                    label_type != "markdown",
+                    None,
+                    true,
+                    label_box.background_width > 0.0 && label_box.background_height > 0.0,
+                )?;
                 return Ok(());
             }
         }
@@ -569,7 +595,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
-        record_label_emission(false, None, false)?;
+        record_label_emission(false, None, false, false)?;
         return Ok(());
     }
 
@@ -632,7 +658,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html), true)?;
+            record_label_emission(
+                true,
+                Some(&label_html),
+                true,
+                !background.is_empty() || (content.width > 0.0 && content.height > 0.0),
+            )?;
             return Ok(());
         }
 
@@ -706,7 +737,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html), true)?;
+            record_label_emission(
+                true,
+                Some(&label_html),
+                true,
+                !background.is_empty() || (content.width > 0.0 && content.height > 0.0),
+            )?;
             return Ok(());
         }
     }
@@ -718,7 +754,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         escape_xml_display(&div_style_prefix),
         span_style_attr
     );
-    record_label_emission(true, None, false)?;
+    record_label_emission(true, None, false, false)?;
     Ok(())
 }
 
@@ -827,7 +863,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let width = label.width.max(0.0);
     let height = label.height.max(0.0);
     let content = ctx.edge_label_padding.content_box(width, height);
-    let background = padded_html_edge_label_background(ctx.edge_label_padding, width, height);
+    let background =
+        if ctx.text_surface_paint.background.supplies_background() && width > 0.0 && height > 0.0 {
+            centered_label_background(width, height)
+        } else {
+            padded_html_edge_label_background(ctx.edge_label_padding, width, height)
+        };
+    ctx.text_surface_paint.background.record_terminal(
+        width > 0.0 && height > 0.0,
+        !background.is_empty(),
+        ctx.work_meter,
+    )?;
     let edge_label_dom_id =
         ctx.document_ids
             .synthetic_label(node_id)
