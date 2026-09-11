@@ -153,16 +153,22 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::MessageLabel,
-                            ThemeStylePatch::default().with_fill(
-                                CanvasPaint::solid("#123456")
-                                    .expect("valid Sequence message-label fill"),
-                            ),
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::MessageLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid("#123456")
+                                        .expect("valid Sequence message-label fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
                         )
-                        .for_family(DiagramFamilyId::SEQUENCE),
-                    ),
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ff00ff").unwrap()),
+                        )),
                 ),
             )
             .expect("compile Sequence message-label theme");
@@ -193,6 +199,15 @@ mod tests {
                 loop_label: SequenceRoleTypographyReceipt::default(),
             });
 
+            recorder
+                .record_unsupported_text_emission(
+                    Some(&resolved),
+                    false,
+                    &crate::resources::OperationWorkMeter::new(
+                        crate::RenderResourcePolicy::unbounded_for_trusted_input(),
+                    ),
+                )
+                .unwrap();
             let evidence = recorder.finish(Some(&resolved));
             assert_eq!(evidence.applied().len(), usize::from(expected_applied));
             assert_eq!(
@@ -203,8 +218,11 @@ mod tests {
                     BTreeSet::new()
                 }
             );
-            assert!(evidence.not_applicable_mechanisms().is_empty());
-            assert!(evidence.residuals().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                usize::from(expected_applied)
+            );
+            assert_eq!(evidence.residuals().len(), usize::from(!expected_applied));
         }
     }
 

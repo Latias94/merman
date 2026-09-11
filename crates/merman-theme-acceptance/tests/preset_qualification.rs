@@ -39,7 +39,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
-                let family_complete = native_candidate && family == DiagramFamilyId::STATE;
+                let family_complete = native_candidate && family != DiagramFamilyId::FLOWCHART;
                 assert_eq!(
                     observation.status(),
                     if family_complete {
@@ -73,8 +73,8 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 );
                 assert_eq!(
                     observation.theme_residual_count(),
-                    usize::from(family == DiagramFamilyId::SEQUENCE),
-                    "Sequence's unsupported generic Text.fill request remains visible",
+                    0,
+                    "Sequence role fills cover the generic Text.fill fallback in this source",
                 );
                 assert_eq!(observation.source_residual_count(), 0);
             }

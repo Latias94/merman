@@ -157,6 +157,15 @@ impl SequenceThemeEvidenceRecorder {
             .role_label_candidate_count()
             .saturating_add(state.sequence_number.receipt.text_candidates)
             .saturating_add(title_count);
+        let number = &state.sequence_number;
+        let number_fill_covered = number.receipt.text_candidates == 0
+            || (number.fill_emitted
+                && !number.fill_overridden
+                && number
+                    .receipt
+                    .proves_typed_fill(number.receipt.stylesheet_fill.as_deref()));
+        let text_fill_covered =
+            title_count == 0 && typography.role_fills_cover_all_labels() && number_fill_covered;
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         reconcile_unsupported_terminal_domains(
             theme,
@@ -165,7 +174,8 @@ impl SequenceThemeEvidenceRecorder {
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Text,
                     TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
-                ),
+                )
+                .with_fill_fully_overridden(text_fill_covered),
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),

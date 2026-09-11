@@ -6115,3 +6115,92 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         );
     }
 }
+
+#[test]
+fn sequence_role_fill_coverage_reconciles_generic_text_without_hiding_other_facets() {
+    let source =
+        "sequenceDiagram\nA->>B: Message\nNote over A: Note\nloop Work\nB->>A: Reply\nend\n";
+    let generic = || {
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff00ff").unwrap()),
+        )
+    };
+    for (roles, title, number, number_fill, extra_stroke, residuals) in [
+        (true, false, false, false, false, 0),
+        (false, false, false, false, false, 1),
+        (true, true, false, false, false, 1),
+        (true, false, true, false, false, 1),
+        (true, false, true, true, false, 0),
+        (true, false, false, false, true, 1),
+    ] {
+        let mut rules = ThemeRuleSet::default().with_rule(if extra_stroke {
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ff00ff").unwrap())
+                    .with_stroke(CanvasPaint::solid("#ff00ff").unwrap()),
+            )
+        } else {
+            generic()
+        });
+        for target in [
+            ThemeTarget::ActorLabel,
+            ThemeTarget::MessageLabel,
+            ThemeTarget::LoopLabel,
+        ] {
+            rules = rules.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        if roles {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        if number_fill {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::SequenceNumberLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        }
+        let source = source.replacen(
+            "sequenceDiagram\n",
+            &format!(
+                "sequenceDiagram\n{}{}",
+                if title { "title Diagram title\n" } else { "" },
+                if number { "autonumber\n" } else { "" }
+            ),
+            1,
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            residuals,
+            "roles={roles} title={title} number={number} stroke={extra_stroke}"
+        );
+        assert_eq!(
+            try_render_sequence_theme_request(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            residuals == 0
+        );
+    }
+}

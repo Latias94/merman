@@ -64,5 +64,7 @@ constructors now require the profile and admission arguments; there is no implic
 
 Constructing a Rust cell is only constructing metadata, not issuing proof. Public scopes remain
 empty until generated catalog promotion verifies fresh evidence for the declared profile and the
-actual artifact build. Flowchart/Sequence residuals, the seven retained compatibility recipes, and the fixed
-18-cell C6a ledger retain their existing dispositions.
+actual artifact build. Flowchart retains bridge residuals; Sequence retains unsupported generic-text
+requests only where completed role writers do not cover their fills, or other requested facets
+remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
+their existing dispositions. The positive qualification profile remains State SVG/PNG only.

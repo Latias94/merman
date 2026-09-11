@@ -246,6 +246,7 @@ pub(crate) struct UnsupportedTerminalDomain<'a> {
     resolution: TerminalStyleResolution<'a>,
     variants: TerminalVariantDomain<'a>,
     source_owned_fill: Option<&'a [bool]>,
+    fill_fully_overridden: bool,
     reconcile_rules: bool,
     resolve_ordinal_rules: bool,
 }
@@ -256,6 +257,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
             source_owned_fill: None,
+            fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
         }
@@ -271,6 +273,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
             source_owned_fill: None,
+            fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: true,
         }
@@ -283,6 +286,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants: TerminalVariantDomain::uniform(1, variant),
             source_owned_fill: None,
+            fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: false,
         }
@@ -294,6 +298,13 @@ impl<'a> UnsupportedTerminalDomain<'a> {
     /// fallback for that occurrence. Other winning properties and effect bindings remain active.
     pub(crate) const fn with_source_owned_fill(mut self, owned: &'a [bool]) -> Self {
         self.source_owned_fill = Some(owned);
+        self
+    }
+
+    /// Suppresses only fill requests when the family has proved that higher-priority terminal
+    /// owners cover every occurrence. This requires completed writer evidence, not just rules.
+    pub(crate) const fn with_fill_fully_overridden(mut self, overridden: bool) -> Self {
+        self.fill_fully_overridden = overridden;
         self
     }
 
@@ -309,16 +320,19 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             },
             variants,
             source_owned_fill: None,
+            fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
         }
     }
 
-    fn source_owns_fill(self, ordinal: usize) -> bool {
-        self.source_owned_fill
-            .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
-            .copied()
-            .unwrap_or(false)
+    fn fill_is_overridden(self, ordinal: usize) -> bool {
+        self.fill_fully_overridden
+            || self
+                .source_owned_fill
+                .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
+                .copied()
+                .unwrap_or(false)
     }
 }
 
@@ -468,7 +482,7 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             };
 
             for (property, origin) in style.winner_rule_properties() {
-                if property == ResolvedStyleProperty::Fill && domain.source_owns_fill(ordinal) {
+                if property == ResolvedStyleProperty::Fill && domain.fill_is_overridden(ordinal) {
                     continue;
                 }
                 if !domain.resolution.owns_target(origin.target()) {
@@ -492,7 +506,7 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
                 }
             }
 
-            if !domain.source_owns_fill(ordinal)
+            if !domain.fill_is_overridden(ordinal)
                 && matches!(style.fill_resolution().specified(), Specified::Unspecified)
             {
                 for key in observations

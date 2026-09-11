@@ -1341,6 +1341,20 @@ impl SequenceTypographyThemeReceipt {
             .any(|role| role.base_property_terminal_incomplete(property))
     }
 
+    /// General Text fill is a fallback beneath the role-specific targets. Suppress it only
+    /// after every actual role surface proves its own winning fill reached the terminal output.
+    pub(super) fn role_fills_cover_all_labels(&self) -> bool {
+        self.role_label_candidate_count() != 0
+            && [&self.actor, &self.message, &self.note, &self.loop_label]
+                .iter()
+                .all(|role| {
+                    role.text_surfaces
+                        .iter()
+                        .filter(|surface| surface.label_candidates.get() != 0)
+                        .all(|surface| surface.complete() && surface.proves_typed_fill())
+                })
+    }
+
     pub(super) fn role_label_candidate_count(&self) -> usize {
         [&self.actor, &self.message, &self.note, &self.loop_label]
             .iter()

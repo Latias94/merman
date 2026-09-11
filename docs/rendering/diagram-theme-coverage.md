@@ -237,13 +237,16 @@ boundary checks do not qualify presets or close the remaining C7a authoring/cons
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
-60 artifact observations comprise 6 HostDependent State outputs from the native candidates and
-54 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
+60 artifact observations comprise 12 HostDependent State/Sequence outputs from the native candidates
+and 48 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
 requests (two compatibility residuals per family). Native candidates omit those requests.
 All recipes leave font resources to the host; standalone SVG fonts are not self-contained and
-native text retains host font dependencies. Flowchart still reports three bridge residuals and Sequence still reports
-one unsupported generic `Text.fill` residual for every recipe. State admission alone does not
-prove semantic or visual preset qualification. All catalog qualified scopes remain empty.
+native text retains host font dependencies. Flowchart still reports three bridge residuals.
+Sequence's generic `Text.fill` fallback is now NotApplicable in this fixed source because completed
+role-label writers cover every text fill. Missing role, title, or autonumber fill coverage and
+non-fill facets retain their residuals; generic Text remains Unsupported when it would win.
+Admission alone does not prove semantic or visual preset qualification. All catalog qualified scopes
+remain empty, and the scoped qualification runner still covers State only.
 
 `inspect_preset_admission` binds the exact compiled recipe/resource fingerprints, source digests,
 shared document/resource identities, target receipts, and actual artifact bytes. The admission
