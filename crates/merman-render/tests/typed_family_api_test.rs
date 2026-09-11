@@ -193,3 +193,68 @@ fn state_prepared_artifact_renders_the_typed_family() {
         svg.svg()
     );
 }
+
+#[cfg(feature = "internal-theme-acceptance")]
+#[test]
+fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
+    use merman_render::DiagramFamilyId;
+    use merman_render::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeColorValue, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+    use merman_render::svg::{StandaloneSvgArtifact, SvgPipeline};
+    use sha2::{Digest as _, Sha256};
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Solid(
+                            ThemeColorValue::parse("#125abc").unwrap(),
+                        )),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .unwrap();
+    let render = |source: &str| {
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .finalize_resvg(&SvgPipeline::resvg_safe())
+            .unwrap()
+            .into_completion()
+    };
+    let first = render("block-beta\n  a[\"First\"]\n");
+    let second = render("block-beta\n  b[\"Second\"]\n");
+    let receipts = first.theme_route_cutover_receipts();
+    assert!(
+        !receipts.is_empty(),
+        "the typed Node.fill route must be witnessed"
+    );
+    let (first_svg, _) = first.into_output_and_report();
+    let first_svg = StandaloneSvgArtifact::from(first_svg);
+    let second_svg = StandaloneSvgArtifact::from(second.into_output_and_report().0);
+    let public_digest = Sha256::digest(first_svg.as_str().as_bytes()).into();
+    let native_digest = Sha256::digest(first_svg.native_export_svg().as_bytes()).into();
+    let other_public = Sha256::digest(second_svg.as_str().as_bytes()).into();
+    let other_native = Sha256::digest(second_svg.native_export_svg().as_bytes()).into();
+    assert_ne!(public_digest, other_public);
+    assert_ne!(native_digest, other_native);
+    for receipt in receipts {
+        assert!(receipt.proves_artifacts(public_digest, native_digest));
+        assert!(!receipt.proves_artifacts(other_public, native_digest));
+        assert!(!receipt.proves_artifacts(public_digest, other_native));
+    }
+}

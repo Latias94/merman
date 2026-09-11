@@ -228,10 +228,19 @@ impl PreparedPdfExport<'_> {
 
 impl RenderedDocument {
     pub(super) fn new(
-        svg: merman_render::svg::ResvgCompatibleSvg,
-        family: merman_render::family::FamilyRenderReport,
+        completion: merman_render::family::FamilyRenderCompletion<
+            merman_render::svg::ResvgCompatibleSvg,
+        >,
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
+        #[cfg(feature = "internal-theme-acceptance")]
+        let theme_route_cutover_receipts =
+            completion.theme_route_cutover_receipts().into_boxed_slice();
+        #[cfg(feature = "internal-theme-acceptance")]
+        let theme_raster_paint_binding_receipts = completion
+            .theme_raster_paint_binding_receipts()
+            .into_boxed_slice();
+        let (svg, family) = completion.into_output_and_report();
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
         let native_svg = svg.native_export_svg();
@@ -240,21 +249,6 @@ impl RenderedDocument {
         } else {
             artifact_digest(native_svg.as_bytes())
         };
-        #[cfg(feature = "internal-theme-acceptance")]
-        let theme_route_cutover_receipts =
-            merman_render::__private::seal_theme_route_cutover_receipts(
-                &family,
-                public_svg_digest,
-                native_svg_digest,
-            )
-            .into_boxed_slice();
-        #[cfg(feature = "internal-theme-acceptance")]
-        let theme_raster_paint_binding_receipts =
-            merman_render::__private::seal_theme_raster_paint_binding_receipts(
-                &family,
-                native_svg_digest,
-            )
-            .into_boxed_slice();
         let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
         let portability = document_portability_report(&svg, &evidence);
         let document_digest = document_digest(

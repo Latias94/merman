@@ -2917,6 +2917,17 @@ pub struct RenderedFamilySvg {
 ///     let _ = completion.session();
 /// }
 /// ```
+///
+/// An output and a report from separate renders cannot be assembled into a completion:
+///
+/// ```compile_fail
+/// use merman_render::family::{FamilyRenderCompletion, FamilyRenderReport};
+/// use merman_render::svg::ResvgCompatibleSvg;
+///
+/// fn rebind(output: ResvgCompatibleSvg, report: FamilyRenderReport) {
+///     let _ = FamilyRenderCompletion { output, report };
+/// }
+/// ```
 #[must_use = "completed render output and its frozen report should be consumed together"]
 pub struct FamilyRenderCompletion<T> {
     output: T,
@@ -2934,6 +2945,42 @@ impl<T> FamilyRenderCompletion<T> {
 
     pub fn into_output_and_report(self) -> (T, FamilyRenderReport) {
         (self.output, self.report)
+    }
+}
+
+#[cfg(feature = "internal-theme-acceptance")]
+impl FamilyRenderCompletion<ResvgCompatibleSvg> {
+    /// Returns route receipts bound to this completion's frozen report and SVG representations.
+    ///
+    /// Callers cannot supply a different artifact or digest when sealing these facts.
+    #[doc(hidden)]
+    pub fn theme_route_cutover_receipts(&self) -> Vec<crate::__private::ThemeRouteCutoverReceipt> {
+        use sha2::{Digest as _, Sha256};
+
+        if !self.report.style_report().is_verified() {
+            return Vec::new();
+        }
+        crate::theme_route_cutover::seal_theme_route_cutover_receipts(
+            self.report.theme_route_cutover_facts(),
+            Sha256::digest(self.output.as_str().as_bytes()).into(),
+            Sha256::digest(self.output.native_export_svg().as_bytes()).into(),
+        )
+    }
+
+    /// Returns paint bindings sealed against this completion's finalized native SVG.
+    #[doc(hidden)]
+    pub fn theme_raster_paint_binding_receipts(
+        &self,
+    ) -> Vec<crate::__private::ThemeRasterPaintBindingReceipt> {
+        use sha2::{Digest as _, Sha256};
+
+        if !self.report.style_report().is_verified() {
+            return Vec::new();
+        }
+        crate::theme_raster_paint::seal_theme_raster_paint_binding_receipts(
+            self.report.theme_raster_paint_binding_facts(),
+            Sha256::digest(self.output.native_export_svg().as_bytes()).into(),
+        )
     }
 }
 

@@ -223,6 +223,13 @@ eligibility receipt requires that exact ledger; scalar cutovers and JPEG/PDF smo
 C6b equal-depth certification remains paused. Browser SVG qualification and the remaining C7a
 authoring/consumer/preset gates are not complete. These counts do not establish stable readiness.
 
+Route and raster-paint binding receipts are sealed by the opaque
+`FamilyRenderCompletion<ResvgCompatibleSvg>` before the facade separates the output and report.
+The former public seal functions accepting a report plus caller-provided artifact digests are
+removed. This closes arbitrary report/artifact pairing; it does not close the workspace-only
+publication gate. `internal-theme-acceptance` is still a selectable Cargo feature, and excluding
+that feature and its acceptance surface from published packages remains required before C7a freeze.
+
 The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
 and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound
 containment assertion. A local Firefox probe reports the text element at x=6px against a root at

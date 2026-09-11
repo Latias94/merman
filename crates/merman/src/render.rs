@@ -885,8 +885,7 @@ fn prepare_resvg_target(
     request: &SvgRequest,
 ) -> Result<
     Option<(
-        merman_render::svg::ResvgCompatibleSvg,
-        merman_render::family::FamilyRenderReport,
+        merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
         Vec<merman_render::RenderCapability>,
         OperationExecution,
     )>,
@@ -901,10 +900,7 @@ fn prepare_resvg_target(
         .into_resvg_safe();
     rendered
         .finalize_resvg(&pipeline)
-        .map(|sealed| {
-            let (svg, family) = sealed.into_completion().into_output_and_report();
-            (svg, family, required_capabilities, operation)
-        })
+        .map(|sealed| (sealed.into_completion(), required_capabilities, operation))
         .map(Some)
         .map_err(RenderError::from)
 }
@@ -933,14 +929,13 @@ fn render_document_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let Some((svg, family, required_capabilities, _operation)) =
+    let Some((completion, required_capabilities, _operation)) =
         prepare_resvg_target(semantic, &request)?
     else {
         unreachable!("semantic artifact always produces a finalized SVG or an error")
     };
     Ok(Some(RenderedDocument::new(
-        svg,
-        family,
+        completion,
         required_capabilities,
     )))
 }
@@ -982,12 +977,12 @@ fn render_png_target(
     semantic: SemanticArtifact,
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((svg, family, required_capabilities, operation)) =
+    let Some((completion, required_capabilities, operation)) =
         prepare_resvg_target(semantic, &request.svg)?
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(svg, family, required_capabilities)
+    RenderedDocument::new(completion, required_capabilities)
         .export_png(&request.options, operation.control)
         .map(Some)
 }
@@ -997,12 +992,12 @@ fn render_jpeg_target(
     semantic: SemanticArtifact,
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let Some((svg, family, required_capabilities, operation)) =
+    let Some((completion, required_capabilities, operation)) =
         prepare_resvg_target(semantic, &request.svg)?
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(svg, family, required_capabilities)
+    RenderedDocument::new(completion, required_capabilities)
         .export_jpeg(&request.options, operation.control)
         .map(Some)
 }
@@ -1012,12 +1007,12 @@ fn render_pdf_target(
     semantic: SemanticArtifact,
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
-    let Some((svg, family, required_capabilities, operation)) =
+    let Some((completion, required_capabilities, operation)) =
         prepare_resvg_target(semantic, &request.svg)?
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(svg, family, required_capabilities)
+    RenderedDocument::new(completion, required_capabilities)
         .export_pdf(&request.options, operation.control)
         .map(Some)
 }

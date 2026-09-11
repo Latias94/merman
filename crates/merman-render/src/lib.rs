@@ -166,38 +166,6 @@ pub mod __private {
         crate::diagram_theme::legacy_family_theme_bridge_inventory()
     }
 
-    /// Seals renderer-owned route receipts against both finalized SVG representations.
-    #[cfg(feature = "internal-theme-acceptance")]
-    pub fn seal_theme_route_cutover_receipts(
-        report: &FamilyRenderReport,
-        artifact_digest: [u8; 32],
-        native_artifact_digest: [u8; 32],
-    ) -> Vec<ThemeRouteCutoverReceipt> {
-        if !report.style_report().is_verified() {
-            return Vec::new();
-        }
-        crate::theme_route_cutover::seal_theme_route_cutover_receipts(
-            report.theme_route_cutover_facts(),
-            artifact_digest,
-            native_artifact_digest,
-        )
-    }
-
-    /// Seals renderer-owned raster paint terminal bindings against the finalized native SVG.
-    #[cfg(feature = "internal-theme-acceptance")]
-    pub fn seal_theme_raster_paint_binding_receipts(
-        report: &FamilyRenderReport,
-        native_artifact_digest: [u8; 32],
-    ) -> Vec<ThemeRasterPaintBindingReceipt> {
-        if !report.style_report().is_verified() {
-            return Vec::new();
-        }
-        crate::theme_raster_paint::seal_theme_raster_paint_binding_receipts(
-            report.theme_raster_paint_binding_facts(),
-            native_artifact_digest,
-        )
-    }
-
     /// Returns the renderer-owned Architecture Text cutover facts sealed by the final writer.
     #[cfg(all(feature = "internal-theme-acceptance", feature = "layout-cytoscape"))]
     pub fn architecture_text_cutover_receipt(
