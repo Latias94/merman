@@ -69,7 +69,7 @@ export function describeThemeSupport(
 
 export function exportThemePreset(
   presetId: string,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): PresetExportV1 {
   return getMerman().exportThemePreset(presetId, encodeOptions(options));
 }

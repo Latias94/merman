@@ -584,28 +584,28 @@ interface BindingVersionOptions {
   version?: typeof BINDING_OPTIONS_SCHEMA_VERSION;
 }
 
-type NoDirectAnalysisBindingOptions<Options extends AnalysisBindingOptions> = {
+type NoDirectAnalysisBindingOptions<Options extends Omit<AnalysisBindingOptions, "resources">> = {
   [Property in keyof Options]?: never;
 };
 
-type DirectAnalysisBindingRoot<Options extends AnalysisBindingOptions> = Options & {
+type DirectAnalysisBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> = Options & {
   analysis?: never;
   merman?: never;
 };
 
-type AnalysisWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+type AnalysisWrappedBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   NoDirectAnalysisBindingOptions<Options> & {
   analysis: Options;
   merman?: never;
 };
 
-type MermanWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+type MermanWrappedBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   NoDirectAnalysisBindingOptions<Options> & {
   analysis?: never;
   merman: Options;
 };
 
-type AnalysisBindingRoot<Options extends AnalysisBindingOptions> =
+type AnalysisBindingRoot<Options extends Omit<AnalysisBindingOptions, "resources">> =
   (
     | DirectAnalysisBindingRoot<Options>
     | AnalysisWrappedBindingRoot<Options>
@@ -745,11 +745,13 @@ export interface ThemeAuthoringResourceOptions {
   limits?: Partial<Record<ThemeResourceLimitId, number>>;
 }
 
-export type ThemeAuthoringOptions = Omit<SvgBindingOptions, "resources" | "analysis" | "merman"> & {
+type ThemeAuthoringAnalysisOptions = Omit<AnalysisBindingOptions, "resources"> & {
   resources?: ThemeAuthoringResourceOptions;
-  analysis?: Omit<AnalysisBindingOptions, "resources"> & { resources?: ThemeAuthoringResourceOptions };
-  merman?: Omit<AnalysisBindingOptions, "resources"> & { resources?: ThemeAuthoringResourceOptions };
 };
+
+export type ThemeAuthoringOptions = BindingVersionOptions &
+  AnalysisBindingRoot<ThemeAuthoringAnalysisOptions> &
+  CommonBindingFields & SvgBindingFields;
 
 type HostTextMeasurerEnvironmentOptions = Omit<
   RenderEnvironmentOptions,

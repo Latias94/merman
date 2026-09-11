@@ -42,6 +42,7 @@ import type {
 } from "./public-catalog.js";
 import type {
   CommonBindingOptions,
+  ThemeAuthoringOptions,
   MermanInitInput,
   MermanWasmModule,
   RuntimeCatalog,
@@ -232,7 +233,7 @@ export function packageVersion(): string {
 }
 
 export function encodeOptions(
-  options?: unknown
+  options?: CommonBindingOptions | ThemeAuthoringOptions | string
 ): string | undefined {
   if (options === undefined) {
     return undefined;

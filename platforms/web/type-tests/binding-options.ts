@@ -112,6 +112,21 @@ const themeAuthoringOptions: ThemeAuthoringOptions = {
 materializeTheme(themeDefinition, themeAuthoringOptions);
 // @ts-expect-error theme-only limits must not leak into ordinary SVG options.
 const invalidSvgOptions: SvgBindingOptions = { resources: { limits: { max_theme_encoded_bytes: 1 } } };
+exportThemePreset("editor-light", themeAuthoringOptions);
+materializeTheme(themeDefinition, { analysis: themeAuthoringOptions });
+materializeTheme(themeDefinition, { merman: themeAuthoringOptions });
+materializeTheme(themeDefinition, {
+  // @ts-expect-error source limits do not apply to authoring operations.
+  resources: { limits: { max_source_bytes: 1024 } },
+});
+exportThemePreset("editor-light", {
+  // @ts-expect-error hard caps are implementation-owned.
+  resources: { limits: { theme_encoded_bytes_hard_cap: 1024 } },
+});
+// @ts-expect-error wrapped resources cannot be combined with direct resources.
+const mixedThemeOptions: ThemeAuthoringOptions = { resources: {}, analysis: { resources: {} } };
+// @ts-expect-error only one analysis wrapper is allowed.
+const ambiguousThemeOptions: ThemeAuthoringOptions = { analysis: {}, merman: {} };
 materializedTheme.spec.styles;
 
 const supportQuery: ThemeSupportQueryV2 = {
@@ -121,7 +136,7 @@ const supportQuery: ThemeSupportQueryV2 = {
   subject: { kind: "base-typography", property: "font-stack" },
 };
 const supportDescriptor: ThemeCapabilityDescriptorV2 =
-  describeThemeSupport(supportQuery);
+  describeThemeSupport(supportQuery, themeAuthoringOptions);
 supportDescriptor.state;
 
 const futureSubjectKind = "future-subject" as ThemeSupportUnknownSubjectKindV2;
