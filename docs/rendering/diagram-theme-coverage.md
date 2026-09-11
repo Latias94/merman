@@ -262,8 +262,10 @@ wrong-preset artifacts, blank output, missing ink, and recipe/resource/schema dr
 The [clean-build qualification runner](preset-qualification.md) now records the source commit,
 lockfile, actual Release executable, toolchain/host, and complete scoped execution evidence. Its
 freshness check rebuilds and reruns qualification and rejects any record mismatch. Public qualified
-scopes remain empty: the current family/output-only projection cannot describe host-font conditions,
-and generated catalog promotion still needs that scope and freshness connection. The C7a preset
+scopes remain empty. Rust, binding JSON, Web, and Flutter now carry explicit `profile_id` and
+`admission_status` alongside each cell's family/output IDs, preserving host-dependent and future
+values without inferring portability. Generated catalog promotion still needs the profile's fresh
+evidence connected to the actual artifact build. The C7a preset
 gate remains open. A host-dependent State result cannot qualify Flowchart, Sequence, or a portable
 resource profile.
 

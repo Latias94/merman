@@ -4,6 +4,14 @@ import test from "node:test";
 import * as coreRuntime from "../dist/runtime-core.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
+function qualifiedCell(overrides = {}) {
+  return {
+    family_id: "flowchart", output_id: "svg",
+    profile_id: "host-fonts-v1", admission_status: "host_dependent",
+    ...overrides,
+  };
+}
+
 function themeResourceLimit(overrides = {}) {
   return {
     id: "max_theme_encoded_bytes",
@@ -40,7 +48,7 @@ function themeCatalogFixture(overrides = {}) {
         maturity: "experimental",
         available: false,
         availability_reason_ids: ["future-resource-unavailable"],
-        qualified_cells: [{ family_id: "flowchart", output_id: "svg" }],
+        qualified_cells: [qualifiedCell()],
         license_expression: "LicenseRef-Future",
         required_attribution: "Future Theme authors",
         export_kind: "complete_spec",
@@ -124,7 +132,7 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   assert.equal(firstFull.presets[0].available, true);
   assert.equal(firstFull.presets[1].available, false);
   assert.deepEqual(firstFull.presets[1].qualified_cells, [
-    { family_id: "flowchart", output_id: "svg" },
+    qualifiedCell(),
   ]);
   assert.equal(firstFull.known_semantic_target_ids[0], "future-target");
   assert.equal(firstFull.resource_limits[0].hard_cap, true);
@@ -178,8 +186,8 @@ test("theme catalog validates preset availability, export kind, and qualified ce
       "duplicate qualified cell",
       (preset) => {
         preset.qualified_cells = [
-          { family_id: "flowchart", output_id: "svg" },
-          { family_id: "flowchart", output_id: "svg" },
+          qualifiedCell(),
+          qualifiedCell(),
         ];
       },
       /duplicate qualified cells/,
@@ -188,8 +196,8 @@ test("theme catalog validates preset availability, export kind, and qualified ce
       "unsorted qualified cells",
       (preset) => {
         preset.qualified_cells = [
-          { family_id: "state", output_id: "svg" },
-          { family_id: "flowchart", output_id: "svg" },
+          qualifiedCell({ family_id: "state" }),
+          qualifiedCell(),
         ];
       },
       /qualified cells must be sorted/,
@@ -254,4 +262,38 @@ test("theme catalog validates sorted resource limits and their values", async ()
     resource_limits: [themeResourceLimit({ effective_value: -1 })],
   }));
   assert.throws(() => negativeValue.themeCatalog(), /invalid theme resource limit .* effective value/);
+});
+
+test("qualified cells retain scoped admissions without inferring portability", async () => {
+  const presets = themeCatalogFixture().presets;
+  presets[0].qualified_cells = [
+    qualifiedCell({ profile_id: "embedded-profile", admission_status: "portable" }),
+    qualifiedCell({ profile_id: "future-profile", admission_status: "future-admission" }),
+    qualifiedCell(),
+  ];
+  const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+  assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, presets[0].qualified_cells);
+  const copy = runtime.themeCatalog();
+  copy.presets[0].qualified_cells[2].profile_id = "changed";
+  copy.presets[0].qualified_cells[2].admission_status = "portable";
+  assert.equal(runtime.themeCatalog().presets[0].qualified_cells[2].profile_id, "host-fonts-v1");
+  assert.equal(runtime.themeCatalog().presets[0].qualified_cells[2].admission_status, "host_dependent");
+});
+
+test("qualified cells reject missing conditions and conflicting admissions in the same profile", async () => {
+  for (const field of ["profile_id", "admission_status"]) {
+    for (const invalid of [undefined, null, "", 1, "Invalid Value"]) {
+      const presets = themeCatalogFixture().presets;
+      const cell = qualifiedCell();
+      if (invalid === undefined) delete cell[field];
+      else cell[field] = invalid;
+      presets[0].qualified_cells = [cell];
+      const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+      assert.throws(() => runtime.themeCatalog(), /required fields|qualified profile|qualified admission/);
+    }
+  }
+  const presets = themeCatalogFixture().presets;
+  presets[0].qualified_cells = [qualifiedCell(), qualifiedCell({ admission_status: "portable" })];
+  const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+  assert.throws(() => runtime.themeCatalog(), /duplicate qualified cells/);
 });

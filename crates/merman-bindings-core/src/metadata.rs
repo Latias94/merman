@@ -282,6 +282,20 @@ struct BindingThemePreset {
 struct BindingThemePresetQualifiedCell {
     family_id: &'static str,
     output_id: &'static str,
+    profile_id: &'static str,
+    admission_status: &'static str,
+}
+
+#[cfg(feature = "svg")]
+impl From<&merman::svg::ThemePresetQualifiedCell> for BindingThemePresetQualifiedCell {
+    fn from(cell: &merman::svg::ThemePresetQualifiedCell) -> Self {
+        Self {
+            family_id: cell.family_id(),
+            output_id: cell.output_id(),
+            profile_id: cell.profile_id(),
+            admission_status: cell.admission_status(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -820,10 +834,7 @@ fn binding_theme_presets(compiler: &merman::svg::DiagramThemeCompiler) -> Vec<Bi
                 qualified_cells: descriptor
                     .qualified_cells()
                     .iter()
-                    .map(|cell| BindingThemePresetQualifiedCell {
-                        family_id: cell.family_id(),
-                        output_id: cell.output_id(),
-                    })
+                    .map(BindingThemePresetQualifiedCell::from)
                     .collect(),
                 license_expression: descriptor.license_expression(),
                 required_attribution: descriptor.required_attribution(),
@@ -1765,6 +1776,26 @@ mod tests {
                 .iter()
                 .any(|capability| capability.diagram_type == "mindmap")
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn preset_qualification_projection_preserves_host_conditions_and_future_ids() {
+        for (profile, admission) in [
+            ("native-state-system-fonts-v1", "host_dependent"),
+            ("future-profile", "future-admission"),
+        ] {
+            let cell =
+                merman::svg::ThemePresetQualifiedCell::new("state", "png", profile, admission);
+            let json = serde_json::to_value(BindingThemePresetQualifiedCell::from(&cell)).unwrap();
+            assert_eq!(
+                json,
+                serde_json::json!({
+                    "family_id": "state", "output_id": "png", "profile_id": profile,
+                    "admission_status": admission,
+                })
+            );
+        }
     }
 
     #[test]

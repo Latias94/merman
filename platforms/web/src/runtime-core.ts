@@ -886,7 +886,7 @@ function normalizeThemePresetQualifiedCells(
     }
     assertRequiredRecordKeys(
       cell,
-      ["family_id", "output_id"],
+      ["family_id", "output_id", "profile_id", "admission_status"],
       `Merman WASM theme preset ${presetId} qualified cell`
     );
     const familyId = assertRuntimeIdentifier(
@@ -897,7 +897,15 @@ function normalizeThemePresetQualifiedCells(
       cell.output_id,
       `theme preset ${presetId} qualified output ID`
     );
-    const key = `${familyId}\u0000${outputId}`;
+    const profileId = assertRuntimeIdentifier(
+      cell.profile_id,
+      `theme preset ${presetId} qualified profile ID`
+    );
+    const admissionStatus = assertRuntimeFieldIdentifier(
+      cell.admission_status,
+      `theme preset ${presetId} qualified admission status`
+    );
+    const key = `${familyId}\u0000${outputId}\u0000${profileId}`;
     if (seen.has(key)) {
       throw new Error(`Merman WASM theme preset ${presetId} has duplicate qualified cells.`);
     }
@@ -906,7 +914,12 @@ function normalizeThemePresetQualifiedCells(
     }
     seen.add(key);
     previousKey = key;
-    return { family_id: familyId, output_id: outputId };
+    return {
+      family_id: familyId,
+      output_id: outputId,
+      profile_id: profileId,
+      admission_status: admissionStatus,
+    };
   });
 }
 

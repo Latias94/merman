@@ -103,9 +103,14 @@ export interface ThemePresetCatalogEntry {
   export_kind: "definition" | "complete_spec";
 }
 
+/** Scoped metadata backed by catalog qualification, not an unconditional portability claim. */
 export interface ThemePresetQualifiedCell {
   family_id: string;
   output_id: string;
+  /** Scenario and resource conditions. Unknown profiles do not grant usable support. */
+  profile_id: string;
+  /** Open target admission ID; for example `portable` or `host_dependent`. */
+  admission_status: string;
 }
 
 export interface ThemeResourceLimitCatalogEntry {

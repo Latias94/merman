@@ -16,6 +16,7 @@ void main() {
   decodesTypedMetadataCatalogs();
   acceptsAdditiveTypedMetadataFields();
   rejectsMalformedThemePresetMaturity();
+  preservesScopedPresetQualification();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   acceptsAdditiveConstructorResourceLimits();
@@ -514,7 +515,12 @@ void acceptsAdditiveTypedMetadataFields() {
         'available': false,
         'availability_reason_ids': ['future-resource-unavailable'],
         'qualified_cells': [
-          {'family_id': 'flowchart', 'output_id': 'svg'},
+          {
+            'family_id': 'flowchart',
+            'output_id': 'svg',
+            'profile_id': 'future-profile',
+            'admission_status': 'future_admission',
+          },
         ],
         'license_expression': 'LicenseRef-Future',
         'required_attribution': 'Future Theme authors',
@@ -546,6 +552,10 @@ void acceptsAdditiveTypedMetadataFields() {
         family.metadataId == null &&
         theme.presets.single.appearance == 'adaptive' &&
         theme.presets.single.maturity == 'experimental' &&
+        theme.presets.single.qualifiedCells.single.profileId ==
+            'future-profile' &&
+        theme.presets.single.qualifiedCells.single.admissionStatus ==
+            'future_admission' &&
         theme.knownSemanticTargetIds.single == 'future-target' &&
         theme.resourceLimits.single.effectiveValue == null,
     'typed metadata decoders must ignore additive JSON fields',
@@ -586,6 +596,58 @@ void rejectsMalformedThemePresetMaturity() {
     _expectContractFailure(
       () => MermanThemeCatalog.fromJson(catalog(preset(maturity: maturity))),
     );
+  }
+}
+
+void preservesScopedPresetQualification() {
+  Map<String, Object?> cell(String profile, String admission) => {
+    'family_id': 'state',
+    'output_id': 'png',
+    'profile_id': profile,
+    'admission_status': admission,
+  };
+  Map<String, Object?> preset(List<Object?> cells) => {
+    'id': 'spotless',
+    'display_name': 'Spotless',
+    'appearance': 'light',
+    'maturity': 'alpha',
+    'available': true,
+    'availability_reason_ids': <String>[],
+    'qualified_cells': cells,
+    'license_expression': 'MIT OR Apache-2.0',
+    'required_attribution': null,
+    'export_kind': 'complete_spec',
+  };
+  final parsed = MermanThemePreset.fromJson(
+    preset([
+      cell('embedded-profile', 'portable'),
+      cell('host-profile', 'host_dependent'),
+    ]),
+  );
+  _expect(
+    parsed.qualifiedCells.length == 2 &&
+        parsed.qualifiedCells.last.admissionStatus == 'host_dependent',
+    'different resource profiles must preserve their admission classes',
+  );
+  _expectContractFailure(
+    () => MermanThemePreset.fromJson(
+      preset([
+        cell('host-profile', 'host_dependent'),
+        cell('host-profile', 'portable'),
+      ]),
+    ),
+  );
+  for (final field in ['profile_id', 'admission_status']) {
+    final missing = cell('host-profile', 'host_dependent')..remove(field);
+    _expectContractFailure(
+      () => MermanThemePresetQualifiedCell.fromJson(missing),
+    );
+    for (final invalid in <Object?>[null, 1, '', 'Invalid Value']) {
+      final value = cell('host-profile', 'host_dependent')..[field] = invalid;
+      _expectContractFailure(
+        () => MermanThemePresetQualifiedCell.fromJson(value),
+      );
+    }
   }
 }
 

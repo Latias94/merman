@@ -1280,7 +1280,8 @@ class MermanThemePreset {
       final cell = MermanThemePresetQualifiedCell.fromJson(
         _asObject(entry.$2, 'theme preset $id.qualified_cells[${entry.$1}]'),
       );
-      final key = '${cell.familyId}\u0000${cell.outputId}';
+      final key =
+          '${cell.familyId}\u0000${cell.outputId}\u0000${cell.profileId}';
       if (previousCell != null && previousCell.compareTo(key) >= 0) {
         throw MermanException.contract(
           'theme preset $id.qualified_cells must be sorted and unique',
@@ -1333,29 +1334,54 @@ class MermanThemePreset {
   }
 }
 
-/// One family/output cell freshly qualified for a preset recipe.
+/// Scoped qualification metadata; presence alone does not imply portability.
 class MermanThemePresetQualifiedCell {
   const MermanThemePresetQualifiedCell({
     required this.familyId,
     required this.outputId,
+    required this.profileId,
+    required this.admissionStatus,
   });
 
   final String familyId;
   final String outputId;
 
-  factory MermanThemePresetQualifiedCell.fromJson(Map<String, Object?> json) =>
-      MermanThemePresetQualifiedCell(
-        familyId: _requiredRuntimeIdentifier(
-          json,
-          'family_id',
-          'theme preset qualified cell',
-        ),
-        outputId: _requiredRuntimeIdentifier(
-          json,
-          'output_id',
-          'theme preset qualified cell',
-        ),
+  /// Tested scenario and resource conditions; unknown profiles grant no usable support.
+  final String profileId;
+
+  /// Open admission ID, such as `portable` or `host_dependent`.
+  final String admissionStatus;
+
+  factory MermanThemePresetQualifiedCell.fromJson(Map<String, Object?> json) {
+    final admission = _requiredString(
+      json,
+      'admission_status',
+      'theme preset qualified cell',
+    );
+    if (!_isRuntimeFieldIdentifier(admission)) {
+      throw MermanException.contract(
+        'theme preset qualified cell has invalid admission_status',
       );
+    }
+    return MermanThemePresetQualifiedCell(
+      familyId: _requiredRuntimeIdentifier(
+        json,
+        'family_id',
+        'theme preset qualified cell',
+      ),
+      outputId: _requiredRuntimeIdentifier(
+        json,
+        'output_id',
+        'theme preset qualified cell',
+      ),
+      profileId: _requiredRuntimeIdentifier(
+        json,
+        'profile_id',
+        'theme preset qualified cell',
+      ),
+      admissionStatus: admission,
+    );
+  }
 }
 
 /// One effective compiler-owned theme resource ceiling.

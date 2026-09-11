@@ -41,8 +41,16 @@ not as self-updating checked-in source fixtures.
 ## Remaining publication boundary
 
 These records supply clean-build provenance and executable freshness checks for the scoped runner.
-They do not freeze C7a or promote public catalog entries. `qualified_cells` currently contains only
-family/output identifiers and cannot express this host-font condition, so it remains empty.
-Generated catalog promotion still needs a truthful resource/admission scope and its own freshness
-connection. Flowchart/Sequence residuals, the seven retained compatibility recipes, and the fixed
+They do not freeze C7a or promote public catalog entries. Each `qualified_cells` entry now carries
+`family_id`, `output_id`, `profile_id`, and `admission_status`. The profile names the tested scenario
+and resource conditions; admission is an open ID such as `portable` or `host_dependent`. Unknown
+profiles or admission classes must not be interpreted as portable support. A family/output may have
+multiple profiles, ordered by `(family_id, output_id, profile_id)`; conflicting statuses under the
+same profile are invalid. Rust, Web, and Flutter expose these conditions; other transports preserve the shared JSON.
+This unpublished alpha correction stays within theme catalog schema 3. Rust and Dart cell
+constructors now require the profile and admission arguments; there is no implicit default.
+
+Constructing a Rust cell is only constructing metadata, not issuing proof. Public scopes remain
+empty until generated catalog promotion verifies fresh evidence for the declared profile and the
+actual artifact build. Flowchart/Sequence residuals, the seven retained compatibility recipes, and the fixed
 18-cell C6a ledger retain their existing dispositions.

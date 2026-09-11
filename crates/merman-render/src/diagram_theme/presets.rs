@@ -48,18 +48,34 @@ impl ThemePresetParseError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-/// One freshly qualified diagram-family/output cell for a preset recipe revision.
+/// One scoped catalog qualification declaration for a preset recipe revision.
+///
+/// This is metadata, not a proof receipt. A catalog owner must obtain fresh execution evidence
+/// before publishing a cell. The profile identifies the tested scenario and resource conditions;
+/// the admission status must not be inferred from the cell's presence.
 pub struct ThemePresetQualifiedCell {
     family_id: &'static str,
     output_id: &'static str,
+    profile_id: &'static str,
+    admission_status: &'static str,
 }
 
 impl ThemePresetQualifiedCell {
-    /// Creates a qualified cell from stable family and output identifiers.
-    pub const fn new(family_id: &'static str, output_id: &'static str) -> Self {
+    /// Describes a declared scope; construction does not grant qualification.
+    ///
+    /// IDs are open strings. Consumers must understand the profile and admission status before
+    /// relying on the claim; an unknown value is never equivalent to portable support.
+    pub const fn new(
+        family_id: &'static str,
+        output_id: &'static str,
+        profile_id: &'static str,
+        admission_status: &'static str,
+    ) -> Self {
         Self {
             family_id,
             output_id,
+            profile_id,
+            admission_status,
         }
     }
 
@@ -71,6 +87,16 @@ impl ThemePresetQualifiedCell {
     /// Returns the stable render-output identifier.
     pub const fn output_id(self) -> &'static str {
         self.output_id
+    }
+
+    /// Identifies the qualification scenario and its required resource conditions.
+    pub const fn profile_id(self) -> &'static str {
+        self.profile_id
+    }
+
+    /// Returns the observed target admission class, such as `portable` or `host_dependent`.
+    pub const fn admission_status(self) -> &'static str {
+        self.admission_status
     }
 }
 
