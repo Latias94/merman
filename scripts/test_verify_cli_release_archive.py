@@ -228,7 +228,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 5,
+        "cli_contract_version": 6,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -242,6 +242,12 @@ def valid_capabilities_payload(
         "capabilities": capabilities,
         "outputs": outputs,
         "ascii": valid_ascii_capabilities_payload(),
+        "theme_presets": {"schema_version": 1, "presets": [{
+            "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
+            "maturity": "alpha", "available": True, "availability_reason_ids": [],
+            "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
+            "required_attribution": None, "export_kind": "complete_spec",
+        }]},
     }
 
 
@@ -506,11 +512,35 @@ class PresetQualificationArchiveTests(unittest.TestCase):
             archive, checksum = write_tar(root)
             output = root / "qualification.json"
             observed_binaries = []
+            scenarios = [{
+                "family": "state", "output": output, "source_id": "state-v1",
+                "source_digest": "source-digest", "png_scale": scale,
+                "font_source": "system-only",
+            } for output, scale in [("svg", 1.0), ("png", 4.0)]]
+            public_qualification = {
+                "preset": "brutalist", "profile": "native-state-system-fonts-v1",
+                "qualification_schema_revision": 1, "recipe_fingerprint": "recipe-digest",
+                "resource_fingerprint": "resource-digest", "scenarios": scenarios,
+            }
+            public_catalog = valid_capabilities_payload()["theme_presets"]
+            public_catalog["presets"][0]["qualified_cells"] = [{
+                "family_id": "state", "output_id": output,
+                "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
+            } for output in ("png", "svg")]
 
             def qualify(repo_root, *, cli_binary):
                 observed_binaries.append(cli_binary.read_bytes())
-                return {"source_commit": "test-source", "cli": {"executable_sha256":
-                    hashlib.sha256(cli_binary.read_bytes()).hexdigest()}}
+                return {
+                    "source_commit": "test-source", "host": {"system": "test-host"},
+                    "qualification": {"presets": [{
+                        **public_qualification,
+                        "cells": [{**scenario, "target_receipt_digest": "private-receipt",
+                                   "source": "private-source"} for scenario in scenarios],
+                    }]},
+                    "cli": {"executable_sha256": hashlib.sha256(cli_binary.read_bytes()).hexdigest(),
+                            "catalog": public_catalog,
+                            "render_config": {"htmlLabels": False}, "svg_pipeline": "resvg-safe"},
+                }
 
             with (
                 mock.patch.object(verifier, "verify_runtime_contract") as runtime,
@@ -523,10 +553,39 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                     "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
                     "target": LINUX_TARGET, "version": VERSION,
                 })
+                catalog_path = output.with_suffix(".catalog.json")
+                catalog = json.loads(catalog_path.read_text())
+                self.assertEqual(catalog["artifact"]["sha256"], record["cli_archive"]["sha256"])
+                self.assertEqual(catalog["artifact"]["executable_sha256"], record["cli"]["executable_sha256"])
+                self.assertEqual(catalog["catalog"], record["cli"]["catalog"])
+                self.assertEqual(catalog["qualifications"], [public_qualification])
+                self.assertEqual(catalog["catalog"]["presets"][0]["qualified_cells"], [
+                    {"family_id": "state", "output_id": output,
+                     "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
+                    for output in ("png", "svg")
+                ])
+                self.assertNotIn("target_receipt_digest", json.dumps(catalog))
+                self.assertNotIn("private-receipt", json.dumps(catalog))
+                self.assertNotIn("private-source", json.dumps(catalog))
                 self.assertEqual(observed_binaries, [required_files(LINUX_TARGET)["merman-cli"]])
                 runtime.assert_called_once()
                 verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
                                execute=True, preset_qualification_check=output)
+                for changed_catalog in [
+                    {**catalog, "schema_version": True},
+                    {**catalog, "render_config": {"htmlLabels": 0}},
+                ]:
+                    catalog_path.write_text(json.dumps(changed_catalog))
+                    with self.assertRaisesRegex(RuntimeError, "Stale"):
+                        verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                       execute=True, preset_qualification_check=output)
+                changed_catalog = copy.deepcopy(catalog)
+                changed_catalog["catalog"]["presets"].append({"maturity": "stable"})
+                catalog_path.write_text(json.dumps(changed_catalog))
+                with self.assertRaisesRegex(RuntimeError, "Stale"):
+                    verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                   execute=True, preset_qualification_check=output)
+                catalog_path.write_text(json.dumps(catalog))
                 record["cli_archive"]["sha256"] = "stale"
                 output.write_text(json.dumps(record))
                 with self.assertRaisesRegex(RuntimeError, "Stale"):
@@ -546,6 +605,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
                                execute=True, preset_qualification_output=output)
             self.assertFalse(output.exists())
+            self.assertFalse(output.with_suffix(".catalog.json").exists())
 
 
 class ChecksumAndNamingTests(unittest.TestCase):
@@ -1625,6 +1685,9 @@ class RuntimeContractTests(unittest.TestCase):
                     ),
                 ),
                 ("ASCII", lambda value: value.pop("ascii")),
+                ("catalog", lambda value: value.pop("theme_presets")),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("qualified_cells", [{}])),
                 (
                     "ASCII report",
                     lambda value: value["ascii"]["report"].__setitem__(

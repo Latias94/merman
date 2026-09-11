@@ -57,6 +57,18 @@ class PresetQualificationTests(unittest.TestCase):
                 verify_record(record, changed)
 
 
+    def test_replay_preserves_json_types_and_ignores_object_key_order(self):
+        record = {"schema_version": 1, "render_config": {"htmlLabels": False}, "scale": 1.0}
+        verify_record({"scale": 1.0, "render_config": {"htmlLabels": False}, "schema_version": 1}, record)
+        for changed in [
+            {**record, "schema_version": True},
+            {**record, "render_config": {"htmlLabels": 0}},
+            {**record, "scale": 1},
+        ]:
+            with self.subTest(changed=changed), self.assertRaisesRegex(RuntimeError, "Stale"):
+                verify_record(changed, record)
+
+
 class CliQualificationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -72,10 +84,33 @@ class CliQualificationTests(unittest.TestCase):
              "artifact_digest": hashlib.sha256(payload).hexdigest()}
             for output, payload in self.payloads.items()
         ]}]}
+        self.catalog = {"schema_version": 1, "presets": [
+            {"id": "brutalist", "display_name": "Brutalist", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
+            {"id": "editor-light", "display_name": "Editor Light", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
+        ]}
+        self.qualification["catalog"] = copy.deepcopy(self.catalog)
+        preset = self.qualification["presets"][0]
+        preset["profile"] = "native-state-sequence-system-fonts-v2"
+        for cell in preset["cells"]:
+            cell["family"] = "state"
+            cell["admission"] = "host_dependent"
+        preset["catalog_entry"] = {**self.catalog["presets"][0], "qualified_cells": [
+            {"family_id": cell["family"], "output_id": cell["output"],
+             "profile_id": preset["profile"], "admission_status": cell["admission"]}
+            for cell in preset["cells"]
+        ]}
+        preset["catalog_entry"]["qualified_cells"].sort(
+            key=lambda cell: (cell["family_id"], cell["output_id"], cell["profile_id"])
+        )
         self.commands = []
 
     def run_cli(self, command, **options):
         self.commands.append(command)
+        if command[1:] == ["capabilities", "--json"]:
+            self.assertEqual(options["input"], b"")
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({
+                "theme_presets": self.catalog,
+            }).encode(), stderr=b"")
         self.assertEqual(options["input"], self.qualification["presets"][0]["cells"][0]["source"].encode())
         config_path = Path(command[command.index("--config-file") + 1])
         self.assertEqual(json.loads(config_path.read_text()), {"htmlLabels": False})
@@ -88,6 +123,47 @@ class CliQualificationTests(unittest.TestCase):
         self.assertEqual(evidence["executable_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
         self.assertEqual(self.commands[0][-3:], ["--svg-pipeline", "resvg-safe", "-"])
         self.assertEqual(self.commands[1][-3:], ["--scale", "4.0", "-"])
+
+    def test_catalog_qualifies_only_receipt_scopes_after_matching_production_metadata(self):
+        evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+        catalog = evidence["catalog"]
+        self.assertEqual(catalog["presets"][0], self.qualification["presets"][0]["catalog_entry"])
+        self.assertEqual([cell["output_id"] for cell in catalog["presets"][0]["qualified_cells"]], ["png", "svg"])
+        self.assertEqual(catalog["presets"][1], self.catalog["presets"][1])
+        self.assertEqual(self.catalog["presets"][0]["qualified_cells"], [])
+        self.assertEqual(self.qualification["catalog"]["presets"][0]["qualified_cells"], [])
+        self.assertIn([str(self.binary.resolve()), "capabilities", "--json"], self.commands)
+
+    def test_catalog_rejects_drift_and_scope_forgery(self):
+        original = copy.deepcopy(self.qualification)
+        changes = []
+        for field, value in [("family_id", "flowchart"), ("output_id", "pdf"),
+                             ("admission_status", "portable"), ("profile_id", "different-profile")]:
+            changed = copy.deepcopy(original)
+            changed["presets"][0]["catalog_entry"]["qualified_cells"][0][field] = value
+            changes.append(changed)
+        changed = copy.deepcopy(original)
+        changed["presets"][0]["catalog_entry"]["qualified_cells"].pop()
+        changes.append(changed)
+        changed = copy.deepcopy(original)
+        changed["presets"][0]["cells"].append(copy.deepcopy(changed["presets"][0]["cells"][0]))
+        changes.append(changed)
+        changed = copy.deepcopy(original)
+        changed["presets"].append(copy.deepcopy(changed["presets"][0]))
+        changes.append(changed)
+        changed = copy.deepcopy(original)
+        changed["presets"][0]["catalog_entry"]["maturity"] = "stable"
+        changes.append(changed)
+        for changed in changes:
+            with self.subTest(changed=changed), self.assertRaisesRegex(RuntimeError, "catalog|scope"):
+                qualify_cli(self.binary, changed, runner=self.run_cli)
+        self.catalog["schema_version"] = True
+        with self.assertRaisesRegex(RuntimeError, "catalog"):
+            qualify_cli(self.binary, original, runner=self.run_cli)
+        self.catalog["schema_version"] = 1
+        self.catalog["presets"][0]["id"] = "another-preset"
+        with self.assertRaisesRegex(RuntimeError, "catalog"):
+            qualify_cli(self.binary, original, runner=self.run_cli)
 
     def test_cli_rejects_changed_output_and_source(self):
         self.payloads["png"] = b"different PNG"

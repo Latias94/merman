@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 5;
+const CLI_CONTRACT_VERSION: u32 = 6;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
@@ -30,6 +30,15 @@ struct CapabilityDocument<'a> {
     outputs: Vec<OutputView<'a>>,
     #[cfg(feature = "ascii")]
     ascii: AsciiCapabilityDocument,
+    #[cfg(feature = "svg")]
+    theme_presets: Option<ThemePresetCatalogDocument>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Serialize)]
+struct ThemePresetCatalogDocument {
+    schema_version: u32,
+    presets: Vec<merman::svg::ThemePresetMetadataV1>,
 }
 
 #[derive(Serialize)]
@@ -175,6 +184,8 @@ pub(crate) fn write_compiled_capabilities(
             .collect(),
         #[cfg(feature = "ascii")]
         ascii: ascii_capability_document(),
+        #[cfg(feature = "svg")]
+        theme_presets: json.then(theme_preset_catalog_document),
     };
 
     if json {
@@ -191,6 +202,17 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\n');
     }
     write_stdout(output.as_bytes(), stdout)
+}
+
+#[cfg(feature = "svg")]
+fn theme_preset_catalog_document() -> ThemePresetCatalogDocument {
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
+    );
+    ThemePresetCatalogDocument {
+        schema_version: merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
+        presets: merman::svg::describe_theme_presets(&compiler),
+    }
 }
 
 #[cfg(feature = "ascii")]

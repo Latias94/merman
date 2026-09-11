@@ -117,10 +117,13 @@ pub use legacy_tombstones::{
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
-pub use merman_theme_contract::PresetExportV1;
+pub use merman_theme_contract::{
+    PresetExportV1, THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetMetadataV1,
+    ThemePresetQualifiedCellV1,
+};
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,
-    theme_preset_descriptors,
+    describe_theme_presets, theme_preset_descriptors,
 };
 pub(crate) use resolved::{
     MatchedThemeRules, ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect,

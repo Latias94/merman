@@ -25,7 +25,7 @@ PNG scale and `resvg-safe` SVG pipeline, and requires exact output bytes. It reu
 release-process runner; it does not interpret SVG/CSS or reconstruct renderer receipts. A missing
 observation, changed source/output, or executable replacement rejects qualification.
 
-The schema-2 record contains:
+The schema-3 record contains:
 
 - The clean source commit and lockfile digest.
 - The actual executable digest identified by Cargo's artifact output, build command, Rust toolchain,
@@ -77,8 +77,8 @@ stay under ignored `target/` so the qualification runner can enforce a clean sou
 The job uploads `preset-qualification-<source_sha>-x86_64-unknown-linux-gnu` only after replay
 succeeds. A qualification or upload failure fails the native verification job and blocks the
 existing release gate, attestation, registry candidates, and GitHub Release creation. The record
-is a workflow artifact, not a published preset catalog or an additional member of the immutable
-release bundle. Other native rows retain their product smoke checks without claiming this profile.
+and its public catalog companion are workflow artifacts; neither is an additional member of the
+immutable release bundle. Other native rows retain their product smoke checks without claiming this profile.
 
 ## Remaining publication boundary
 
@@ -92,12 +92,33 @@ same profile are invalid. Rust, Web, and Flutter expose these conditions; other 
 This unpublished alpha correction stays within theme catalog schema 3. Rust and Dart cell
 constructors now require the profile and admission arguments; there is no implicit default.
 
-Constructing a Rust cell is only constructing metadata, not issuing proof. Public scopes remain
-empty until generated catalog promotion verifies fresh evidence for the declared profile and the
-actual artifact build. Flowchart retains bridge residuals; Sequence retains unsupported generic-text
+Constructing a Rust cell is only constructing metadata, not issuing proof. Built-in scopes remain
+empty. The archive companion below projects fresh evidence only for its declared profile and actual
+artifact build. Flowchart retains bridge residuals; Sequence retains unsupported generic-text
 requests only where completed role writers do not cover their fills, or other requested facets
 remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
 their existing dispositions. The positive qualification profile covers only its declared State/Sequence SVG/PNG scenarios.
 Sequence checks actor, message, note, loop, and autonumber label assignments plus activation
 styles in SVG; PNG independently checks actor/note surfaces and label ink, message strokes, and
 unoccluded lifeline strokes. These bounded checks do not qualify arbitrary Sequence sources.
+
+## Artifact catalog companion
+
+Archive qualification writes `preset-qualification.catalog.json` beside the full execution record.
+It joins the catalog returned by the exact CLI's `capabilities --json` with fresh runner-owned
+State/Sequence SVG/PNG cells. A mismatch in production metadata or output bytes rejects the join.
+The three native candidates retain alpha maturity and report `host_dependent` under the declared
+system-font profile; the seven retained presets keep empty scope. The companion binds the final
+archive and executable hashes, source revision, host, recipe/resource identities, and scenario
+conditions. It excludes private target receipts and does not modify the binary or archive.
+
+The archive `--preset-qualification-check` mode reruns qualification and checks both the execution
+record and its companion. Missing or stale companions reject verification. A standalone
+`qualify_theme_presets.py --cli` run keeps its artifact catalog inside the execution record; only
+archive verification emits the archive-bound companion. Qualification records use schema 3.
+
+Production Rust and SDK discovery continues to expose the shared unqualified catalog. A downloaded
+JSON file is not itself a qualification authority: consumers need its trusted release provenance
+and matching artifact identity. These observations cover the named scenarios and host conditions,
+not arbitrary source text or every installation's font environment. Stable promotion and loading
+qualified metadata into production discovery remain separate C7a work.

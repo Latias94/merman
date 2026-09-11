@@ -4,7 +4,10 @@
 //! observations never populate the public catalog's qualified cells or the fixed C6a ledger.
 //! Scoped qualification additionally checks actual SVG and PNG output under a named host profile.
 
-use merman::svg::{DiagramThemeCompiler, ThemePreset, ThemeRecipeFingerprint};
+use merman::svg::{
+    DiagramThemeCompiler, ThemePreset, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
+    ThemeRecipeFingerprint, theme_preset_descriptors,
+};
 use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderArtifactKind, RenderOutput,
     RenderRequest, Renderer, TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus,
@@ -191,6 +194,55 @@ impl PresetQualificationReceipt {
 
     pub const fn report(&self) -> &PresetAdmissionReport {
         &self.report
+    }
+
+    /// Projects this execution's exact cells for an artifact-bound release catalog.
+    ///
+    /// This does not mutate production discovery or promote maturity. Publication additionally
+    /// requires matching the actual CLI bytes and metadata in the clean-build archive runner.
+    pub fn catalog_entry(&self) -> Result<ThemePresetMetadataV1, PresetAdmissionError> {
+        let failure = |detail: &str| PresetAdmissionError {
+            preset: self.report.preset.id(),
+            source_id: "catalog",
+            stage: "qualification-catalog",
+            detail: detail.to_owned(),
+        };
+        if !self.is_current() {
+            return Err(failure("stale recipe, resources, or qualification schema"));
+        }
+        let mut entry = theme_preset_descriptors()
+            .iter()
+            .find(|entry| entry.preset() == self.report.preset)
+            .ok_or_else(|| failure("qualified recipe is absent from the current catalog"))?
+            .describe(&DiagramThemeCompiler::new());
+        let mut cells: Vec<_> = self
+            .report
+            .observations
+            .iter()
+            .map(|observation| ThemePresetQualifiedCellV1 {
+                family_id: observation.spec.family.as_str().to_owned(),
+                output_id: observation.artifact_kind().id().to_owned(),
+                profile_id: self.profile_id().to_owned(),
+                admission_status: observation.status().id().to_owned(),
+            })
+            .collect();
+        cells.sort_by(|left, right| {
+            (&left.family_id, &left.output_id, &left.profile_id).cmp(&(
+                &right.family_id,
+                &right.output_id,
+                &right.profile_id,
+            ))
+        });
+        if !entry.available
+            || ((entry.maturity == "stable" || !entry.qualified_cells.is_empty())
+                && entry.qualified_cells != cells)
+        {
+            return Err(failure(
+                "catalog maturity or scope lacks matching fresh qualification",
+            ));
+        }
+        entry.qualified_cells = cells;
+        Ok(entry)
     }
 
     /// Checks recipe/resource freshness within this executable, not across renderer builds.
@@ -382,13 +434,35 @@ mod tests {
             .unwrap()
             .recipe_fingerprint();
         assert!(!stale.is_current());
+        assert!(stale.catalog_entry().is_err());
         let mut stale = original.clone();
         stale.report.resource_fingerprint[0] ^= 1;
         assert!(!stale.is_current());
+        assert!(stale.catalog_entry().is_err());
         let mut stale = original.clone();
         stale.schema_revision += 1;
         assert!(!stale.is_current());
+        assert!(stale.catalog_entry().is_err());
         assert!(original.is_current());
+        let entry = original.catalog_entry().unwrap();
+        assert_eq!(entry.id, "brutalist");
+        assert_eq!(entry.maturity, "alpha");
+        assert_eq!(
+            entry
+                .qualified_cells
+                .iter()
+                .map(|cell| (cell.family_id.as_str(), cell.output_id.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("sequence", "png"),
+                ("sequence", "svg"),
+                ("state", "png"),
+                ("state", "svg")
+            ]
+        );
+        assert!(entry.qualified_cells.iter().all(
+            |cell| cell.admission_status == "host_dependent" && cell.profile_id == HOST_PROFILE
+        ));
     }
 
     #[test]

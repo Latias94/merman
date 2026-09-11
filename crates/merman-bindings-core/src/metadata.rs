@@ -254,7 +254,10 @@ struct BindingThemeCatalog {
     schema_version: u32,
     structured_spec_available: bool,
     supported_output_ids: Vec<&'static str>,
-    presets: Vec<BindingThemePreset>,
+    #[cfg(feature = "svg")]
+    presets: Vec<merman_theme_contract::ThemePresetMetadataV1>,
+    #[cfg(not(feature = "svg"))]
+    presets: [(); 0],
     known_capability_ids: Vec<&'static str>,
     known_text_capability_ids: Vec<&'static str>,
     known_font_container_ids: Vec<&'static str>,
@@ -262,40 +265,6 @@ struct BindingThemeCatalog {
     known_semantic_target_ids: Vec<&'static str>,
     known_variant_ids: Vec<&'static str>,
     resource_limits: Vec<BindingThemeResourceLimit>,
-}
-
-#[derive(Debug, Serialize)]
-struct BindingThemePreset {
-    id: &'static str,
-    display_name: &'static str,
-    appearance: &'static str,
-    maturity: &'static str,
-    available: bool,
-    availability_reason_ids: Vec<&'static str>,
-    qualified_cells: Vec<BindingThemePresetQualifiedCell>,
-    license_expression: &'static str,
-    required_attribution: Option<&'static str>,
-    export_kind: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct BindingThemePresetQualifiedCell {
-    family_id: &'static str,
-    output_id: &'static str,
-    profile_id: &'static str,
-    admission_status: &'static str,
-}
-
-#[cfg(feature = "svg")]
-impl From<&merman::svg::ThemePresetQualifiedCell> for BindingThemePresetQualifiedCell {
-    fn from(cell: &merman::svg::ThemePresetQualifiedCell) -> Self {
-        Self {
-            family_id: cell.family_id(),
-            output_id: cell.output_id(),
-            profile_id: cell.profile_id(),
-            admission_status: cell.admission_status(),
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -691,7 +660,7 @@ fn theme_catalog_for(_artifact_contract: &ValidatedArtifactContract) -> BindingT
         schema_version: THEME_CATALOG_SCHEMA_VERSION,
         structured_spec_available: false,
         supported_output_ids: Vec::new(),
-        presets: Vec::new(),
+        presets: [],
         known_capability_ids: Vec::new(),
         known_text_capability_ids: Vec::new(),
         known_font_container_ids: Vec::new(),
@@ -729,7 +698,7 @@ fn theme_catalog_for_with_compiler(
         ),
     );
     let compiler = compiler.unwrap_or(&default_compiler);
-    let presets = binding_theme_presets(compiler);
+    let presets = merman::svg::describe_theme_presets(compiler);
     let supported_output_ids = sorted_theme_ids(
         artifact_contract
             .output_keys()
@@ -807,62 +776,6 @@ fn theme_catalog_for_with_compiler(
                 .collect(),
         ),
         resource_limits,
-    }
-}
-
-#[cfg(feature = "svg")]
-fn binding_theme_presets(compiler: &merman::svg::DiagramThemeCompiler) -> Vec<BindingThemePreset> {
-    merman::svg::theme_preset_descriptors()
-        .iter()
-        .map(|descriptor| {
-            let availability_reason_ids = compiler
-                .compile_preset(descriptor.preset())
-                .err()
-                .map(|error| vec![theme_preset_unavailability_reason(&error)])
-                .unwrap_or_default();
-            BindingThemePreset {
-                id: descriptor.id(),
-                display_name: descriptor.display_name(),
-                appearance: if descriptor.is_dark() {
-                    "dark"
-                } else {
-                    "light"
-                },
-                maturity: descriptor.maturity(),
-                available: availability_reason_ids.is_empty(),
-                availability_reason_ids,
-                qualified_cells: descriptor
-                    .qualified_cells()
-                    .iter()
-                    .map(BindingThemePresetQualifiedCell::from)
-                    .collect(),
-                license_expression: descriptor.license_expression(),
-                required_attribution: descriptor.required_attribution(),
-                export_kind: descriptor.export_kind(),
-            }
-        })
-        .collect()
-}
-
-#[cfg(feature = "svg")]
-fn theme_preset_unavailability_reason(
-    error: &merman::svg::ThemeDefinitionCompileError,
-) -> &'static str {
-    match error {
-        merman::svg::ThemeDefinitionCompileError::Materialization(error)
-            if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded" =>
-        {
-            "theme-preset.resource-policy-rejected"
-        }
-        merman::svg::ThemeDefinitionCompileError::Compilation(
-            merman::svg::ThemeCompileError::ResourceLimit(_),
-        )
-        | merman::svg::ThemeDefinitionCompileError::Compilation(
-            merman::svg::ThemeCompileError::FontCatalog(
-                merman::svg::FontCatalogError::ResourceLimit(_),
-            ),
-        ) => "theme-preset.resource-policy-rejected",
-        _ => "theme-preset.recipe-unavailable",
     }
 }
 
@@ -1787,7 +1700,8 @@ mod tests {
         ] {
             let cell =
                 merman::svg::ThemePresetQualifiedCell::new("state", "png", profile, admission);
-            let json = serde_json::to_value(BindingThemePresetQualifiedCell::from(&cell)).unwrap();
+            let json =
+                serde_json::to_value(merman::svg::ThemePresetQualifiedCellV1::from(&cell)).unwrap();
             assert_eq!(
                 json,
                 serde_json::json!({
@@ -1831,6 +1745,15 @@ mod tests {
             assert_eq!(catalog["schema_version"], THEME_CATALOG_SCHEMA_VERSION);
             assert_eq!(catalog["structured_spec_available"], true);
             assert_eq!(catalog["supported_output_ids"], serde_json::json!(["svg"]));
+            let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+                merman::svg::ThemeResourcePolicy::for_profile(
+                    merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+                ),
+            );
+            assert_eq!(
+                catalog["presets"],
+                serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap()
+            );
             assert_eq!(
                 catalog["presets"]
                     .as_array()
@@ -1970,7 +1893,11 @@ mod tests {
         let compiler =
             merman::svg::DiagramThemeCompiler::new().with_resource_policy(restrictive_policy);
 
-        let presets = binding_theme_presets(&compiler);
+        let svg_contract =
+            ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                .with_operations(&[OperationKey::Svg])
+                .materialize();
+        let presets = theme_catalog_for_with_compiler(&svg_contract, Some(&compiler)).presets;
 
         assert_eq!(presets.len(), 10);
         assert!(presets.iter().all(|preset| !preset.available));

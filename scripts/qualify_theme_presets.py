@@ -2,12 +2,14 @@
 """Record or recheck scoped preset qualification from a clean candidate build.
 
 The Rust runner owns qualification. This script binds its output to the source commit and actual
-executable, and reexecutes it for freshness checks. Reports never populate public qualified cells.
+executable, and reexecutes it for freshness checks. Only a matched CLI receives an artifact-local
+catalog projection; shared production catalogs remain unchanged.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -18,9 +20,11 @@ import sys
 import tempfile
 
 try:
+    from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .run_theme_acceptance import acceptance_environment
     from .release_process import CommandRunner, run_checked
 except ImportError:
+    from theme_preset_catalog_contract import validate_unqualified_catalog
     from run_theme_acceptance import acceptance_environment
     from release_process import CommandRunner, run_checked
 
@@ -53,6 +57,8 @@ def qualify_cli(
     binary = binary.resolve(strict=True)
     digest = sha256_file(binary)
     config = {"htmlLabels": False}
+    if not qualification.get("presets"):
+        raise RuntimeError("CLI qualification requires actual target observations")
     matched = 0
     with tempfile.TemporaryDirectory(prefix="merman-preset-cli-") as temporary:
         directory = Path(temporary)
@@ -82,6 +88,10 @@ def qualify_cli(
                 matched += 1
     if matched == 0:
         raise RuntimeError("CLI qualification requires actual target observations")
+    metadata = run_checked(
+        [str(binary), "capabilities", "--json"], stdin=b"", cwd=binary.parent, runner=runner,
+    )
+    catalog = _qualified_cli_catalog(json.loads(metadata.stdout), qualification)
     if sha256_file(binary) != digest:
         raise RuntimeError("CLI executable changed during qualification")
     return {
@@ -89,7 +99,45 @@ def qualify_cli(
         "render_config": config,
         "svg_pipeline": "resvg-safe",
         "matched_outputs": matched,
+        "catalog": catalog,
     }
+
+
+def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
+    """Join fresh runner-owned scopes to the exact production metadata just observed.
+
+    This is a projection inside collect(), not an importer or qualification issuer. Stored
+    records are only accepted by rerunning collect() and comparing the complete result.
+    """
+    baseline = qualification["catalog"]
+    validate_unqualified_catalog(baseline)
+    validate_unqualified_catalog(capabilities.get("theme_presets"))
+    if capabilities.get("theme_presets") != baseline:
+        raise RuntimeError("CLI preset catalog differs from the candidate renderer")
+    catalog = copy.deepcopy(baseline)
+    entries = {entry["id"]: entry for entry in catalog["presets"]}
+    seen = set()
+    for preset in qualification["presets"]:
+        preset_id = preset["preset"]
+        if preset_id in seen or preset_id not in entries:
+            raise RuntimeError("Unknown or duplicate qualified preset catalog scope")
+        seen.add(preset_id)
+        base = entries[preset_id]
+        if not base["available"]:
+            raise RuntimeError("Qualified preset is unavailable in CLI catalog")
+        cells = [{
+            "family_id": cell["family"], "output_id": cell["output"],
+            "profile_id": preset["profile"], "admission_status": cell["admission"],
+        } for cell in preset["cells"]]
+        cells.sort(key=lambda cell: (cell["family_id"], cell["output_id"], cell["profile_id"]))
+        scopes = {(cell["family_id"], cell["output_id"]) for cell in cells}
+        if not cells or len(scopes) != len(cells):
+            raise RuntimeError("Missing or duplicate qualified catalog scope")
+        expected = {**base, "qualified_cells": cells}
+        if preset["catalog_entry"] != expected:
+            raise RuntimeError("Qualified catalog scope differs from actual target observations")
+        base["qualified_cells"] = cells
+    return catalog
 
 
 def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
@@ -120,7 +168,7 @@ def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
             or sha256_file(executable) != executable_digest):
         raise RuntimeError("Candidate source, lockfile, or executable changed during qualification")
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "source_commit": revision,
         "lockfile_sha256": lock_digest,
         "executable_sha256": executable_digest,
@@ -133,7 +181,10 @@ def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
 
 
 def verify_record(expected: dict, actual: dict) -> None:
-    if expected != actual:
+    # Python equality aliases bool/int and int/float; JSON types are part of the record.
+    if json.dumps(expected, sort_keys=True, allow_nan=False) != json.dumps(
+        actual, sort_keys=True, allow_nan=False,
+    ):
         raise RuntimeError("Stale qualification: candidate build, host profile, or execution evidence differs")
 
 

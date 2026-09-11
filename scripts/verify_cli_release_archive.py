@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ElementTree
 
 if __package__:
     from .qualify_theme_presets import collect as collect_preset_qualification, verify_record
+    from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -50,6 +51,7 @@ if __package__:
     )
 else:
     from qualify_theme_presets import collect as collect_preset_qualification, verify_record
+    from theme_preset_catalog_contract import validate_unqualified_catalog
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -96,7 +98,7 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 5
+CLI_CONTRACT_VERSION = 6
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
@@ -674,12 +676,24 @@ def _validate_runtime_capabilities(
 ) -> None:
     observed_without_ascii = dict(observed)
     ascii_contract = observed_without_ascii.pop("ascii", None)
+    theme_presets = observed_without_ascii.pop("theme_presets", None)
     expected_capabilities = expected.get("capabilities")
     expects_ascii = isinstance(expected_capabilities, list) and any(
         isinstance(capability, dict) and capability.get("id") == "ascii"
         for capability in expected_capabilities
     )
     _require_exact_json("capabilities document", observed_without_ascii, expected)
+    expects_svg = isinstance(expected_capabilities, list) and any(
+        isinstance(capability, dict) and capability.get("id") == "svg"
+        for capability in expected_capabilities
+    )
+    if expects_svg:
+        try:
+            validate_unqualified_catalog(theme_presets)
+        except RuntimeError as error:
+            raise ArchiveVerificationError(str(error)) from error
+    elif theme_presets is not None:
+        raise ArchiveVerificationError("theme preset catalog requires SVG support")
     if expects_ascii:
         _validate_ascii_capabilities(ascii_contract)
     elif ascii_contract is not None:
@@ -936,12 +950,38 @@ def verify_release_archive(
             record["cli_archive"] = {
                 "sha256": extracted.digest, "target": target, "version": version,
             }
+            # Publish a companion for these final archive bytes. Do not repack the archive
+            # with its own digest, or promote this host observation into shared SDK discovery.
+            catalog = {
+                "schema_version": 1,
+                "source_commit": record["source_commit"],
+                "artifact": {**record["cli_archive"],
+                             "executable_sha256": record["cli"]["executable_sha256"]},
+                "host": record["host"],
+                "catalog": record["cli"]["catalog"],
+                "render_config": record["cli"]["render_config"],
+                "svg_pipeline": record["cli"]["svg_pipeline"],
+                "qualifications": [{
+                    **{key: preset[key] for key in (
+                        "preset", "profile", "qualification_schema_revision",
+                        "recipe_fingerprint", "resource_fingerprint",
+                    )},
+                    "scenarios": [{key: cell[key] for key in (
+                        "family", "output", "source_id", "source_digest", "png_scale", "font_source",
+                    )} for cell in preset["cells"]],
+                } for preset in record["qualification"]["presets"]],
+            }
             if preset_qualification_check is not None:
                 verify_record(expected, record)
+                catalog_path = Path(preset_qualification_check).with_suffix(".catalog.json")
+                verify_record(json.loads(catalog_path.read_text(encoding="utf-8")), catalog)
             else:
                 output = Path(preset_qualification_output)
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                output.with_suffix(".catalog.json").write_text(
+                    json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+                )
         persisted = (
             persist_verified_archive(extracted, verified_output, limits=limits)
             if verified_output is not None

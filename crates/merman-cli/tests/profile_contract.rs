@@ -309,7 +309,32 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 5);
+    assert_eq!(payload["cli_contract_version"], 6);
+    #[cfg(feature = "svg")]
+    {
+        assert_eq!(payload["theme_presets"]["schema_version"], 1);
+        assert!(
+            payload["theme_presets"]["presets"]
+                .as_array()
+                .is_some_and(|presets| !presets.is_empty()),
+            "SVG artifacts must expose preset discovery metadata"
+        );
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+            merman::svg::ThemeResourcePolicy::for_profile(
+                merman::svg::CLI_DEFAULT_RESOURCE_PROFILE,
+            ),
+        );
+        assert_eq!(
+            payload["theme_presets"]["presets"],
+            serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap(),
+            "spawned CLI preset metadata must match the production compiler projection"
+        );
+    }
+    #[cfg(not(feature = "svg"))]
+    assert!(
+        payload.get("theme_presets").is_none(),
+        "artifacts without SVG must omit preset discovery metadata"
+    );
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(

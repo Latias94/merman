@@ -27,8 +27,8 @@ def ascii_capabilities_contract() -> dict[str, object]:
 
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
-    def test_contract_five_retains_the_rustdoc_command_and_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 5)
+    def test_contract_six_retains_the_rustdoc_command_and_manpages(self) -> None:
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 6)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
         self.assertTrue(
@@ -275,6 +275,32 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
+    def test_preset_catalog_rejects_missing_or_unqualified_claim_drift(self) -> None:
+        for mutation in ("missing", "null", "schema", "stable", "scope", "without-svg"):
+            with self.subTest(mutation=mutation), self.installation_fixture() as fixture:
+                profile, authority = verifier._read_release_contract(fixture.contract_root)
+                catalog = fixture.capabilities["theme_presets"]
+                if mutation == "missing":
+                    fixture.capabilities.pop("theme_presets")
+                elif mutation == "null":
+                    fixture.capabilities["theme_presets"] = None
+                elif mutation == "schema":
+                    catalog["schema_version"] = True
+                elif mutation == "stable":
+                    catalog["presets"][0]["maturity"] = "stable"
+                elif mutation == "scope":
+                    catalog["presets"][0]["qualified_cells"] = [{}]
+                else:
+                    profile["expected"]["capabilities"].remove("svg")
+                    fixture.capabilities["capabilities"] = [
+                        value for value in fixture.capabilities["capabilities"] if value["id"] != "svg"
+                    ]
+                with self.assertRaisesRegex(installation_verifier.CliInstallationError, "catalog"):
+                    installation_verifier._verify_capabilities(
+                        json.dumps(fixture.capabilities).encode(), package_version="0.8.0",
+                        profile=profile, authority=authority,
+                    )
+
     def test_ascii_capability_subcontract_is_exact(self) -> None:
         for mutation in ("missing_encodings", "missing_swimlane", "extra_field"):
             with self.subTest(mutation=mutation):
@@ -475,6 +501,12 @@ class InstallationFixture:
                 {"id": identifier} for identifier in profile["expected"]["outputs"]
             ],
             "ascii": ascii_capabilities_contract(),
+            "theme_presets": {"schema_version": 1, "presets": [{
+                "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
+                "maturity": "alpha", "available": True, "availability_reason_ids": [],
+                "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
+                "required_attribution": None, "export_kind": "complete_spec",
+            }]},
         }
 
     def __enter__(self):

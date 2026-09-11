@@ -8,6 +8,7 @@ mod facet;
 mod finite;
 mod materialization_error;
 mod materialized;
+mod preset_catalog;
 mod preset_export;
 mod spec;
 mod support;
@@ -21,6 +22,9 @@ pub use canonical_json::{CanonicalJsonError, CanonicalJsonErrorKind};
 pub use facet::ThemeRuleFacetV1;
 pub use materialization_error::{ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1};
 pub use materialized::MaterializedThemeWireV1;
+pub use preset_catalog::{
+    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
+};
 pub use preset_export::PresetExportV1;
 pub use spec::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, MermaidThemeValueWireV1,

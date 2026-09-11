@@ -1,3 +1,9 @@
+use merman_theme_contract::{ThemePresetMetadataV1, ThemePresetQualifiedCellV1};
+
+use super::{
+    DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDefinitionCompileError,
+};
+
 mod catalog;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -114,6 +120,31 @@ impl ThemePresetDescriptor {
         catalog::entry_at(self.catalog_index as usize)
     }
 
+    /// Describes this recipe under the effective compiler policy without granting qualification.
+    pub fn describe(self, compiler: &DiagramThemeCompiler) -> ThemePresetMetadataV1 {
+        let availability_reason_ids = compiler
+            .compile_preset(self.preset())
+            .err()
+            .map(|error| vec![theme_preset_unavailability_reason(&error).to_owned()])
+            .unwrap_or_default();
+        ThemePresetMetadataV1 {
+            id: self.id().to_owned(),
+            display_name: self.display_name().to_owned(),
+            appearance: if self.is_dark() { "dark" } else { "light" }.to_owned(),
+            maturity: self.maturity().to_owned(),
+            available: availability_reason_ids.is_empty(),
+            availability_reason_ids,
+            qualified_cells: self
+                .qualified_cells()
+                .iter()
+                .map(ThemePresetQualifiedCellV1::from)
+                .collect(),
+            license_expression: self.license_expression().to_owned(),
+            required_attribution: self.required_attribution().map(str::to_owned),
+            export_kind: self.export_kind().to_owned(),
+        }
+    }
+
     pub const fn id(self) -> &'static str {
         self.entry().id()
     }
@@ -195,6 +226,43 @@ pub const fn theme_preset_descriptors() -> &'static [ThemePresetDescriptor] {
     catalog::descriptors()
 }
 
+/// Describes built-in presets using this artifact's effective recipe compiler policy.
+///
+/// Availability is evaluated through the production preset compiler. Maturity and scoped
+/// qualification declarations come directly from the catalog and are not promoted by compilation.
+pub fn describe_theme_presets(compiler: &DiagramThemeCompiler) -> Vec<ThemePresetMetadataV1> {
+    theme_preset_descriptors()
+        .iter()
+        .map(|descriptor| descriptor.describe(compiler))
+        .collect()
+}
+
+impl From<&ThemePresetQualifiedCell> for ThemePresetQualifiedCellV1 {
+    fn from(cell: &ThemePresetQualifiedCell) -> Self {
+        Self {
+            family_id: cell.family_id().to_owned(),
+            output_id: cell.output_id().to_owned(),
+            profile_id: cell.profile_id().to_owned(),
+            admission_status: cell.admission_status().to_owned(),
+        }
+    }
+}
+
+fn theme_preset_unavailability_reason(error: &ThemeDefinitionCompileError) -> &'static str {
+    match error {
+        ThemeDefinitionCompileError::Materialization(error)
+            if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded" =>
+        {
+            "theme-preset.resource-policy-rejected"
+        }
+        ThemeDefinitionCompileError::Compilation(ThemeCompileError::ResourceLimit(_))
+        | ThemeDefinitionCompileError::Compilation(ThemeCompileError::FontCatalog(
+            FontCatalogError::ResourceLimit(_),
+        )) => "theme-preset.resource-policy-rejected",
+        _ => "theme-preset.recipe-unavailable",
+    }
+}
+
 pub(crate) use catalog::materialize_spec_wire;
 
 #[cfg(test)]
@@ -210,8 +278,41 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramTheme, DiagramThemeCompiler, FamilyThemeDisposition,
-        ResolvedDiagramTheme, ThemeColorValue, ThemeTarget, ThemeVariant,
+        ResolvedDiagramTheme, ThemeColorValue, ThemeResourceLimitId, ThemeResourcePolicy,
+        ThemeTarget, ThemeVariant,
     };
+
+    #[test]
+    fn preset_discovery_preserves_catalog_claims_when_resource_policy_rejects_recipes() {
+        let default = describe_theme_presets(&DiagramThemeCompiler::new());
+        let policy = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .unwrap();
+        let rejected =
+            describe_theme_presets(&DiagramThemeCompiler::new().with_resource_policy(policy));
+
+        assert_eq!(default.len(), theme_preset_descriptors().len());
+        assert_eq!(rejected.len(), default.len());
+        for ((available, rejected), descriptor) in
+            default.iter().zip(rejected).zip(theme_preset_descriptors())
+        {
+            assert_eq!(available.id, descriptor.id());
+            assert!(available.available);
+            assert!(available.availability_reason_ids.is_empty());
+            assert_eq!(available.maturity, "alpha");
+            assert!(available.qualified_cells.is_empty());
+            assert!(!rejected.available);
+            assert_eq!(
+                rejected.availability_reason_ids,
+                ["theme-preset.resource-policy-rejected"]
+            );
+            let mut expected = available.clone();
+            expected.available = false;
+            expected.availability_reason_ids =
+                vec!["theme-preset.resource-policy-rejected".to_owned()];
+            assert_eq!(rejected, expected);
+        }
+    }
 
     fn solid_color(paint: &CanvasPaint) -> Option<String> {
         match paint {

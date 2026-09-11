@@ -16,6 +16,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
+    );
+    let catalog = json!({
+        "schema_version": merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
+        "presets": merman::svg::describe_theme_presets(&compiler),
+    });
     let mut presets = Vec::new();
     for preset in [
         ThemePreset::Brutalist,
@@ -52,6 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }).collect::<Vec<_>>();
         presets.push(json!({
             "preset": preset.id(),
+            "catalog_entry": receipt.catalog_entry()?,
             "profile": receipt.profile_id(),
             "qualification_schema_revision": receipt.schema_revision(),
             "recipe_fingerprint": hex(report.recipe_fingerprint().as_bytes()),
@@ -59,6 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "cells": cells,
         }));
     }
-    println!("{}", serde_json::to_string(&json!({"presets": presets}))?);
+    println!(
+        "{}",
+        serde_json::to_string(&json!({"catalog": catalog, "presets": presets}))?
+    );
     Ok(())
 }

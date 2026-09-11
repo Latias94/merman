@@ -529,7 +529,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: preset-qualification-${{ needs.plan.outputs.source_sha }}-${{ matrix.target }}
-          path: target/preset-qualification.json
+          path: |
+            target/preset-qualification.json
+            target/preset-qualification.catalog.json
           if-no-files-found: error
 
   release-verification-gate:

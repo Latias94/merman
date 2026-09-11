@@ -17,11 +17,13 @@ import sys
 from typing import Literal, TypeAlias
 
 if __package__:
+    from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
     )
 else:
+    from theme_preset_catalog_contract import validate_unqualified_catalog
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -31,7 +33,7 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 5
+CLI_CONTRACT_VERSION = 6
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -309,6 +311,13 @@ def _verify_capabilities(
         )
     if _id_set(document.get("outputs"), "installed outputs") != expected_outputs:
         raise CliInstallationError("installed output set differs from cli-release")
+    if "svg" in expected_capabilities:
+        try:
+            validate_unqualified_catalog(document.get("theme_presets"))
+        except RuntimeError as error:
+            raise CliInstallationError(f"installed {error}") from error
+    elif "theme_presets" in document:
+        raise CliInstallationError("installed capabilities expose a theme preset catalog without SVG support")
     if "ascii" in expected_capabilities:
         _verify_ascii_capabilities(document.get("ascii"))
     elif "ascii" in document:

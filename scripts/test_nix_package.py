@@ -102,6 +102,7 @@ class NixPackageContractTests(unittest.TestCase):
             policy["script_files"],
             [
                 "scripts/ascii_capability_contract.py",
+                "scripts/theme_preset_catalog_contract.py",
                 "scripts/verify_cli_installation.py",
             ],
         )
@@ -119,6 +120,7 @@ class NixPackageContractTests(unittest.TestCase):
             "crates/merman-cli/assets/completions/merman-cli.bash",
             "crates/merman-cli/assets/man/merman-cli.1",
             "scripts/ascii_capability_contract.py",
+            "scripts/theme_preset_catalog_contract.py",
             "scripts/verify_cli_installation.py",
         }
         required.update(f"{member}/Cargo.toml" for member in workspace_members())
