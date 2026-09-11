@@ -2138,3 +2138,359 @@ fn requirement_color_arrays_own_fill_and_stroke_without_false_applied_evidence()
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
+
+fn requirement_text_theme(rules: ThemeRuleSet) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .expect("compile Requirement text paint")
+}
+
+fn requirement_text_rule(paint: CanvasPaint) -> ThemeRule {
+    ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(paint),
+    )
+    .for_family(DiagramFamilyId::REQUIREMENT)
+}
+
+#[test]
+fn requirement_text_fill_consumes_node_and_relation_labels_across_looks() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, color) in [
+            (CanvasPaint::solid("#2468ac").unwrap(), "#2468ac"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let mut rule = requirement_text_rule(paint);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(rule));
+            for look in ["classic", "neo", "handDrawn"] {
+                for html in [false, true] {
+                    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({"look": look, "htmlLabels": html}),
+                    ));
+                    let rendered = render_requirement_with_theme_and_engine(
+                        requirement_svg_label_source(),
+                        &theme,
+                        engine,
+                    );
+                    let svg = rendered.svg();
+                    let css = requirement_stylesheet(svg);
+                    assert!(
+                        css.contains(&format!(
+                            ".label text,#requirement-theme span{{fill:{color};color:{color};}}"
+                        )),
+                        "{css}"
+                    );
+                    assert!(
+                        css.contains(&format!(".edgeLabel .label text{{fill:{color};}}")),
+                        "{css}"
+                    );
+                    let document = roxmltree::Document::parse(svg).unwrap();
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| node.attribute("class") == Some("edgeLabel"))
+                    );
+                    assert!(document.descendants().any(|node| {
+                        node.attribute("class").is_some_and(|value| {
+                            value.split_whitespace().any(|class| class == "node")
+                        })
+                    }));
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.applied_count(), 1, "{look}, html={html}");
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_text_owners_are_independent_for_html_and_svg_labels() {
+    let source = format!(
+        "{}\nelement elem1 {{\n type: simulation\n}}\nreq1 - satisfies -> elem1\n",
+        requirement_source()
+    );
+    let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
+        CanvasPaint::solid("#2468ac").unwrap(),
+    )));
+    for html in [false, true] {
+        for (variables, node, edge, applied) in [
+            (
+                serde_json::json!({"nodeTextColor":"#112233"}),
+                "#112233",
+                "#2468ac",
+                !html,
+            ),
+            (
+                serde_json::json!({"relationLabelColor":"#334455"}),
+                "#2468ac",
+                "#334455",
+                true,
+            ),
+            (
+                serde_json::json!({"nodeTextColor":"#112233", "relationLabelColor":"#334455"}),
+                "#112233",
+                "#334455",
+                false,
+            ),
+            (
+                serde_json::json!({"requirementTextColor":"#556677"}),
+                "#2468ac",
+                "#2468ac",
+                true,
+            ),
+        ] {
+            let rendered = render_requirement_with_theme_and_engine(
+                &source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "htmlLabels": html, "themeVariables": variables,
+                }))),
+            );
+            let css = requirement_stylesheet(rendered.svg());
+            assert!(
+                css.contains(&format!(
+                    ".label text,#requirement-theme span{{fill:{node};color:{node};}}"
+                )),
+                "{css}"
+            );
+            assert!(
+                css.contains(&format!(".edgeLabel .label text{{fill:{edge};}}")),
+                "{css}"
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(applied),
+                "html={html}, {variables}"
+            );
+            assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_text_source_color_and_absent_consumers_do_not_prove_application() {
+    let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
+        CanvasPaint::solid("#2468ac").unwrap(),
+    )));
+    for html in [false, true] {
+        for source in [
+            "requirementDiagram\n".to_owned(),
+            "---\ntitle: Only a title\n---\nrequirementDiagram\n".to_owned(),
+            format!(
+                "{}\nclassDef owned color:#112233\nclass req1 owned\n",
+                requirement_source()
+            ),
+            format!("{}\nstyle req1 color:#112233\n", requirement_source()),
+        ] {
+            let rendered = render_requirement_with_theme_and_engine(
+                &source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"htmlLabels":html}),
+                )),
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 0, "{source}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+        }
+    }
+}
+
+#[test]
+fn requirement_text_rule_winners_account_for_later_labels_and_shadowed_defaults() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let first = requirement_text_rule(CanvasPaint::solid("#112233").unwrap())
+        .with_variant(ThemeVariant::Default);
+    let last = requirement_text_rule(CanvasPaint::solid("#2468ac").unwrap());
+    for (rules, applied, na, residual) in [
+        (
+            ThemeRuleSet::default()
+                .with_rule(first.clone())
+                .with_rule(last.clone()),
+            1,
+            1,
+            0,
+        ),
+        (
+            ThemeRuleSet::default().with_rule(last.clone()).with_rule(
+                first
+                    .clone()
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            ),
+            1,
+            0,
+            1,
+        ),
+        (
+            ThemeRuleSet::default()
+                .with_rule(
+                    first
+                        .clone()
+                        .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+                )
+                .with_rule(last.clone()),
+            1,
+            1,
+            0,
+        ),
+        (
+            ThemeRuleSet::default().with_rule(last.clone()).with_rule(
+                first
+                    .clone()
+                    .with_ordinal(OrdinalSelector::exact(1000).unwrap()),
+            ),
+            1,
+            1,
+            0,
+        ),
+    ] {
+        let theme = requirement_text_theme(rules);
+        let rendered = render_requirement_with_theme_requirement(
+            requirement_source(),
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), na);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        if residual > 0 {
+            assert!(
+                try_render_requirement_with_theme_requirement_and_environment(
+                    requirement_source(),
+                    &theme,
+                    Engine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                    RenderEnvironment::deterministic()
+                )
+                .is_err()
+            );
+        }
+    }
+}
+
+#[test]
+fn requirement_text_unknown_source_and_winning_siblings_remain_residuals() {
+    for (source, patch) in [
+        (
+            format!(
+                "{}\nstyle req1 color:var(--label-color)\n",
+                requirement_source()
+            ),
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        (
+            requirement_source().to_owned(),
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#2468ac").unwrap())
+                .with_stroke(CanvasPaint::solid("#112233").unwrap()),
+        ),
+    ] {
+        let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(
+            ThemeRule::new(ThemeTarget::Text, patch).for_family(DiagramFamilyId::REQUIREMENT),
+        ));
+        let rendered = render_requirement_with_theme_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        assert!(
+            try_render_requirement_with_theme_requirement_and_environment(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic()
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires Node, tools/mermaid-cli dependencies, and Puppeteer's Chrome headless shell"]
+fn requirement_browser_text_cascade() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let source = format!(
+        "{}\nelement elem1 {{\n type: simulation\n}}\nreq1 - satisfies -> elem1\nstyle req1 color:#445566\n",
+        requirement_source()
+    );
+    let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
+        CanvasPaint::solid("#2468ac").unwrap(),
+    )));
+    let mut fixtures = Vec::new();
+    for html in [false, true] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for (variables, inherited, svg_edge) in [
+                (
+                    serde_json::json!({}),
+                    "rgb(36, 104, 172)",
+                    "rgb(36, 104, 172)",
+                ),
+                (
+                    serde_json::json!({"nodeTextColor":"#112233"}),
+                    "rgb(17, 34, 51)",
+                    "rgb(36, 104, 172)",
+                ),
+                (
+                    serde_json::json!({"relationLabelColor":"#778899"}),
+                    "rgb(36, 104, 172)",
+                    "rgb(119, 136, 153)",
+                ),
+            ] {
+                let rendered = render_requirement_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "htmlLabels": html, "look": look, "themeVariables": variables,
+                    }))),
+                );
+                fixtures.push(serde_json::json!({
+                    "name": format!("{look},html={html},{variables}"), "svg": rendered.svg(),
+                    "html": html, "owned": "rgb(68, 85, 102)", "inherited": inherited,
+                    "edges": if html { inherited } else { svg_edge },
+                }));
+            }
+        }
+    }
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/debug/requirement_text_cascade.mjs");
+    let mut child = Command::new("node")
+        .arg(script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("launch Requirement browser probe");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(serde_json::to_string(&fixtures).unwrap().as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    println!("{}", String::from_utf8_lossy(&output.stdout));
+}

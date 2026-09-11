@@ -64,6 +64,7 @@ impl RequirementDividerEmission {
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
     relation_paint: Option<super::RequirementRelationPaintPlan>,
+    text_paint: super::RequirementTextPaintPlan,
     node_indices: BTreeMap<String, usize>,
     expectations: Option<Arc<[NodeExpectation]>>,
     inherited_font_stack: InheritedFontStackPlan,
@@ -87,11 +88,14 @@ impl RequirementPaintThemePlan {
     ) -> crate::Result<Self> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let text_paint =
+            super::RequirementTextPaintPlan::resolve(theme, effective_config, work_meter)?;
         let configured_font_size_css = configured_font_size_css(effective_config);
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
                 relation_paint: None,
+                text_paint,
                 node_indices: BTreeMap::new(),
                 expectations: None,
                 inherited_font_stack,
@@ -290,6 +294,7 @@ impl RequirementPaintThemePlan {
 
         Ok(Self {
             relation_paint,
+            text_paint,
             node_indices,
             expectations: Some(expectations.into()),
             inherited_font_stack,
@@ -310,6 +315,10 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn relation_paint(&self) -> Option<&super::RequirementRelationPaintPlan> {
         self.relation_paint.as_ref()
+    }
+
+    pub(crate) fn text_paint(&self) -> &super::RequirementTextPaintPlan {
+        &self.text_paint
     }
 
     pub(crate) fn typed_fill(
@@ -384,6 +393,7 @@ impl RequirementPaintThemePlan {
         if let Some(plan) = self.relation_paint.as_ref() {
             plan.finish_evidence(&mut evidence);
         }
+        self.text_paint.finish_evidence(&mut evidence);
         let Some(Some(receipt)) = self.terminal_receipt.get() else {
             self.inherited_font_stack
                 .mark_unsupported_typography_evidence(

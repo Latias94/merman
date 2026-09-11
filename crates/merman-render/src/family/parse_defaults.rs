@@ -32,6 +32,15 @@ impl FamilyPaintDefaultPaths {
     }
 }
 
+const REQUIREMENT_TEXT_PAINT_DEFAULTS: FamilyPaintDefaultPaths = FamilyPaintDefaultPaths::new(
+    DiagramFamilyId::REQUIREMENT,
+    &[ThemeTarget::Text],
+    &[
+        "themeVariables.nodeTextColor",
+        "themeVariables.relationLabelColor",
+    ],
+);
+
 pub(crate) fn bind_theme_parse_defaults(
     mut plan: ThemeCompatibilityPlan,
     spec: &DiagramThemeSpec,
@@ -40,6 +49,7 @@ pub(crate) fn bind_theme_parse_defaults(
         &crate::gitgraph::GITGRAPH_NODE_PAINT_DEFAULTS,
         &crate::er::ER_PAINT_DEFAULTS,
         &crate::requirement::REQUIREMENT_RELATION_PAINT_DEFAULTS,
+        &REQUIREMENT_TEXT_PAINT_DEFAULTS,
     ] {
         if defaults.requested_by(spec) {
             plan = plan

@@ -861,21 +861,23 @@ pub(super) fn requirement_css_with_typography<I>(
 where
     I: SvgDiagramIdValue,
 {
-    requirement_css_with_relation_paint(
+    requirement_css_with_relation_paint_and_text(
         diagram_id,
         effective_config,
         resolved_font_family,
         resolved_font_size,
         None,
+        None,
     )
 }
 
-pub(super) fn requirement_css_with_relation_paint<I>(
+pub(super) fn requirement_css_with_relation_paint_and_text<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
     resolved_font_size: Option<&str>,
     typed_relation_color: Option<(usize, &str)>,
+    mut text_receipt: Option<&mut crate::requirement::RequirementTextPaintReceipt<'_>>,
 ) -> RequirementCssEmission
 where
     I: SvgDiagramIdValue,
@@ -916,6 +918,7 @@ where
     let font_family = font_family.into_boxed_str();
     let font = font_family.as_ref();
     let node_text_color = config_string(effective_config, &["themeVariables", "nodeTextColor"])
+        .filter(|color| !color.is_empty())
         .unwrap_or_else(|| text_color.clone());
 
     let option = |key: &str, default_value: &str| -> String {
@@ -957,44 +960,36 @@ where
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}}}#{} .reqBox{{fill:{};fill-opacity:1.0;stroke:{};stroke-width:{};}}#{} .reqTitle,#{} .reqLabel{{fill:{};}}#{} .reqLabelBox{{fill:{};fill-opacity:1.0;}}#{} .req-title-line{{stroke:{};stroke-width:{};}}#{} .relationshipLine{{stroke:{};stroke-width:{};}}#{} .relationshipLabel{{fill:{};}}#{} .edgeLabel{{background-color:{};}}#{} .edgeLabel .label rect{{fill:{};}}#{} .edgeLabel .label text{{fill:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} .label{{font-family:{};color:{};}}#{} .label text,#{} span{{fill:{};color:{};}}#{} .labelBkg{{background-color:{};}}"#,
-        id,
-        font,
-        font_size,
-        id,
-        requirement_background,
-        requirement_border_color,
-        requirement_border_size,
-        id,
-        id,
-        requirement_text_color,
-        id,
-        relation_label_background,
-        id,
-        requirement_border_color,
-        requirement_border_size,
-        id,
-        relation_color,
-        relationship_line_stroke_width,
-        id,
-        relation_label_color,
-        id,
-        edge_label_background,
-        id,
-        edge_label_background,
-        id,
-        relation_label_color,
-        id,
-        node_border,
-        id,
-        font,
-        node_text_color,
-        id,
-        id,
-        node_text_color,
-        node_text_color,
-        id,
-        requirement_edge_label_background
+        r#"#{id} svg{{font-family:{font};font-size:{font_size}}}#{id} .reqBox{{fill:{requirement_background};fill-opacity:1.0;stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .reqTitle,#{id} .reqLabel{{fill:{requirement_text_color};}}#{id} .reqLabelBox{{fill:{relation_label_background};fill-opacity:1.0;}}#{id} .req-title-line{{stroke:{requirement_border_color};stroke-width:{requirement_border_size};}}#{id} .relationshipLine{{stroke:{relation_color};stroke-width:{relationship_line_stroke_width};}}#{id} .relationshipLabel{{"#,
+    );
+    let _ = write!(&mut out, "fill:{relation_label_color};");
+    let _ = write!(
+        &mut out,
+        r#"}}#{id} .edgeLabel{{background-color:{edge_label_background};}}#{id} .edgeLabel .label rect{{fill:{edge_label_background};}}#{id} .edgeLabel .label text{{"#,
+    );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        let _ = receipt.write_relation_css(&mut out, &relation_label_color);
+    } else {
+        let _ = write!(&mut out, "fill:{relation_label_color};");
+    }
+    let _ = write!(
+        &mut out,
+        r#"}}#{id} .divider{{stroke:{node_border};stroke-width:1;}}#{id} .label{{font-family:{font};"#,
+    );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        let _ = receipt.write_node_css(&mut out, &node_text_color, false);
+    } else {
+        let _ = write!(&mut out, "color:{node_text_color};");
+    }
+    let _ = write!(&mut out, "}}#{id} .label text,#{id} span{{");
+    if let Some(receipt) = text_receipt {
+        let _ = receipt.write_node_css(&mut out, &node_text_color, true);
+    } else {
+        let _ = write!(&mut out, "fill:{node_text_color};color:{node_text_color};");
+    }
+    let _ = write!(
+        &mut out,
+        "}}#{id} .labelBkg{{background-color:{requirement_edge_label_background};}}"
     );
     out.push_str(&root_rule);
     RequirementCssEmission {

@@ -422,7 +422,7 @@ impl CutoverWitnessProfile {
         {
             &Self::TIMELINE_EVENT_STROKE
         } else if route.family_id() == DiagramFamilyId::REQUIREMENT
-            && route.target() == ThemeTarget::Relation
+            && matches!(route.target(), ThemeTarget::Relation | ThemeTarget::Text)
         {
             &Self::TEXT_LOOKS
         } else if route.family_id() == DiagramFamilyId::GANTT
@@ -558,6 +558,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::SANKEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(SANKEY_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::REQUIREMENT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(REQUIREMENT_RELATION_SOURCE)
         }
         (
             DiagramFamilyId::REQUIREMENT,
@@ -1632,6 +1635,72 @@ mod tests {
     }
 
     #[test]
+    fn requirement_text_node_and_relation_colors_have_independent_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for owner in ["nodeTextColor", "relationLabelColor"] {
+            for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                for selector in [
+                    ThemeRouteCutoverSelector::StaticUnqualified,
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                ] {
+                    let render = |value| {
+                        let route = inventory
+                            .iter()
+                            .copied()
+                            .find(|route| {
+                                route.family_id() == DiagramFamilyId::REQUIREMENT
+                                    && route.target() == ThemeTarget::Text
+                                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                                    && route.selector() == selector
+                                    && route.value() == value
+                            })
+                            .expect("Requirement text route");
+                        let id = CutoverWitnessId::new(route, profile);
+                        let case = super::CutoverCase {
+                            id,
+                            source: super::REQUIREMENT_RELATION_SOURCE,
+                        };
+                        let theme = super::compile_cutover_theme(case).expect("typed text theme");
+                        let renderer = super::cutover_renderer(id).with_engine(
+                            super::Engine::new().with_site_config(
+                                super::MermaidConfig::from_value(serde_json::json!({
+                                    "htmlLabels": false, "look": profile.look(),
+                                    "themeVariables": { (owner): "#112233" }
+                                })),
+                            ),
+                        );
+                        (
+                            route,
+                            super::render_cutover_document(&renderer, case, theme)
+                                .expect("independent text consumer SVG"),
+                        )
+                    };
+                    let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                    let (transparent_route, transparent) =
+                        render(ThemeRouteCutoverValue::Transparent);
+                    let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                        &solid,
+                        &transparent,
+                        solid_route,
+                        transparent_route,
+                        &merman_export::RasterOptions::default().with_scale(2.0),
+                        merman::OperationControl::new(),
+                    )
+                    .expect("each unowned text color must produce independent native pixels");
+                    for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                        super::validate_cutover_target_receipt(
+                            CutoverTargetAdmissionContract::PortableNativePngV1,
+                            receipt,
+                        )
+                        .expect("unchanged native PNG admission");
+                    }
+                    assert_ne!(pair.receipt_digest(), [0; 32]);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn timeline_event_stroke_has_visible_redux_axis_png_evidence() {
         let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
         for selector in [
@@ -1711,11 +1780,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_358_routes_and_476_artifact_witnesses() {
+    fn route_inventory_retains_362_routes_and_488_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 358);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 476);
+        assert_eq!(inventory.len(), 362);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 488);
     }
 
     #[test]

@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 66;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 67;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    235, 250, 53, 134, 164, 248, 187, 14, 138, 58, 88, 3, 148, 41, 70, 153, 91, 177, 195, 10, 97,
-    233, 131, 190, 85, 139, 6, 27, 156, 159, 239, 38,
+    92, 30, 137, 83, 148, 174, 205, 12, 222, 18, 115, 61, 227, 178, 120, 188, 246, 136, 57, 74,
+    127, 215, 78, 6, 219, 2, 232, 164, 204, 231, 40, 155,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 49] = [
+); 50] = [
+    (
+        ThemeRouteCutoverProjection::RequirementTextFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::TimelineEventStroke,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -410,7 +414,40 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 358] = [
+const REQUIREMENT_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::RequirementTextFill];
+
+const ACTIVE_ROUTES: [RouteAuthorization; 362] = [
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::TIMELINE,
         ThemeTarget::TimelineEvent,
@@ -3451,6 +3488,32 @@ mod tests {
     }
 
     #[test]
+    fn requirement_text_authority_replaces_only_the_four_static_fill_routes() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::REQUIREMENT
+                    && route.id.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Solid,
+                ThemeRouteCutoverValue::Transparent,
+            ] {
+                assert!(routes.iter().any(|route| route.id.selector() == selector
+                    && route.id.value() == value
+                    && route.id.facet() == ThemeRouteCutoverFacet::Fill
+                    && route.projections == super::REQUIREMENT_TEXT_FILL_PROJECTIONS));
+            }
+        }
+    }
+
+    #[test]
     fn requirement_relation_authority_replaces_the_exact_static_paint_domain() {
         let actual = ACTIVE_ROUTES
             .iter()
@@ -3869,7 +3932,7 @@ mod tests {
             assert_eq!(
                 qualified.len(),
                 if family == DiagramFamilyId::REQUIREMENT {
-                    8
+                    10
                 } else {
                     4
                 }

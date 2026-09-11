@@ -594,6 +594,9 @@ fn legacy_bridge_projections(
             ThemeTarget::Text,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL),
+        (DiagramFamilyId::REQUIREMENT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_TEXT_FILL)
+        }
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL)
         }
@@ -2181,6 +2184,23 @@ pub(super) fn classify_rule_facet(
         } else {
             FamilyThemeDisposition::Unsupported
         };
+    }
+    if family == DiagramFamilyId::REQUIREMENT
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::REQUIREMENT
         && matches!(target, ThemeTarget::Requirement | ThemeTarget::Relation)
@@ -4112,7 +4132,7 @@ mod tests {
                 );
                 assert_eq!(
                     classify_rule_facet(
-                        DiagramFamilyId::REQUIREMENT,
+                        DiagramFamilyId::SEQUENCE,
                         ThemeTarget::Text,
                         selector,
                         facet
@@ -6119,6 +6139,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["requirement.text"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["requirement.text"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
                 ThemeTarget::Requirement,
                 Fill,
                 Transparent,
@@ -6716,7 +6750,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 178);
+        assert_eq!(qualified.len(), 180);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6746,7 +6780,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::REQUIREMENT)
                 .count(),
-            8
+            10
         );
         assert_eq!(
             qualified

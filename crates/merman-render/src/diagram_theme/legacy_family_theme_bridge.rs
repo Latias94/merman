@@ -478,11 +478,11 @@ fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<Legacy
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => compile_node_family,
         DiagramFamilyId::SEQUENCE => compile_sequence_family,
-        DiagramFamilyId::REQUIREMENT => compile_requirement_family,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             compile_chart_family
         }
-        DiagramFamilyId::TIMELINE
+        DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::TIMELINE
         | DiagramFamilyId::STATE
         | DiagramFamilyId::ER
         | DiagramFamilyId::GIT_GRAPH
@@ -700,23 +700,6 @@ fn compile_sequence_family(
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
 
-    contributions.finish_into(builder)
-}
-
-fn compile_requirement_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_theme_variables(
-        "requirement.text",
-        [
-            ("requirementTextColor", reader.text_fill(ThemeTarget::Text)),
-            ("nodeTextColor", reader.text_fill(ThemeTarget::Text)),
-            ("relationLabelColor", reader.text_fill(ThemeTarget::Text)),
-        ],
-    );
     contributions.finish_into(builder)
 }
 
@@ -2060,6 +2043,7 @@ gitGraph
             actual,
             BTreeSet::from([
                 DiagramFamilyId::STATE,
+                DiagramFamilyId::REQUIREMENT,
                 DiagramFamilyId::TIMELINE,
                 DiagramFamilyId::ER,
                 DiagramFamilyId::GIT_GRAPH,
@@ -2090,27 +2074,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            32, 241, 230, 160, 147, 122, 246, 130, 165, 99, 255, 195, 49, 194, 226, 48, 168, 78,
-            209, 37, 51, 64, 144, 193, 156, 85, 82, 126, 148, 37, 219, 46,
+            49, 18, 79, 90, 11, 217, 227, 21, 142, 135, 222, 178, 11, 115, 88, 150, 121, 143, 23,
+            112, 215, 179, 217, 125, 204, 242, 45, 100, 73, 201, 236, 100,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 184);
-        assert_eq!(status.matrix_family_count(), 9);
-        assert_eq!(status.dispatched_family_count(), 9);
+        assert_eq!(status.matrix_route_count(), 180);
+        assert_eq!(status.matrix_family_count(), 8);
+        assert_eq!(status.dispatched_family_count(), 8);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                11, 115, 188, 152, 224, 135, 125, 1, 210, 172, 22, 58, 140, 252, 202, 199, 41, 176,
-                23, 134, 16, 21, 23, 235, 75, 70, 49, 226, 29, 103, 32, 170
+                162, 145, 190, 186, 120, 122, 158, 175, 0, 120, 251, 117, 93, 156, 146, 219, 26,
+                172, 63, 249, 11, 93, 171, 212, 40, 36, 203, 122, 213, 241, 62, 164
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                213, 12, 155, 245, 113, 226, 120, 62, 158, 243, 119, 137, 176, 82, 1, 32, 57, 165,
-                64, 215, 223, 210, 253, 161, 33, 248, 31, 191, 194, 44, 128, 102
+                253, 171, 157, 197, 106, 146, 47, 23, 92, 17, 161, 30, 215, 126, 179, 54, 14, 202,
+                181, 37, 176, 216, 186, 248, 226, 218, 159, 65, 73, 149, 144, 99
             ]
         );
         assert_eq!(
@@ -2635,11 +2619,11 @@ gitGraph
                 assert!(
                     !bridge.owns_contribution_id("merman.legacy-family-theme.v1.kanban.text.fill")
                 );
-                let requirement = bridge.compile_for_family(DiagramFamilyId::REQUIREMENT);
+                let chart = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
                 assert!(
-                    requirement
+                    chart
                         .contribution_ids
-                        .contains("merman.legacy-family-theme.v1.requirement.requirement.text")
+                        .contains("merman.legacy-family-theme.v1.xychart.chart.text-axis")
                 );
 
                 let baseline = parse(&DiagramThemeSpec::new(), SOURCE);

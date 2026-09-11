@@ -128,6 +128,21 @@ impl VisibleTextStyleFacts {
             .count()
     }
 
+    /// Portable paint cannot resolve CSS variables or document-dependent inline colors.
+    pub(crate) fn unverified_portable_color_run_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| match &run.color_owner {
+                VisibleTextColorOwner::Inherited => false,
+                VisibleTextColorOwner::CssClass => true,
+                VisibleTextColorOwner::Inline(value) => {
+                    !crate::mermaid_style::is_supported_css_color_value(value)
+                        && !value.eq_ignore_ascii_case("initial")
+                }
+            })
+            .count()
+    }
+
     pub(crate) fn inherited_font_family_run_count(&self) -> usize {
         self.runs
             .iter()
@@ -329,6 +344,26 @@ fn is_fontawesome_icon(node: roxmltree::Node<'_, '_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::VisibleTextStyleFacts;
+
+    #[test]
+    fn portable_paint_distinguishes_dynamic_inline_colors_from_static_owners() {
+        for (value, unknown) in [
+            ("var(--ink)", 1),
+            ("#123456", 0),
+            ("initial", 0),
+            ("transparent", 0),
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(&format!(
+                "<span style=\"color:{value}\">Label</span>"
+            ));
+            assert!(facts.parse_valid());
+            assert_eq!(
+                facts.unverified_portable_color_run_count(),
+                unknown,
+                "{value}"
+            );
+        }
+    }
 
     #[test]
     fn visible_text_facts_track_inherited_and_inline_color_runs() {

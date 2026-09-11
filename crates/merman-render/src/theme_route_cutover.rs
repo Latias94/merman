@@ -378,11 +378,12 @@ pub enum ThemeRouteCutoverProjection {
     RequirementRelationPaint = 46,
     TimelineTextFill = 47,
     TimelineEventStroke = 48,
+    RequirementTextFill = 49,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 49] = [
+    const ALL: [Self; 50] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -432,6 +433,7 @@ impl ThemeRouteCutoverProjection {
         Self::RequirementRelationPaint,
         Self::TimelineTextFill,
         Self::TimelineEventStroke,
+        Self::RequirementTextFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -484,6 +486,7 @@ impl ThemeRouteCutoverProjection {
             Self::RequirementRelationPaint => "relation.paint",
             Self::TimelineTextFill => "event.text",
             Self::TimelineEventStroke => "event.stroke",
+            Self::RequirementTextFill => "requirement.text",
         }
     }
 
@@ -539,6 +542,7 @@ impl ThemeRouteCutoverProjection {
             | Self::ErTableEvenFill
             | Self::TimelineTextFill
             | Self::TimelineEventStroke
+            | Self::RequirementTextFill
             | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
@@ -676,6 +680,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::TimelineTextFill);
     pub const REPLACE_TIMELINE_EVENT_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::TimelineEventStroke);
+    pub const REPLACE_REQUIREMENT_TEXT_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::RequirementTextFill);
     pub const REPLACE_ER_TABLE_FILL: Self = Self(
         ThemeRouteCutoverProjection::ErTableOddFill.bit()
             | ThemeRouteCutoverProjection::ErTableEvenFill.bit(),
@@ -1399,6 +1405,7 @@ mod tests {
         );
         assert_eq!(ThemeRouteCutoverProjection::TimelineTextFill as u8, 47);
         assert_eq!(ThemeRouteCutoverProjection::TimelineEventStroke as u8, 48);
+        assert_eq!(ThemeRouteCutoverProjection::RequirementTextFill as u8, 49);
     }
 
     #[test]

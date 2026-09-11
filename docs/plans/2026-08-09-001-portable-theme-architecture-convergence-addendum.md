@@ -2,7 +2,7 @@
 title: "Portable Theme Architecture Convergence - Plan Addendum"
 type: refactor
 date: 2026-08-09
-updated: 2026-09-10
+updated: 2026-09-11
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md
@@ -22,7 +22,7 @@ execution: code
 | Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Implement and verify the accepted but unfrozen authoring-facade design, finish core convergence and the representative native C6a checkpoint, then verify the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
-## Current Implementation Reconciliation (2026-09-10)
+## Current Implementation Reconciliation (2026-09-11)
 
 The implementation has advanced beyond several snapshots embedded in the historical decision
 record. The current source and generated contract are authoritative for these superseding facts:
@@ -56,6 +56,15 @@ record. The current source and generated contract are authoritative for these su
   own the actual CSS declarations and count emitted consumers. The native SVG/PNG witness uses
   a title-only Redux diagram with a visible activity axis; it does not qualify shadow-bearing
   nodes. Ordinal stroke remains Unsupported and winning matches retain residuals.
+- KTD17 v67 migrates Requirement static unqualified/Default `Text.fill` for solid and transparent
+  values, replacing `requirement.text` and removing its final family bridge. Node/HTML labels use
+  `nodeTextColor`, while SVG relation labels independently use `relationLabelColor`. Both config
+  owners are captured before theme defaults are materialized, and node source colors retain
+  precedence. The old `requirementTextColor` selectors have no terminal and supply no evidence.
+  Three-look SVG/PNG witnesses and independent node/relation PNG pairs prove the live consumers;
+  Chromium checks the same source/config cascade in HTML and SVG labels. Writer-owned receipts
+  reconcile actual labels, CSS writes, and per-label winners. Matching unsupported ordinal rules
+  and dynamic colors remain residuals. The actual diagram title is outside this text surface.
 - Treemap Text.fill is typed for static unqualified/Default solid and transparent paint. Label
   and value configuration owners remain independent; no participating visible text terminal is
   `NotApplicable`. Its old Text projection no longer requires a family bridge.
@@ -1072,9 +1081,9 @@ The C5 Requirement slice now retires the family base `FontStack`/`FontSize` cont
 by property. `RequirementPaintThemePlan` resolves the final family size once and shares it with
 label measurement, layout, root/nested-SVG/label CSS, and the writer-owned typography receipt.
 Explicit `themeVariables.fontSize` ownership reports `NotApplicable`; root `fontSize` remains the
-independent calculation/layout owner and does not suppress the typed CSS size. Requirement relation,
-text, table, and remaining paint surfaces continue through their existing compatibility or
-Unsupported paths, so the family bridge remains required for those mechanisms.
+independent calculation/layout owner and does not suppress the typed CSS size. The subsequent
+KTD17 v63 relation-paint and v67 text-paint migrations remove Requirement's remaining family bridge.
+Table and other unsupported mechanisms gain no consumer through these migrations.
 
 The C5 Venn slice moves only the family `FontStack` route to a typed terminal. The
 `VennTypographyThemePlan` resolves `themeVariables.fontFamily` first and keeps root

@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 mod config;
 mod relation_paint;
 mod source_typography;
+mod text_paint;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
@@ -26,6 +27,10 @@ pub(crate) use relation_paint::{
     REQUIREMENT_RELATION_PAINT_DEFAULTS, RequirementRelationPaintPlan,
 };
 pub(crate) use source_typography::RequirementNodeTypography;
+pub(crate) use text_paint::{
+    RequirementTextColorOwner, RequirementTextPaintPlan, RequirementTextPaintReceipt,
+    RequirementTextTerminalId,
+};
 pub(crate) use theme::{RequirementDividerEmission, RequirementPaintThemePlan};
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {

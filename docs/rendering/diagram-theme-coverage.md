@@ -4,31 +4,33 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-10
+## Snapshot: 2026-09-11
 
 The source inventories, not this summary, authorize rendering and retirement:
 
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 24/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 9/33; 184 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 25/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 8/33; 180 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 63 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v66; 358 routes / 476 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 64 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v67; 362 routes / 488 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 66 adds four Timeline Event.stroke routes (unqualified/Default,
-solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
+output files. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
+solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
+text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
+four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
 PNG; family receipts and SVG integration tests cover the shared node/label/line fanout. This does
 not qualify shadow-bearing nodes for native export. Version 65 adds four Timeline Text.fill routes
 (unqualified/Default, solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
 arrowhead fill. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
 solid/transparent), with Classic, Neo and HandDrawn witnesses for relation paths and referenced
 markers. Explicit `relationColor` retains ownership; any specified stroke suppresses the fill
-fallback. Requirement Text.fill remains on the bridge. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
+fallback. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
 Default Text.fill, and unqualified/Default Relation.fill. Classic witnesses cover the row fills,
 relation stroke channel, and visible text including the diagram title. Version 61 adds four ER
 Table.fill routes (Odd/Even, solid/transparent) with Classic witnesses. Family tests also cover Neo/HandDrawn and HTML/SVG labels. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
@@ -80,7 +82,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | GitGraph | Typed | Typed | None |
 | Gantt | Typed | Unsupported | None |
 | Kanban | Typed | Typed | None |
-| Requirement | Typed | Typed | Required |
+| Requirement | Typed | Typed | None |
 | ER | Typed | Typed | None |
 | Pie | Typed | Unsupported | None |
 | XY Chart | Typed | Unsupported | Required |
@@ -164,6 +166,15 @@ Important boundaries that a family-level count cannot express:
 - Treemap shares its FontStack plan with text measurement and final output. Static unqualified and
   Default Text.fill preserve independent label/value config ownership; no participating text
   terminal means `NotApplicable`. Role-local sizes do not become a base FontSize consumer.
+- Requirement static unqualified/Default Text.fill directly replaces `requirement.text`.
+  Node SVG/HTML labels and HTML relation labels consume `nodeTextColor`; SVG relation labels
+  independently consume `relationLabelColor`. Source `color` declarations retain ownership.
+  The retired `requirementTextColor` projection only addressed absent `.reqTitle`/`.reqLabel`
+  terminals; the actual diagram title is outside this Text.fill surface. Receipts own the three
+  active CSS declarations and reconcile prepared label identities with emitted label facts.
+  Empty labels and self-loop anchors do not create ordinal occurrences. Matching unsupported
+  ordinal rules and unknown dynamic colors remain residuals; overridden rules and absent or
+  entirely source-owned consumers are NotApplicable. Requirement no longer has a family bridge.
 - Timeline static unqualified/Default Event.fill is in KTD17, independently of its ordinal palette,
   radius, opacity, and typography routes. Static unqualified/Default Text.fill directly owns the
   root inherited paint; explicit textColor retains ownership. The writer records titles,
