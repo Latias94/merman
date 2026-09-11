@@ -215,6 +215,85 @@ fn radar_typed_title_fill_reaches_the_title_terminal() {
 }
 
 #[test]
+fn radar_default_title_fill_preserves_winners_and_configuration_owners() {
+    use merman_render::diagram_theme::ThemeVariant;
+
+    for (fill, expected) in [
+        (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        for later_override in [false, true] {
+            let mut rules = ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(fill.clone()),
+                )
+                .with_variant(ThemeVariant::Default)
+                .for_family(DiagramFamilyId::RADAR),
+            );
+            if later_override {
+                rules = rules.with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::RADAR),
+                );
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(rules))
+                .unwrap();
+            for title_present in [false, true] {
+                for config_owner in [false, true] {
+                    let source = if title_present {
+                        "radar-beta\ntitle Typed radar\naxis A,B,C\ncurve Current{3,4,2}\n"
+                    } else {
+                        "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n"
+                    };
+                    let engine = if config_owner {
+                        Engine::new().with_site_config(MermaidConfig::from_value(
+                            serde_json::json!({"themeVariables":{"titleColor":"#445566"}}),
+                        ))
+                    } else {
+                        Engine::new()
+                    };
+                    let rendered = render_radar_with_theme_and_engine(source, &theme, engine);
+                    if title_present {
+                        let color = if config_owner {
+                            "#445566"
+                        } else if later_override {
+                            "#abcdef"
+                        } else {
+                            expected
+                        };
+                        assert!(
+                            radar_stylesheet(rendered.svg())
+                                .contains(&format!(".radarTitle{{font-size:16px;color:{color};")),
+                            "{}",
+                            rendered.svg()
+                        );
+                    }
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        usize::from(title_present && !config_owner)
+                    );
+                    assert_eq!(
+                        evidence.not_applicable_count(),
+                        1 + usize::from(later_override)
+                            - usize::from(title_present && !config_owner)
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn radar_mixed_typography_is_direct_and_portable() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(FontStack::single("RadarMixed").expect("valid mixed Radar font stack"))

@@ -2369,7 +2369,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::RADAR
         && target == ThemeTarget::Title
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -4335,7 +4340,7 @@ mod tests {
     }
 
     #[test]
-    fn radar_title_fill_is_typed_only_when_unqualified() {
+    fn radar_title_fill_is_typed_for_unqualified_and_default() {
         let solid = FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid);
         let unqualified = FamilyThemeSelectorShape::Static { variant: None };
         let default = FamilyThemeSelectorShape::Static {
@@ -4353,7 +4358,7 @@ mod tests {
         );
         assert_eq!(
             classify_rule_facet(DiagramFamilyId::RADAR, ThemeTarget::Title, default, solid),
-            FamilyThemeDisposition::LegacyCompatibility
+            FamilyThemeDisposition::TypedAdapter
         );
     }
 

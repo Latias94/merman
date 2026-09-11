@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 68;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 69;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    253, 169, 118, 27, 43, 180, 213, 86, 176, 123, 44, 192, 183, 77, 146, 235, 49, 96, 175, 143,
-    237, 167, 204, 228, 133, 14, 66, 233, 132, 115, 90, 79,
+    188, 139, 43, 171, 214, 82, 26, 6, 227, 0, 232, 246, 174, 95, 167, 171, 4, 6, 208, 6, 71, 16,
+    248, 77, 180, 136, 102, 104, 40, 30, 177, 128,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -417,7 +417,7 @@ struct CutoverAuthorizationManifest<'a> {
 const REQUIREMENT_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementTextFill];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 370] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 372] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Title,
@@ -3188,6 +3188,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 370] = [
     route(
         DiagramFamilyId::RADAR,
         ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Title,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Title,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TITLE_FILL_PROJECTIONS,

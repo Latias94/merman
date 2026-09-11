@@ -252,7 +252,7 @@ impl RadarTitleThemePlan {
                         theme,
                         style,
                         &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Unqualified,
+                        DirectStaticSelectorDomain::Default,
                     )
                 })
             })
@@ -281,15 +281,7 @@ impl RadarTitleThemePlan {
             }
             let route_won =
                 winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            let qualified_variant = matches!(
-                selector,
-                FamilyThemeSelectorShape::Static { variant: Some(_) }
-                    | FamilyThemeSelectorShape::Ordinal {
-                        variant: Some(_),
-                        ..
-                    }
-            );
-            if !route_won && !qualified_variant {
+            if !route_won {
                 continue;
             }
             observation.applicable = true;
@@ -299,7 +291,9 @@ impl RadarTitleThemePlan {
             match (route.disposition(), selector, facet) {
                 (
                     FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                     FamilyThemeRuleFacet::Fill(_),
                 ) if typed_fill_rule == Some(rule_index) => observation.fill_pending = true,
                 (FamilyThemeDisposition::Unsupported, _, facet) => {
