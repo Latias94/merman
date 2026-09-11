@@ -99,14 +99,16 @@ fn prepare_sankey_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let typography_theme = crate::sankey::SankeyTypographyThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-    );
     let layout = crate::sankey::layout_sankey_diagram_typed_with_work_meter(
         &model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
+        execution.work_meter_ref(),
+    )?;
+    let typography_theme = crate::sankey::SankeyTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        layout.nodes.len(),
         execution.work_meter_ref(),
     )?;
     let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(

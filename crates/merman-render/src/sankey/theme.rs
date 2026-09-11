@@ -1,15 +1,16 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
+    ResolvedStyleProperty, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
     InheritedFontStackOutcome, InheritedFontStackPlan, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -44,7 +45,7 @@ pub(crate) struct SankeyTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     text_fill: Option<DirectStaticPaint>,
-    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
+    text_rules: BTreeMap<usize, SankeyTextRuleObservation>,
     config_owns_text_fill: bool,
     terminal_receipt: OnceLock<SankeyTypographyTerminalSeal>,
 }
@@ -53,57 +54,104 @@ impl SankeyTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
-    ) -> Self {
-        Self {
+        label_count: usize,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let config_owns_text_fill = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.textColor",
+        );
+        let mut text_fill = None;
+        let mut text_rules = BTreeMap::<usize, SankeyTextRuleObservation>::new();
+        if let Some(theme) = theme {
+            let static_style = theme.style_with_work_meter(
+                ThemeTarget::Text,
+                ThemeVariant::Default,
+                None,
+                work_meter,
+            )?;
+            text_fill = resolve_direct_static_fill(
+                theme,
+                &static_style,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Default,
+            );
+            work_meter.charge(theme.family_mechanism_routes().len())?;
+            let mut facets = BTreeMap::new();
+            let mut has_ordinals = false;
+            for route in theme.family_mechanism_routes() {
+                if let FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Text,
+                    selector,
+                    facet,
+                } = route.mechanism()
+                {
+                    text_rules.entry(rule_index).or_default();
+                    has_ordinals |= matches!(
+                        selector,
+                        crate::diagram_theme::FamilyThemeSelectorShape::Ordinal { .. }
+                    );
+                    facets.insert(
+                        (rule_index, resolved_style_property_for_facet(facet)),
+                        facet,
+                    );
+                }
+            }
+            let occurrence_count = if has_ordinals {
+                label_count
+            } else {
+                usize::from(label_count != 0)
+            };
+            for ordinal in 1..=occurrence_count {
+                work_meter.charge(1)?;
+                let ordinal_style;
+                let style = if has_ordinals {
+                    ordinal_style = theme.style_with_work_meter(
+                        ThemeTarget::Text,
+                        ThemeVariant::Default,
+                        Some(ordinal),
+                        work_meter,
+                    )?;
+                    &ordinal_style
+                } else {
+                    &static_style
+                };
+                for (property, origin) in style.winner_rule_properties() {
+                    if config_owns_text_fill && property == ResolvedStyleProperty::Fill {
+                        continue;
+                    }
+                    let Some(facet) = facets.get(&(origin.rule_index(), property)) else {
+                        continue;
+                    };
+                    let observation = text_rules
+                        .get_mut(&origin.rule_index())
+                        .expect("registered text rule");
+                    if property == ResolvedStyleProperty::Fill
+                        && text_fill
+                            .as_ref()
+                            .is_some_and(|fill| fill.rule_index() == origin.rule_index())
+                    {
+                        observation.fill_pending = true;
+                    } else {
+                        observation
+                            .residual
+                            .get_or_insert(unsupported_residual_for_facet(*facet));
+                    }
+                }
+            }
+        }
+        Ok(Self {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
             ),
             evidence: FamilyThemeEvidence::from_theme(theme),
-            text_fill: theme.and_then(|theme| {
-                let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
-                resolve_direct_static_fill(
-                    theme,
-                    &style,
-                    &[ThemeTarget::Text],
-                    DirectStaticSelectorDomain::Default,
-                )
-            }),
-            text_fill_routes: theme
-                .map(|theme| {
-                    theme
-                        .family_mechanism_routes()
-                        .iter()
-                        .copied()
-                        .filter_map(|route| match route.mechanism() {
-                            crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
-                                rule_index,
-                                target: ThemeTarget::Text,
-                                facet: crate::diagram_theme::FamilyThemeRuleFacet::Fill(_),
-                                selector,
-                                ..
-                            } if route.disposition() == FamilyThemeDisposition::TypedAdapter
-                                && matches!(
-                                    selector,
-                                    crate::diagram_theme::FamilyThemeSelectorShape::Static {
-                                        variant: None | Some(ThemeVariant::Default)
-                                    }
-                                ) =>
-                            {
-                                Some((theme.family_mechanism_key(route), rule_index))
-                            }
-                            _ => None,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            config_owns_text_fill: theme.is_some()
-                && merman_core::__private::config_path_overrides_typed_default(
-                    effective_config,
-                    "themeVariables.textColor",
-                ),
+            text_fill,
+            text_rules,
+            config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
-        }
+        })
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -115,7 +163,7 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         outlined_labels: bool,
     ) -> Option<SankeyTypographyThemeReceipt<'_>> {
-        (self.inherited_font_stack.typography_requested() || self.text_fill.is_some())
+        (self.inherited_font_stack.typography_requested() || !self.text_rules.is_empty())
             .then(|| SankeyTypographyThemeReceipt::new(self, label_count, outlined_labels))
     }
 
@@ -143,12 +191,15 @@ impl SankeyTypographyThemePlan {
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
-            for (key, _) in &self.text_fill_routes {
-                if self.config_owns_text_fill {
-                    evidence.mark_not_applicable(key.clone());
-                } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            for (index, observation) in &self.text_rules {
+                let key = FamilyThemeMechanismKey::Rule {
+                    index: *index,
+                    target: ThemeTarget::Text,
+                };
+                if let Some(reason) = observation.residual {
+                    evidence.mark_residual(key, reason);
+                } else if observation.fill_pending {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
             return evidence;
@@ -172,35 +223,35 @@ impl SankeyTypographyThemePlan {
                 }
             }
         }
-        for (key, rule_index) in &self.text_fill_routes {
-            if self.config_owns_text_fill {
-                evidence.mark_not_applicable(key.clone());
-            } else if self
-                .text_fill
-                .as_ref()
-                .is_some_and(|fill| fill.rule_index() == *rule_index)
-            {
-                if !receipt.has_visible_label {
-                    evidence.mark_not_applicable(key.clone());
-                } else if let Some(fill) = self.text_fill.as_ref() {
-                    if receipt.text_fill_css.as_deref() == Some(fill.css()) {
-                        evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
-                    } else {
-                        evidence.mark_residual(
-                            key.clone(),
-                            FamilyThemeResidualReason::UnsupportedPaint,
-                        );
-                    }
+        for (index, observation) in &self.text_rules {
+            let key = FamilyThemeMechanismKey::Rule {
+                index: *index,
+                target: ThemeTarget::Text,
+            };
+            if !receipt.has_visible_label {
+                evidence.mark_not_applicable(key);
+            } else if let Some(reason) = observation.residual {
+                evidence.mark_residual(key, reason);
+            } else if observation.fill_pending {
+                if let Some(fill) = self.text_fill.as_ref()
+                    && receipt.text_fill_css.as_deref() == Some(fill.css())
+                {
+                    evidence.mark_applied_with_capabilities(key, [fill.capability()]);
                 } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
                 }
             } else {
-                evidence.mark_not_applicable(key.clone());
+                evidence.mark_not_applicable(key);
             }
         }
         evidence
     }
+}
+
+#[derive(Debug, Default)]
+struct SankeyTextRuleObservation {
+    fill_pending: bool,
+    residual: Option<FamilyThemeResidualReason>,
 }
 
 /// Milestone issued only after the final Sankey stylesheet writer completes successfully.
@@ -716,7 +767,10 @@ mod tests {
             let plan = SankeyTypographyThemePlan::resolve(
                 Some(&theme),
                 &MermaidConfig::from_value(json!({})),
-            );
+                2,
+                &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            )
+            .unwrap();
 
             assert!(plan.record_terminal(complete_typography_receipt(
                 &plan,
@@ -736,8 +790,13 @@ mod tests {
             FontStack::single("SankeySans").expect("valid Sankey test font stack"),
         ));
 
-        let missing_css =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let missing_css = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
         let mut receipt = missing_css
             .begin_terminal_receipt(2, false)
             .expect("typed Sankey typography receipt");
@@ -747,8 +806,13 @@ mod tests {
         assert!(!missing_css.record_terminal(receipt));
         assert_eq!(missing_css.finish_evidence().residuals().len(), 1);
 
-        let duplicate_css =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let duplicate_css = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
         let mut receipt = duplicate_css
             .begin_terminal_receipt(1, false)
             .expect("typed Sankey typography receipt");
@@ -758,8 +822,13 @@ mod tests {
         assert!(!duplicate_css.record_terminal(receipt));
         assert_eq!(duplicate_css.finish_evidence().residuals().len(), 1);
 
-        let reordered =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let reordered = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
         let mut receipt = reordered
             .begin_terminal_receipt(1, true)
             .expect("typed Sankey typography receipt");
@@ -775,8 +844,13 @@ mod tests {
         let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
             FontStack::single("SankeySans").expect("valid Sankey test font stack"),
         ));
-        let wrong_font =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let wrong_font = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
         let mut receipt = wrong_font
             .begin_terminal_receipt(1, false)
             .expect("typed Sankey typography receipt");
@@ -790,8 +864,13 @@ mod tests {
         assert!(!wrong_font.record_terminal(receipt));
         assert_eq!(wrong_font.finish_evidence().residuals().len(), 1);
 
-        let inconsistent_surfaces =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let inconsistent_surfaces = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
         let mut receipt = inconsistent_surfaces
             .begin_terminal_receipt(1, false)
             .expect("typed Sankey typography receipt");
@@ -812,8 +891,13 @@ mod tests {
         let theme = resolved_typography(ThemeTextStyle::default().with_font_stack(
             FontStack::single("SankeySans").expect("valid Sankey test font stack"),
         ));
-        let plan =
-            SankeyTypographyThemePlan::resolve(Some(&theme), &MermaidConfig::from_value(json!({})));
+        let plan = SankeyTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::from_value(json!({})),
+            2,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
 
         assert!(plan.record_terminal(complete_typography_receipt(
             &plan,

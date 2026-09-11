@@ -750,3 +750,102 @@ fn sankey_link_source_and_target_colors_are_derived_without_edge_evidence() {
         assert_eq!(evidence.theme_residual_count(), 0, "{link_color}");
     }
 }
+
+#[test]
+fn sankey_text_evidence_accounts_for_each_winning_facet() {
+    use merman_render::diagram_theme::{OrdinalSelector, Specified};
+
+    for split in [false, true] {
+        for font_sibling in [false, true] {
+            for config_owner in [false, true] {
+                for outlined in [false, true] {
+                    let fill = ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap());
+                    let mut sibling = ThemeStylePatch::default();
+                    if font_sibling {
+                        sibling.typography.font_size_px = Specified::Value(40.0);
+                    } else {
+                        sibling = sibling.with_stroke(CanvasPaint::solid("#654321").unwrap());
+                    }
+                    let rules = if split {
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(ThemeTarget::Text, fill))
+                            .with_rule(ThemeRule::new(ThemeTarget::Text, sibling))
+                    } else {
+                        sibling.paint.fill = fill.paint.fill;
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(ThemeTarget::Text, sibling))
+                    };
+                    let theme = DiagramThemeCompiler::new()
+                        .compile(DiagramThemeSpec::new().with_styles(rules))
+                        .unwrap();
+                    let mut config = serde_json::json!({"sankey": {"showValues": outlined}});
+                    if config_owner {
+                        config["themeVariables"] = serde_json::json!({"textColor":"#445566"});
+                    }
+                    let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+                    let rendered = render_sankey_with_theme_requirement(
+                        "sankey-beta\nA,B,10\n",
+                        &theme,
+                        engine.clone(),
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .unwrap();
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.theme_residual_count(),
+                        1,
+                        "split={split}, font={font_sibling}, config={config_owner}"
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        usize::from(split && !config_owner)
+                    );
+                    assert!(
+                        render_sankey_with_theme_requirement(
+                            "sankey-beta\nA,B,10\n",
+                            &theme,
+                            engine,
+                            ThemePortabilityRequirement::RequirePortable
+                        )
+                        .is_err()
+                    );
+                }
+            }
+        }
+    }
+
+    // Only the second label wins this unsupported sibling; it must not be missed by a static probe.
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    ))
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::Exact(2)),
+                    ),
+            ),
+        )
+        .unwrap();
+    let rendered = render_sankey_with_theme_requirement(
+        "sankey-beta\nA,B,10\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
