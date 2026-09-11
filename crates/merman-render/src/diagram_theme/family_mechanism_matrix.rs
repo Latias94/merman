@@ -1340,7 +1340,7 @@ fn legacy_paint_route_without_writer_consumer(
                 || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
                 || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
         }
-        DiagramFamilyId::WARDLEY => {
+        DiagramFamilyId::WARDLEY | DiagramFamilyId::SEQUENCE => {
             matches!(target, ThemeTarget::Text | ThemeTarget::Title)
                 && unqualified_or_default
                 && fill
@@ -4132,7 +4132,7 @@ mod tests {
                 );
                 assert_eq!(
                     classify_rule_facet(
-                        DiagramFamilyId::SEQUENCE,
+                        DiagramFamilyId::XY_CHART,
                         ThemeTarget::Text,
                         selector,
                         facet

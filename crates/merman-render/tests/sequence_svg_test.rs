@@ -5944,3 +5944,174 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         "expected mixed sequence message formulas to replace source delimiters: {svg}"
     );
 }
+
+fn try_render_sequence_theme_request(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Sequence theme request")
+        .expect("Sequence diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("Sequence theme session");
+    family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    })
+}
+
+#[test]
+fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
+    let source = "sequenceDiagram\ntitle Diagram title\nbox Group\nparticipant A\nend\nparticipant B\nA->>B: Message\nloop Repeat\nNote over A,B: Note\nB-->>A: Reply\nend\n";
+    for look in ["classic", "neo", "handDrawn"] {
+        for variables in [
+            serde_json::json!({}),
+            serde_json::json!({"textColor":"#345678", "titleColor":"#876543"}),
+        ] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"look":look, "handDrawnSeed":42, "themeVariables":variables}),
+            ));
+            let render = |theme: &DiagramTheme, portability| {
+                try_render_sequence_theme_request(source, theme, engine.clone(), portability)
+            };
+            let baseline_theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline =
+                render(&baseline_theme, ThemePortabilityRequirement::BestEffort).unwrap();
+            assert!(baseline.svg().contains("Diagram title"));
+            for target in [ThemeTarget::Text, ThemeTarget::Title] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    for paint in [
+                        CanvasPaint::solid("#d12345").unwrap(),
+                        CanvasPaint::Transparent,
+                    ] {
+                        let mut rule =
+                            ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
+                        if let Some(variant) = variant {
+                            rule = rule.with_variant(variant);
+                        }
+                        let theme = DiagramThemeCompiler::new()
+                            .compile(
+                                DiagramThemeSpec::new()
+                                    .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                            )
+                            .unwrap();
+                        let rendered =
+                            render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
+                        assert_eq!(
+                            rendered.svg(),
+                            baseline.svg(),
+                            "{look}/{target:?}/{variant:?}/{variables}"
+                        );
+                        let completion = rendered.into_completion();
+                        let evidence =
+                            merman_render::__private::family_evidence(completion.report());
+                        assert_eq!(evidence.applied_count(), 0);
+                        assert_eq!(evidence.theme_residual_count(), 1);
+                        assert!(
+                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_err()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
+    let text = || {
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    let title = || {
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    let source = "sequenceDiagram\ntitle Diagram title\nA->>B: Message\n";
+    for (source, rules, not_applicable, residuals) in [
+        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 1, 0),
+        (
+            "sequenceDiagram\ntitle Diagram title\nparticipant A\n",
+            vec![text(), title()],
+            0,
+            2,
+        ),
+        (
+            source,
+            vec![title().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![text().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            0,
+            1,
+        ),
+        (
+            source,
+            vec![text().with_ordinal(OrdinalSelector::exact(1000).unwrap())],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![text().with_variant(ThemeVariant::Default), text()],
+            1,
+            1,
+        ),
+        (
+            source,
+            vec![
+                title().with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                title(),
+            ],
+            1,
+            1,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    rules
+                        .into_iter()
+                        .fold(ThemeRuleSet::default(), |set, rule| set.with_rule(rule)),
+                ),
+            )
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), not_applicable, "{source}");
+        assert_eq!(evidence.theme_residual_count(), residuals, "{source}");
+        assert_eq!(evidence.accounted_count(), not_applicable + residuals);
+        assert_eq!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            residuals == 0,
+            "{source}"
+        );
+    }
+}

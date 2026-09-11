@@ -520,7 +520,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared
         .theme_evidence()
         .record_typography_emission(typography_receipt);
-    root_document.complete(svg)
+    let rooted = root_document.complete(svg)?;
+    prepared.theme_evidence().record_unsupported_text_emission(
+        options.resolved_theme(),
+        prepared.diagram_title().is_some(),
+        options.work_meter(),
+    )?;
+    Ok(rooted)
 }
 
 struct SequenceActorThemeResolution {

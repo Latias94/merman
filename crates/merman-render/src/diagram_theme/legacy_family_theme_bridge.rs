@@ -477,11 +477,11 @@ fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<Legacy
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => compile_node_family,
-        DiagramFamilyId::SEQUENCE => compile_sequence_family,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             compile_chart_family
         }
-        DiagramFamilyId::REQUIREMENT
+        DiagramFamilyId::SEQUENCE
+        | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::TIMELINE
         | DiagramFamilyId::STATE
         | DiagramFamilyId::ER
@@ -684,20 +684,6 @@ fn compile_node_family(
                 reader.text_fill(ThemeTarget::ClusterLabel),
             ),
         ],
-    );
-
-    contributions.finish_into(builder)
-}
-
-fn compile_sequence_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
 
     contributions.finish_into(builder)
@@ -1110,6 +1096,34 @@ mod tests {
         install_theme_compatibility(merman_core::Engine::new(), &plan)
             .parse_metadata_sync(source)
             .expect("test diagram should parse")
+    }
+
+    #[test]
+    fn sequence_retired_text_and_title_projections_stay_empty() {
+        for target in [ThemeTarget::Text, ThemeTarget::Title] {
+            for selector in [
+                ThemeLegacyRouteSelector::StaticUnqualified,
+                ThemeLegacyRouteSelector::StaticVariant(ThemeVariant::Default),
+            ] {
+                for value in ThemeLegacyRouteValue::ALL {
+                    let receipt = legacy_projection_probe(
+                        super::super::legacy_tombstones::ThemeLegacyRouteId::new(
+                            DiagramFamilyId::SEQUENCE,
+                            target,
+                            selector,
+                            ThemeLegacyRouteFacet::Fill,
+                        ),
+                        value,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        receipt.disposition(),
+                        ThemeLegacyProjectionDisposition::Unsupported
+                    );
+                    assert!(receipt.projections().is_empty());
+                }
+            }
+        }
     }
 
     #[test]
@@ -2042,6 +2056,7 @@ gitGraph
         assert_eq!(
             actual,
             BTreeSet::from([
+                DiagramFamilyId::SEQUENCE,
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::REQUIREMENT,
                 DiagramFamilyId::TIMELINE,
@@ -2074,27 +2089,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            49, 18, 79, 90, 11, 217, 227, 21, 142, 135, 222, 178, 11, 115, 88, 150, 121, 143, 23,
-            112, 215, 179, 217, 125, 204, 242, 45, 100, 73, 201, 236, 100,
+            177, 166, 70, 135, 80, 102, 102, 183, 131, 212, 17, 161, 129, 7, 172, 10, 157, 136, 16,
+            253, 34, 217, 50, 229, 150, 190, 91, 113, 248, 163, 212, 177,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 180);
-        assert_eq!(status.matrix_family_count(), 8);
-        assert_eq!(status.dispatched_family_count(), 8);
+        assert_eq!(status.matrix_route_count(), 172);
+        assert_eq!(status.matrix_family_count(), 7);
+        assert_eq!(status.dispatched_family_count(), 7);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                162, 145, 190, 186, 120, 122, 158, 175, 0, 120, 251, 117, 93, 156, 146, 219, 26,
-                172, 63, 249, 11, 93, 171, 212, 40, 36, 203, 122, 213, 241, 62, 164
+                181, 229, 163, 168, 18, 50, 168, 254, 182, 70, 45, 144, 98, 225, 160, 46, 191, 88,
+                182, 147, 198, 171, 26, 226, 57, 215, 109, 217, 67, 243, 191, 133
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                253, 171, 157, 197, 106, 146, 47, 23, 92, 17, 161, 30, 215, 126, 179, 54, 14, 202,
-                181, 37, 176, 216, 186, 248, 226, 218, 159, 65, 73, 149, 144, 99
+                118, 180, 155, 132, 95, 252, 137, 117, 138, 183, 64, 127, 248, 160, 172, 77, 18,
+                205, 185, 186, 22, 107, 192, 172, 101, 0, 90, 178, 21, 83, 124, 220
             ]
         );
         assert_eq!(

@@ -26,6 +26,7 @@ pub(super) struct SequenceThemeEvidenceState {
     pub(super) note: SequenceStaticRectThemeState,
     pub(super) activation: SequenceStaticRectThemeState,
     pub(super) typography: Option<SequenceTypographyThemeReceipt>,
+    pub(super) unsupported_text: Option<crate::family::FamilyThemeEvidence>,
 }
 
 /// Winner facts produced by the terminal Sequence Actor writer.
@@ -1340,12 +1341,15 @@ impl SequenceTypographyThemeReceipt {
             .any(|role| role.base_property_terminal_incomplete(property))
     }
 
-    pub(super) fn base_relevant_occurrences(&self) -> usize {
-        let role_candidates = [&self.actor, &self.message, &self.note, &self.loop_label]
+    pub(super) fn role_label_candidate_count(&self) -> usize {
+        [&self.actor, &self.message, &self.note, &self.loop_label]
             .iter()
             .map(|role| role.label_candidate_count())
-            .sum::<usize>();
-        role_candidates.saturating_add(
+            .sum()
+    }
+
+    pub(super) fn base_relevant_occurrences(&self) -> usize {
+        self.role_label_candidate_count().saturating_add(
             self.base
                 .inherited_font_stack_occurrences
                 .max(self.base.inherited_font_size_occurrences),

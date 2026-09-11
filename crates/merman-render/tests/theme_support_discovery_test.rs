@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 64);
+    assert_eq!(support.claim_revision(), 65);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -251,6 +251,21 @@ fn final_five_family_owned_paint_slices_are_reported_as_conditional() {
             "family={family} target={}",
             target.id()
         );
+    }
+}
+
+#[test]
+fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
+    for target in [ThemeTarget::Text, ThemeTarget::Title] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::SEQUENCE.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+        let support = describe_theme_support(&query);
+        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+        assert_eq!(support.claim_revision(), 65);
     }
 }
 

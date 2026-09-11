@@ -56,6 +56,15 @@ record. The current source and generated contract are authoritative for these su
   own the actual CSS declarations and count emitted consumers. The native SVG/PNG witness uses
   a title-only Redux diagram with a visible activity axis; it does not qualify shadow-bearing
   nodes. Ordinal stroke remains Unsupported and winning matches retain residuals.
+- KTD23 v5 retires the four Sequence static unqualified/Default `Text.fill` and `Title.fill`
+  identities. Baseline `096a8f7f3` probes show that each solid/transparent request projected only
+  `themeVariables.titleColor`; fixed Mermaid 11.17.2 and the local renderer have no consumer for
+  that variable. Three-look SVG comparisons preserve title, actor, box, message, control, and note
+  output. Sequence's family bridge is removed; its existing typed role-label paint stays intact.
+  Generic text/title requests remain Unsupported and are reconciled from final writer occurrence
+  facts, including shadowing and ordinal bounds. An explicit unused config value no longer makes
+  a populated unsupported request pass strict admission. This is deletion evidence, not a new
+  portable Text.fill or Title.fill capability.
 - KTD17 v67 migrates Requirement static unqualified/Default `Text.fill` for solid and transparent
   values, replacing `requirement.text` and removing its final family bridge. Node/HTML labels use
   `nodeTextColor`, while SVG relation labels independently use `relationLabelColor`. Both config

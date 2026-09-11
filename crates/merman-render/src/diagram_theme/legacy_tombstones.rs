@@ -125,7 +125,7 @@ struct TombstonePattern {
     selectors: &'static [ThemeLegacyRouteSelector],
 }
 
-const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 62;
+const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 66;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -354,7 +354,23 @@ const KANBAN_TOMBSTONES: &[TombstonePattern] = &[pattern(
     UNQUALIFIED_AND_DEFAULT,
 )];
 
+const SEQUENCE_TOMBSTONES: &[TombstonePattern] = &[
+    pattern(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Text,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+    pattern(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Title,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+];
+
 const TOMBSTONE_GROUPS: &[&[TombstonePattern]] = &[
+    SEQUENCE_TOMBSTONES,
     CLASS_TOMBSTONES,
     MINDMAP_TOMBSTONES,
     TREE_VIEW_TOMBSTONES,

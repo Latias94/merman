@@ -17,9 +17,11 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     unsupported_residual_for_facet as unsupported_reason_for_facet,
 };
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 /// Records actual Sequence writer emission so program routes alone cannot manufacture evidence.
 #[derive(Debug, Default)]
@@ -114,6 +116,65 @@ impl SequenceThemeEvidenceRecorder {
             "Sequence role typography is sealed once per terminal SVG"
         );
         state.typography = Some(receipt);
+    }
+
+    /// Reconcile unsupported text requests only after the final SVG has completed.
+    pub(crate) fn record_unsupported_text_emission(
+        &self,
+        theme: Option<&ResolvedDiagramTheme>,
+        title_present: bool,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        let Some(theme) = theme else {
+            return Ok(());
+        };
+        if !theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Text | ThemeTarget::Title,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Text | ThemeTarget::Title
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Text | ThemeTarget::Title,
+                    ..
+                }
+            )
+        }) {
+            return Ok(());
+        }
+
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(typography) = state.typography.as_ref() else {
+            return Ok(());
+        };
+        let title_count = usize::from(title_present);
+        let text_count = typography
+            .role_label_candidate_count()
+            .saturating_add(state.sequence_number.receipt.text_candidates)
+            .saturating_add(title_count);
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Text,
+                    TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
+                ),
+            ],
+            work,
+        )?;
+        state.unsupported_text = Some(evidence);
+        Ok(())
     }
 
     #[cfg(feature = "internal-theme-acceptance")]
@@ -607,6 +668,9 @@ impl SequenceThemeEvidenceRecorder {
             &base_typography_routes,
         );
         finish_typography_rules(&mut evidence, state.typography.as_ref(), typography_rules);
+        if let Some(unsupported_text) = state.unsupported_text {
+            evidence.merge_accounted_from(unsupported_text);
+        }
         evidence
     }
 }

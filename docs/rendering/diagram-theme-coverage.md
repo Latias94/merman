@@ -11,13 +11,19 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 25/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 8/33; 180 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 26/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 7/33; 172 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 64 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 65 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v67; 362 routes / 488 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
+identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
+neither the pinned Mermaid 11.17.2 stylesheet nor the renderer consumes. The eight before/after
+value probes authorize deletion without claiming a new typed text consumer. Three-look rendered
+SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
 output files. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
@@ -74,7 +80,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | State | Typed | Typed | None |
 | Flowchart | Typed | Typed | Required |
 | Swimlane | Typed | Typed | Required |
-| Sequence | Typed | Typed | Required |
+| Sequence | Typed | Typed | None |
 | Class | Typed | Typed | Required |
 | Block | Typed | Typed | Required |
 | Mindmap | Typed | Unsupported | None |
@@ -166,6 +172,12 @@ Important boundaries that a family-level count cannot express:
 - Treemap shares its FontStack plan with text measurement and final output. Static unqualified and
   Default Text.fill preserve independent label/value config ownership; no participating text
   terminal means `NotApplicable`. Role-local sizes do not become a base FontSize consumer.
+- Sequence no longer has a family bridge. Its generic Text.fill and Title.fill remain
+  Unsupported: `titleColor` is not a consumer, while ActorLabel, MessageLabel, LoopLabel, and
+  NoteLabel retain their independent typed paint. Successful terminal writers supply the text
+  and title occurrence domains used to reconcile unsupported requests. A matching winner remains
+  residual even when the unused `titleColor` config is explicit; absent, out-of-range, or shadowed
+  rules are NotApplicable. This retirement adds no positive typography or text-color support.
 - Requirement static unqualified/Default Text.fill directly replaces `requirement.text`.
   Node SVG/HTML labels and HTML relation labels consume `nodeTextColor`; SVG relation labels
   independently consume `relationLabelColor`. Source `color` declarations retain ownership.
