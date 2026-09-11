@@ -69,7 +69,10 @@ projection, so derived colors cannot become explicit owners. Title.fill remains 
 ER no longer requires its family bridge.
 
 Radar static-unqualified and explicit `Default` `Title.fill` now share one direct typed writer and KTD17 SVG/PNG
-authorization for solid and transparent values.
+authorization for solid and transparent values. The remaining 12 Radar bridge routes are the
+unqualified/Default Text.fill and Axis fill/stroke scalar compatibility surfaces (four each); the
+route ledger guards this split while the Radar renderer still consumes those values through its
+Mermaid compatibility adapter.
 
 ## Family Boundaries
 

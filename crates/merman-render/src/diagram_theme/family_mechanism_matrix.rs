@@ -7386,6 +7386,62 @@ mod tests {
                 | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
             })
             .collect::<std::collections::BTreeSet<_>>();
+        let radar_routes = legacy_compatibility_route_inventory()
+            .into_iter()
+            .filter(|route| {
+                matches!(
+                    route,
+                    LegacyCompatibilityRouteKey::RuleFacet {
+                        family: DiagramFamilyId::RADAR,
+                        ..
+                    }
+                )
+            })
+            .collect::<Vec<_>>();
+        let radar_text_fill = radar_routes
+            .iter()
+            .filter(|route| {
+                matches!(
+                    route,
+                    LegacyCompatibilityRouteKey::RuleFacet {
+                        target: ThemeTarget::Text,
+                        facet: FamilyThemeRuleFacet::Fill(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        let radar_axis_fill = radar_routes
+            .iter()
+            .filter(|route| {
+                matches!(
+                    route,
+                    LegacyCompatibilityRouteKey::RuleFacet {
+                        target: ThemeTarget::Axis,
+                        facet: FamilyThemeRuleFacet::Fill(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        let radar_axis_stroke = radar_routes
+            .iter()
+            .filter(|route| {
+                matches!(
+                    route,
+                    LegacyCompatibilityRouteKey::RuleFacet {
+                        target: ThemeTarget::Axis,
+                        facet: FamilyThemeRuleFacet::Stroke(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(radar_routes.len(), 12);
+        assert_eq!(
+            (radar_text_fill, radar_axis_fill, radar_axis_stroke),
+            (4, 4, 4)
+        );
         let mut counts = std::collections::BTreeMap::new();
         for route in legacy_compatibility_route_inventory() {
             let family = match route {
