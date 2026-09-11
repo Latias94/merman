@@ -29,6 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             json!({
                 "family": observation.spec().family_id().as_str(),
                 "source_id": observation.spec().source_id(),
+                "png_scale": observation.spec().png_scale(),
                 "source_digest": hex(observation.source_digest()),
                 "output": target.artifact_kind().id(),
                 "admission": target.status().id(),

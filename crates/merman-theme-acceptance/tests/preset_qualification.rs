@@ -92,7 +92,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
 }
 
 #[test]
-fn native_presets_qualify_only_the_declared_host_dependent_state_profile() {
+fn native_presets_qualify_only_the_declared_host_dependent_profile() {
     use merman::svg::ThemePreset;
     use merman_theme_acceptance::run_preset_qualification;
 
@@ -103,12 +103,28 @@ fn native_presets_qualify_only_the_declared_host_dependent_state_profile() {
     ] {
         let receipt = run_preset_qualification(preset).unwrap();
         assert!(receipt.is_current());
-        assert_eq!(receipt.profile_id(), "native-state-system-fonts-v1");
-        assert_eq!(receipt.schema_revision(), 1);
+        assert_eq!(
+            receipt.profile_id(),
+            "native-state-sequence-system-fonts-v2"
+        );
+        assert_eq!(receipt.schema_revision(), 2);
         assert_eq!(receipt.report().preset(), preset);
-        assert_eq!(receipt.report().observations().len(), 2);
-        for observation in receipt.report().observations() {
-            assert_eq!(observation.spec().family_id(), DiagramFamilyId::STATE);
+        assert_eq!(receipt.report().observations().len(), 4);
+        for (observation, family) in receipt.report().observations().iter().zip([
+            DiagramFamilyId::STATE,
+            DiagramFamilyId::STATE,
+            DiagramFamilyId::SEQUENCE,
+            DiagramFamilyId::SEQUENCE,
+        ]) {
+            assert_eq!(observation.spec().family_id(), family);
+            assert_eq!(
+                observation.spec().png_scale(),
+                if family == DiagramFamilyId::SEQUENCE {
+                    4.0
+                } else {
+                    1.0
+                }
+            );
             assert_eq!(observation.status(), TargetAdmissionStatus::HostDependent);
             assert_eq!(observation.theme_residual_count(), 0);
             assert_eq!(observation.bridge_residual_count(), 0);

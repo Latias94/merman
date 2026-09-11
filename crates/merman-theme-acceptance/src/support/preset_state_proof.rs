@@ -26,27 +26,7 @@ pub(super) fn verify(
         ThemePreset::Cyberpunk => ("#020617", "#0f172a", "#e0f2fe", "#22d3ee"),
         _ => return Err(C6ProofError::new("preset-scope", "undeclared preset")),
     };
-    for receipt in [document.standalone_svg_admission(), png.admission()] {
-        c6_ensure!(
-            "preset-admission",
-            receipt.status() == TargetAdmissionStatus::HostDependent
-                && !receipt.reasons().is_empty()
-                && receipt.reasons().iter().all(|reason| matches!(
-                    reason,
-                    TargetAdmissionReason::HostDependentTextLayout
-                        | TargetAdmissionReason::SvgFontsNotSelfContained
-                        | TargetAdmissionReason::SystemOrHostFontDependency
-                )),
-            "host profile rejected unexpected admission: {:?} {:?}",
-            receipt.status(),
-            receipt.reasons()
-        );
-    }
-    c6_ensure!(
-        "preset-font-source",
-        png.admission().font_source() == TargetFontSource::System,
-        "host profile requires actual system font resolution"
-    );
+    verify_host_admission(document, png)?;
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
     let receipt = sealed_svg_receipt(&artifact)?;
     c6_ensure!(
@@ -115,6 +95,34 @@ pub(super) fn verify(
         .ok_or_else(|| C6ProofError::new("preset-geometry", "missing State bounds"))?;
     let raster = decode_bounded_png_artifact(png.bytes(), png.plan())?;
     verify_pixels(&raster, receipt.view_box(), bounds, [canvas, surface, text])
+}
+
+pub(super) fn verify_host_admission(
+    document: &RenderedDocument,
+    png: &RasterOutput,
+) -> C6ProofResult<()> {
+    for receipt in [document.standalone_svg_admission(), png.admission()] {
+        c6_ensure!(
+            "preset-admission",
+            receipt.status() == TargetAdmissionStatus::HostDependent
+                && !receipt.reasons().is_empty()
+                && receipt.reasons().iter().all(|reason| matches!(
+                    reason,
+                    TargetAdmissionReason::HostDependentTextLayout
+                        | TargetAdmissionReason::SvgFontsNotSelfContained
+                        | TargetAdmissionReason::SystemOrHostFontDependency
+                )),
+            "host profile rejected unexpected admission: {:?} {:?}",
+            receipt.status(),
+            receipt.reasons()
+        );
+    }
+    c6_ensure!(
+        "preset-font-source",
+        png.admission().font_source() == TargetFontSource::System,
+        "host profile requires actual system font resolution"
+    );
+    Ok(())
 }
 
 fn verify_pixels(

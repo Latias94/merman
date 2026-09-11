@@ -1,8 +1,10 @@
 # Scoped preset qualification
 
 The workspace-only Rust runner executes the exact Brutalist, Spotless, and Cyberpunk catalog
-recipes on the declared `native-state-system-fonts-v1` State SVG/PNG profile. It checks terminal
+recipes on the declared `native-state-sequence-system-fonts-v2` State/Sequence SVG/PNG profile. It checks terminal
 styles, raster coverage and label ink, admission reasons, residuals, and artifact/resource identity.
+State PNG uses 1x; Sequence PNG uses 4x so the default 0.5px lifeline has an opaque core
+for color checks. Each observation records its scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
 inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md) for other families.
 
@@ -67,4 +69,7 @@ empty until generated catalog promotion verifies fresh evidence for the declared
 actual artifact build. Flowchart retains bridge residuals; Sequence retains unsupported generic-text
 requests only where completed role writers do not cover their fills, or other requested facets
 remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
-their existing dispositions. The positive qualification profile remains State SVG/PNG only.
+their existing dispositions. The positive qualification profile covers only its declared State/Sequence SVG/PNG scenarios.
+Sequence checks actor, message, note, loop, and autonumber label assignments plus activation
+styles in SVG; PNG independently checks actor/note surfaces and label ink, message strokes, and
+unoccluded lifeline strokes. These bounded checks do not qualify arbitrary Sequence sources.

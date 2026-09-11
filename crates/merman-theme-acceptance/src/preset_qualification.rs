@@ -14,8 +14,11 @@ use sha2::{Digest as _, Sha256};
 #[path = "support/preset_state_proof.rs"]
 mod state_proof;
 
-const QUALIFICATION_SCHEMA_REVISION: u32 = 1;
-const HOST_PROFILE: &str = "native-state-system-fonts-v1";
+#[path = "support/preset_sequence_proof.rs"]
+mod sequence_proof;
+
+const QUALIFICATION_SCHEMA_REVISION: u32 = 2;
+const HOST_PROFILE: &str = "native-state-sequence-system-fonts-v2";
 
 /// One frozen representative source used to inspect a catalog preset on both native targets.
 #[derive(Debug, Clone, Copy)]
@@ -23,6 +26,7 @@ pub struct PresetQualificationSpec {
     family: DiagramFamilyId,
     source_id: &'static str,
     source: &'static str,
+    png_scale: f32,
 }
 
 impl PresetQualificationSpec {
@@ -33,24 +37,40 @@ impl PresetQualificationSpec {
     pub const fn source_id(self) -> &'static str {
         self.source_id
     }
+
+    /// Requested PNG scale in this frozen scenario; SVG remains in diagram units.
+    pub const fn png_scale(self) -> f32 {
+        self.png_scale
+    }
 }
 
 const STATE_SPEC: PresetQualificationSpec = PresetQualificationSpec {
     family: DiagramFamilyId::STATE,
     source_id: "preset-native-state-v1",
+    png_scale: 1.0,
     source: "stateDiagram-v2\n[*] --> Active\nActive --> [*]\n",
+};
+
+const SEQUENCE_SPEC: PresetQualificationSpec = PresetQualificationSpec {
+    family: DiagramFamilyId::SEQUENCE,
+    source_id: "preset-native-sequence-roles-v1",
+    // At 4x the default 0.5px lifeline has an opaque raster core for exact color checks.
+    png_scale: 4.0,
+    source: "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>+Bob: Hello\nNote over Bob: Remember\nloop Work\nBob-->>Alice: World\nend\ndeactivate Bob\n",
 };
 
 const SPECS: [PresetQualificationSpec; 3] = [
     PresetQualificationSpec {
         family: DiagramFamilyId::FLOWCHART,
         source_id: "preset-native-flowchart-v1",
+        png_scale: 1.0,
         source: "flowchart LR\nA[Alpha] --> B[Beta]\n",
     },
     STATE_SPEC,
     PresetQualificationSpec {
         family: DiagramFamilyId::SEQUENCE,
         source_id: "preset-native-sequence-v1",
+        png_scale: 1.0,
         source: "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: World\n",
     },
 ];
@@ -139,7 +159,7 @@ impl PresetAdmissionReport {
     }
 }
 
-/// Execution-local qualification of the declared State SVG/PNG host-dependent profile.
+/// Execution-local qualification of the declared State/Sequence SVG/PNG host-dependent profile.
 ///
 /// Only the production runner can construct this receipt. It is not serializable and grants no
 /// portable, all-family, stable-catalog, or C6a claim. Target receipts retain exact artifact,
@@ -182,7 +202,7 @@ impl PresetQualificationReceipt {
     }
 }
 
-/// Qualifies the three native candidates only for the declared host-dependent State profile.
+/// Qualifies the three native candidates only for the declared host-dependent State/Sequence profile.
 ///
 /// No font resources, compatibility fields, or rules are injected. Missing system glyphs or
 /// semantic/visual failures reject this execution; host dependence is never promoted to Portable.
@@ -197,10 +217,10 @@ pub fn run_preset_qualification(
             preset: preset.id(),
             source_id: "catalog",
             stage: "qualification-scope",
-            detail: "preset has no declared native State qualification profile".to_owned(),
+            detail: "preset has no declared native qualification profile".to_owned(),
         });
     }
-    let report = execute_preset(preset, &[STATE_SPEC], true)?;
+    let report = execute_preset(preset, &[STATE_SPEC, SEQUENCE_SPEC], true)?;
     Ok(PresetQualificationReceipt {
         schema_revision: QUALIFICATION_SCHEMA_REVISION,
         report,
@@ -274,7 +294,10 @@ fn execute_preset(
             ));
         }
         let png = document
-            .export_png(&Default::default(), OperationControl::new())
+            .export_png(
+                &merman_export::RasterOptions::default().with_scale(spec.png_scale),
+                OperationControl::new(),
+            )
             .map_err(|error| failure(spec.source_id, "png", error.to_string()))?;
         let svg_receipt = document.standalone_svg_admission();
         if svg_receipt.font_catalog_fingerprint().as_bytes() != &report.resource_fingerprint
@@ -290,7 +313,12 @@ fn execute_preset(
         }
         let evidence = merman::__theme_acceptance::theme_acceptance_evidence(document.evidence());
         if qualify {
-            state_proof::verify(preset, &document, &png)
+            let verification = match spec.family {
+                DiagramFamilyId::STATE => state_proof::verify(preset, &document, &png),
+                DiagramFamilyId::SEQUENCE => sequence_proof::verify(preset, &document, &png),
+                _ => unreachable!("qualification specs have explicit family checkers"),
+            };
+            verification
                 .map_err(|error| failure(spec.source_id, "qualification", error.to_string()))?;
             if !evidence.family().is_satisfied()
                 || !evidence.root().is_satisfied()
@@ -366,24 +394,34 @@ mod tests {
         let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
             MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
         ));
-        let RenderOutput::Document(Some(document)) = renderer
-            .render(
-                RenderRequest::document(
-                    STATE_SPEC.source,
-                    OperationControl::new(),
-                    Default::default(),
+        for spec in [STATE_SPEC, SEQUENCE_SPEC] {
+            let RenderOutput::Document(Some(document)) = renderer
+                .render(
+                    RenderRequest::document(
+                        spec.source,
+                        OperationControl::new(),
+                        Default::default(),
+                    )
+                    .with_theme(theme.clone()),
                 )
-                .with_theme(theme),
-            )
-            .unwrap()
-        else {
-            panic!("missing document")
-        };
-        let png = document
-            .export_png(&Default::default(), OperationControl::new())
-            .unwrap();
-        state_proof::verify(ThemePreset::Spotless, &document, &png).unwrap();
-        let error = state_proof::verify(ThemePreset::Brutalist, &document, &png).unwrap_err();
-        assert!(error.to_string().contains("preset-canvas"));
+                .unwrap()
+            else {
+                panic!("missing document")
+            };
+            let png = document
+                .export_png(
+                    &merman_export::RasterOptions::default().with_scale(spec.png_scale),
+                    OperationControl::new(),
+                )
+                .unwrap();
+            let verify = if spec.family == DiagramFamilyId::STATE {
+                state_proof::verify
+            } else {
+                sequence_proof::verify
+            };
+            verify(ThemePreset::Spotless, &document, &png).unwrap();
+            let error = verify(ThemePreset::Brutalist, &document, &png).unwrap_err();
+            assert!(error.to_string().contains("canvas"));
+        }
     }
 }

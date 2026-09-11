@@ -80,7 +80,7 @@ impl SequenceSvgProof {
 
 pub(crate) type BrutalistSequenceSvgProof = SequenceSvgProof;
 
-pub(crate) fn prove_brutalist_sequence_svg(
+pub(super) fn prove_brutalist_sequence_svg(
     contract: &BrutalistSequenceFixtureContract<'_>,
     artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistSequenceSvgProof> {
@@ -92,7 +92,7 @@ pub(crate) fn prove_brutalist_sequence_svg(
     )
 }
 
-pub(crate) fn prove_brutalist_sequence_png(
+pub(super) fn prove_brutalist_sequence_png(
     contract: &BrutalistSequenceFixtureContract<'_>,
     svg_proof: &BrutalistSequenceSvgProof,
     artifact: C6TargetArtifact<'_>,
@@ -251,7 +251,7 @@ fn check_sequence_svg_internal(
         actor_fill_region: corner_fill_region(surfaces.actor_rects[0])?,
         lifeline_stroke_region: contract
             .lifeline
-            .map(|_| vertical_line_region(surfaces.lifelines[0]))
+            .map(|_| visible_lifeline_region(receipt, &surfaces.lifelines))
             .transpose()?,
         note_fill_region: contract
             .note
@@ -435,8 +435,19 @@ pub(crate) fn prove_sequence_png(
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
 ) -> C6ProofResult<C6BoundTargetProof> {
+    prove_sequence_png_with_raster(contract, svg_proof, semantic_assertion_id, artifact, plan)
+        .map(|(_, proof)| proof)
+}
+
+pub(crate) fn prove_sequence_png_with_raster(
+    contract: SequenceProofContract<'_>,
+    svg_proof: &SequenceSvgProof,
+    semantic_assertion_id: &'static str,
+    artifact: C6TargetArtifact<'_>,
+    plan: RasterPlan,
+) -> C6ProofResult<(C6RasterImage, C6BoundTargetProof)> {
     let mechanisms = sequence_png_mechanisms(&svg_proof.mechanisms)?;
-    let (_, target_proof) = artifact.check_with(semantic_assertion_id, mechanisms, |bytes| {
+    artifact.check_with(semantic_assertion_id, mechanisms, |bytes| {
         let raster = decode_bounded_png_artifact(bytes, plan)?;
         prove_roi_color(
             &raster,
@@ -477,9 +488,8 @@ pub(crate) fn prove_sequence_png(
             4,
             "sequence-png-message-stroke",
         )?;
-        Ok(())
-    })?;
-    Ok(target_proof)
+        Ok(raster)
+    })
 }
 
 fn sequence_png_mechanisms(
@@ -575,7 +585,7 @@ fn require_stylesheet_number(
     Ok(())
 }
 
-fn require_exact_writer_declaration(
+pub(crate) fn require_exact_writer_declaration(
     receipt: &SvgArtifactReceipt,
     selector: &str,
     property: &str,
@@ -653,6 +663,67 @@ fn middle_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     Ok([x1.min(x2) + width * 0.3, y1 - 2.0, width * 0.4, 4.0])
 }
 
+fn visible_lifeline_region(
+    receipt: &SvgArtifactReceipt,
+    lifelines: &[&SvgElementObservation],
+) -> C6ProofResult<[f64; 4]> {
+    let blockers = receipt
+        .elements()
+        .iter()
+        .filter(|node| {
+            node.tag_name() == "rect"
+                && (node.has_class("actor")
+                    || node.has_class("note")
+                    || ["activation0", "activation1", "activation2"]
+                        .iter()
+                        .any(|class| node.has_class(class)))
+        })
+        .map(rect_geometry)
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    for line in lifelines {
+        let [x, top, width, height] = vertical_line_region(line)?;
+        let bottom = top + height;
+        let mut intervals = blockers
+            .iter()
+            .filter(|rect| x < rect[0] + rect[2] + 2.0 && rect[0] - 2.0 < x + width)
+            .map(|rect| {
+                (
+                    (rect[1] - 2.0).max(top),
+                    (rect[1] + rect[3] + 2.0).min(bottom),
+                )
+            })
+            .filter(|(start, end)| start < end)
+            .collect::<Vec<_>>();
+        intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut cursor = top;
+        let mut longest = (top, 0.0_f64);
+        for (start, end) in intervals
+            .into_iter()
+            .chain(std::iter::once((bottom, bottom)))
+        {
+            if start - cursor > longest.1 {
+                longest = (cursor, start - cursor);
+            }
+            cursor = cursor.max(end);
+        }
+        // A short, interior sample avoids rectangle borders and still contains enough stroke
+        // pixels for the existing raster assertion. Fully occluded lines cannot prove a color.
+        if longest.1 >= 12.0 {
+            let sample_height = longest.1.min(24.0);
+            return Ok([
+                x,
+                longest.0 + (longest.1 - sample_height) / 2.0,
+                width,
+                sample_height,
+            ]);
+        }
+    }
+    Err(C6ProofError::new(
+        "sequence-svg-roi",
+        "no unoccluded lifeline sample region",
+    ))
+}
+
 fn vertical_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]> {
     let x1 = numeric_attribute(line, "x1")?;
     let y1 = numeric_attribute(line, "y1")?;
@@ -664,8 +735,8 @@ fn vertical_line_region(line: &SvgElementObservation) -> C6ProofResult<[f64; 4]>
         height > 0.0 && (x2 - x1).abs() <= 1e-6,
         "Sequence lifeline proof requires a vertical line"
     );
-    // The middle of a lifeline can be intentionally covered by notes and activation bars.
-    Ok([x1 - 2.0, y1.min(y2) + height * 0.05, 4.0, height * 0.15])
+    // Exclude endpoints; callers subtract the observed occluding rectangles.
+    Ok([x1 - 2.0, y1.min(y2) + 2.0, 4.0, height - 4.0])
 }
 
 fn numeric_attribute(node: &SvgElementObservation, name: &str) -> C6ProofResult<f64> {
@@ -683,6 +754,41 @@ fn numeric_attribute(node: &SvgElementObservation, name: &str) -> C6ProofResult<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lifeline_sample_uses_visible_segment_beyond_top_occlusion() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120"><line class="actor-line" x1="50" y1="0" x2="50" y2="100"/><rect class="activation0" x="45" y="0" width="10" height="40"/></svg>"#;
+        let receipt = SvgArtifactReceipt::observe_svg_for_test(
+            svg,
+            sha2::Sha256::digest(svg.as_bytes()).into(),
+        )
+        .unwrap();
+        let lines = receipt
+            .elements()
+            .iter()
+            .filter(|node| node.has_class("actor-line"))
+            .collect::<Vec<_>>();
+        let region = visible_lifeline_region(&receipt, &lines).unwrap();
+        assert!(region[1] > 40.0);
+        assert!(region[1] + region[3] < 100.0);
+        assert!(region[3] >= 12.0);
+    }
+
+    #[test]
+    fn lifeline_sample_rejects_fully_occluded_lines() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120"><line class="actor-line" x1="50" y1="0" x2="50" y2="100"/><rect class="activation0" x="45" y="0" width="10" height="60"/><rect class="note" x="40" y="40" width="20" height="60"/></svg>"#;
+        let receipt = SvgArtifactReceipt::observe_svg_for_test(
+            svg,
+            sha2::Sha256::digest(svg.as_bytes()).into(),
+        )
+        .unwrap();
+        let lines = receipt
+            .elements()
+            .iter()
+            .filter(|node| node.has_class("actor-line"))
+            .collect::<Vec<_>>();
+        assert!(visible_lifeline_region(&receipt, &lines).is_err());
+    }
 
     #[test]
     fn sequence_png_mechanisms_exclude_unobserved_font_and_canvas_claims() {

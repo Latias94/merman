@@ -178,7 +178,7 @@ mod c6_raster_proof;
 mod c6_pdf_proof;
 
 #[path = "support/c6_sequence_proof.rs"]
-mod c6_sequence_proof;
+pub(crate) mod c6_sequence_proof;
 
 #[path = "support/c6_spotless_sequence_group.rs"]
 mod c6_spotless_sequence_group;
