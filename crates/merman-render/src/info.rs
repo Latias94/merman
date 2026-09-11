@@ -8,9 +8,11 @@ use crate::diagram_theme::{
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
     InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
-    InheritedTextViewportFacts, resolve_direct_static_fill, unsupported_residual_for_facet,
+    InheritedTextViewportFacts, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, unsupported_residual_for_facet,
 };
 use crate::model::{Bounds, InfoDiagramLayout};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::TextMeasurer;
 use merman_core::MermaidConfig;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
@@ -146,7 +148,8 @@ impl InfoTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         measurer: &dyn TextMeasurer,
-    ) -> Self {
+        work_meter: &OperationWorkMeter,
+    ) -> std::result::Result<Self, OperationWorkError> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
@@ -177,16 +180,43 @@ impl InfoTypographyThemePlan {
                 effective_config,
                 "themeVariables.textColor",
             );
-        Self {
+        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        if let Some(theme) = theme
+            && theme.ordinal_palette_disposition(ThemeTarget::Text)
+                == Some(FamilyThemeDisposition::Unsupported)
+        {
+            // The version is one shared text-fill terminal. Keep unsupported rule and
+            // effect accounting local while reconciling the palette's fallback winner.
+            let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+            reconcile_unsupported_terminal_domains(
+                theme,
+                &mut fallbacks,
+                &[UnsupportedTerminalDomain::static_fallbacks_only(
+                    ThemeTarget::Text,
+                    ThemeVariant::Default,
+                )
+                .with_source_owned_fill(&[config_owns_text_fill])],
+                work_meter,
+            )?;
+            let key = FamilyThemeMechanismKey::OrdinalPalette {
+                target: ThemeTarget::Text,
+            };
+            if fallbacks.not_applicable_mechanisms().contains(&key) {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
+            }
+        }
+        Ok(Self {
             inherited_font_stack,
             terminal_geometry,
-            evidence: FamilyThemeEvidence::from_theme(theme),
+            evidence,
             unsupported_routes: routes.unsupported,
             text_fill,
             direct_text_fill_routes: routes.direct_text_fill,
             config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
-        }
+        })
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -312,6 +342,9 @@ fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
                     FamilyThemeMechanism::RuleFacet { facet, .. } => {
                         unsupported_residual_for_facet(facet)
                     }
+                    FamilyThemeMechanism::OrdinalPalette {
+                        target: ThemeTarget::Text,
+                    } => continue,
                     FamilyThemeMechanism::OrdinalPalette { .. } => {
                         FamilyThemeResidualReason::UnsupportedOrdinalPalette
                     }
@@ -365,7 +398,15 @@ mod tests {
     fn info_layout_records_upstream_configured_canvas_size() {
         let measurer = DeterministicTextMeasurer::default();
         let config = MermaidConfig::default();
-        let typography_theme = InfoTypographyThemePlan::resolve(None, &config, &measurer);
+        let typography_theme = InfoTypographyThemePlan::resolve(
+            None,
+            &config,
+            &measurer,
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .expect("resolve Info theme");
         let layout =
             layout_info_diagram_typed(&InfoDiagramRenderModel::default(), &typography_theme)
                 .expect("info layout");

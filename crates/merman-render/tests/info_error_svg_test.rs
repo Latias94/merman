@@ -3,9 +3,9 @@ use merman_core::__private::{
 };
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -549,6 +549,83 @@ fn info_text_fill_is_written_and_proved_by_the_version_terminal() {
     .expect("Info must directly own its visible Text.fill terminal");
 
     assert_single_info_text_fill(rendered, Some("#123456"), 1, 0);
+}
+
+#[test]
+fn info_text_palette_respects_static_fill_and_config_ownership() {
+    for case in ["static", "default", "config", "uncovered"] {
+        let palette =
+            OrdinalPalette::new([ThemeColorValue::parse("#abcdef").expect("valid palette color")])
+                .expect("non-empty palette");
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette);
+        if matches!(case, "static" | "default") {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").expect("valid text fill")),
+            )
+            .for_family(DiagramFamilyId::INFO);
+            if case == "default" {
+                rule = rule.with_variant(ThemeVariant::Default);
+            }
+            styles = styles.with_rule(rule);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile Info palette theme");
+        let engine = if case == "config" {
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "textColor": "#123456" }
+            })))
+        } else {
+            Engine::new()
+        };
+        let family = InheritedTextFamily::Info;
+        let result =
+            try_render_family(family, family.base_source(), &theme, engine, "info-palette");
+        if case == "uncovered" {
+            let error = result
+                .err()
+                .expect("uncovered palette must remain unsupported");
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::INFO, 1))
+            );
+            assert_eq!(error.incomplete_family_theme(), None);
+            continue;
+        }
+        let rendered = result.unwrap_or_else(|error| panic!("{case}: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Info SVG");
+        let version = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("version"))
+            .expect("visible version text");
+        assert_eq!(
+            version.attribute("fill"),
+            (case != "config").then_some("#123456"),
+            "{case}"
+        );
+        if case == "config" {
+            assert!(
+                rendered.svg().contains("#123456"),
+                "config color must reach stylesheet"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.required_count(),
+            evidence.accounted_count(),
+            "{case}"
+        );
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(case != "config"),
+            "{case}"
+        );
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
 }
 
 #[test]

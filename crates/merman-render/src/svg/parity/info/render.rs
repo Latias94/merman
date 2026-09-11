@@ -102,8 +102,13 @@ mod tests {
         let debug = SvgDebugOptions::default();
         let effective_config = merman_core::MermaidConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let typography_theme =
-            crate::info::InfoTypographyThemePlan::resolve(None, &effective_config, &measurer);
+        let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
+            None,
+            &effective_config,
+            &measurer,
+            session.work_meter(),
+        )
+        .expect("resolve Info theme");
         let execution = SvgExecution::unthemed_for_test(
             &request,
             &debug,

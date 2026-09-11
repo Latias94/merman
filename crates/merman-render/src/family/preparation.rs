@@ -229,7 +229,8 @@ fn prepare_info_family(
         execution.resolved_theme(),
         &meta.effective_config,
         execution.text_measurer(),
-    );
+        execution.work_meter_ref(),
+    )?;
     let layout = crate::info::layout_info_diagram_typed(&model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
         pair: FamilyPair::new(model, layout),
