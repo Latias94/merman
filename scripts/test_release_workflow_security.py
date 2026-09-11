@@ -289,6 +289,26 @@ jobs:
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
+    def test_optimized_theme_rejection_tests_run_in_pr_and_preflight(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = read(WORKFLOW_ROOT / name)
+                step = text.split(
+                    "      - name: Test optimized theme evidence and qualification rejection\n", 1,
+                )[1].split("\n      - name:", 1)[0]
+                self.assertNotIn("continue-on-error", step)
+                command = " ".join(step.split("        run: |\n", 1)[1]
+                                   .replace("\\\n", " ").split())
+                self.assertIn(
+                    "cargo test --release --locked -p merman-render --no-default-features "
+                    "--lib family::evidence_support::tests", command,
+                )
+                self.assertIn(
+                    "python3 scripts/run_theme_acceptance.py test --release --locked "
+                    "-p merman-theme-acceptance --no-default-features --features png "
+                    "--lib preset_qualification::", command,
+                )
+
     def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
         native = workflow_job(text, "verify-release-archives-native")

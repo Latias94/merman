@@ -274,3 +274,10 @@ system-font profile. Release Preflight and the formal Release's final Linux CLI 
 those checks to the extracted binary and archive, then replay the record before their gates pass.
 See [scoped preset qualification](../rendering/preset-qualification.md) for the commands and evidence
 limits. Public catalog promotion remains open.
+
+PR parity CI and release preflight also run the evidence reconciliation and preset qualification
+library tests in Release mode. The reconciliation suite guards against behavior hidden inside
+`debug_assert!`; the preset suite includes missing text, paint, marker, and background rejection
+and receipt freshness checks. These negative tests complement the production runner's positive
+artifact checks. Both suites use explicit test namespaces and the qualification suite enables the
+workspace-only acceptance configuration and PNG feature.

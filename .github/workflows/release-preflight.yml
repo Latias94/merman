@@ -196,6 +196,14 @@ jobs:
       - name: Verify native ABI projections
         run: cargo run --locked -p xtask -- verify-native-abi
 
+      - name: Test optimized theme evidence and qualification rejection
+        run: |
+          cargo test --release --locked -p merman-render --no-default-features \
+            --lib family::evidence_support::tests
+          python3 scripts/run_theme_acceptance.py test --release --locked \
+            -p merman-theme-acceptance --no-default-features --features png \
+            --lib preset_qualification::
+
       - name: Verify published theme acceptance boundary
         run: python3 scripts/verify_theme_acceptance_boundary.py
 

@@ -510,6 +510,15 @@ jobs:
             --no-default-features --features png,jpeg,pdf --test native_export_smoke \
             --cargo-quiet
 
+      - name: Test optimized theme evidence and qualification rejection
+        if: matrix.parity
+        run: |
+          cargo test --release --locked -p merman-render --no-default-features \
+            --lib family::evidence_support::tests
+          python3 scripts/run_theme_acceptance.py test --release --locked \
+            -p merman-theme-acceptance --no-default-features --features png \
+            --lib preset_qualification::
+
       - name: Verify published theme acceptance boundary
         if: matrix.parity
         run: python3 scripts/verify_theme_acceptance_boundary.py
