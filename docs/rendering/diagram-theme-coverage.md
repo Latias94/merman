@@ -12,7 +12,7 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 26/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 7/33; 162 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 7/33; 162 routes | Same bridge inventory; exact matrix and dispatch reconciliation. The exact family set is guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 67 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |

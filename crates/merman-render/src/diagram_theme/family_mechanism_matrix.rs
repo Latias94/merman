@@ -7376,6 +7376,34 @@ mod tests {
     }
 
     #[test]
+    fn legacy_route_inventory_has_explicit_family_coverage() {
+        let families = legacy_compatibility_route_inventory()
+            .into_iter()
+            .map(|route| match route {
+                LegacyCompatibilityRouteKey::BaseTypography { family, .. }
+                | LegacyCompatibilityRouteKey::RuleFacet { family, .. }
+                | LegacyCompatibilityRouteKey::OrdinalPalette { family, .. }
+                | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            families,
+            [
+                DiagramFamilyId::BLOCK,
+                DiagramFamilyId::CLASS,
+                DiagramFamilyId::FLOWCHART,
+                DiagramFamilyId::QUADRANT_CHART,
+                DiagramFamilyId::RADAR,
+                DiagramFamilyId::SWIMLANE,
+                DiagramFamilyId::XY_CHART,
+            ]
+            .into_iter()
+            .collect(),
+            "bridge retirement must update the explicit family ledger"
+        );
+    }
+
+    #[test]
     fn sequence_directly_owns_only_base_font_stack_and_size() {
         let typography = TextStyle::default()
             .with_font_stack(
