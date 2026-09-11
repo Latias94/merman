@@ -7386,6 +7386,31 @@ mod tests {
                 | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
             })
             .collect::<std::collections::BTreeSet<_>>();
+        let mut counts = std::collections::BTreeMap::new();
+        for route in legacy_compatibility_route_inventory() {
+            let family = match route {
+                LegacyCompatibilityRouteKey::BaseTypography { family, .. }
+                | LegacyCompatibilityRouteKey::RuleFacet { family, .. }
+                | LegacyCompatibilityRouteKey::OrdinalPalette { family, .. }
+                | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
+            };
+            *counts.entry(family).or_insert(0usize) += 1;
+        }
+        assert_eq!(
+            counts,
+            [
+                (DiagramFamilyId::BLOCK, 44),
+                (DiagramFamilyId::CLASS, 26),
+                (DiagramFamilyId::FLOWCHART, 24),
+                (DiagramFamilyId::QUADRANT_CHART, 16),
+                (DiagramFamilyId::RADAR, 12),
+                (DiagramFamilyId::SWIMLANE, 24),
+                (DiagramFamilyId::XY_CHART, 16),
+            ]
+            .into_iter()
+            .collect(),
+            "bridge retirement must update the exact route ledger"
+        );
         assert_eq!(
             families,
             [
