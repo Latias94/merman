@@ -640,6 +640,10 @@ fn compile_node_family(
             ],
         );
     }
+    contributions.add_theme_variables(
+        "title.fill",
+        [("titleColor", reader.text_fill(ThemeTarget::Title))],
+    );
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
@@ -4020,6 +4024,43 @@ gitGraph
             Some("#22c55e"),
             "an unsupported Marker rule must not consume the Edge fallback slot",
         );
+    }
+
+    #[test]
+    fn node_family_title_cutover_preserves_other_legacy_title_consumers() {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::CLASS,
+            DiagramFamilyId::BLOCK,
+        ] {
+            for target in [ThemeTarget::Title, ThemeTarget::Text] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    let mut rule = ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default().with_fill(solid("#2468ac")),
+                    )
+                    .for_family(family);
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let spec = DiagramThemeSpec::new()
+                        .with_styles(ThemeRuleSet::default().with_rule(rule));
+                    let artifact = bridge(&spec).compile_for_family(family);
+                    let typed = matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                    ) && target == ThemeTarget::Title;
+                    assert_eq!(
+                        artifact
+                            .contribution_ids
+                            .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.title.fill")),
+                        !typed,
+                        "family={family}, target={target:?}, variant={variant:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

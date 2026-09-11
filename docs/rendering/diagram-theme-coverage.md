@@ -16,7 +16,7 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 66 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v67; 362 routes / 488 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v68; 370 routes / 512 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
@@ -26,7 +26,10 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 68 adds four Flowchart and four Swimlane Title.fill routes with Classic, Neo, and HandDrawn witnesses for cluster and swimlane titles. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
+output files. Version 68 adds four Flowchart and four Swimlane Title.fill routes with Classic,
+Neo, and HandDrawn witnesses for cluster and swimlane titles. Their typed classification suppresses
+only those winners in the shared bridge; Class, Block, and generic Text fallback still retain their
+existing title-color projections. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
 solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
 text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
 four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native

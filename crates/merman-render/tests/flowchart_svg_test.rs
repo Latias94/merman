@@ -6426,3 +6426,32 @@ fn flowchart_title_transparency_and_clear_have_distinct_evidence() {
         assert_eq!(evidence.theme_residual_count(), usize::from(clear));
     }
 }
+
+#[test]
+fn flowchart_title_fill_yields_to_assigned_class_tspan_color() {
+    let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
+    for swimlane in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nclassDef ink color:#123456\nstyle Group color:#abcdef\nclass Group ink\n",
+            if swimlane { "  layout: swimlane\n" } else { "" }
+        );
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(
+            rendered
+                .svg()
+                .contains(".ink tspan{fill:rgb(18, 52, 86)!important;}")
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.attribute("class")
+                .is_some_and(|classes| classes.split_whitespace().any(|class| class == "ink"))
+                && node.descendants().any(|child| child.has_tag_name("tspan"))
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
