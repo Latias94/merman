@@ -433,7 +433,10 @@ impl CutoverWitnessProfile {
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
         ) && matches!(
             route.target(),
-            ThemeTarget::Title | ThemeTarget::Text | ThemeTarget::EdgeLabelBackground
+            ThemeTarget::Title
+                | ThemeTarget::ClusterLabel
+                | ThemeTarget::Text
+                | ThemeTarget::EdgeLabelBackground
         ) {
             return &Self::TEXT_LOOKS;
         }
@@ -553,12 +556,16 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(SWIMLANE_TEXT_SOURCE)
         }
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
-            Ok(FLOWCHART_CLUSTER_SOURCE)
-        }
-        (DiagramFamilyId::SWIMLANE, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
-            Ok(SWIMLANE_CLUSTER_SOURCE)
-        }
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Title | ThemeTarget::ClusterLabel,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(FLOWCHART_CLUSTER_SOURCE),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Title | ThemeTarget::ClusterLabel,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(SWIMLANE_CLUSTER_SOURCE),
 
         (DiagramFamilyId::C4, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok("---\ntitle: C4 inherited paint\n---\nC4Context\nSystem(service, \"Service\")\n")
@@ -2096,6 +2103,54 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_cluster_label_cutover_has_native_terminal_proof() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(
+                    merman_render::diagram_theme::ThemeVariant::Default,
+                ),
+            ] {
+                for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                    let render = |value| {
+                        let route = inventory
+                            .iter()
+                            .copied()
+                            .find(|route| {
+                                route.family_id() == family
+                                    && route.target() == ThemeTarget::ClusterLabel
+                                    && route.selector() == selector
+                                    && route.value() == value
+                            })
+                            .expect("cluster label route");
+                        let id = CutoverWitnessId::new(route, profile);
+                        let case = super::CutoverCase {
+                            id,
+                            source: super::source_for_witness(id).unwrap(),
+                        };
+                        let rendered = super::render_cutover_case(case, vec![route])
+                            .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+                        (route, rendered.document)
+                    };
+                    let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                    let (transparent_route, transparent) =
+                        render(ThemeRouteCutoverValue::Transparent);
+                    merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                        &solid,
+                        &transparent,
+                        solid_route,
+                        transparent_route,
+                        &merman_export::RasterOptions::default().with_scale(2.0),
+                        merman::OperationControl::new(),
+                    )
+                    .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -2116,11 +2171,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_400_routes_and_574_artifact_witnesses() {
+    fn route_inventory_retains_408_routes_and_598_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 400);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 574);
+        assert_eq!(inventory.len(), 408);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 598);
     }
 
     #[test]

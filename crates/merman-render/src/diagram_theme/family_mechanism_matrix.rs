@@ -402,6 +402,11 @@ fn legacy_bridge_projections(
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::ClusterLabel,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_LABEL_FILL),
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Text,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_FLOWCHART_TEXT_FILL),
@@ -1618,7 +1623,7 @@ pub(super) fn classify_rule_facet(
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && matches!(
         target,
-        ThemeTarget::Cluster | ThemeTarget::Title | ThemeTarget::Text
+        ThemeTarget::Cluster | ThemeTarget::ClusterLabel | ThemeTarget::Title | ThemeTarget::Text
     ) && matches!(
         selector,
         FamilyThemeSelectorShape::Static {
@@ -5793,6 +5798,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::FLOWCHART,
+                ThemeTarget::ClusterLabel,
+                Fill,
+                Transparent,
+                vec!["cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::ClusterLabel,
+                Fill,
+                Solid,
+                vec!["cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
                 ThemeTarget::Title,
                 Fill,
                 Transparent,
@@ -6692,6 +6711,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::ClusterLabel,
+                Fill,
+                Transparent,
+                vec!["cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::ClusterLabel,
+                Fill,
+                Solid,
+                vec!["cluster-label.fill"],
             ),
             (
                 DiagramFamilyId::SWIMLANE,
@@ -6942,14 +6975,14 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 200);
+        assert_eq!(qualified.len(), 204);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
                     .iter()
                     .filter(|route| route.family_id() == family)
                     .count(),
-                18,
+                20,
                 "family={family:?}"
             );
         }
@@ -7122,7 +7155,7 @@ mod tests {
                 DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
             ) && matches!(
                 route.target(),
-                ThemeTarget::Text | ThemeTarget::EdgeLabelBackground
+                ThemeTarget::Text | ThemeTarget::ClusterLabel | ThemeTarget::EdgeLabelBackground
             ) {
                 assert_eq!(
                     route.selector(),
@@ -7137,6 +7170,8 @@ mod tests {
                             ThemeRouteCutoverProjection::NodeLabelFill,
                             ThemeRouteCutoverProjection::ClusterLabelFill,
                         ]
+                    } else if route.target() == ThemeTarget::ClusterLabel {
+                        vec![ThemeRouteCutoverProjection::ClusterLabelFill]
                     } else {
                         vec![ThemeRouteCutoverProjection::EdgeLabelBackgroundFill]
                     }
@@ -7582,9 +7617,9 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 44),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::FLOWCHART, 16),
+                (DiagramFamilyId::FLOWCHART, 12),
                 (DiagramFamilyId::QUADRANT_CHART, 16),
-                (DiagramFamilyId::SWIMLANE, 16),
+                (DiagramFamilyId::SWIMLANE, 12),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
             .into_iter()

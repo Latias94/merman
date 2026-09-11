@@ -91,6 +91,12 @@ impl<T> ResolvedProperty<T> {
         }
     }
 
+    fn overlay_role(&mut self, other: Self) {
+        if other.winner.is_some() {
+            *self = other;
+        }
+    }
+
     pub const fn specified(&self) -> &Specified<T> {
         &self.specified
     }
@@ -572,6 +578,28 @@ impl ResolvedThemeStyle {
         self.matched_rules.merge_from(&other.matched_rules);
     }
 
+    /// A more specific family role overrides only the properties it actually specifies.
+    /// Rule ordering has already been resolved inside each role, including Default and ordinal.
+    pub(super) fn overlay_role(&mut self, other: Self) {
+        self.fill.overlay_role(other.fill);
+        self.stroke.overlay_role(other.stroke);
+        self.stroke_width.overlay_role(other.stroke_width);
+        self.stroke_dasharray.overlay_role(other.stroke_dasharray);
+        self.stroke_linecap.overlay_role(other.stroke_linecap);
+        self.stroke_linejoin.overlay_role(other.stroke_linejoin);
+        self.opacity.overlay_role(other.opacity);
+        self.fill_opacity.overlay_role(other.fill_opacity);
+        self.stroke_opacity.overlay_role(other.stroke_opacity);
+        self.radius.overlay_role(other.radius);
+        self.padding.overlay_role(other.padding);
+        self.effect.overlay_role(other.effect);
+        self.typography
+            .winners
+            .retain(|property, _| !other.typography.winners.contains_key(property));
+        self.typography.merge_from(&other.typography);
+        self.matched_rules.merge_from(&other.matched_rules);
+    }
+
     pub const fn fill(&self) -> Option<&CanvasPaint> {
         self.fill.value()
     }
@@ -979,6 +1007,24 @@ impl ResolvedDiagramTheme {
     ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
         self.program
             .resolve_text_style_with_work_meter(target, variant, ordinal, work_meter)
+    }
+
+    /// Preserve the existing Text/fallback author order, then override specified role facets.
+    pub(crate) fn text_style_with_role_override(
+        &self,
+        fallback_target: ThemeTarget,
+        override_target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
+        self.program.resolve_text_style_with_role_override(
+            fallback_target,
+            override_target,
+            variant,
+            ordinal,
+            work_meter,
+        )
     }
 
     pub fn series_color(

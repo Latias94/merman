@@ -278,6 +278,24 @@ impl FamilyThemeProgram {
         self.resolve_text_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
+    pub(super) fn resolve_text_style_with_role_override(
+        &self,
+        fallback_target: ThemeTarget,
+        override_target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
+        let mut resolved =
+            self.resolve_text_style_with_work_meter(fallback_target, variant, ordinal, work_meter)?;
+        if self.slots.contains_key(&override_target) {
+            let role =
+                self.resolve_style_with_work_meter(override_target, variant, ordinal, work_meter)?;
+            resolved.overlay_role(role);
+        }
+        Ok(resolved)
+    }
+
     fn resolve_text_style_internal(
         &self,
         target: ThemeTarget,

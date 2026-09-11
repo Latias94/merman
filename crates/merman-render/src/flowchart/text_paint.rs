@@ -25,6 +25,19 @@ pub(crate) enum FlowchartTextPaintChannel {
 }
 
 impl FlowchartTextPaintChannel {
+    fn resolve_style(
+        self,
+        theme: &ResolvedDiagramTheme,
+        ordinal: Option<usize>,
+        work: &OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
+        if matches!(self, Self::Cluster) {
+            super::text_surface_paint::resolve_cluster_text_style(theme, ordinal, work)
+        } else {
+            theme.text_style_with_work_meter(self.target(), ThemeVariant::Default, ordinal, work)
+        }
+    }
+
     fn target(self) -> ThemeTarget {
         match self {
             Self::Node => ThemeTarget::NodeLabel,
@@ -70,8 +83,6 @@ struct ChannelPaint {
     fill: Option<DirectStaticPaint>,
     config_owned: bool,
     ordinal_rules: bool,
-    cluster_override: bool,
-    cluster_ordinal_rules: bool,
 }
 
 #[derive(Debug, Default)]
@@ -125,40 +136,13 @@ impl FlowchartTextPaintPlan {
                 FlowchartTextPaintChannel::DiagramTitle,
             ] {
                 let target = channel.target();
-                let style =
-                    theme.text_style_with_work_meter(target, ThemeVariant::Default, None, work)?;
-                work.charge(theme.family_mechanism_routes().len())?;
-                let cluster_role = matches!(channel, FlowchartTextPaintChannel::Cluster)
-                    && theme
-                        .family_rules()
-                        .any(|(_, rule)| rule.target() == ThemeTarget::ClusterLabel);
-                let cluster_override = cluster_role
-                    && theme
-                        .text_style_with_work_meter(
-                            ThemeTarget::ClusterLabel,
-                            ThemeVariant::Default,
-                            None,
-                            work,
-                        )?
-                        .fill_resolution()
-                        .winner()
-                        .is_some_and(|origin| origin.target() == ThemeTarget::ClusterLabel);
-                work.charge(theme.family_mechanism_routes().len())?;
-                let cluster_ordinal_rules = cluster_role
-                    && theme.family_rules().any(|(_, rule)| {
-                        matches!(rule.target(), ThemeTarget::Text | ThemeTarget::ClusterLabel)
-                            && rule.ordinal().is_some()
-                    });
-                let fill = (!cluster_override)
-                    .then(|| {
-                        resolve_direct_static_fill(
-                            theme,
-                            &style,
-                            &[ThemeTarget::Text],
-                            DirectStaticSelectorDomain::Default,
-                        )
-                    })
-                    .flatten();
+                let style = channel.resolve_style(theme, None, work)?;
+                let fill = resolve_direct_static_fill(
+                    theme,
+                    &style,
+                    &[ThemeTarget::Text],
+                    DirectStaticSelectorDomain::Default,
+                );
                 let config_owned = match channel {
                     FlowchartTextPaintChannel::Node | FlowchartTextPaintChannel::Edge => {
                         node_config_owned
@@ -181,10 +165,11 @@ impl FlowchartTextPaintPlan {
                     style,
                     fill,
                     config_owned,
-                    cluster_override,
-                    cluster_ordinal_rules,
                     ordinal_rules: theme.family_rules().any(|(_, rule)| {
-                        (rule.target() == ThemeTarget::Text || rule.target() == target)
+                        (rule.target() == ThemeTarget::Text
+                            || rule.target() == target
+                            || (matches!(channel, FlowchartTextPaintChannel::Cluster)
+                                && rule.target() == ThemeTarget::ClusterLabel))
                             && rule.ordinal().is_some()
                     }),
                 });
@@ -243,34 +228,15 @@ impl FlowchartTextPaintPlan {
         let ordinal = terminal.ordinals[channel as usize];
         let ordinal_style;
         let style = if paint.ordinal_rules {
-            ordinal_style = theme.text_style_with_work_meter(
-                channel.target(),
-                ThemeVariant::Default,
-                Some(ordinal),
-                work,
-            )?;
+            ordinal_style = channel.resolve_style(theme, Some(ordinal), work)?;
             &ordinal_style
         } else {
             &paint.style
         };
-        let cluster_override = if paint.cluster_ordinal_rules {
-            theme
-                .text_style_with_work_meter(
-                    ThemeTarget::ClusterLabel,
-                    ThemeVariant::Default,
-                    Some(ordinal),
-                    work,
-                )?
-                .fill_resolution()
-                .winner()
-                .is_some_and(|origin| origin.target() == ThemeTarget::ClusterLabel)
-        } else {
-            paint.cluster_override
-        };
         let source_owned =
             paint.config_owned || source == super::FlowchartSourceFacetStatus::Admitted;
         let unknown = facts.unknown || source == super::FlowchartSourceFacetStatus::Unverified;
-        let fill_applies = !source_owned && !cluster_override && (facts.inherited || unknown);
+        let fill_applies = !source_owned && (facts.inherited || unknown);
         for (property, origin) in style.winner_rule_properties() {
             work.charge(1)?;
             if origin.target() != ThemeTarget::Text
@@ -296,9 +262,19 @@ impl FlowchartTextPaintPlan {
         }
         terminal.palette_applies |= fill_applies
             && matches!(style.fill_resolution().specified(), Specified::Unspecified)
-            && theme.series_color(ThemeTarget::Text, ordinal).is_some();
-        if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
+            && theme.series_color(ThemeTarget::Text, ordinal).is_some()
+            && (!matches!(channel, FlowchartTextPaintChannel::Cluster)
+                || theme
+                    .series_color(ThemeTarget::ClusterLabel, ordinal)
+                    .is_none());
+        let effect = if matches!(channel, FlowchartTextPaintChannel::Cluster) {
+            super::text_surface_paint::cluster_effect(theme, style)
+        } else {
             theme.resolve_effect(channel.target(), style.effect_resolution())
+        };
+        if let Some(ResolvedThemeEffect::Binding { binding, .. }) = effect
+            && (!matches!(channel, FlowchartTextPaintChannel::Cluster)
+                || binding.target() != ThemeTarget::ClusterLabel)
         {
             terminal.bindings.insert(binding.effect_id().to_owned());
         }
@@ -559,8 +535,11 @@ mod tests {
                 .with_rule(fill(ThemeTarget::ClusterLabel)),
         );
         let cluster = &plan.channels[FlowchartTextPaintChannel::Cluster as usize];
-        assert!(cluster.cluster_override);
-        assert!(!cluster.cluster_ordinal_rules);
+        assert_eq!(
+            cluster.style.fill_resolution().winner().unwrap().target(),
+            ThemeTarget::ClusterLabel
+        );
+        assert!(!cluster.ordinal_rules);
         for _ in 0..3 {
             let before = meter.used();
             record(&plan, FlowchartTextPaintChannel::Cluster, "cluster", &meter);
@@ -581,8 +560,11 @@ mod tests {
                 ),
         );
         let cluster = &plan.channels[FlowchartTextPaintChannel::Cluster as usize];
-        assert!(!cluster.cluster_override);
-        assert!(cluster.cluster_ordinal_rules);
+        assert_eq!(
+            cluster.style.fill_resolution().winner().unwrap().target(),
+            ThemeTarget::Text
+        );
+        assert!(cluster.ordinal_rules);
         let before = meter.used();
         record(&plan, FlowchartTextPaintChannel::Cluster, "first", &meter);
         assert!(
@@ -603,8 +585,11 @@ mod tests {
                 .with_rule(fill(ThemeTarget::ClusterLabel)),
         );
         let cluster = &plan.channels[FlowchartTextPaintChannel::Cluster as usize];
-        assert!(cluster.cluster_override);
-        assert!(cluster.cluster_ordinal_rules);
+        assert_eq!(
+            cluster.style.fill_resolution().winner().unwrap().target(),
+            ThemeTarget::ClusterLabel
+        );
+        assert!(cluster.ordinal_rules);
         record(&plan, FlowchartTextPaintChannel::Cluster, "first", &meter);
         record(&plan, FlowchartTextPaintChannel::Cluster, "second", &meter);
         let evidence = plan.finish_evidence();
@@ -628,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn cluster_label_role_keeps_its_indirect_title_color_consumer() {
+    fn cluster_label_role_excludes_the_generic_css_consumer() {
         let (plan, meter) = resolve(
             ThemeRuleSet::default()
                 .with_rule(fill(ThemeTarget::Text))

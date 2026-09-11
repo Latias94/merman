@@ -622,6 +622,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_LIFELINE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
+    pub const REPLACE_CLUSTER_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ClusterLabelFill);
     pub const REPLACE_RADAR_TEXT_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::RadarTextPaint);
     pub const REPLACE_RADAR_AXIS_PAINT: Self = Self(

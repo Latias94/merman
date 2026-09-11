@@ -15,6 +15,44 @@ use crate::family::{
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::VisibleTextStyleFacts;
 
+const CLUSTER_TEXT_ROLES: &[ThemeTarget] = &[ThemeTarget::Title, ThemeTarget::ClusterLabel];
+
+pub(super) fn resolve_cluster_text_style(
+    theme: &ResolvedDiagramTheme,
+    ordinal: Option<usize>,
+    work: &OperationWorkMeter,
+) -> Result<ResolvedThemeStyle, OperationWorkError> {
+    theme.text_style_with_role_override(
+        ThemeTarget::Title,
+        ThemeTarget::ClusterLabel,
+        ThemeVariant::Default,
+        ordinal,
+        work,
+    )
+}
+
+pub(super) fn cluster_palette_target(
+    theme: &ResolvedDiagramTheme,
+    ordinal: usize,
+) -> Option<ThemeTarget> {
+    [
+        ThemeTarget::ClusterLabel,
+        ThemeTarget::Title,
+        ThemeTarget::Text,
+    ]
+    .into_iter()
+    .find(|target| theme.series_color(*target, ordinal).is_some())
+}
+
+pub(super) fn cluster_effect<'a>(
+    theme: &'a ResolvedDiagramTheme,
+    style: &ResolvedThemeStyle,
+) -> Option<ResolvedThemeEffect<'a>> {
+    [ThemeTarget::ClusterLabel, ThemeTarget::Title]
+        .into_iter()
+        .find_map(|target| theme.resolve_effect(target, style.effect_resolution()))
+}
+
 /// A shared CSS color is resolved once; actual label writers own applicability and ordinals.
 #[derive(Debug)]
 pub(crate) struct FlowchartTextSurfacePaintPlan {
@@ -26,7 +64,7 @@ pub(crate) struct FlowchartTextSurfacePaintPlan {
     fill: Option<DirectStaticPaint>,
     config_owned: bool,
     ordinal_rules: bool,
-    terminal: Mutex<Option<FlowchartTitlePaintReceipt>>,
+    terminal: Mutex<Option<FlowchartTextSurfacePaintReceipt>>,
 }
 
 impl FlowchartTextSurfacePaintPlan {
@@ -47,32 +85,25 @@ impl FlowchartTextSurfacePaintPlan {
                 matches!(
                     route.mechanism(),
                     FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Title,
+                        target: ThemeTarget::Title | ThemeTarget::ClusterLabel,
                         ..
                     } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Title
+                        target: ThemeTarget::Title | ThemeTarget::ClusterLabel
                     } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Title,
+                        target: ThemeTarget::Title | ThemeTarget::ClusterLabel,
                         ..
                     }
                 )
             })
         });
         let style = theme
-            .map(|theme| {
-                theme.text_style_with_work_meter(
-                    ThemeTarget::Title,
-                    ThemeVariant::Default,
-                    None,
-                    work,
-                )
-            })
+            .map(|theme| resolve_cluster_text_style(theme, None, work))
             .transpose()?;
         let fill = theme.zip(style.as_ref()).and_then(|(theme, style)| {
             resolve_direct_static_fill(
                 theme,
                 style,
-                &[ThemeTarget::Title],
+                CLUSTER_TEXT_ROLES,
                 DirectStaticSelectorDomain::Default,
             )
         });
@@ -89,7 +120,10 @@ impl FlowchartTextSurfacePaintPlan {
             ),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme.family_rules().any(|(_, rule)| {
-                    rule.target() == ThemeTarget::Title && rule.ordinal().is_some()
+                    matches!(
+                        rule.target(),
+                        ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::ClusterLabel
+                    ) && rule.ordinal().is_some()
                 })
             }),
             terminal: Mutex::new(None),
@@ -124,15 +158,15 @@ impl FlowchartTextSurfacePaintPlan {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         valid &= terminal.is_none();
-        *terminal = Some(FlowchartTitlePaintReceipt {
+        *terminal = Some(FlowchartTextSurfacePaintReceipt {
             terminals,
             valid,
             css_emitted: [false; 2],
             ordinal: 0,
             winners: BTreeSet::new(),
             unknown_fill_winners: BTreeSet::new(),
-            typed_fill_consumed: false,
-            palette_applies: false,
+            consumed: BTreeSet::new(),
+            palettes: BTreeSet::new(),
             bindings: BTreeSet::new(),
         });
         Ok(())
@@ -216,38 +250,49 @@ impl FlowchartTextSurfacePaintPlan {
         let fill_applies = !source_owned && (inherited || unverified);
         let ordinal_style;
         let style = if self.ordinal_rules {
-            ordinal_style = theme.text_style_with_work_meter(
-                ThemeTarget::Title,
-                ThemeVariant::Default,
-                Some(terminal.ordinal),
-                work,
-            )?;
+            ordinal_style = resolve_cluster_text_style(theme, Some(terminal.ordinal), work)?;
             &ordinal_style
         } else {
             self.style.as_ref().expect("requested static text style")
         };
         for (property, origin) in style.winner_rule_properties() {
             work.charge(1)?;
-            if property == ResolvedStyleProperty::Fill && !fill_applies {
+            if !CLUSTER_TEXT_ROLES.contains(&origin.target())
+                || (property == ResolvedStyleProperty::Fill && !fill_applies)
+            {
                 continue;
             }
             terminal.winners.insert((origin.rule_index(), property));
-            if property == ResolvedStyleProperty::Fill && unverified {
-                terminal.unknown_fill_winners.insert(origin.rule_index());
+            if property == ResolvedStyleProperty::Fill {
+                if unverified {
+                    terminal.unknown_fill_winners.insert(origin.rule_index());
+                }
+                if inherited
+                    && !unverified
+                    && self
+                        .fill
+                        .as_ref()
+                        .is_some_and(|fill| fill.rule_index() == origin.rule_index())
+                {
+                    terminal.consumed.insert(origin.rule_index());
+                }
             }
         }
-        // Static CSS remains the emitted paint even where a later unsupported ordinal wins.
-        // That ordinal is still residual; it does not erase consumption by other occurrences.
-        terminal.typed_fill_consumed |= inherited && !unverified && self.fill.is_some();
-        terminal.palette_applies |= fill_applies
+        // Unsupported ordinal paint may leave static CSS visible, but only the actual winner
+        // can be certified. Another unshadowed occurrence can still consume the static rule.
+        if fill_applies
             && matches!(style.fill_resolution().specified(), Specified::Unspecified)
-            && theme
-                .series_color(ThemeTarget::Title, terminal.ordinal)
-                .is_some();
-        if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
-            theme.resolve_effect(ThemeTarget::Title, style.effect_resolution())
+            && let Some(target) = cluster_palette_target(theme, terminal.ordinal)
+            && CLUSTER_TEXT_ROLES.contains(&target)
         {
-            terminal.bindings.insert(binding.effect_id().to_owned());
+            terminal.palettes.insert(target);
+        }
+        if let Some(ResolvedThemeEffect::Binding { binding, .. }) = cluster_effect(theme, style)
+            && CLUSTER_TEXT_ROLES.contains(&binding.target())
+        {
+            terminal
+                .bindings
+                .insert((binding.target(), binding.effect_id().to_owned()));
         }
         Ok(())
     }
@@ -276,16 +321,17 @@ impl FlowchartTextSurfacePaintPlan {
         let Some(theme) = self.theme.as_ref() else {
             return evidence;
         };
-        let mut observations = BTreeMap::<usize, (bool, Option<FamilyThemeResidualReason>)>::new();
+        let mut observations =
+            BTreeMap::<(usize, ThemeTarget), (bool, Option<FamilyThemeResidualReason>)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
-                    target: ThemeTarget::Title,
+                    target: target @ (ThemeTarget::Title | ThemeTarget::ClusterLabel),
                     facet,
                     ..
                 } => {
-                    let observation = observations.entry(rule_index).or_default();
+                    let observation = observations.entry((rule_index, target)).or_default();
                     let property = resolved_style_property_for_facet(facet);
                     if !terminal.winners.contains(&(rule_index, property)) {
                         continue;
@@ -296,7 +342,7 @@ impl FlowchartTextSurfacePaintPlan {
                             .fill
                             .as_ref()
                             .is_some_and(|fill| fill.rule_index() == rule_index)
-                        && terminal.typed_fill_consumed
+                        && terminal.consumed.contains(&rule_index)
                         && !terminal.unknown_fill_winners.contains(&rule_index)
                     {
                         observation.0 = true;
@@ -307,10 +353,10 @@ impl FlowchartTextSurfacePaintPlan {
                     }
                 }
                 FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Title,
+                    target: target @ (ThemeTarget::Title | ThemeTarget::ClusterLabel),
                 } => {
                     let key = theme.family_mechanism_key(route);
-                    if terminal.palette_applies {
+                    if terminal.palettes.contains(&target) {
                         evidence.mark_residual(
                             key,
                             FamilyThemeResidualReason::UnsupportedOrdinalPalette,
@@ -320,11 +366,11 @@ impl FlowchartTextSurfacePaintPlan {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Title,
+                    target: target @ (ThemeTarget::Title | ThemeTarget::ClusterLabel),
                     ..
                 } => {
                     let key = theme.family_mechanism_key(route);
-                    if matches!(&key, FamilyThemeMechanismKey::EffectBinding { effect_id, .. } if terminal.bindings.contains(effect_id))
+                    if matches!(&key, FamilyThemeMechanismKey::EffectBinding { effect_id, .. } if terminal.bindings.contains(&(target, effect_id.clone())))
                     {
                         evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     } else {
@@ -334,17 +380,18 @@ impl FlowchartTextSurfacePaintPlan {
                 _ => {}
             }
         }
-        for (index, (applied, residual)) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index,
-                target: ThemeTarget::Title,
-            };
+        for ((index, target), (applied, residual)) in observations {
+            let key = FamilyThemeMechanismKey::Rule { index, target };
             if let Some(reason) = residual {
                 evidence.mark_residual(key, reason);
             } else if applied {
                 evidence.mark_applied_with_capabilities(
                     key,
-                    [self.fill.as_ref().expect("typed title fill").capability()],
+                    [self
+                        .fill
+                        .as_ref()
+                        .expect("typed cluster text fill")
+                        .capability()],
                 );
             } else {
                 evidence.mark_not_applicable(key);
@@ -355,16 +402,16 @@ impl FlowchartTextSurfacePaintPlan {
 }
 
 #[derive(Debug)]
-struct FlowchartTitlePaintReceipt {
+struct FlowchartTextSurfacePaintReceipt {
     terminals: BTreeMap<String, bool>,
     valid: bool,
     css_emitted: [bool; 2],
     ordinal: usize,
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     unknown_fill_winners: BTreeSet<usize>,
-    typed_fill_consumed: bool,
-    palette_applies: bool,
-    bindings: BTreeSet<String>,
+    consumed: BTreeSet<usize>,
+    palettes: BTreeSet<ThemeTarget>,
+    bindings: BTreeSet<(ThemeTarget, String)>,
 }
 
 #[cfg(test)]
@@ -376,11 +423,19 @@ mod tests {
     };
 
     #[test]
-    fn text_and_title_consumers_preserve_the_complete_family_request_set() {
+    fn text_surface_consumers_preserve_the_complete_family_request_set() {
         for targets in [
             vec![ThemeTarget::Text],
             vec![ThemeTarget::Title],
+            vec![ThemeTarget::ClusterLabel],
             vec![ThemeTarget::Text, ThemeTarget::Title],
+            vec![ThemeTarget::Text, ThemeTarget::ClusterLabel],
+            vec![ThemeTarget::Title, ThemeTarget::ClusterLabel],
+            vec![
+                ThemeTarget::Text,
+                ThemeTarget::Title,
+                ThemeTarget::ClusterLabel,
+            ],
         ] {
             let mut rules = ThemeRuleSet::default();
             for target in &targets {
@@ -427,8 +482,107 @@ mod tests {
             );
             assert_eq!(
                 family.not_applicable_mechanisms().len(),
-                usize::from(targets.contains(&ThemeTarget::Title))
+                targets
+                    .iter()
+                    .filter(|target| CLUSTER_TEXT_ROLES.contains(target))
+                    .count()
             );
+        }
+    }
+
+    #[test]
+    fn unknown_cluster_color_cannot_certify_a_rule_consumed_by_another_cluster() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::ClusterLabel,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::FLOWCHART);
+        let work = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = FlowchartTextSurfacePaintPlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            false,
+            &work,
+        )
+        .unwrap();
+        plan.begin_terminal_emission(["known", "unknown"], &work)
+            .unwrap();
+        let mut css = String::new();
+        plan.write_css(&mut css, "black", false).unwrap();
+        plan.write_css(&mut css, "black", true).unwrap();
+        for (id, source) in [
+            ("known", super::super::FlowchartSourceFacetStatus::Absent),
+            (
+                "unknown",
+                super::super::FlowchartSourceFacetStatus::Unverified,
+            ),
+        ] {
+            plan.record_label(
+                id,
+                &VisibleTextStyleFacts::plain_text("label"),
+                source,
+                &work,
+            )
+            .unwrap();
+        }
+        let evidence = plan.finish_evidence();
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.residuals().len(), 1);
+    }
+
+    #[test]
+    fn missing_or_duplicate_cluster_receipts_do_not_certify_the_stylesheet() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::ClusterLabel,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::FLOWCHART);
+        for duplicate in [false, true] {
+            let work = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let plan = FlowchartTextSurfacePaintPlan::resolve(
+                Some(&theme),
+                &MermaidConfig::default(),
+                false,
+                &work,
+            )
+            .unwrap();
+            plan.begin_terminal_emission(["first", "second"], &work)
+                .unwrap();
+            let mut css = String::new();
+            plan.write_css(&mut css, "black", false).unwrap();
+            plan.write_css(&mut css, "black", true).unwrap();
+            for id in if duplicate {
+                vec!["first", "first", "second"]
+            } else {
+                vec!["first"]
+            } {
+                plan.record_label(
+                    id,
+                    &VisibleTextStyleFacts::plain_text("label"),
+                    super::super::FlowchartSourceFacetStatus::Absent,
+                    &work,
+                )
+                .unwrap();
+            }
+            let evidence = plan.finish_evidence();
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
         }
     }
 }

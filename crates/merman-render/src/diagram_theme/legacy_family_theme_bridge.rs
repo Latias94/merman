@@ -2127,14 +2127,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 134);
+        assert_eq!(status.matrix_route_count(), 126);
         assert_eq!(status.matrix_family_count(), 6);
         assert_eq!(status.dispatched_family_count(), 6);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                53, 185, 222, 133, 190, 132, 39, 149, 63, 37, 210, 176, 4, 76, 151, 18, 92, 166,
-                124, 54, 42, 225, 203, 160, 168, 42, 34, 131, 26, 229, 203, 37
+                194, 103, 201, 95, 249, 164, 178, 19, 138, 128, 26, 192, 136, 44, 238, 22, 63, 214,
+                127, 165, 4, 127, 124, 241, 183, 233, 67, 5, 139, 66, 182, 79
             ]
         );
         assert_eq!(
@@ -4056,6 +4056,78 @@ gitGraph
             Some("#22c55e"),
             "an unsupported Marker rule must not consume the Edge fallback slot",
         );
+    }
+
+    #[test]
+    fn cluster_label_cutover_preserves_only_other_families_legacy_projections() {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::CLASS,
+            DiagramFamilyId::BLOCK,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for paint in [CanvasPaint::Transparent, solid("#2468ac")] {
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::ClusterLabel,
+                        ThemeStylePatch::default().with_fill(paint),
+                    )
+                    .for_family(family);
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let spec = DiagramThemeSpec::new()
+                        .with_styles(ThemeRuleSet::default().with_rule(rule));
+                    let artifact = bridge(&spec).compile_for_family(family);
+                    let typed = matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                    );
+                    let contribution =
+                        format!("{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill");
+                    // Class retired this writer-less projection before this typed cutover.
+                    assert_eq!(
+                        artifact.contribution_ids.contains(&contribution),
+                        family == DiagramFamilyId::BLOCK,
+                        "family={family}, variant={variant:?}",
+                    );
+                    if typed {
+                        assert!(artifact.overlay.is_empty());
+                        assert!(artifact.contribution_ids.is_empty());
+                        let source = "flowchart TD\nsubgraph Group\nA\nend\n";
+                        let resolver = bridge(&spec);
+                        let plan = ThemeCompatibilityPlan::try_new(
+                            [0x5a; 32],
+                            MermaidConfig::empty_object(),
+                            move |family, control| resolver.overlay_for_family(family, control),
+                        )
+                        .unwrap();
+                        for theme in ["default", "base", "dark"] {
+                            let mut value = serde_json::json!({"theme": theme});
+                            if family == DiagramFamilyId::SWIMLANE {
+                                value["layout"] = serde_json::json!("swimlane");
+                            }
+                            let config = MermaidConfig::from_value(value);
+                            let baseline = merman_core::Engine::new()
+                                .with_site_config(config.clone())
+                                .parse_metadata_sync(source)
+                                .unwrap();
+                            let themed = install_theme_compatibility(
+                                merman_core::Engine::new().with_site_config(config),
+                                &plan,
+                            )
+                            .parse_metadata_sync(source)
+                            .unwrap();
+                            assert_eq!(
+                                themed.effective_config.as_value(),
+                                baseline.effective_config.as_value()
+                            );
+                            assert_eq!(fallback_contribution_count(&themed), 0);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]
