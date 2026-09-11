@@ -208,7 +208,7 @@ mod c6_cyberpunk_sequence_group;
 mod c6_reference_theme_groups;
 
 #[path = "support/artifact_observation.rs"]
-mod artifact_observation;
+pub(crate) mod artifact_observation;
 
 use artifact_observation::{sealed_svg_receipt, style_number as observation_style_number};
 use c6_cyberpunk_flowchart_group::CYBERPUNK_FLOWCHART_ADAPTER;

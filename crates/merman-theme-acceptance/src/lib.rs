@@ -46,7 +46,8 @@ mod preset_qualification;
 #[cfg(feature = "png")]
 pub use preset_qualification::{
     PresetAdmissionError, PresetAdmissionObservation, PresetAdmissionReport,
-    PresetQualificationSpec, inspect_preset_admission,
+    PresetQualificationReceipt, PresetQualificationSpec, inspect_preset_admission,
+    run_preset_qualification,
 };
 
 mod route_retirement_manifest;

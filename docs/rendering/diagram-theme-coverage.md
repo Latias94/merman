@@ -249,6 +249,21 @@ prove semantic or visual preset qualification. All catalog qualified scopes rema
 shared document/resource identities, target receipts, and actual artifact bytes. The admission
 inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
+
+The separate `run_preset_qualification` runner now issues an opaque, execution-local receipt for
+Brutalist, Spotless, and Cyberpunk on the declared `native-state-system-fonts-v1` profile only.
+It dispatches the exact catalog recipe through State SVG and PNG, checks canvas, node surface,
+border and label assignments using the existing sealed SVG observer, and checks canvas/surface
+coverage and visible label ink with the existing bounded raster observer. Both target admissions
+must remain HostDependent with only declared host-font reasons; unresolved fonts and any theme,
+source or compatibility residual reject the run. No font or rule is injected. Negative tests cover
+wrong-preset artifacts, blank output, missing ink, and recipe/resource/schema drift.
+
+These execution-local receipts do not yet supply persisted renderer/compiler/writer build identity,
+release freshness verification, or generated catalog promotion. Public qualified scopes remain
+empty; the C7a preset gate is therefore still open. A candidate build must rerun the checks, and a
+host-dependent State result cannot qualify Flowchart, Sequence, or a portable resource profile.
+
 Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
 resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to
 make qualification pass. The fixed 18-cell C6a ledger remains unchanged.
