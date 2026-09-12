@@ -15,12 +15,16 @@ EXCLUDED_MODULES = {
     "merman-render": {"src/svg_artifact_receipts.rs", "src/theme_raster_paint.rs"},
     "merman-export": {"src/raster_paint_cutover.rs"},
 }
-RETIRED_PUBLIC_SYMBOLS = (
-    "PresentationTheme",
-    "HostTheme",
-    "supportedHostThemePresets",
+# Exact former facade paths, checked by rustc so aliases and multiline re-exports count.
+# SDK method removals belong to each platform's own compiler/consumer checks.
+RETIRED_IMPORTS = (
+    "merman::svg::HostTheme",
+    "merman::svg::HostThemeProfile",
+    "merman::svg::CompiledHostTheme",
+    "merman::svg::PresentationProfile",
+    "merman_render::svg::HostThemeProfile",
+    "merman_render::svg::CompiledHostTheme",
 )
-SOURCE_ROOTS = ("crates", "platforms")
 
 PRIVATE_IMPORTS = (
     "merman::__theme_acceptance::TargetArtifactView",
@@ -30,35 +34,7 @@ PRIVATE_IMPORTS = (
 )
 
 
-
-def verify_retired_public_symbols() -> None:
-    """Reject reintroducing the removed alpha theme facade into public source APIs."""
-    declarations = []
-    for root_name in SOURCE_ROOTS:
-        root = ROOT / root_name
-        for path in root.rglob("*"):
-            if path.suffix not in {".rs", ".swift", ".dart", ".ts", ".mjs"}:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                continue
-            for line_number, line in enumerate(text.splitlines(), 1):
-                stripped = line.strip()
-                if stripped.startswith("pub(crate)") or stripped.startswith("pub(super)"):
-                    continue
-                if not stripped.startswith("pub ") and not stripped.startswith("public "):
-                    continue
-                if any(symbol in stripped for symbol in RETIRED_PUBLIC_SYMBOLS):
-                    declarations.append(f"{path.relative_to(ROOT)}:{line_number}: {stripped}")
-    if declarations:
-        raise RuntimeError(
-            "retired public theme symbols found:\n" + "\n".join(declarations)
-        )
-    print("retired PresentationTheme/HostTheme public symbols remain absent", flush=True)
-
 def main() -> None:
-    verify_retired_public_symbols()
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"],
         cwd=ROOT, text=True,
@@ -109,14 +85,14 @@ def main() -> None:
         if production.returncode != 0:
             raise RuntimeError(f"Production consumer failed to compile:\n{production.stderr}")
         print("external consumer resolves production APIs with every producer feature enabled", flush=True)
-        for private_import in PRIVATE_IMPORTS:
-            source.write_text(f"use {private_import};\nfn main() {{}}\n", encoding="utf-8")
+        for unavailable_import in (*PRIVATE_IMPORTS, *RETIRED_IMPORTS):
+            source.write_text(f"use {unavailable_import};\nfn main() {{}}\n", encoding="utf-8")
             result = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True)
             if result.returncode == 0 or "error[E0432]" not in result.stderr:
                 raise RuntimeError(
-                    f"Expected an unresolved private import for {private_import}:\n{result.stderr}"
+                    f"Expected an unresolved import for {unavailable_import}:\n{result.stderr}"
                 )
-            print(f"external consumer cannot import {private_import}", flush=True)
+            print(f"external consumer cannot import {unavailable_import}", flush=True)
 
 
 if __name__ == "__main__":

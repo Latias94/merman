@@ -259,10 +259,12 @@ python3 scripts/verify_theme_acceptance_boundary.py
 
 This gate checks Cargo's package file lists and the absence of the retired feature, then compiles
 an independent Cargo consumer with every public feature of the three producer crates enabled.
-Production types must resolve and
-acceptance imports must fail with unresolved-import diagnostics. It uses compiler results rather
-than attempting to infer Rust visibility from source text. Both PR parity CI and release preflight
-own this gate. It is separate from native C6a and preset qualification.
+Production types must resolve; acceptance imports and the explicitly listed former Rust theme
+facade imports must fail with unresolved-import diagnostics. The latter checks catch aliases and
+re-exports at their former public paths. Platform SDK removals remain owned by their respective
+consumer tests; this gate does not scan Swift, Dart, or JavaScript for visibility keywords.
+It uses compiler results rather than attempting to infer Rust visibility from source text. Both PR
+parity CI and release preflight own this gate. It is separate from native C6a and preset qualification.
 
 The `preset_qualification` integration target currently runs the admission stage over the exact
 catalog recipes (ten presets, three representative families, Standalone SVG plus PNG). Both the
