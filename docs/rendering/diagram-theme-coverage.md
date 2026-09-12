@@ -12,7 +12,7 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 29/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 4/33; 98 routes | Block 44, Class 26, Quadrant Chart 8, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 4/33; 94 routes | Block 44, Class 26, Quadrant Chart 8, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 76 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
@@ -42,14 +42,19 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 76 adds four Quadrant Chart Text.fill routes (solid/transparent,
+output files. Version 77 adds four Quadrant Chart Title.fill routes (solid/transparent,
+unqualified/Default). The direct text plan now consumes dedicated title fill as well as inherited
+Text fill, preserving author order and explicit title configuration ownership. Missing titles and
+fully shadowed rules are NotApplicable; winning unsupported title facets remain residual.
+
+Version 76 adds four Quadrant Chart Text.fill routes (solid/transparent,
 unqualified/Default). The direct text plan preserves author-order inheritance into point labels,
 axis labels, and the title; quadrant captions retain their separate color channels. Explicit
 configuration owns each channel independently. Text ordinals follow points, axes, then title,
 while Axis and Title selectors use their own occurrence domains. Winning unsupported or sibling
 facets remain residual; absent, source-owned, or fully shadowed requests are NotApplicable.
 The writer checks every text and fill against its prepared receipt before recording Applied.
-The remaining Quadrant bridge handles only dedicated Title and Axis paint routes.
+The remaining Quadrant bridge handles only dedicated Axis paint routes.
 
 Version 75 adds eight Flowchart/Swimlane Edge.fill routes
 (solid/transparent, unqualified/Default). Fill supplies the edge's native stroke only when Stroke

@@ -2132,8 +2132,8 @@ gitGraph
         assert_eq!(
             status.matrix_route_digest(),
             [
-                131, 103, 35, 194, 151, 72, 172, 247, 40, 16, 95, 195, 193, 190, 76, 52, 73, 0, 87,
-                225, 192, 165, 123, 241, 22, 206, 71, 89, 85, 41, 69, 52
+                11, 244, 242, 41, 100, 137, 137, 233, 48, 98, 109, 92, 25, 133, 197, 28, 2, 69,
+                121, 99, 223, 64, 37, 98, 112, 162, 176, 164, 45, 149, 48, 203
             ]
         );
         assert_eq!(
@@ -5096,27 +5096,27 @@ gitGraph
     }
 
     #[test]
-    fn quadrant_text_cutover_suppresses_each_inherited_legacy_projection() {
-        for variant in [None, Some(ThemeVariant::Default)] {
-            for paint in [solid("#13579b"), CanvasPaint::Transparent] {
-                let mut rule = ThemeRule::new(
-                    ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(paint),
-                );
-                if let Some(variant) = variant {
-                    rule = rule.with_variant(variant);
+    fn quadrant_text_and_title_cutovers_suppress_each_legacy_projection() {
+        for target in [ThemeTarget::Text, ThemeTarget::Title] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for paint in [solid("#13579b"), CanvasPaint::Transparent] {
+                    let mut rule =
+                        ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let spec = DiagramThemeSpec::new()
+                        .with_styles(ThemeRuleSet::default().with_rule(rule));
+                    let bridge = bridge(&spec);
+                    let quadrant = bridge.compile_for_family(DiagramFamilyId::QUADRANT_CHART);
+                    assert!(quadrant.overlay.is_empty());
+                    assert!(quadrant.contribution_ids.is_empty());
+                    let xy = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
+                    assert!(
+                        !xy.overlay.is_empty(),
+                        "XY still owns its legacy {target:?} projections"
+                    );
                 }
-                let spec =
-                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
-                let bridge = bridge(&spec);
-                let quadrant = bridge.compile_for_family(DiagramFamilyId::QUADRANT_CHART);
-                assert!(quadrant.overlay.is_empty());
-                assert!(quadrant.contribution_ids.is_empty());
-                let xy = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
-                assert!(
-                    !xy.overlay.is_empty(),
-                    "XY still owns its legacy text projections"
-                );
             }
         }
     }
