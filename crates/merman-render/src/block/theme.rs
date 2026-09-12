@@ -905,6 +905,28 @@ mod tests {
     }
 
     #[test]
+    fn explicit_default_font_size_remains_a_typed_request() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::BLOCK,
+                    ThemeTextStyle::default().with_font_size_px(16.0).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
+        let plan = BlockTypographyThemePlan::resolve(
+            Some(&resolved),
+            &merman_core::MermaidConfig::empty_object(),
+        );
+        assert!(plan.typed_font_size_requested);
+        assert_eq!(plan.font_size_px(), 16.0);
+    }
+
+    #[test]
     fn unthemed_typography_keeps_config_style_without_terminal_evidence() {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "fontFamily": "Config Sans, Arial",
