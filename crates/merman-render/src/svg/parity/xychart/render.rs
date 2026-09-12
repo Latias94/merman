@@ -78,6 +78,103 @@ fn plot_group_index(group_texts: &[String], prefix: &str) -> Option<usize> {
         .and_then(|index| index.parse().ok())
 }
 
+struct Node {
+    tag: &'static str,
+    attrs: Vec<(&'static str, String)>,
+    text: Option<String>,
+    children: Vec<usize>,
+    series_terminal: Option<SeriesTerminal>,
+}
+
+impl Node {
+    fn attr(&mut self, name: &'static str, value: impl Into<String>) {
+        self.attrs.push((name, value.into()));
+    }
+
+    fn observe_series_paint(
+        &self,
+        plan: &crate::xychart::XyChartSeriesPaintPlan,
+        receipt: &mut crate::xychart::XyChartSeriesPaintReceipt,
+    ) {
+        let attribute = |name| {
+            self.attrs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(key, value)| (*key, value.as_str()))
+        };
+        match self.series_terminal {
+            Some(SeriesTerminal::Bar { plot, mark }) => {
+                receipt.record_bar_mark(plan, plot, mark, attribute("fill"), attribute("stroke"))
+            }
+            Some(SeriesTerminal::Line { plot, mark }) => {
+                receipt.record_line_mark(plan, plot, mark, attribute("stroke"))
+            }
+            Some(SeriesTerminal::LineLabel { plot, label }) => {
+                receipt.record_line_label(plan, plot, label, attribute("fill"))
+            }
+            None => {}
+        }
+    }
+}
+
+fn node(tag: &'static str) -> Node {
+    Node {
+        tag,
+        attrs: Vec::with_capacity(6),
+        text: None,
+        children: Vec::with_capacity(2),
+        series_terminal: None,
+    }
+}
+
+fn push_child(arena: &mut Vec<Node>, parent: usize, child: Node) -> usize {
+    let id = arena.len();
+    arena.push(child);
+    arena[parent].children.push(id);
+    id
+}
+
+/// The callback observes only nodes whose complete bytes passed the output checkpoint.
+fn render_node(
+    out: &mut impl SvgOutput,
+    arena: &[Node],
+    id: usize,
+    observe: &mut impl FnMut(&Node),
+) -> Result<()> {
+    let n = &arena[id];
+    let _ = write!(out, "<{}", n.tag);
+    out.checkpoint()?;
+    for (k, v) in &n.attrs {
+        let _ = write!(out, r#" {k}="{v}""#);
+        out.checkpoint()?;
+    }
+    if n.children.is_empty() && n.text.as_deref().unwrap_or("").is_empty() {
+        out.push_str("/>");
+        out.checkpoint()?;
+    } else {
+        out.push('>');
+        out.checkpoint()?;
+        if let Some(t) = n.text.as_deref() {
+            out.push_str(t);
+            out.checkpoint()?;
+        }
+        for c in &n.children {
+            render_node(out, arena, *c, observe)?;
+        }
+        let _ = write!(out, "</{}>", n.tag);
+        out.checkpoint()?;
+    }
+    observe(n);
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum SeriesTerminal {
+    Bar { plot: usize, mark: usize },
+    Line { plot: usize, mark: usize },
+    LineLabel { plot: usize, label: usize },
+}
+
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
@@ -88,62 +185,6 @@ pub(crate) fn render_xychart_diagram_svg(
 ) -> Result<root_svg::RootedSvg> {
     use rustc_hash::FxHashMap;
     use std::collections::hash_map::Entry;
-
-    struct Node {
-        tag: &'static str,
-        attrs: Vec<(&'static str, String)>,
-        text: Option<String>,
-        children: Vec<usize>,
-    }
-
-    impl Node {
-        fn attr(&mut self, name: &'static str, value: impl Into<String>) -> usize {
-            let index = self.attrs.len();
-            self.attrs.push((name, value.into()));
-            index
-        }
-    }
-
-    fn node(tag: &'static str) -> Node {
-        Node {
-            tag,
-            attrs: Vec::with_capacity(6),
-            text: None,
-            children: Vec::with_capacity(2),
-        }
-    }
-
-    fn push_child(arena: &mut Vec<Node>, parent: usize, child: Node) -> usize {
-        let id = arena.len();
-        arena.push(child);
-        arena[parent].children.push(id);
-        id
-    }
-
-    fn render_node(out: &mut impl SvgOutput, arena: &[Node], id: usize) -> Result<()> {
-        let n = &arena[id];
-        let _ = write!(out, "<{}", n.tag);
-        out.checkpoint()?;
-        for (k, v) in &n.attrs {
-            let _ = write!(out, r#" {k}="{v}""#);
-            out.checkpoint()?;
-        }
-        if n.children.is_empty() && n.text.as_deref().unwrap_or("").is_empty() {
-            out.push_str("/>");
-            return out.checkpoint();
-        }
-        out.push('>');
-        out.checkpoint()?;
-        if let Some(t) = n.text.as_deref() {
-            out.push_str(t);
-            out.checkpoint()?;
-        }
-        for c in &n.children {
-            render_node(out, arena, *c)?;
-        }
-        let _ = write!(out, "</{}>", n.tag);
-        out.checkpoint()
-    }
 
     fn text_anchor(horizontal_pos: &str) -> &'static str {
         match horizontal_pos {
@@ -272,14 +313,14 @@ pub(crate) fn render_xychart_diagram_svg(
         diagram_id.semantic_str(),
         typography_theme.font_family_css(),
     );
-    if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_css(typography_theme.font_family_css());
-    }
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css(typography_theme.font_family_css());
+    }
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -321,23 +362,14 @@ pub(crate) fn render_xychart_diagram_svg(
                     }
                     n.attr("width", fmt_xy(r.width));
                     n.attr("height", fmt_xy(r.height));
-                    let fill_attr = n.attr("fill", escape_xml(&r.fill));
-                    let stroke_attr = n.attr("stroke", escape_xml(&r.stroke_fill));
+                    n.attr("fill", escape_xml(&r.fill));
+                    n.attr("stroke", escape_xml(&r.stroke_fill));
                     n.attr("stroke-width", fmt_xy(r.stroke_width));
-                    let node_id = push_child(&mut arena, parent, n);
-                    if let Some(receipt) = series_paint_receipt.as_mut()
-                        && let Some(plot_index) = bar_plot_index
-                    {
-                        let emitted_fill = &arena[node_id].attrs[fill_attr];
-                        let emitted_stroke = &arena[node_id].attrs[stroke_attr];
-                        receipt.record_bar_mark(
-                            series_paint,
-                            plot_index,
-                            mark_index,
-                            Some((emitted_fill.0, emitted_fill.1.as_str())),
-                            Some((emitted_stroke.0, emitted_stroke.1.as_str())),
-                        );
-                    }
+                    n.series_terminal = bar_plot_index.map(|plot| SeriesTerminal::Bar {
+                        plot,
+                        mark: mark_index,
+                    });
+                    push_child(&mut arena, parent, n);
                 }
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
@@ -398,11 +430,6 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
-                                if !item.label.is_empty()
-                                    && let Some(receipt) = typography_receipt.as_mut()
-                                {
-                                    receipt.record_visible_text();
-                                }
                             }
                         } else {
                             let y_offset = bar_data_label_inset_px;
@@ -449,11 +476,6 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
-                                if !item.label.is_empty()
-                                    && let Some(receipt) = typography_receipt.as_mut()
-                                {
-                                    receipt.record_visible_text();
-                                }
                             }
                         }
                     }
@@ -473,7 +495,7 @@ pub(crate) fn render_xychart_diagram_svg(
                     let mut n = node("text");
                     n.attr("x", "0");
                     n.attr("y", "0");
-                    let fill_attr = n.attr("fill", escape_xml(&t.fill));
+                    n.attr("fill", escape_xml(&t.fill));
                     n.attr("font-size", fmt_string(t.font_size));
                     n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
                     n.attr("text-anchor", text_anchor(&t.horizontal_pos));
@@ -488,23 +510,12 @@ pub(crate) fn render_xychart_diagram_svg(
                         ),
                     );
                     n.text = Some(escape_xml(&t.text));
-                    let node_id = push_child(&mut arena, parent, n);
-                    if !t.text.is_empty()
-                        && let Some(receipt) = typography_receipt.as_mut()
-                    {
-                        receipt.record_visible_text();
-                    }
-                    if let Some(receipt) = series_paint_receipt.as_mut()
-                        && let Some(plot_index) = line_label_plot_index
-                    {
-                        let emitted_fill = &arena[node_id].attrs[fill_attr];
-                        receipt.record_line_label(
-                            series_paint,
-                            plot_index,
-                            label_index,
-                            Some((emitted_fill.0, emitted_fill.1.as_str())),
-                        );
-                    }
+                    n.series_terminal =
+                        line_label_plot_index.map(|plot| SeriesTerminal::LineLabel {
+                            plot,
+                            label: label_index,
+                        });
+                    push_child(&mut arena, parent, n);
                 }
             }
             crate::model::XyChartDrawableElem::Path { group_texts, data } => {
@@ -518,26 +529,29 @@ pub(crate) fn render_xychart_diagram_svg(
                     let mut n = node("path");
                     n.attr("d", escape_xml(&p.path));
                     n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
-                    let stroke_attr = n.attr("stroke", escape_xml(&p.stroke_fill));
+                    n.attr("stroke", escape_xml(&p.stroke_fill));
                     n.attr("stroke-width", fmt_xy(p.stroke_width));
-                    let node_id = push_child(&mut arena, parent, n);
-                    if let Some(receipt) = series_paint_receipt.as_mut()
-                        && let Some(plot_index) = line_plot_index
-                    {
-                        let emitted_stroke = &arena[node_id].attrs[stroke_attr];
-                        receipt.record_line_mark(
-                            series_paint,
-                            plot_index,
-                            mark_index,
-                            Some((emitted_stroke.0, emitted_stroke.1.as_str())),
-                        );
-                    }
+                    n.series_terminal = line_plot_index.map(|plot| SeriesTerminal::Line {
+                        plot,
+                        mark: mark_index,
+                    });
+                    push_child(&mut arena, parent, n);
                 }
             }
         }
     }
 
-    render_node(&mut out, &arena, 0)?;
+    render_node(&mut out, &arena, 0, &mut |emitted| {
+        if emitted.tag == "text"
+            && emitted.text.as_deref().is_some_and(|text| !text.is_empty())
+            && let Some(receipt) = typography_receipt.as_mut()
+        {
+            receipt.record_visible_text();
+        }
+        if let Some(receipt) = series_paint_receipt.as_mut() {
+            emitted.observe_series_paint(series_paint, receipt);
+        }
+    })?;
     write_xychart_temporary_group(&mut out)?;
     out.push_str("</svg>\n");
     let rooted = root_document.complete(out.finish()?)?;
@@ -559,16 +573,17 @@ mod tests {
     use std::ops::Range;
 
     #[derive(Default)]
-    struct RejectAfterFirstWrite {
+    struct RejectAfterWrites {
+        allowed_writes: usize,
         write_attempts: usize,
         rejected: bool,
         retained: String,
     }
 
-    impl RejectAfterFirstWrite {
+    impl RejectAfterWrites {
         fn record_write(&mut self, value: &str) -> fmt::Result {
             self.write_attempts += 1;
-            if self.write_attempts == 1 {
+            if self.write_attempts > self.allowed_writes {
                 self.rejected = true;
                 return Err(fmt::Error);
             }
@@ -577,13 +592,13 @@ mod tests {
         }
     }
 
-    impl fmt::Write for RejectAfterFirstWrite {
+    impl fmt::Write for RejectAfterWrites {
         fn write_str(&mut self, value: &str) -> fmt::Result {
             self.record_write(value)
         }
     }
 
-    impl SvgOutput for RejectAfterFirstWrite {
+    impl SvgOutput for RejectAfterWrites {
         fn push_str(&mut self, value: &str) {
             let _ = self.record_write(value);
         }
@@ -609,7 +624,7 @@ mod tests {
         fn checkpoint(&mut self) -> crate::Result<()> {
             if self.rejected {
                 Err(crate::Error::InvalidModel {
-                    message: "test SVG sink rejected the first write".to_string(),
+                    message: "test SVG sink rejected a write".to_string(),
                 })
             } else {
                 Ok(())
@@ -619,7 +634,7 @@ mod tests {
 
     #[test]
     fn xychart_temporary_group_stops_after_the_first_svg_sink_failure() {
-        let mut out = RejectAfterFirstWrite::default();
+        let mut out = RejectAfterWrites::default();
 
         let error = write_xychart_temporary_group(&mut out)
             .expect_err("the rejecting sink must stop XYChart temporary-group emission");
@@ -629,6 +644,93 @@ mod tests {
             out.write_attempts, 1,
             "XYChart temporary-group emission must stop at the first failed sink checkpoint"
         );
+    }
+
+    #[test]
+    fn xychart_terminal_observation_requires_a_fully_written_node() {
+        let mut text = node("text");
+        text.attr("fill", "#123456");
+        text.text = Some("Visible".into());
+        let arena = [text];
+        let mut complete = RejectAfterWrites {
+            allowed_writes: usize::MAX,
+            ..Default::default()
+        };
+        let mut observed = 0;
+        render_node(&mut complete, &arena, 0, &mut |_| observed += 1).unwrap();
+        assert_eq!(observed, 1);
+        assert_eq!(
+            complete.as_str(),
+            r##"<text fill="#123456">Visible</text>"##
+        );
+
+        for allowed_writes in 0..complete.write_attempts {
+            let mut out = RejectAfterWrites {
+                allowed_writes,
+                ..Default::default()
+            };
+            let mut observed = 0;
+            assert!(render_node(&mut out, &arena, 0, &mut |_| observed += 1).is_err());
+            assert_eq!(observed, 0, "partial node after {allowed_writes} writes");
+        }
+    }
+
+    #[test]
+    fn xychart_series_receipt_rejects_detached_missing_and_repeated_terminals() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
+            ThemeTarget,
+        };
+        let model: XyChartDiagramRenderModel = serde_json::from_value(serde_json::json!({
+            "xAxis": { "type": "band", "categories": ["A"] },
+            "yAxis": { "type": "linear", "min": 0, "max": 10 },
+            "plots": [{ "type": "bar", "values": [4], "data": [["A", 4]] }]
+        }))
+        .unwrap();
+        let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::ChartSeries, palette),
+            ))
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::XY_CHART);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        for mutation in ["none", "detached", "missing-fill", "repeated", "unwritten"] {
+            let plan = crate::xychart::XyChartSeriesPaintPlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::default(),
+                &model,
+                &meter,
+            )
+            .unwrap();
+            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            let mut arena = vec![node("g")];
+            let mut bar = node("rect");
+            bar.attr("fill", "#123456");
+            bar.attr("stroke", "#123456");
+            bar.series_terminal = Some(SeriesTerminal::Bar { plot: 0, mark: 0 });
+            let id = push_child(&mut arena, 0, bar);
+            match mutation {
+                "detached" => arena[0].children.clear(),
+                "missing-fill" => arena[id].attrs.retain(|(name, _)| *name != "fill"),
+                "repeated" => arena[0].children.push(id),
+                _ => {}
+            }
+            let mut out = String::new();
+            if mutation != "unwritten" {
+                render_node(&mut out, &arena, 0, &mut |emitted| {
+                    emitted.observe_series_paint(&plan, &mut receipt);
+                })
+                .unwrap();
+            }
+            assert_eq!(
+                plan.record_terminal(receipt),
+                mutation == "none",
+                "{mutation}"
+            );
+        }
     }
 
     fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {

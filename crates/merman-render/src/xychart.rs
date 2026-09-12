@@ -13,7 +13,9 @@ use std::fmt::Write as _;
 
 mod theme;
 
-pub(crate) use theme::{XyChartSeriesPaintPlan, XyChartTypographyThemePlan};
+pub(crate) use theme::{
+    XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt, XyChartTypographyThemePlan,
+};
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
