@@ -304,6 +304,13 @@ clipping the output.
 }
 ```
 
+Font family names in `typography.font_stack` are CSS preferences only. Merman does not bundle or
+silently embed `Inter` (or any other default family) in presets or package artifacts. Native and
+browser hosts resolve the stack from their own installed fonts and fallback rules. Stable output
+that depends on a particular face must provide an explicitly authorized `assets` catalog and select
+the corresponding embedding policy; that resource remains caller-owned and subject to admission
+limits.
+
 For a reusable binding engine, a constructor theme is compiled once. A request-level `theme`
 object replaces that complete value; `null` clears it; omission inherits it. The theme object is
 not deep-merged with the constructor theme. Resource ceilings and admission policy remain
