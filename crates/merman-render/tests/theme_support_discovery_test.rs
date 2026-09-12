@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 75);
+    assert_eq!(support.claim_revision(), 76);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -151,6 +151,11 @@ fn direct_only_family_slices_are_reported_as_conditional() {
             ThemeRuleFacetV1::Fill,
         ),
         (
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
             DiagramFamilyId::C4,
             ThemeTarget::Text,
             ThemeRuleFacetV1::Fill,
@@ -270,7 +275,7 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 75);
+        assert_eq!(support.claim_revision(), 76);
     }
 }
 

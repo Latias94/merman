@@ -20,7 +20,7 @@ use crate::resources::OperationWorkMeter;
 #[derive(Debug, Default)]
 pub(crate) struct QuadrantChartTextPaintPlan {
     terminals: Arc<[(Box<str>, Box<str>)]>,
-    pending: BTreeMap<usize, ThemeCapability>,
+    pending: BTreeMap<(ThemeTarget, usize), ThemeCapability>,
     evidence: FamilyThemeEvidence,
     terminal_receipt: OnceLock<()>,
 }
@@ -54,7 +54,7 @@ impl QuadrantChartTextPaintPlan {
                 matches!(
                     route.mechanism(),
                     FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Text,
+                        target: ThemeTarget::Text | ThemeTarget::Title,
                         ..
                     } | FamilyThemeMechanism::OrdinalPalette {
                         target: ThemeTarget::Text
@@ -68,10 +68,13 @@ impl QuadrantChartTextPaintPlan {
         if routes.is_empty() {
             return Ok(plan);
         }
-        let mut observations = BTreeMap::<usize, RuleObservation>::new();
+        let mut observations = BTreeMap::<(ThemeTarget, usize), RuleObservation>::new();
         for route in &routes {
-            if let FamilyThemeMechanism::RuleFacet { rule_index, .. } = route.mechanism() {
-                observations.entry(rule_index).or_default();
+            if let FamilyThemeMechanism::RuleFacet {
+                target, rule_index, ..
+            } = route.mechanism()
+            {
+                observations.entry((target, rule_index)).or_default();
             }
         }
         let has_ordinal = theme.family_mechanism_routes().iter().any(|route| {
@@ -142,7 +145,7 @@ impl QuadrantChartTextPaintPlan {
                     resolve_direct_static_fill(
                         theme,
                         &static_style,
-                        &[ThemeTarget::Text],
+                        &[ThemeTarget::Text, ThemeTarget::Title],
                         DirectStaticSelectorDomain::Default,
                     )
                 })
@@ -198,7 +201,10 @@ impl QuadrantChartTextPaintPlan {
                 work_meter.charge(routes.len())?;
                 for route in &routes {
                     let FamilyThemeMechanism::RuleFacet {
-                        rule_index, facet, ..
+                        target: route_target,
+                        rule_index,
+                        facet,
+                        ..
                     } = route.mechanism()
                     else {
                         continue;
@@ -213,8 +219,8 @@ impl QuadrantChartTextPaintPlan {
                         continue;
                     }
                     let observation = observations
-                        .get_mut(&rule_index)
-                        .expect("registered Text rule");
+                        .get_mut(&(route_target, rule_index))
+                        .expect("registered chart text rule");
                     match route.disposition() {
                         FamilyThemeDisposition::Unsupported => {
                             observation
@@ -252,16 +258,13 @@ impl QuadrantChartTextPaintPlan {
                 plan.evidence.mark_not_applicable(key);
             }
         }
-        for (index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index,
-                target: ThemeTarget::Text,
-            };
+        for ((target, index), observation) in observations {
+            let key = FamilyThemeMechanismKey::Rule { index, target };
             if let Some(reason) = observation.residual {
                 plan.evidence.mark_residual(key, reason);
             } else if observation.incomplete { /* Winning sibling facets remain incomplete. */
             } else if let Some(capability) = observation.pending {
-                plan.pending.insert(index, capability);
+                plan.pending.insert((target, index), capability);
             } else {
                 plan.evidence.mark_not_applicable(key);
             }
@@ -288,12 +291,9 @@ impl QuadrantChartTextPaintPlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         if self.terminal_receipt.get().is_some() {
-            for (&index, &capability) in &self.pending {
+            for (&(target, index), &capability) in &self.pending {
                 evidence.mark_applied_with_capabilities(
-                    FamilyThemeMechanismKey::Rule {
-                        index,
-                        target: ThemeTarget::Text,
-                    },
+                    FamilyThemeMechanismKey::Rule { index, target },
                     [capability],
                 );
             }
@@ -360,7 +360,7 @@ mod tests {
                 ("Title".into(), "#abcdef".into()),
             ]
             .into(),
-            pending: BTreeMap::from([(0, ThemeCapability::SolidPaint)]),
+            pending: BTreeMap::from([((ThemeTarget::Text, 0), ThemeCapability::SolidPaint)]),
             ..QuadrantChartTextPaintPlan::default()
         }
     }
