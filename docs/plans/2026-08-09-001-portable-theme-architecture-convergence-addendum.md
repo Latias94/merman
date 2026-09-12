@@ -128,6 +128,12 @@ record. The current source and generated contract are authoritative for these su
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.
 - C6a remains complete at 18/18 representative native cells. C7a is still not eligible because the
   public authoring/consumer rollout and remaining pre-freeze gates are intentionally open.
+- The core library does not embed or redistribute the Inter font. Font family names in themes are
+  requests resolved by the selected render environment; system-font profiles may use an installed
+  face, while embedded-font resources are opt-in caller inputs subject to the resource policy.
+  Presets, qualification receipts, package manifests, and release claims must not imply that Inter
+  is bundled or available on every host. A product that needs a bundled brand font belongs in a
+  separate distribution layer and requires its own licensing, size, and cross-target qualification.
 - The acceptance manifest remains an independent, reviewed authority. It is reconciled exactly
   against the renderer inventory but is not generated from it, so a newly introduced runtime route
   cannot self-authorize.
