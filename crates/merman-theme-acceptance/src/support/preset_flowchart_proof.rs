@@ -521,8 +521,18 @@ mod tests {
 
     #[test]
     fn flowchart_contract_rejects_missing_or_changed_terminals() {
-        let document = document(ThemePreset::Spotless);
-        let palette = Palette::for_preset(ThemePreset::Spotless).unwrap();
+        for preset in [
+            ThemePreset::Brutalist,
+            ThemePreset::Spotless,
+            ThemePreset::Cyberpunk,
+        ] {
+            assert_changed_terminals_rejected(preset);
+        }
+    }
+
+    fn assert_changed_terminals_rejected(preset: ThemePreset) {
+        let document = document(preset);
+        let palette = Palette::for_preset(preset).unwrap();
         let receipt = observe(document.svg());
         assert!(check_svg(&receipt, palette).is_ok());
         let edge = receipt
@@ -534,7 +544,15 @@ mod tests {
         let marker_id = local_fragment_id(reference).unwrap();
         for (old, new, stage) in [
             ("Review".to_owned(), "Changed".to_owned(), "label"),
+            ("Review".to_owned(), String::new(), "label"),
+            ("Approval".to_owned(), String::new(), "label"),
+            ("Advance".to_owned(), String::new(), "label"),
             ("Alpha".to_owned(), String::new(), "label"),
+            (
+                "d=\"M 0 0 L 10 5 L 0 10 z\"".to_owned(),
+                "d=\"M 0 0\"".to_owned(),
+                "marker",
+            ),
             (
                 "data-id=\"B\"".to_owned(),
                 "data-id=\"A\"".to_owned(),
@@ -566,7 +584,10 @@ mod tests {
             let error = check_svg(&changed, palette)
                 .err()
                 .expect("bad terminal accepted");
-            assert!(error.to_string().contains(stage), "{old}: {error}");
+            assert!(
+                error.to_string().contains(stage),
+                "{preset:?}/{old}: {error}"
+            );
         }
     }
 
@@ -610,6 +631,16 @@ mod tests {
         let center = a[0] + a[2] / 2.0;
         for (region, replacement, stage) in [
             ([view[0], view[1], view[2], 3.0], palette.node, "surface"),
+            (
+                [view[0] + 6.0, view[1] + 6.0, view[2] - 12.0, 22.0],
+                palette.canvas,
+                "Approval has no visible text ink",
+            ),
+            (
+                [cluster[0] + 6.0, cluster[1] + 6.0, cluster[2] - 12.0, 20.0],
+                palette.cluster,
+                "Review has no visible text ink",
+            ),
             (inset(a, 5.0), palette.cluster, "surface"),
             (
                 [a[0] - 2.0, a[1] + 8.0, 4.0, a[3] - 16.0],
