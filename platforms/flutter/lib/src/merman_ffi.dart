@@ -2312,10 +2312,7 @@ final _LoadedNativeLibrary _packageNativeLibrary = _loadNativeEntry(
   expectedPackageVersion: mermanPackageVersion,
 );
 
-String? _oneShotRequestOptionsJson(
-  String? optionsJson, {
-  bool themeAuthoring = false,
-}) {
+String? _oneShotRequestOptionsJson(String? optionsJson) {
   if (optionsJson == null || optionsJson.trim().isEmpty) {
     return null;
   }
@@ -2396,10 +2393,7 @@ class Merman {
         operation,
         source,
         uri: uri,
-        optionsJson: _oneShotRequestOptionsJson(
-          optionsJson,
-          themeAuthoring: operation == MermanOperation.materializeThemeJson,
-        ),
+        optionsJson: _oneShotRequestOptionsJson(optionsJson),
         control: control,
       );
     } finally {
