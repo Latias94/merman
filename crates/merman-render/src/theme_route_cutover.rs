@@ -848,6 +848,30 @@ impl ThemeRouteCutoverDescriptor {
             self.facet()
         }
     }
+
+    /// Returns the route-local solid paint used by the private raster cutover witness.
+    ///
+    /// The value is renderer-owned so the acceptance harness cannot silently choose a different
+    /// control palette from the route receipt it is trying to authorize.
+    pub fn raster_control_css(self) -> String {
+        let mut hash = 0x811c9dc5_u32;
+        for bytes in [
+            self.family_id().as_str().as_bytes(),
+            self.target().id().as_bytes(),
+            self.selector().id().as_bytes(),
+            route_facet_id(self.facet()).as_bytes(),
+        ] {
+            for byte in bytes {
+                hash = (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193);
+            }
+        }
+        let rgb = [
+            ((hash >> 16) as u8 & 0x7f).saturating_add(0x40),
+            ((hash >> 8) as u8 & 0x7f).saturating_add(0x40),
+            (hash as u8 & 0x7f).saturating_add(0x40),
+        ];
+        format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+    }
 }
 
 /// Renderer-owned route fact captured after the family adapter reports a terminal application.
