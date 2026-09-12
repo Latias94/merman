@@ -1232,6 +1232,8 @@ def pack_group(
     target_dist_tag: str,
 ) -> Path:
     descriptor = load_descriptor(descriptor_path)
+    # npm runs from each package directory; preserve the caller's destination.
+    artifact_dir = artifact_dir.resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     if any(artifact_dir.iterdir()):
         raise PackageGroupError(f"artifact directory must be empty: {artifact_dir}")

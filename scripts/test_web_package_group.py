@@ -6,6 +6,9 @@ from __future__ import annotations
 import io
 import hashlib
 import json
+from contextlib import chdir
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -383,6 +386,35 @@ class WebPackageArtifactTests(unittest.TestCase):
             source_sha=SOURCE_SHA,
             target_dist_tag="alpha",
         )
+
+    def test_pack_relative_destination_survives_package_working_directory(self) -> None:
+        destination = self.root / "packed"
+        relative_destination = Path("packed")
+
+        def npm_pack(command, *, cwd, **kwargs):
+            package = json.loads((Path(cwd) / "package.json").read_text())
+            filename = package["name"].replace("@", "").replace("/", "-") + ".tgz"
+            # npm resolves its destination in the child process working directory.
+            output_dir = Path(cwd) / command[command.index("--pack-destination") + 1]
+            shutil.copyfile(self.artifacts / filename, output_dir / filename)
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps([{"filename": filename}]), ""
+            )
+
+        with chdir(self.root), mock.patch.object(
+            web_package_group.subprocess, "run", side_effect=npm_pack
+        ):
+            manifest_path = web_package_group.pack_group(
+                self.root,
+                self.descriptor_path,
+                relative_destination,
+                version=VERSION,
+                source_sha=SOURCE_SHA,
+                target_dist_tag="alpha",
+            )
+        manifest = web_package_group.verify_artifact(manifest_path, destination)
+        self.assertEqual(manifest_path.resolve().parent, destination.resolve())
+        self.assertEqual(len(manifest["packages"]), 3)
 
     def test_manifest_covers_only_public_packages_and_verifies_tarballs(self) -> None:
         path = self.create_manifest()
