@@ -285,4 +285,4 @@ library tests in Release mode. The reconciliation suite guards against behavior 
 `debug_assert!`; the preset suite includes missing text, paint, marker, and background rejection
 and receipt freshness checks. These negative tests complement the production runner's positive
 artifact checks. Both suites use explicit test namespaces and the qualification suite enables the
-workspace-only acceptance configuration and PNG feature.
+workspace-only acceptance configuration plus PNG and Cytoscape layout features.
