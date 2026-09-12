@@ -25,5 +25,8 @@ artifact-size claim is made from removing field clones alone.
 
 Verification passed: the focused Block/renderer suite ran 75 tests with 75 passed;
 the complete private acceptance suite ran 138 tests with 138 passed; the full SVG
-structure comparison and formatting checks passed. A clean-checkout run remains
-to be recorded against the committed implementation.
+structure comparison and formatting checks passed. A clean detached checkout of implementation commit
+`21bba3b60c3ee3eda144b435ed33f5356fac80ab` passed the focused Block/source
+renderer suite (75 passed, 2,459 excluded by filter) and the complete private
+acceptance suite (138 passed, none skipped). The checkout remained clean after
+both runs.
