@@ -516,7 +516,7 @@ jobs:
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
           python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png \
+            -p merman-theme-acceptance --no-default-features --features png,layout-cytoscape \
             --lib preset_qualification::
 
       - name: Verify published theme acceptance boundary

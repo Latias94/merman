@@ -31,7 +31,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = [
     "cargo", "build", "--release", "--locked", "-p", "merman-theme-acceptance",
-    "--no-default-features", "--features", "png", "--example", "preset_qualification",
+    "--no-default-features", "--features", "png,layout-cytoscape", "--example", "preset_qualification",
     "--jobs", "2", "--message-format=json-render-diagnostics",
 ]
 
