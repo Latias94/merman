@@ -2419,282 +2419,170 @@ impl BuiltinFamilyArtifact {
         }
     }
 
-    fn flowchart_theme_evidence(
+    fn merge_theme_evidence(
         &self,
-        theme: Option<&ResolvedDiagramTheme>,
-    ) -> Option<(FamilyThemeEvidence, Vec<SourceStyleResidual>)> {
-        match self {
-            Self::Flowchart(artifact) => Some(flowchart_artifact_theme_evidence(artifact, theme)),
-            Self::Swimlane(artifact) => Some(flowchart_artifact_theme_evidence(artifact, theme)),
-            _ => None,
-        }
-    }
-
-    fn sequence_theme_evidence(
-        &self,
-        theme: Option<&ResolvedDiagramTheme>,
-    ) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Sequence(pair) => Some(pair.layout().theme_evidence().finish(theme)),
-            _ => None,
-        }
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    fn sequence_theme_raster_paint_binding_fact(
-        &self,
-    ) -> Option<crate::theme_raster_paint::ThemeRasterPaintBindingFact> {
-        match self {
-            Self::Sequence(pair) => pair.layout().theme_evidence().raster_paint_binding_fact(),
-            _ => None,
-        }
-    }
-
-    fn class_theme_evidence(
-        &self,
-        theme: Option<&ResolvedDiagramTheme>,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> Result<Option<FamilyThemeEvidence>> {
-        match self {
+        metadata: &ParseMetadata,
+        context: &mut FamilyRenderContext,
+    ) -> Result<()> {
+        let (family_id, evidence) = match self {
+            Self::Flowchart(artifact) => {
+                let (evidence, residuals) =
+                    flowchart_artifact_theme_evidence(artifact, context.resolved_theme());
+                context.merge_flowchart_evidence(evidence, residuals);
+                return Ok(());
+            }
+            Self::Swimlane(artifact) => {
+                let (evidence, residuals) =
+                    flowchart_artifact_theme_evidence(artifact, context.resolved_theme());
+                context.merge_flowchart_evidence(evidence, residuals);
+                return Ok(());
+            }
+            Self::Sequence(pair) => {
+                let evidence = pair
+                    .layout()
+                    .theme_evidence()
+                    .finish(context.resolved_theme());
+                context.merge_sequence_evidence(evidence);
+                #[cfg(merman_internal_theme_acceptance)]
+                if let Some(fact) = pair.layout().theme_evidence().raster_paint_binding_fact() {
+                    context.record_theme_raster_paint_binding_fact(fact);
+                }
+                return Ok(());
+            }
+            // State reconciles its terminal and filter receipts in the output finalizer.
+            Self::State(_) => return Ok(()),
             Self::Class(artifact) => {
                 let mut evidence = artifact.theme_evidence().finish(
-                    theme,
+                    context.resolved_theme(),
                     artifact.relation_theme(),
-                    work_meter,
+                    context.session().work_meter().as_ref(),
                 )?;
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                Ok(Some(evidence))
+                (DiagramFamilyId::CLASS, evidence)
             }
-            _ => Ok(None),
-        }
-    }
-
-    fn gantt_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Gantt(artifact) => Some(artifact.task_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn kanban_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
+            Self::Gantt(artifact) => (
+                DiagramFamilyId::GANTT,
+                artifact.task_theme().finish_evidence(),
+            ),
             Self::Kanban(pair) => {
                 let mut evidence = pair.layout().task_theme().finish_evidence();
                 evidence.merge_accounted_from(pair.layout().text_paint().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::KANBAN, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn pie_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Pie(artifact) => Some(artifact.theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn timeline_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
+            Self::Pie(artifact) => (DiagramFamilyId::PIE, artifact.theme().finish_evidence()),
             Self::Timeline(artifact) => {
                 let mut evidence = artifact.event_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
                 evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::TIMELINE, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn journey_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
             Self::Journey(artifact) => {
                 let mut evidence = artifact.task_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::JOURNEY, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn quadrant_chart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
             Self::QuadrantChart(artifact) => {
                 let mut evidence = artifact.point_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::QUADRANT_CHART, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn xychart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
             Self::XyChart(artifact) => {
                 let mut evidence = artifact.series_paint().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::XY_CHART, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn radar_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Radar(artifact) => Some(artifact.finish_theme_evidence()),
-            _ => None,
-        }
-    }
-
-    fn sankey_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Sankey(artifact) => Some(artifact.finish_theme_evidence()),
-            _ => None,
-        }
-    }
-
-    fn block_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Block(artifact) => Some(artifact.finish_theme_evidence()),
-            _ => None,
-        }
-    }
-
-    fn railroad_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Railroad(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn error_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Error(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn info_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Info(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn cynefin_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Cynefin(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn wardley_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Wardley(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn treemap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
+            Self::Radar(artifact) => (DiagramFamilyId::RADAR, artifact.finish_theme_evidence()),
+            Self::Sankey(artifact) => (DiagramFamilyId::SANKEY, artifact.finish_theme_evidence()),
+            Self::Block(artifact) => (DiagramFamilyId::BLOCK, artifact.finish_theme_evidence()),
+            Self::Railroad(artifact) => (
+                DiagramFamilyId::RAILROAD,
+                artifact.typography_theme().finish_evidence(),
+            ),
+            Self::Error(artifact) => (
+                DiagramFamilyId::ERROR,
+                artifact.typography_theme().finish_evidence(),
+            ),
+            Self::Info(artifact) => (
+                DiagramFamilyId::INFO,
+                artifact.typography_theme().finish_evidence(),
+            ),
+            Self::Cynefin(artifact) => (
+                DiagramFamilyId::CYNEFIN,
+                artifact.typography_theme().finish_evidence(),
+            ),
+            Self::Wardley(artifact) => (
+                DiagramFamilyId::WARDLEY,
+                artifact.typography_theme().finish_evidence(),
+            ),
             Self::Treemap(artifact) => {
                 let mut evidence = artifact.title_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::TREEMAP, evidence)
             }
-            _ => None,
-        }
-    }
-
-    fn requirement_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Requirement(artifact) => Some(artifact.paint_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn packet_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Packet(artifact) => Some(artifact.typography_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn c4_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
+            Self::Requirement(artifact) => (
+                DiagramFamilyId::REQUIREMENT,
+                artifact.paint_theme().finish_evidence(),
+            ),
+            Self::Packet(artifact) => (
+                DiagramFamilyId::PACKET,
+                artifact.typography_theme().finish_evidence(),
+            ),
             Self::C4(artifact) => {
                 let mut evidence = artifact.cluster_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
                 evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
-                Some(evidence)
+                (DiagramFamilyId::C4, evidence)
             }
-            _ => None,
+            Self::TreeView(artifact) => (
+                DiagramFamilyId::TREE_VIEW,
+                artifact.theme().finish_evidence(),
+            ),
+            Self::Mindmap(artifact) => (
+                DiagramFamilyId::MINDMAP,
+                artifact.node_palette().finish_evidence(),
+            ),
+            Self::GitGraph(artifact) => {
+                (DiagramFamilyId::GIT_GRAPH, artifact.finish_theme_evidence())
+            }
+            Self::Er(artifact) => (
+                DiagramFamilyId::ER,
+                artifact.entity_theme().finish_evidence(),
+            ),
+            Self::Venn(artifact) => (DiagramFamilyId::VENN, artifact.finish_theme_evidence()),
+            Self::Zenuml(artifact) => (
+                DiagramFamilyId::ZENUML,
+                artifact.title_theme().finish_evidence(),
+            ),
+            Self::EventModeling(artifact) => (
+                DiagramFamilyId::EVENT_MODELING,
+                artifact.text_theme().finish_evidence(),
+            ),
+            Self::Ishikawa(artifact) => (
+                DiagramFamilyId::ISHIKAWA,
+                artifact.text_theme().finish_evidence(),
+            ),
+            #[cfg(feature = "layout-cytoscape")]
+            Self::Architecture(artifact) => (
+                DiagramFamilyId::ARCHITECTURE,
+                artifact.group_theme().finish_evidence(),
+            ),
+        };
+        context.merge_accounted_terminal_evidence(family_id, evidence);
+        if let Self::Packet(artifact) = self {
+            let evidence = merman_core::__private::theme_parse_evidence(metadata);
+            let consumptions = artifact
+                .typography_theme()
+                .terminal_mermaid_compatibility_consumptions(&evidence);
+            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
         }
-    }
-
-    fn tree_view_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::TreeView(artifact) => Some(artifact.theme().finish_evidence()),
-            _ => None,
+        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
+        if let Self::Architecture(artifact) = self {
+            context.style_plan.record_architecture_text_cutover_receipt(
+                artifact.group_theme().architecture_text_cutover_receipt(),
+            );
         }
-    }
-
-    fn mindmap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Mindmap(artifact) => Some(artifact.node_palette().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn gitgraph_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::GitGraph(artifact) => Some(artifact.finish_theme_evidence()),
-            _ => None,
-        }
-    }
-
-    fn er_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Er(artifact) => Some(artifact.entity_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn venn_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Venn(artifact) => Some(artifact.finish_theme_evidence()),
-            _ => None,
-        }
-    }
-
-    fn zenuml_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Zenuml(artifact) => Some(artifact.title_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn eventmodeling_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::EventModeling(artifact) => Some(artifact.text_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    fn ishikawa_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Ishikawa(artifact) => Some(artifact.text_theme().finish_evidence()),
-            _ => None,
-        }
-    }
-
-    #[cfg(feature = "layout-cytoscape")]
-    fn architecture_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
-        match self {
-            Self::Architecture(artifact) => Some(artifact.group_theme().finish_evidence()),
-            _ => None,
-        }
+        Ok(())
     }
 
     fn compatibility_json(
@@ -3485,65 +3373,6 @@ impl FamilyRenderArtifact {
         let rendered = render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
-        let flowchart_theme_evidence = self
-            .family
-            .flowchart_theme_evidence(self.context.resolved_theme());
-        let sequence_theme_evidence = self
-            .family
-            .sequence_theme_evidence(self.context.resolved_theme());
-        #[cfg(merman_internal_theme_acceptance)]
-        let sequence_theme_raster_paint_binding_fact =
-            self.family.sequence_theme_raster_paint_binding_fact();
-        let class_theme_evidence = self.family.class_theme_evidence(
-            self.context.resolved_theme(),
-            self.context.session().work_meter().as_ref(),
-        )?;
-        let kanban_theme_evidence = self.family.kanban_theme_evidence();
-        let gantt_theme_evidence = self.family.gantt_theme_evidence();
-        let pie_theme_evidence = self.family.pie_theme_evidence();
-        let timeline_theme_evidence = self.family.timeline_theme_evidence();
-        let journey_theme_evidence = self.family.journey_theme_evidence();
-        let quadrant_chart_theme_evidence = self.family.quadrant_chart_theme_evidence();
-        let xychart_theme_evidence = self.family.xychart_theme_evidence();
-        let radar_theme_evidence = self.family.radar_theme_evidence();
-        let sankey_theme_evidence = self.family.sankey_theme_evidence();
-        let block_theme_evidence = self.family.block_theme_evidence();
-        let railroad_theme_evidence = self.family.railroad_theme_evidence();
-        let error_theme_evidence = self.family.error_theme_evidence();
-        let info_theme_evidence = self.family.info_theme_evidence();
-        let cynefin_theme_evidence = self.family.cynefin_theme_evidence();
-        let wardley_theme_evidence = self.family.wardley_theme_evidence();
-        let treemap_theme_evidence = self.family.treemap_theme_evidence();
-        let requirement_theme_evidence = self.family.requirement_theme_evidence();
-        let packet_theme_evidence = self.family.packet_theme_evidence();
-        let packet_mermaid_compatibility = match &self.family {
-            BuiltinFamilyArtifact::Packet(artifact) => {
-                let evidence = merman_core::__private::theme_parse_evidence(&self.metadata);
-                let consumptions = artifact
-                    .typography_theme()
-                    .terminal_mermaid_compatibility_consumptions(&evidence);
-                Some((evidence, consumptions))
-            }
-            _ => None,
-        };
-        let c4_theme_evidence = self.family.c4_theme_evidence();
-        let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
-        let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
-        let gitgraph_theme_evidence = self.family.gitgraph_theme_evidence();
-        let er_theme_evidence = self.family.er_theme_evidence();
-        let venn_theme_evidence = self.family.venn_theme_evidence();
-        let zenuml_theme_evidence = self.family.zenuml_theme_evidence();
-        let eventmodeling_theme_evidence = self.family.eventmodeling_theme_evidence();
-        let ishikawa_theme_evidence = self.family.ishikawa_theme_evidence();
-        #[cfg(feature = "layout-cytoscape")]
-        let architecture_theme_evidence = self.family.architecture_theme_evidence();
-        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        let architecture_text_cutover_receipt = match &self.family {
-            BuiltinFamilyArtifact::Architecture(artifact) => {
-                artifact.group_theme().architecture_text_cutover_receipt()
-            }
-            _ => None,
-        };
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -3553,117 +3382,11 @@ impl FamilyRenderArtifact {
         let Self {
             metadata,
             compatibility_projection: _,
-            family: _,
+            family,
             required_capabilities,
             mut context,
         } = self;
-        if let Some((evidence, source_style_residuals)) = flowchart_theme_evidence {
-            context.merge_flowchart_evidence(evidence, source_style_residuals);
-        }
-        if let Some(evidence) = sequence_theme_evidence {
-            context.merge_sequence_evidence(evidence);
-        }
-        #[cfg(merman_internal_theme_acceptance)]
-        if let Some(fact) = sequence_theme_raster_paint_binding_fact {
-            context.record_theme_raster_paint_binding_fact(fact);
-        }
-        if let Some(evidence) = class_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::CLASS, evidence);
-        }
-        if let Some(evidence) = kanban_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::KANBAN, evidence);
-        }
-        if let Some(evidence) = gantt_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::GANTT, evidence);
-        }
-        if let Some(evidence) = pie_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
-        }
-        if let Some(evidence) = timeline_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::TIMELINE, evidence);
-        }
-        if let Some(evidence) = journey_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::JOURNEY, evidence);
-        }
-        if let Some(evidence) = quadrant_chart_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::QUADRANT_CHART, evidence);
-        }
-        if let Some(evidence) = xychart_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::XY_CHART, evidence);
-        }
-        if let Some(evidence) = radar_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::RADAR, evidence);
-        }
-        if let Some(evidence) = sankey_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::SANKEY, evidence);
-        }
-        if let Some(evidence) = block_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::BLOCK, evidence);
-        }
-        if let Some(evidence) = railroad_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::RAILROAD, evidence);
-        }
-        if let Some(evidence) = error_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::ERROR, evidence);
-        }
-        if let Some(evidence) = info_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::INFO, evidence);
-        }
-        if let Some(evidence) = cynefin_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::CYNEFIN, evidence);
-        }
-        if let Some(evidence) = wardley_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::WARDLEY, evidence);
-        }
-        if let Some(evidence) = treemap_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::TREEMAP, evidence);
-        }
-        if let Some(evidence) = requirement_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::REQUIREMENT, evidence);
-        }
-        if let Some(evidence) = packet_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, evidence);
-        }
-        if let Some((evidence, consumptions)) = packet_mermaid_compatibility {
-            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
-        }
-        if let Some(evidence) = c4_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::C4, evidence);
-        }
-        if let Some(evidence) = tree_view_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::TREE_VIEW, evidence);
-        }
-        if let Some(evidence) = mindmap_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::MINDMAP, evidence);
-        }
-        if let Some(evidence) = gitgraph_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::GIT_GRAPH, evidence);
-        }
-        if let Some(evidence) = er_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::ER, evidence);
-        }
-        if let Some(evidence) = venn_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::VENN, evidence);
-        }
-        if let Some(evidence) = zenuml_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::ZENUML, evidence);
-        }
-        if let Some(evidence) = eventmodeling_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::EVENT_MODELING, evidence);
-        }
-        if let Some(evidence) = ishikawa_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::ISHIKAWA, evidence);
-        }
-        #[cfg(feature = "layout-cytoscape")]
-        if let Some(evidence) = architecture_theme_evidence {
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::ARCHITECTURE, evidence);
-        }
-        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        if context.family_id() == DiagramFamilyId::ARCHITECTURE {
-            context
-                .style_plan
-                .record_architecture_text_cutover_receipt(architecture_text_cutover_receipt);
-        }
+        family.merge_theme_evidence(&metadata, &mut context)?;
         if context.family_id() == DiagramFamilyId::STATE {
             context.reconcile_state_terminal_evidence();
         }

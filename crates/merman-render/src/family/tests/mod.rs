@@ -1401,10 +1401,11 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
 
     let artifact = prepare(parsed, &LayoutOptions::default(), session)
         .expect("typed Flowchart paint must reach SVG emission");
-    let (preparation_evidence, source_residuals) = artifact
-        .family
-        .flowchart_theme_evidence(artifact.context.resolved_theme())
-        .expect("Flowchart artifact evidence");
+    let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+        panic!("expected Flowchart artifact");
+    };
+    let (preparation_evidence, source_residuals) =
+        flowchart_artifact_theme_evidence(flowchart, artifact.context.resolved_theme());
     assert!(source_residuals.is_empty());
     assert!(preparation_evidence.applied().is_empty());
 
