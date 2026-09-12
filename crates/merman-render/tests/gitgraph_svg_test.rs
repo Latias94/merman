@@ -73,6 +73,14 @@ fn gitgraph_node_palette_with_static_stroke_theme(
         .expect("compile GitGraph Node palette with static stroke")
 }
 
+// Keep this as a named function: Rust 1.95 miscompiles repeated default-patch
+// moves through the equivalent local closure in the winning-property matrix.
+fn gitgraph_font_patch(mut patch: ThemeStylePatch) -> ThemeStylePatch {
+    patch.typography.font_stack =
+        Specified::Value(FontStack::single("UnsupportedCommitBackgroundFont").unwrap());
+    patch
+}
+
 fn gitgraph_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
     let styles = rules
         .into_iter()
@@ -1050,13 +1058,23 @@ fn gitgraph_edge_label_background_fill_is_typed_and_reaches_commit_label_rects()
 }
 
 #[test]
+fn gitgraph_background_font_only_rule_compiles_in_isolation() {
+    let mut patch = ThemeStylePatch::default();
+    patch.typography.font_stack =
+        Specified::Value(FontStack::single("UnsupportedCommitBackgroundFont").unwrap());
+    let rule = ThemeRule::new(ThemeTarget::EdgeLabelBackground, patch)
+        .for_family(DiagramFamilyId::GIT_GRAPH);
+    let theme = gitgraph_edge_rules_theme([rule]);
+    assert_ne!(
+        theme.recipe_fingerprint(),
+        gitgraph_edge_rules_theme([]).recipe_fingerprint(),
+    );
+}
+
+#[test]
 fn gitgraph_commit_background_accounts_for_each_winning_property() {
     let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
-    let font = |mut patch: ThemeStylePatch| {
-        patch.typography.font_stack =
-            Specified::Value(FontStack::single("UnsupportedCommitBackgroundFont").unwrap());
-        patch
-    };
+    let font = gitgraph_font_patch;
     let rule = |patch| {
         ThemeRule::new(ThemeTarget::EdgeLabelBackground, patch)
             .for_family(DiagramFamilyId::GIT_GRAPH)
