@@ -55,5 +55,15 @@ safety smoke checks passed. Formatting and whitespace checks passed.
 All five Web profiles still exceed their existing size budgets. This retirement
 adds 94 raw bytes to each of full and render relative to the preceding evidence
 dispatch build; it is not a size optimization. No budget was raised. These results
-do not close C7a or certify a release candidate. A clean-checkout run remains to be
-recorded against the committed implementation.
+do not close C7a or certify a release candidate.
+
+A clean detached checkout of implementation commit
+`978ff94008cbb0976d5a30a71dc1757fc84804d8` passed all 86 Block rendering and support
+query tests, followed by the complete private acceptance suite (136 passed, none
+skipped). The checkout remained clean after both runs. These Release checks used
+the pinned toolchain and two build jobs; the checkout reused build artifacts.
+
+```text
+CARGO_BUILD_JOBS=2 cargo nextest run --locked --release -p merman-render --test block_svg_test --test theme_support_discovery_test --cargo-quiet --test-threads 2
+CARGO_BUILD_JOBS=2 python3 scripts/run_theme_acceptance.py nextest run --locked --release -p merman-theme-acceptance --cargo-quiet --test-threads 2
+```
