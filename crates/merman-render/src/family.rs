@@ -747,10 +747,6 @@ impl FamilyThemeEvidence {
         theme.is_none_or(|theme| theme.family_evidence_mechanism_keys().is_empty())
     }
 
-    pub(crate) fn mark_applied(&mut self, key: FamilyThemeMechanismKey) {
-        self.mark_applied_with_capabilities(key, []);
-    }
-
     pub(crate) fn mark_applied_with_capabilities(
         &mut self,
         key: FamilyThemeMechanismKey,
