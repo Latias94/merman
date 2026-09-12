@@ -474,10 +474,11 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
     let compiler: LegacyFamilyCompiler = match family {
         DiagramFamilyId::CLASS | DiagramFamilyId::BLOCK => compile_node_family,
-        DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART => compile_chart_family,
+        DiagramFamilyId::XY_CHART => compile_xy_chart_family,
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::RADAR
+        | DiagramFamilyId::QUADRANT_CHART
         | DiagramFamilyId::SEQUENCE
         | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::TIMELINE
@@ -687,49 +688,32 @@ fn compile_node_family(
     contributions.finish_into(builder)
 }
 
-fn compile_chart_family(
+fn compile_xy_chart_family(
     builder: &mut OverlayBuilder,
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
-    let family = reader.family;
     let mut contributions = FamilyContributions::new();
     let title = reader.text_fill(ThemeTarget::Title);
     let axis_text = reader.text_fill(ThemeTarget::Axis);
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
-    match family {
-        DiagramFamilyId::XY_CHART => {
-            let mut xy = Map::new();
-            for (key, value) in [
-                ("titleColor", title),
-                ("dataLabelColor", reader.text_fill(ThemeTarget::Text)),
-                ("xAxisTitleColor", axis_text.clone()),
-                ("xAxisLabelColor", axis_text.clone()),
-                ("xAxisTickColor", axis_line.clone()),
-                ("xAxisLineColor", axis_line.clone()),
-                ("yAxisTitleColor", axis_text.clone()),
-                ("yAxisLabelColor", axis_text),
-                ("yAxisTickColor", axis_line.clone()),
-                ("yAxisLineColor", axis_line),
-            ] {
-                if let Some(value) = value {
-                    xy.insert(key.to_string(), Value::String(value));
-                }
-            }
-            contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
+    let mut xy = Map::new();
+    for (key, value) in [
+        ("titleColor", title),
+        ("dataLabelColor", reader.text_fill(ThemeTarget::Text)),
+        ("xAxisTitleColor", axis_text.clone()),
+        ("xAxisLabelColor", axis_text.clone()),
+        ("xAxisTickColor", axis_line.clone()),
+        ("xAxisLineColor", axis_line.clone()),
+        ("yAxisTitleColor", axis_text.clone()),
+        ("yAxisLabelColor", axis_text),
+        ("yAxisTickColor", axis_line.clone()),
+        ("yAxisLineColor", axis_line),
+    ] {
+        if let Some(value) = value {
+            xy.insert(key.to_string(), Value::String(value));
         }
-        DiagramFamilyId::QUADRANT_CHART => {
-            contributions.add_theme_variables(
-                "chart.text-axis",
-                [
-                    ("quadrantXAxisTextFill", axis_text.clone()),
-                    ("quadrantYAxisTextFill", axis_text),
-                    ("quadrantExternalBorderStrokeFill", axis_line.clone()),
-                    ("quadrantInternalBorderStrokeFill", axis_line),
-                ],
-            );
-        }
-        _ => unreachable!("chart compatibility is limited to XY and Quadrant"),
     }
+    contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
     contributions.finish_into(builder)
 }
 
@@ -2039,6 +2023,7 @@ gitGraph
                 DiagramFamilyId::FLOWCHART,
                 DiagramFamilyId::SWIMLANE,
                 DiagramFamilyId::RADAR,
+                DiagramFamilyId::QUADRANT_CHART,
                 DiagramFamilyId::SEQUENCE,
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::REQUIREMENT,
@@ -2119,27 +2104,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            27, 163, 33, 220, 12, 245, 182, 66, 109, 36, 235, 31, 15, 93, 92, 31, 218, 255, 111,
-            198, 93, 114, 159, 128, 63, 43, 120, 226, 66, 236, 91, 50,
+            62, 68, 98, 5, 18, 230, 53, 76, 136, 186, 133, 229, 87, 66, 10, 227, 102, 33, 158, 202,
+            160, 206, 15, 146, 217, 179, 180, 252, 103, 210, 54, 110,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 94);
-        assert_eq!(status.matrix_family_count(), 4);
-        assert_eq!(status.dispatched_family_count(), 4);
+        assert_eq!(status.matrix_route_count(), 86);
+        assert_eq!(status.matrix_family_count(), 3);
+        assert_eq!(status.dispatched_family_count(), 3);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                11, 244, 242, 41, 100, 137, 137, 233, 48, 98, 109, 92, 25, 133, 197, 28, 2, 69,
-                121, 99, 223, 64, 37, 98, 112, 162, 176, 164, 45, 149, 48, 203
+                56, 214, 245, 115, 66, 170, 185, 107, 154, 252, 41, 213, 51, 222, 252, 148, 59, 3,
+                41, 27, 128, 188, 18, 213, 41, 203, 169, 205, 115, 138, 201, 65
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                216, 10, 61, 148, 214, 118, 69, 222, 187, 193, 53, 212, 38, 141, 26, 60, 165, 151,
-                0, 89, 143, 220, 36, 181, 120, 240, 80, 134, 6, 163, 175, 132
+                146, 200, 181, 98, 112, 145, 75, 209, 100, 155, 39, 129, 5, 59, 17, 202, 11, 6,
+                158, 64, 88, 122, 141, 237, 132, 255, 208, 139, 208, 85, 148, 9
             ]
         );
         assert_eq!(
@@ -5059,36 +5044,8 @@ gitGraph
         ));
     }
     #[test]
-    fn quadrant_axis_fill_feeds_legacy_border_channels_when_stroke_is_unspecified() {
-        let spec =
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Axis,
-                ThemeStylePatch::default().with_fill(solid("#2468ac")),
-            )));
-        let parsed = parse(&spec, "quadrantChart\nx-axis Low --> High\n");
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.quadrantExternalBorderStrokeFill"),
-            Some("#2468ac")
-        );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.quadrantInternalBorderStrokeFill"),
-            Some("#2468ac")
-        );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.quadrantXAxisTextFill"),
-            Some("#2468ac")
-        );
-    }
-
-    #[test]
-    fn quadrant_text_and_title_cutovers_suppress_each_legacy_projection() {
-        for target in [ThemeTarget::Text, ThemeTarget::Title] {
+    fn quadrant_paint_cutovers_suppress_each_legacy_projection() {
+        for target in [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis] {
             for variant in [None, Some(ThemeVariant::Default)] {
                 for paint in [solid("#13579b"), CanvasPaint::Transparent] {
                     let mut rule =

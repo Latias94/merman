@@ -88,7 +88,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
     model: &QuadrantChartRenderModel,
     point_theme: &crate::quadrantchart::QuadrantChartPointThemePlan,
-    text_paint: &crate::quadrantchart::QuadrantChartTextPaintPlan,
+    text_paint: &crate::quadrantchart::QuadrantChartPaintPlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -233,6 +233,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             w = fmt(line.stroke_width),
         );
         out.checkpoint()?;
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_border(line);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;

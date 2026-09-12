@@ -539,8 +539,8 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
     match (route.family_id(), route.target(), route.facet()) {
         (
             DiagramFamilyId::QUADRANT_CHART,
-            ThemeTarget::Text | ThemeTarget::Title,
-            ThemeRouteCutoverFacet::Fill,
+            ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(
             "quadrantChart\ntitle Priorities\nx-axis Low --> High\ny-axis Low --> High\nAlpha: [0.3, 0.4]\nBeta: [0.7, 0.8]\n",
         ),
@@ -1379,7 +1379,10 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             "edgeLabelBackground": "#ECECFF"
         }),
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text)
-        | (DiagramFamilyId::QUADRANT_CHART, ThemeTarget::Text | ThemeTarget::Title) => {
+        | (
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
+        ) => {
             serde_json::json!({
                 // These families emit plain SVG text without prepared-label tokens. Pin the deterministic
                 // route witness to the embedded catalog face so native raster admission can classify
@@ -2239,11 +2242,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_424_routes_and_630_artifact_witnesses() {
+    fn route_inventory_retains_432_routes_and_638_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 424);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 630);
+        assert_eq!(inventory.len(), 432);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 638);
     }
 
     #[test]

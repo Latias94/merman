@@ -1603,11 +1603,11 @@ pub(crate) struct QuadrantChartFamilyArtifact {
     pair:
         FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>,
     point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
-    text_paint: crate::quadrantchart::QuadrantChartTextPaintPlan,
+    text_paint: crate::quadrantchart::QuadrantChartPaintPlan,
 }
 
 impl QuadrantChartFamilyArtifact {
-    pub(crate) const fn text_paint(&self) -> &crate::quadrantchart::QuadrantChartTextPaintPlan {
+    pub(crate) const fn text_paint(&self) -> &crate::quadrantchart::QuadrantChartPaintPlan {
         &self.text_paint
     }
 

@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 77;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 78;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    162, 246, 56, 193, 40, 223, 37, 2, 237, 187, 241, 255, 225, 170, 105, 90, 149, 149, 95, 31,
-    108, 219, 29, 230, 194, 210, 32, 235, 13, 65, 179, 255,
+    190, 89, 193, 110, 209, 91, 80, 227, 117, 69, 252, 157, 34, 35, 194, 212, 65, 162, 142, 111,
+    20, 119, 252, 211, 231, 80, 87, 229, 161, 45, 12, 108,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,67 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 424] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 432] = [
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
     route(
         DiagramFamilyId::QUADRANT_CHART,
         ThemeTarget::Text,
@@ -4901,18 +4961,21 @@ mod tests {
         );
     }
     #[test]
-    fn quadrant_text_authority_covers_only_the_eight_static_scalar_routes() {
+    fn quadrant_authority_covers_only_the_sixteen_static_scalar_routes() {
         let routes = ACTIVE_ROUTES
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::QUADRANT_CHART)
             .collect::<Vec<_>>();
-        assert_eq!(routes.len(), 8);
+        assert_eq!(routes.len(), 16);
         for route in routes {
             assert!(matches!(
                 route.id.target(),
-                ThemeTarget::Text | ThemeTarget::Title
+                ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis
             ));
-            assert_eq!(route.id.facet(), ThemeRouteCutoverFacet::Fill);
+            assert!(
+                route.id.facet() == ThemeRouteCutoverFacet::Fill
+                    || route.id.target() == ThemeTarget::Axis
+            );
             assert!(matches!(
                 route.id.selector(),
                 ThemeRouteCutoverSelector::StaticUnqualified

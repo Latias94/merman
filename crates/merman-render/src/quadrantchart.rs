@@ -15,7 +15,7 @@ mod text_paint;
 mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
-pub(crate) use text_paint::QuadrantChartTextPaintPlan;
+pub(crate) use text_paint::QuadrantChartPaintPlan;
 pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {

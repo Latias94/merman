@@ -831,7 +831,7 @@ fn prepare_quadrant_chart_family(
         &point_theme,
         execution.text_measurer(),
     )?;
-    let text_paint = crate::quadrantchart::QuadrantChartTextPaintPlan::resolve(
+    let text_paint = crate::quadrantchart::QuadrantChartPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &mut layout,

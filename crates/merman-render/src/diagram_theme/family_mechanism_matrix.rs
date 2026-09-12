@@ -392,6 +392,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Text | ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT),
+        (
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::Axis,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT),
         (DiagramFamilyId::RADAR, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_RADAR_TEXT_PAINT)
         }
@@ -2075,6 +2080,25 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::QUADRANT_CHART
+        && target == ThemeTarget::Axis
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
             )
         )
     {
@@ -6315,6 +6339,34 @@ mod tests {
                 vec!["chart.text-axis"],
             ),
             (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Axis,
+                Fill,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Axis,
+                Fill,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Axis,
+                Stroke,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Axis,
+                Stroke,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
                 DiagramFamilyId::RADAR,
                 ThemeTarget::Title,
                 Fill,
@@ -7081,7 +7133,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 212);
+        assert_eq!(qualified.len(), 216);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7721,7 +7773,6 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 44),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::QUADRANT_CHART, 8),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
             .into_iter()
@@ -7733,7 +7784,6 @@ mod tests {
             [
                 DiagramFamilyId::BLOCK,
                 DiagramFamilyId::CLASS,
-                DiagramFamilyId::QUADRANT_CHART,
                 DiagramFamilyId::XY_CHART,
             ]
             .into_iter()

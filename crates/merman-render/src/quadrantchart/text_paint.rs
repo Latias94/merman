@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
 use merman_core::MermaidConfig;
@@ -10,29 +10,34 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
-use crate::model::{QuadrantChartDiagramLayout, QuadrantChartTextData};
+use crate::model::{
+    QuadrantChartBorderLineData, QuadrantChartDiagramLayout, QuadrantChartTextData,
+};
 use crate::resources::OperationWorkMeter;
 
 /// Text.fill historically feeds point labels, axis labels, and the title, in author order
-/// with the Axis/Title rules. Quadrant captions have separate Mermaid color channels.
+/// with the Axis/Title rules. Axis stroke (or its fill fallback) feeds the borders.
+/// Quadrant captions have separate Mermaid color channels.
 #[derive(Debug, Default)]
-pub(crate) struct QuadrantChartTextPaintPlan {
+pub(crate) struct QuadrantChartPaintPlan {
     terminals: Arc<[(Box<str>, Box<str>)]>,
-    pending: BTreeMap<(ThemeTarget, usize), ThemeCapability>,
+    pending: BTreeMap<(ThemeTarget, usize), BTreeSet<ThemeCapability>>,
+    borders: Arc<[BorderTerminal]>,
     evidence: FamilyThemeEvidence,
     terminal_receipt: OnceLock<()>,
 }
 
 #[derive(Default)]
 struct RuleObservation {
-    pending: Option<ThemeCapability>,
+    pending: BTreeSet<ThemeCapability>,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
 }
 
-impl QuadrantChartTextPaintPlan {
+impl QuadrantChartPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
@@ -54,12 +59,12 @@ impl QuadrantChartTextPaintPlan {
                 matches!(
                     route.mechanism(),
                     FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Text | ThemeTarget::Title,
+                        target: ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
                         ..
                     } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Text
+                        target: ThemeTarget::Text | ThemeTarget::Axis
                     } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Text,
+                        target: ThemeTarget::Text | ThemeTarget::Axis,
                         ..
                     }
                 )
@@ -96,8 +101,8 @@ impl QuadrantChartTextPaintPlan {
             .saturating_add(usize::from(layout.title.is_some()));
         work_meter.charge(terminal_count)?;
         let mut terminals = Vec::with_capacity(terminal_count);
-        let mut palette_applies = false;
-        let mut effect_applies = false;
+        let mut palette_targets = BTreeSet::new();
+        let mut effect_targets = BTreeSet::new();
         // Ordinals follow the writer's text order: points, visible axis labels, title.
         // Empty text elements are still checkpointed, but have no semantic occurrence.
         let x_count = layout
@@ -145,7 +150,7 @@ impl QuadrantChartTextPaintPlan {
                     resolve_direct_static_fill(
                         theme,
                         &static_style,
-                        &[ThemeTarget::Text, ThemeTarget::Title],
+                        &[ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis],
                         DirectStaticSelectorDomain::Default,
                     )
                 })
@@ -192,12 +197,23 @@ impl QuadrantChartTextPaintPlan {
                 } else {
                     &static_style
                 };
-                palette_applies |= !source_owned
-                    && matches!(style.fill_resolution().specified(), Specified::Unspecified);
-                effect_applies |= matches!(
+                if !source_owned
+                    && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+                {
+                    palette_targets.insert(ThemeTarget::Text);
+                    if target == ThemeTarget::Axis {
+                        palette_targets.insert(target);
+                    }
+                }
+                if matches!(
                     style.effect_resolution().specified(),
                     Specified::Unspecified
-                );
+                ) {
+                    effect_targets.insert(ThemeTarget::Text);
+                    if target == ThemeTarget::Axis {
+                        effect_targets.insert(target);
+                    }
+                }
                 work_meter.charge(routes.len())?;
                 for route in &routes {
                     let FamilyThemeMechanism::RuleFacet {
@@ -210,6 +226,12 @@ impl QuadrantChartTextPaintPlan {
                         continue;
                     };
                     let property = resolved_style_property_for_facet(facet);
+                    // Axis stroke is consumed by borders, independently of text inheritance.
+                    if route_target == ThemeTarget::Axis
+                        && property == ResolvedStyleProperty::Stroke
+                    {
+                        continue;
+                    }
                     if source_owned && property == ResolvedStyleProperty::Fill {
                         continue;
                     }
@@ -233,22 +255,154 @@ impl QuadrantChartTextPaintPlan {
                                     .as_ref()
                                     .is_some_and(|paint| paint.rule_index() == rule_index) =>
                         {
-                            observation.pending = paint.as_ref().map(|paint| paint.capability());
+                            observation
+                                .pending
+                                .insert(paint.as_ref().expect("matched paint").capability());
                         }
                         _ => observation.incomplete = true,
                     }
                 }
             }
         }
+        // Borders have their own Axis occurrence domain in writer order: four outer sides,
+        // then the two dividers. Text inheritance never supplies their fill fallback.
+        let axis_style = theme.style_with_work_meter(
+            ThemeTarget::Axis,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
+        let static_fill_fallback = matches!(
+            axis_style.stroke_resolution().specified(),
+            Specified::Unspecified
+        );
+        let border_paint = if static_fill_fallback {
+            resolve_direct_static_fill(
+                theme,
+                &axis_style,
+                &[ThemeTarget::Axis],
+                DirectStaticSelectorDomain::Default,
+            )
+        } else {
+            resolve_direct_static_stroke(
+                theme,
+                &axis_style,
+                &[ThemeTarget::Axis],
+                DirectStaticSelectorDomain::Default,
+            )
+        };
+        let mut borders = Vec::with_capacity(layout.border_lines.len());
+        work_meter.charge(layout.border_lines.len())?;
+        for (index, line) in layout.border_lines.iter_mut().enumerate() {
+            let path = if index < 4 {
+                "themeVariables.quadrantExternalBorderStrokeFill"
+            } else {
+                "themeVariables.quadrantInternalBorderStrokeFill"
+            };
+            let source_owned =
+                merman_core::__private::config_path_overrides_typed_default(config, path);
+            if !source_owned {
+                if let Some(paint) = &border_paint {
+                    line.stroke_fill = paint.css().to_owned();
+                }
+            }
+            borders.push(BorderTerminal::from_line(line));
+            if line.stroke_width <= 0.0 || (line.x1 == line.x2 && line.y1 == line.y2) {
+                continue;
+            }
+            let dynamic_style;
+            let style = if has_ordinal {
+                dynamic_style = theme.style_with_work_meter(
+                    ThemeTarget::Axis,
+                    ThemeVariant::Default,
+                    Some(index + 1),
+                    work_meter,
+                )?;
+                &dynamic_style
+            } else {
+                &axis_style
+            };
+            let paint_property = if matches!(
+                style.stroke_resolution().specified(),
+                Specified::Unspecified
+            ) {
+                ResolvedStyleProperty::Fill
+            } else {
+                ResolvedStyleProperty::Stroke
+            };
+            if !source_owned
+                && paint_property == ResolvedStyleProperty::Fill
+                && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            {
+                palette_targets.insert(ThemeTarget::Axis);
+            }
+            if matches!(
+                style.effect_resolution().specified(),
+                Specified::Unspecified
+            ) {
+                effect_targets.insert(ThemeTarget::Axis);
+            }
+            work_meter.charge(routes.len())?;
+            for route in &routes {
+                let FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Axis,
+                    rule_index,
+                    facet,
+                    ..
+                } = route.mechanism()
+                else {
+                    continue;
+                };
+                let property = resolved_style_property_for_facet(facet);
+                if matches!(
+                    property,
+                    ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+                ) && (property != paint_property || source_owned)
+                {
+                    continue;
+                }
+                if !style.winner_rule_properties().any(|(candidate, origin)| {
+                    candidate == property && origin.rule_index() == rule_index
+                }) {
+                    continue;
+                }
+                let observation = observations
+                    .get_mut(&(ThemeTarget::Axis, rule_index))
+                    .expect("registered axis rule");
+                match route.disposition() {
+                    FamilyThemeDisposition::Unsupported => {
+                        observation
+                            .residual
+                            .get_or_insert(unsupported_residual_for_facet(facet));
+                    }
+                    FamilyThemeDisposition::TypedAdapter
+                        if property == paint_property
+                            && border_paint
+                                .as_ref()
+                                .is_some_and(|paint| paint.rule_index() == rule_index) =>
+                    {
+                        observation.pending.insert(
+                            border_paint
+                                .as_ref()
+                                .expect("matched border paint")
+                                .capability(),
+                        );
+                    }
+                    _ => observation.incomplete = true,
+                }
+            }
+        }
+        plan.borders = borders.into();
         for route in &routes {
             let (applies, reason) = match route.mechanism() {
-                FamilyThemeMechanism::OrdinalPalette { .. } => (
-                    palette_applies,
+                FamilyThemeMechanism::OrdinalPalette { target } => (
+                    palette_targets.contains(&target),
                     FamilyThemeResidualReason::UnsupportedOrdinalPalette,
                 ),
-                FamilyThemeMechanism::EffectBinding { .. } => {
-                    (effect_applies, FamilyThemeResidualReason::UnsupportedEffect)
-                }
+                FamilyThemeMechanism::EffectBinding { target, .. } => (
+                    effect_targets.contains(&target),
+                    FamilyThemeResidualReason::UnsupportedEffect,
+                ),
                 _ => continue,
             };
             let key = theme.family_mechanism_key(*route);
@@ -263,8 +417,8 @@ impl QuadrantChartTextPaintPlan {
             if let Some(reason) = observation.residual {
                 plan.evidence.mark_residual(key, reason);
             } else if observation.incomplete { /* Winning sibling facets remain incomplete. */
-            } else if let Some(capability) = observation.pending {
-                plan.pending.insert((target, index), capability);
+            } else if !observation.pending.is_empty() {
+                plan.pending.insert((target, index), observation.pending);
             } else {
                 plan.evidence.mark_not_applicable(key);
             }
@@ -273,16 +427,20 @@ impl QuadrantChartTextPaintPlan {
         Ok(plan)
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<QuadrantChartTextPaintReceipt> {
-        (!self.pending.is_empty()).then(|| QuadrantChartTextPaintReceipt {
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<QuadrantChartPaintReceipt> {
+        (!self.pending.is_empty()).then(|| QuadrantChartPaintReceipt {
             expected: Arc::clone(&self.terminals),
+            expected_borders: Arc::clone(&self.borders),
+            next_border: 0,
             next: 0,
             valid: true,
         })
     }
 
-    pub(crate) fn record_terminal(&self, receipt: QuadrantChartTextPaintReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: QuadrantChartPaintReceipt) -> bool {
         Arc::ptr_eq(&self.terminals, &receipt.expected)
+            && Arc::ptr_eq(&self.borders, &receipt.expected_borders)
+            && receipt.next_border == self.borders.len()
             && receipt.valid
             && receipt.next == self.terminals.len()
             && self.terminal_receipt.set(()).is_ok()
@@ -291,10 +449,10 @@ impl QuadrantChartTextPaintPlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         if self.terminal_receipt.get().is_some() {
-            for (&(target, index), &capability) in &self.pending {
+            for (&(target, index), capabilities) in &self.pending {
                 evidence.mark_applied_with_capabilities(
                     FamilyThemeMechanismKey::Rule { index, target },
-                    [capability],
+                    capabilities.iter().copied(),
                 );
             }
         }
@@ -303,19 +461,49 @@ impl QuadrantChartTextPaintPlan {
 }
 
 #[derive(Debug)]
-pub(crate) struct QuadrantChartTextPaintReceipt {
+pub(crate) struct QuadrantChartPaintReceipt {
     expected: Arc<[(Box<str>, Box<str>)]>,
+    expected_borders: Arc<[BorderTerminal]>,
+    next_border: usize,
     next: usize,
     valid: bool,
 }
 
-impl QuadrantChartTextPaintReceipt {
+impl QuadrantChartPaintReceipt {
+    pub(crate) fn record_border(&mut self, line: &QuadrantChartBorderLineData) {
+        self.valid &= self
+            .expected_borders
+            .get(self.next_border)
+            .is_some_and(|expected| expected.matches(line));
+        self.next_border = self.next_border.saturating_add(1);
+    }
+
     pub(crate) fn record(&mut self, label: &QuadrantChartTextData) {
         self.valid &= self
             .expected
             .get(self.next)
             .is_some_and(|(text, fill)| text.as_ref() == label.text && fill.as_ref() == label.fill);
         self.next = self.next.saturating_add(1);
+    }
+}
+
+#[derive(Debug)]
+struct BorderTerminal {
+    geometry: [f64; 5],
+    paint: Box<str>,
+}
+
+impl BorderTerminal {
+    fn from_line(line: &QuadrantChartBorderLineData) -> Self {
+        Self {
+            geometry: [line.x1, line.y1, line.x2, line.y2, line.stroke_width],
+            paint: line.stroke_fill.clone().into_boxed_str(),
+        }
+    }
+
+    fn matches(&self, line: &QuadrantChartBorderLineData) -> bool {
+        self.geometry == [line.x1, line.y1, line.x2, line.y2, line.stroke_width]
+            && self.paint.as_ref() == line.stroke_fill
     }
 }
 
@@ -336,7 +524,7 @@ mod tests {
         }
     }
 
-    fn plan() -> QuadrantChartTextPaintPlan {
+    fn plan() -> QuadrantChartPaintPlan {
         use crate::diagram_theme::{
             CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
             ThemeStylePatch,
@@ -353,15 +541,18 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::QUADRANT_CHART);
-        QuadrantChartTextPaintPlan {
+        QuadrantChartPaintPlan {
             evidence: FamilyThemeEvidence::from_theme(Some(&theme)),
             terminals: vec![
                 ("Point".into(), "#123456".into()),
                 ("Title".into(), "#abcdef".into()),
             ]
             .into(),
-            pending: BTreeMap::from([((ThemeTarget::Text, 0), ThemeCapability::SolidPaint)]),
-            ..QuadrantChartTextPaintPlan::default()
+            pending: BTreeMap::from([(
+                (ThemeTarget::Text, 0),
+                BTreeSet::from([ThemeCapability::SolidPaint]),
+            )]),
+            ..QuadrantChartPaintPlan::default()
         }
     }
 
@@ -382,8 +573,10 @@ mod tests {
             receipt.record(&second);
             assert!(!plan.record_terminal(receipt));
         }
-        let mut foreign = QuadrantChartTextPaintReceipt {
+        let mut foreign = QuadrantChartPaintReceipt {
             expected: plan.terminals.to_vec().into(),
+            expected_borders: Arc::clone(&plan.borders),
+            next_border: 0,
             next: 0,
             valid: true,
         };
@@ -393,6 +586,54 @@ mod tests {
         let mut complete = plan.begin_terminal_receipt().unwrap();
         complete.record(&label("Point", "#123456"));
         complete.record(&label("Title", "#abcdef"));
+        assert!(plan.record_terminal(complete));
+        assert_eq!(plan.finish_evidence().applied().len(), 1);
+    }
+    #[test]
+    fn border_receipt_rejects_missing_reordered_changed_and_foreign_terminals() {
+        let mut plan = plan();
+        let line = |x| QuadrantChartBorderLineData {
+            x1: x,
+            y1: 0.0,
+            x2: x + 1.0,
+            y2: 0.0,
+            stroke_width: 2.0,
+            stroke_fill: "#123456".into(),
+        };
+        plan.borders = vec![
+            BorderTerminal::from_line(&line(0.0)),
+            BorderTerminal::from_line(&line(2.0)),
+        ]
+        .into();
+        let text_complete = || {
+            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            receipt.record(&label("Point", "#123456"));
+            receipt.record(&label("Title", "#abcdef"));
+            receipt
+        };
+        assert!(!plan.record_terminal(text_complete()));
+        let mut wrong_paint = line(0.0);
+        wrong_paint.stroke_fill = "#abcdef".into();
+        let mut wrong_width = line(0.0);
+        wrong_width.stroke_width = 3.0;
+        for first in [line(2.0), wrong_paint, wrong_width] {
+            let mut receipt = text_complete();
+            receipt.record_border(&first);
+            receipt.record_border(&line(2.0));
+            assert!(!plan.record_terminal(receipt));
+        }
+        let mut foreign = text_complete();
+        foreign.expected_borders = vec![
+            BorderTerminal::from_line(&line(0.0)),
+            BorderTerminal::from_line(&line(2.0)),
+        ]
+        .into();
+        foreign.record_border(&line(0.0));
+        foreign.record_border(&line(2.0));
+        assert!(!plan.record_terminal(foreign));
+        let mut complete = text_complete();
+        complete.record_border(&line(0.0));
+        complete.record_border(&line(2.0));
         assert!(plan.record_terminal(complete));
         assert_eq!(plan.finish_evidence().applied().len(), 1);
     }

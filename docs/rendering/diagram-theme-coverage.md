@@ -11,12 +11,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 29/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 4/33; 94 routes | Block 44, Class 26, Quadrant Chart 8, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families without a family-owned Legacy route | 30/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 3/33; 86 routes | Block 44, Class 26, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 76 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v77; 424 routes / 630 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 77 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v78; 432 routes / 638 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v6; 74 routes / 148 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v6 retires eight Flowchart/Swimlane static unqualified/Default Marker.fill/stroke
@@ -33,7 +33,7 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block, Class, Quadrant Chart, and XY Chart.
+The global provider remains necessary for Block, Class, and XY Chart.
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
@@ -42,7 +42,17 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 77 adds four Quadrant Chart Title.fill routes (solid/transparent,
+output files. Version 78 adds the eight Quadrant Chart Axis.fill/stroke static scalar routes
+(solid/transparent, unqualified/Default) and removes the final Quadrant family bridge dispatch.
+A single paint plan owns text and border receipts so mixed rules require every winning facet.
+Axis.fill retains its border fallback when Axis.stroke is unspecified; explicit stroke, transparent,
+and Clear prevent fallback. Outer and inner border config ownership is independent of axis labels.
+Border receipts cover paint, geometry, width, order, and plan identity. Unsupported Axis ordinal
+requests are reconciled independently over label occurrences and the six border lines in writer
+order; this does not qualify ordinal paint. Absent, source-owned, and shadowed requests are
+NotApplicable. Quadrant captions retain their independent color channels.
+
+Version 77 adds four Quadrant Chart Title.fill routes (solid/transparent,
 unqualified/Default). The direct text plan now consumes dedicated title fill as well as inherited
 Text fill, preserving author order and explicit title configuration ownership. Missing titles and
 fully shadowed rules are NotApplicable; winning unsupported title facets remain residual.
@@ -54,7 +64,7 @@ configuration owns each channel independently. Text ordinals follow points, axes
 while Axis and Title selectors use their own occurrence domains. Winning unsupported or sibling
 facets remain residual; absent, source-owned, or fully shadowed requests are NotApplicable.
 The writer checks every text and fill against its prepared receipt before recording Applied.
-The remaining Quadrant bridge handles only dedicated Axis paint routes. Axis.fill supplies
+Before version 78, the remaining Quadrant bridge handled only dedicated Axis paint. Axis.fill supplies
 border paint only when Axis.stroke is unspecified; an explicit stroke, including transparent
 or Clear, blocks that fallback. Generic Text.fill does not feed this border channel.
 
@@ -165,8 +175,8 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | ER | Typed | Typed | None |
 | Pie | Typed | Unsupported | None |
 | XY Chart | Typed | Unsupported | Required |
-| Radar | Typed | Typed | Required |
-| Quadrant Chart | Typed | Unsupported | Required |
+| Radar | Typed | Typed | None |
+| Quadrant Chart | Typed | Unsupported | None |
 | Timeline | Typed | Typed | None |
 | Journey | Typed | Typed | None |
 | Architecture | Typed | Typed | None |
