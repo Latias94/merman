@@ -829,10 +829,6 @@ impl PlannedRouteLabel {
         }
     }
 
-    pub(super) const fn width(&self) -> usize {
-        self.descriptor.width()
-    }
-
     pub(super) const fn line_count(&self) -> usize {
         self.descriptor.line_count()
     }

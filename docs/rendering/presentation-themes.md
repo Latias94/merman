@@ -9,7 +9,11 @@ Merman keeps four independent choices separate: host theme values, Merman presen
 | Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
 | SVG output | `SvgRequest.pipeline` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
 
-The default renderer remains Mermaid-parity oriented. An empty presentation is a no-op.
+The default renderer remains Mermaid-parity oriented. An empty presentation is a no-op. The host
+resolves its own appearance and maps those values into the chosen output's theme input; Merman does
+not inspect a terminal or editor theme. See the
+[host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes) for
+executable request composition.
 
 ## Rust API
 
@@ -67,6 +71,28 @@ Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`
 Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
 
 `merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. A build without `layout-elk` can still discover and select the profile for diagrams that do not require that aspect. Use the SVG plan or presentation catalog to detect blocked aspects for the actual artifact and diagram.
+
+## Terminal themes
+
+ASCII/Unicode uses `AsciiTerminalPalette` and `AsciiColorTheme`, independently of SVG `HostTheme`
+and `Presentation`. A host may map the same application colors into both inputs, but SVG typography,
+CSS-oriented family variables, and terminal role encoding remain separate. `presentation.theme`
+does not populate `ascii.theme` or select an ASCII color mode.
+
+| Host intent | ASCII color mode | Palette behavior |
+| --- | --- | --- |
+| Plain logs or a machine text channel | `Plain` | No color escapes; viewport fallback is available |
+| Use the terminal's own palette | `Ansi16` | Primary text and most structural roles use Reset; emphasis uses named ANSI colors |
+| Apply a known host RGB palette | `TrueColor` | Semantic roles resolve through `AsciiColorTheme` |
+| Approximate a host RGB palette | `Ansi256` | Resolved RGB colors are mapped to the 256-color encoding |
+
+ANSI16 deliberately bypasses the RGB theme for semantic roles; direct authored RGB colors are
+quantized separately. Named terminal colors and Reset do not guarantee contrast for an arbitrary
+user-customized terminal palette. Styled output accepts viewport `Allow` or `Error`; `Fallback` is
+Plain-only and an invalid styled/fallback combination is rejected even when the diagram would fit.
+
+See the [terminal theme API](../../crates/merman-ascii/README.md#terminal-theme-api) and
+[binding ASCII options](../bindings/OPTIONS_JSON.md#ascii-options) for palette fields and overrides.
 
 ## Options JSON
 

@@ -4,6 +4,12 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advance the direct UniFFI binding API to `7`. Schema-3 ASCII output plans add the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `binding_api_version_v7()` to reject stale record layouts.
+
 ## [0.8.0a6] - 2026-09-02
 
 This section describes alpha.6, published to PyPI on 2026-09-04 with matching macOS arm64, manylinux x86_64, and Windows x86_64 wheels.

@@ -1,3 +1,4 @@
+use super::super::horizontal_label::HorizontalLabelPadding;
 use super::super::label::{GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle};
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
@@ -731,7 +732,7 @@ fn apply_horizontal_edge_spacing(
                     policy.terminal_width_profile,
                     resources,
                 )?,
-                2,
+                HorizontalLabelPadding::new(edge.start_marker, edge.end_marker).gap_cells(),
             )
         })
         .transpose()?

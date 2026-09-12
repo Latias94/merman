@@ -37,8 +37,7 @@ try {
 Mermaid-compatible SVG structure and is the right choice for trusted input or parity-sensitive
 consumers. `parity` is not a browser DOM-admission or sanitization check.
 
-For SVG that will be embedded directly into HTML, or when the Mermaid source is not fully trusted,
-select the sealed `resvg-safe` pipeline explicitly:
+For a resvg/usvg consumer that cannot display HTML labels, select `resvg-safe` explicitly:
 
 ```js
 const options = {
@@ -47,8 +46,14 @@ const options = {
 const svg = await engine.renderSvg(source, options);
 ```
 
-The supported pipeline values are `parity`, `readable`, and `resvg-safe`. The safe pipeline can
-remove browser-only SVG features such as active content and `foreignObject` labels. It does not
+The supported pipeline values are `parity`, `readable`, and `resvg-safe`. `readable` is an advanced
+text overlay for consumers that ignore HTML labels; browsers can display both copies and show
+overlapping text. Use `parity` for browser display. `resvg-safe` also removes unsupported styles,
+so it is not a lossless replacement for `readable`. HTML embedding still requires a host-owned
+admission policy; selecting a pipeline alone does not establish browser DOM safety.
+
+The `resvg-safe` pipeline removes browser-only content such as active elements and `foreignObject`
+labels. It does not
 provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
 mounting.
 
@@ -56,6 +61,14 @@ The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC
 recipe includes deterministic SVG plus Cytoscape and ELK layouts. Math, binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
 surface.
+
+The [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes)
+describe the library boundary across Rust and other delivery surfaces. This native package can
+serve the SVG recipe; it does not expose the ASCII/agent-log or PNG recipe. Use a matching Rust or
+CLI build for those outputs instead of inferring package support from workspace capabilities.
+The host owns semantic theme selection, caching, scheduling, persistence, and viewer or clipboard
+actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
+artifacts; see [presentation themes](../../docs/rendering/presentation-themes.md).
 
 ## Package layout
 

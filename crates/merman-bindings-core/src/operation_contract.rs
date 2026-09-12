@@ -170,6 +170,8 @@ const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
     field("emitted_height", "unsigned-integer", true, Some(64), false),
     field("width_profile", "string", true, None, false),
     field("layout_profile", "string", true, None, false),
+    field("requested_layout_profile", "string", true, None, false),
+    field("compact_attempted", "boolean", true, None, false),
     field(
         "requested_max_width",
         "unsigned-integer",

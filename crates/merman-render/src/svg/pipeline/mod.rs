@@ -220,14 +220,20 @@ impl Default for SvgPipeline {
 }
 
 impl SvgPipeline {
+    /// Default browser-facing SVG; preserves Mermaid labels and styles without text overlays.
     pub fn parity() -> Self {
         Self::from_preset(SvgPipelinePreset::Parity)
     }
 
+    /// Advanced text overlay for consumers that ignore HTML labels.
+    ///
+    /// Browsers may show duplicate text. Prefer [`Self::parity`] for browser previews or
+    /// [`Self::resvg_safe`] for resvg/usvg compatibility. See [`SvgPipelinePreset::Readable`].
     pub fn readable() -> Self {
         Self::from_preset(SvgPipelinePreset::Readable)
     }
 
+    /// Converts HTML labels and applies terminal resvg compatibility cleanup and validation.
     pub fn resvg_safe() -> Self {
         Self::from_preset(SvgPipelinePreset::ResvgSafe)
     }

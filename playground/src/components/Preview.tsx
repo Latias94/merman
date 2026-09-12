@@ -117,6 +117,8 @@ export function Preview({ active = true, className }: PreviewProps) {
   const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
+  const svgPipeline = useAppStore((state) => state.svgPipeline);
+  const setSvgPipeline = useAppStore((state) => state.setSvgPipeline);
   const svgPresentationMode = useAppStore(
     (state) => state.svgPresentationMode,
   );
@@ -500,6 +502,16 @@ export function Preview({ active = true, className }: PreviewProps) {
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(toolbarActions)}
+      {canvasMode && svgPipeline === "readable" && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-2">
+          <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {t("svgPipelineGuidance.browserWarning")}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setSvgPipeline("parity")}>
+            {t("svgPipelineGuidance.useParity")}
+          </Button>
+        </div>
+      )}
 
       <div
         id="preview-mode-panel"

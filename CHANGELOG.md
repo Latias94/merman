@@ -14,6 +14,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. ASCII reports now use schema 3 and identify requested/effective layout and Compact attempts. Flowchart Compact uses a smaller default horizontal rank gap; explicit spacing overrides are preserved. Direct UniFFI bindings advance to API 7 for the revised ASCII output record; regenerate native libraries and Python/Swift wrappers together.
+
+- Clarified SVG pipeline selection in the Playground, CLI help, and SDK documentation. `readable` is an advanced text-fallback mode with browser overlap guidance and a one-click return to the default Mermaid SVG preview; pipeline values and defaults are unchanged.
+
 - Updated CI Actions and the host JavaScript toolchain to Node.js `24.21.0` and npm `12.0.2`, including npm JSON output handling and explicit dependency install-script approvals. Native Linux build containers retain their existing ABI baselines.
 - `merman-rustdoc` now defaults to SVG and Cytoscape without math. Consumers rendering mathematical labels must add `features = ["math"]` or `features = ["complete-svg"]` to the macro dependency. Explicit `complete-svg`/`complete-svg-elk` selections and the `merman` facade default are unchanged; published `0.8.0-alpha.6` still includes math by default.
 - Rustdoc macro diagrams now use transparent backgrounds by default. Set `background = "white"` to retain an opaque white canvas. Generated SVG IDs now include occurrence and theme identity; regenerate output snapshots instead of relying on historical IDs.
@@ -21,6 +25,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.
 
 ### Fixed
+
+- Preserved visible line segments on both sides of horizontal ASCII/Unicode edge labels, including bidirectional arrows, and corrected cell centering for even-width labels (#132).
 
 - Updated `js-yaml` to `4.3.2` in the Playground and Node/VS Code tooling to fix the merge-key CPU exhaustion advisory GHSA-2883-xcg3-v3hh.
 - Fixed rustdoc macro rendering and include reads for conditionally disabled functions, fields, and variants. Enabled child annotations inherit parent tree rendering options and override explicit fields; `scope` stays local, and `inherit = "off"` restores defaults before local overrides. Renamed Cargo dependencies resolve correctly.

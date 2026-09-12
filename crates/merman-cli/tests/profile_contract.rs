@@ -401,7 +401,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
 
     if expected_id_set.contains("ascii") {
         assert_eq!(payload["ascii"]["schema_version"], 1);
-        assert_eq!(payload["ascii"]["output_schema_version"], 2);
+        assert_eq!(payload["ascii"]["output_schema_version"], 3);
         assert_eq!(payload["ascii"]["report"]["encoding"], "plain");
         assert_eq!(payload["ascii"]["report"]["styled_output"], false);
         assert!(

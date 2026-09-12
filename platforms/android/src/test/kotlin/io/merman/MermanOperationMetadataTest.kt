@@ -74,7 +74,7 @@ class MermanOperationMetadataTest {
                 outputPlan = """
                     {
                       "kind":"ascii",
-                      "schema_version":2,
+                      "schema_version":3,
                       "family":"flowchart-v2",
                       "projection":"unicode",
                       "encoding":"utf-8",
@@ -84,6 +84,8 @@ class MermanOperationMetadataTest {
                       "emitted_height":8,
                       "width_profile":"unicode",
                       "layout_profile":"compact",
+                      "requested_layout_profile":"auto",
+                      "compact_attempted":true,
                       "requested_max_width":40,
                       "overflowed":true,
                       "outcome":"fallback",
@@ -98,7 +100,7 @@ class MermanOperationMetadataTest {
         )
 
         val plan = metadata.outputPlan as MermanAsciiOutputPlan
-        assertEquals(2, plan.schemaVersion)
+        assertEquals(3, plan.schemaVersion)
         assertEquals("flowchart-v2", plan.family)
         assertEquals("unicode", plan.projection)
         assertEquals("utf-8", plan.encoding)
@@ -108,6 +110,8 @@ class MermanOperationMetadataTest {
         assertEquals(8L, plan.emittedHeight)
         assertEquals("unicode", plan.widthProfile)
         assertEquals("compact", plan.layoutProfile)
+        assertEquals("auto", plan.requestedLayoutProfile)
+        assertTrue(plan.compactAttempted)
         assertEquals(40L, plan.requestedMaxWidth)
         assertTrue(plan.overflowed)
         assertEquals("fallback", plan.outcome)
@@ -235,6 +239,8 @@ class MermanOperationMetadataTest {
                           "emitted_height":1,
                           "width_profile":"unicode",
                           "layout_profile":"canonical",
+                          "requested_layout_profile":"canonical",
+                          "compact_attempted":false,
                           "requested_max_width":null,
                           "overflowed":false,
                           "outcome":"primary",

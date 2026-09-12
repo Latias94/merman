@@ -374,6 +374,8 @@ pub struct BindingAsciiOutputPlan {
     emitted_height: u64,
     width_profile: String,
     layout_profile: String,
+    requested_layout_profile: String,
+    compact_attempted: bool,
     requested_max_width: Option<u64>,
     overflowed: bool,
     outcome: String,
@@ -410,6 +412,8 @@ impl BindingAsciiOutputPlan {
             emitted_height: metadata.emitted_height,
             width_profile: metadata.width_profile,
             layout_profile: metadata.layout_profile,
+            requested_layout_profile: metadata.requested_layout_profile,
+            compact_attempted: metadata.compact_attempted,
             requested_max_width: metadata.requested_max_width,
             overflowed: metadata.overflowed,
             outcome: metadata.outcome,
@@ -469,6 +473,18 @@ impl BindingAsciiOutputPlan {
     #[must_use]
     pub fn layout_profile(&self) -> &str {
         &self.layout_profile
+    }
+
+    /// Layout profile requested by the host, including automatic selection.
+    #[must_use]
+    pub fn requested_layout_profile(&self) -> &str {
+        &self.requested_layout_profile
+    }
+
+    /// Whether automatic selection attempted a Compact candidate.
+    #[must_use]
+    pub const fn compact_attempted(&self) -> bool {
+        self.compact_attempted
     }
 
     #[must_use]
@@ -849,6 +865,9 @@ fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
             emitted_height: required_u64(object, "emitted_height")?,
             width_profile: required_string(object, "width_profile")?.to_owned(),
             layout_profile: required_string(object, "layout_profile")?.to_owned(),
+            requested_layout_profile: required_string(object, "requested_layout_profile")?
+                .to_owned(),
+            compact_attempted: required_bool(object, "compact_attempted")?,
             requested_max_width: optional_u64(object, "requested_max_width")?,
             overflowed: required_bool(object, "overflowed")?,
             outcome: required_string(object, "outcome")?.to_owned(),

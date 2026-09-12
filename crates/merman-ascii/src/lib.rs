@@ -17,6 +17,7 @@ mod git_graph;
 mod graph;
 mod journey;
 mod kanban;
+mod layout_selection;
 mod mindmap;
 mod operation;
 mod options;
@@ -134,6 +135,11 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        layout_selection::validate_viewport(
+            self.options.layout_profile,
+            AsciiViewportPolicy::unrestricted(),
+        )?;
         let policies = self.options.resolve_policies();
         render_model_with_execution(
             model,
@@ -186,59 +192,81 @@ impl AsciiRenderer {
         let execution = operation::AsciiExecution::new(control, &resources)
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger);
-        let policies = self.options.resolve_policies();
-        let options = policies.options;
+        let requested_policies = self.options.resolve_policies();
         let capability = output::capability_for(model);
-        validate_fallback_request(capability, &policies, viewport)?;
-        let projection = output::projection_for(capability);
-        let encoding = policies.output.encoding;
-        let fallback_capability =
-            capability.is_some_and(|capability| capability.supports_fallback_encoding(encoding));
-        let rendered = match render_model_with_execution(
-            model,
-            flowchart_context,
-            &options,
-            &policies,
+        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        layout_selection::validate_viewport(self.options.layout_profile, viewport)?;
+        validate_primary_request(capability, &requested_policies)?;
+        validate_fallback_request(capability, &requested_policies, viewport)?;
+        let selected = layout_selection::select(
+            self.options,
+            viewport,
             execution,
-            context.local_time_zone(),
-        ) {
-            Ok(rendered) => rendered,
-            Err(AsciiError::PrimaryViewportOverflow {
-                actual_width,
-                height,
-                ..
-            }) => {
-                let primary_extent = output::AsciiExtent::new(actual_width, height);
-                if !fallback_capability {
-                    return Err(AsciiError::FallbackUnavailable {
-                        diagram_type: model.kind().to_string(),
-                        max_width: viewport
-                            .max_width
-                            .expect("primary overflow requires a width bound"),
-                        actual_width,
+            |options, candidate_execution| {
+                let policies = options.resolve_policies();
+                render_model_with_execution(
+                    model,
+                    flowchart_context,
+                    &options,
+                    &policies,
+                    candidate_execution,
+                    context.local_time_zone(),
+                )
+            },
+        )?;
+        self.finish_report(model, metadata, viewport, execution, selected)
+    }
+
+    fn finish_report(
+        &self,
+        model: &RenderSemanticModel,
+        metadata: &ParseMetadata,
+        viewport: AsciiViewportPolicy,
+        execution: operation::AsciiExecution<'_>,
+        selected: layout_selection::SelectedLayout,
+    ) -> Result<AsciiOutput> {
+        let capability = output::capability_for(model);
+        let policies = self
+            .options
+            .with_layout_profile(selected.profile)
+            .resolve_policies();
+        let projection = output::projection_for(capability);
+        let fallback_capability = capability.is_some_and(|capability| {
+            capability.supports_fallback_encoding(policies.output.encoding)
+        });
+        let output_context = output::OutputBuildContext {
+            color_mode: policies.output.color_mode,
+            profile: policies.output.terminal_width_profile,
+            layout_profile: selected.profile,
+            policy: viewport,
+            execution,
+        };
+        let requested_profile = self.options.layout_profile;
+        let compact_attempted = selected.compact_attempted;
+        let annotate = |mut output: AsciiOutput| {
+            output.requested_layout_profile = requested_profile;
+            output.compact_attempted = compact_attempted;
+            output
+        };
+        let primary = match selected.candidate {
+            layout_selection::LayoutCandidate::Measured(primary) => primary,
+            layout_selection::LayoutCandidate::Overflow(primary_extent) => {
+                if viewport.overflow == OverflowPolicy::Error {
+                    return Err(AsciiError::WidthOverflow {
+                        max_width: viewport.max_width.expect("overflow requires a width bound"),
+                        actual_width: primary_extent.width,
+                        profile: policies.output.terminal_width_profile,
                     });
                 }
                 return output::build_semantic_fallback(
                     model,
                     metadata,
                     primary_extent,
-                    output::OutputBuildContext {
-                        color_mode: policies.output.color_mode,
-                        profile: policies.output.terminal_width_profile,
-                        layout_profile: policies.layout.profile,
-                        policy: viewport,
-                        execution,
-                    },
-                );
+                    output_context,
+                )
+                .map(annotate);
             }
-            Err(error) => return Err(error),
         };
-        let primary = output::MeasuredOutput::measure(
-            rendered,
-            policies.output.color_mode,
-            policies.output.terminal_width_profile,
-            execution,
-        )?;
         let primary_extent = primary.metrics().extent;
         let overflowed = viewport
             .max_width
@@ -252,50 +280,25 @@ impl AsciiRenderer {
                 });
             }
             if projection == AsciiProjection::StructuredText {
-                return output::build_structured_fallback(
-                    model.kind(),
-                    primary,
-                    output::OutputBuildContext {
-                        color_mode: policies.output.color_mode,
-                        profile: policies.output.terminal_width_profile,
-                        layout_profile: policies.layout.profile,
-                        policy: viewport,
-                        execution,
-                    },
-                );
+                return output::build_structured_fallback(model.kind(), primary, output_context)
+                    .map(annotate);
             }
             drop(primary);
             return output::build_semantic_fallback(
                 model,
                 metadata,
                 primary_extent,
-                output::OutputBuildContext {
-                    color_mode: policies.output.color_mode,
-                    profile: policies.output.terminal_width_profile,
-                    layout_profile: policies.layout.profile,
-                    policy: viewport,
-                    execution,
-                },
-            );
+                output_context,
+            )
+            .map(annotate);
         }
-        let mut output = output::build_output(
-            model.kind(),
-            primary,
-            projection,
-            output::OutputBuildContext {
-                color_mode: policies.output.color_mode,
-                profile: policies.output.terminal_width_profile,
-                layout_profile: policies.layout.profile,
-                policy: viewport,
-                execution,
-            },
-        )?;
+        let mut output = output::build_output(model.kind(), primary, projection, output_context)?;
         output.fallback.capability = if fallback_capability {
             output::AsciiFallbackCapability::Available
         } else {
             output::AsciiFallbackCapability::Unsupported
         };
-        Ok(output)
+        Ok(annotate(output))
     }
 
     /// Renders one parser-owned model together with its render-only semantic context.
@@ -308,6 +311,11 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
+        execution.checkpoint(merman_core::OperationPhase::Admission)?;
+        layout_selection::validate_viewport(
+            self.options.layout_profile,
+            AsciiViewportPolicy::unrestricted(),
+        )?;
         let policies = self.options.resolve_policies();
         render_model_with_execution(
             parsed.model(),
@@ -486,6 +494,11 @@ fn render_flowchart_model(
             // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
             // that the primary graph is too wide, but discard its speculative document cells.
             Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Err(error @ AsciiError::UnsupportedFeature { .. })
+                if execution.is_optional_layout_candidate() =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
@@ -609,6 +622,11 @@ fn render_state_model(
         match result {
             // State diagrams share the graph renderer and the same render-wide fallback ledger.
             Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Err(error @ AsciiError::UnsupportedFeature { .. })
+                if execution.is_optional_layout_candidate() =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
@@ -1116,7 +1134,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "+---+       +---+\n|   |       |   |\n| A |-label>| B |\n|   |       |   |\n+---+       +---+\n"
+            "+---+          +---+\n|   |          |   |\n| A |--label-->| B |\n|   |          |   |\n+---+          +---+\n"
         );
     }
 

@@ -1758,7 +1758,7 @@ mod tests {
         assert_eq!(flowchart.primary_projection, "diagrammatic");
         assert_eq!(flowchart.support_level, "partial");
         assert!(flowchart.structured_text_fallback);
-        assert_eq!(flowchart.layout_profiles, ["canonical", "compact"]);
+        assert_eq!(flowchart.layout_profiles, ["canonical", "compact", "auto"]);
         assert_eq!(flowchart.width_profiles, ["unicode", "cjk"]);
         assert_eq!(
             flowchart.encodings,
@@ -1792,7 +1792,7 @@ mod tests {
         assert!(!gantt.supported_semantics.contains(&"dependencies"));
 
         let sequence = ascii_capability(&capabilities, "sequence");
-        assert_eq!(sequence.layout_profiles, ["canonical", "compact"]);
+        assert_eq!(sequence.layout_profiles, ["canonical", "compact", "auto"]);
 
         let state = ascii_capability(&capabilities, "state");
         assert_eq!(state.layout_profiles, ["canonical"]);

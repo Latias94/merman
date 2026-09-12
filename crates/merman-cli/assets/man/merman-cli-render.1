@@ -57,16 +57,18 @@ Suppress non\-error log output
 .SH "MERMAN RENDERER CONTROLS"
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
-SVG output pipeline. Compiled binary exports always start from resvg\-safe
+SVG consumer: parity (default) for browsers; resvg\-safe for resvg/usvg.
+
+Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. PNG/JPEG/PDF exports select resvg\-safe automatically.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
-parity
+parity: Default for browsers and Webviews; preserves Mermaid HTML labels and styles
 .IP \(bu 2
-readable
+readable: Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates
 .IP \(bu 2
-resvg\-safe
+resvg\-safe: Converts HTML labels and cleans SVG for resvg/usvg consumers
 .RE
 .TP
 \fB\-\-presentation\-profile\fR \fI<PRESENTATION_PROFILE>\fR
@@ -330,7 +332,7 @@ error
 Remove renderer\-owned trailing spaces from emitted text rows
 .TP
 \fB\-\-ascii\-layout\-profile\fR \fI<ASCII_LAYOUT_PROFILE>\fR [default: canonical]
-Select the canonical or opt\-in compact ASCII layout profile
+Select canonical, compact, or automatic ASCII layout (auto requires \-\-ascii\-max\-width)
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -338,6 +340,8 @@ Select the canonical or opt\-in compact ASCII layout profile
 canonical
 .IP \(bu 2
 compact
+.IP \(bu 2
+auto: Try Compact once if Canonical exceeds the explicit width; then apply \-\-ascii\-overflow
 .RE
 .TP
 \fB\-\-ascii\-report\fR

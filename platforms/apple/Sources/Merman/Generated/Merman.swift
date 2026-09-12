@@ -651,7 +651,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersionV6()  -> UInt32
+    func bindingApiVersionV7()  -> UInt32
 
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
@@ -832,10 +832,10 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersionV6() -> UInt32  {
+open func bindingApiVersionV7() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6(
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -2528,6 +2528,8 @@ public struct MermanAsciiOutputPlan: Equatable, Hashable {
     public var emittedHeight: UInt64
     public var widthProfile: String
     public var layoutProfile: String
+    public var requestedLayoutProfile: String
+    public var compactAttempted: Bool
     public var requestedMaxWidth: UInt64?
     public var overflowed: Bool
     public var outcome: String
@@ -2539,7 +2541,7 @@ public struct MermanAsciiOutputPlan: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(schemaVersion: UInt16, family: String, projection: String, encoding: String, primaryWidth: UInt64, primaryHeight: UInt64, emittedWidth: UInt64, emittedHeight: UInt64, widthProfile: String, layoutProfile: String, requestedMaxWidth: UInt64?, overflowed: Bool, outcome: String, fallbackCapability: String, fallbackAttempted: Bool, fallbackReason: String?, trimmed: Bool, lossiness: String) {
+    public init(schemaVersion: UInt16, family: String, projection: String, encoding: String, primaryWidth: UInt64, primaryHeight: UInt64, emittedWidth: UInt64, emittedHeight: UInt64, widthProfile: String, layoutProfile: String, requestedLayoutProfile: String, compactAttempted: Bool, requestedMaxWidth: UInt64?, overflowed: Bool, outcome: String, fallbackCapability: String, fallbackAttempted: Bool, fallbackReason: String?, trimmed: Bool, lossiness: String) {
         self.schemaVersion = schemaVersion
         self.family = family
         self.projection = projection
@@ -2550,6 +2552,8 @@ public struct MermanAsciiOutputPlan: Equatable, Hashable {
         self.emittedHeight = emittedHeight
         self.widthProfile = widthProfile
         self.layoutProfile = layoutProfile
+        self.requestedLayoutProfile = requestedLayoutProfile
+        self.compactAttempted = compactAttempted
         self.requestedMaxWidth = requestedMaxWidth
         self.overflowed = overflowed
         self.outcome = outcome
@@ -2586,6 +2590,8 @@ public struct FfiConverterTypeMermanAsciiOutputPlan: FfiConverterRustBuffer {
                 emittedHeight: FfiConverterUInt64.read(from: &buf),
                 widthProfile: FfiConverterString.read(from: &buf),
                 layoutProfile: FfiConverterString.read(from: &buf),
+                requestedLayoutProfile: FfiConverterString.read(from: &buf),
+                compactAttempted: FfiConverterBool.read(from: &buf),
                 requestedMaxWidth: FfiConverterOptionUInt64.read(from: &buf),
                 overflowed: FfiConverterBool.read(from: &buf),
                 outcome: FfiConverterString.read(from: &buf),
@@ -2608,6 +2614,8 @@ public struct FfiConverterTypeMermanAsciiOutputPlan: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.emittedHeight, into: &buf)
         FfiConverterString.write(value.widthProfile, into: &buf)
         FfiConverterString.write(value.layoutProfile, into: &buf)
+        FfiConverterString.write(value.requestedLayoutProfile, into: &buf)
+        FfiConverterBool.write(value.compactAttempted, into: &buf)
         FfiConverterOptionUInt64.write(value.requestedMaxWidth, into: &buf)
         FfiConverterBool.write(value.overflowed, into: &buf)
         FfiConverterString.write(value.outcome, into: &buf)
@@ -5475,7 +5483,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6() != 60120) {
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7() != 21723) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {

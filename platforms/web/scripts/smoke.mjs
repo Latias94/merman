@@ -956,6 +956,24 @@ if (hasCapability("ascii")) {
   assert.match(wrappedAscii, /Alpha/);
   assert.match(wrappedAscii, /Gamma/);
   assert.equal(wrappedAscii.includes("Alpha Beta Gamma Delta"), false);
+  const terminalChain = "flowchart LR\n" + [0, 1, 2].map((i) =>
+    `N${i}[many words are too much sometime] --> N${i + 1}[many words are too much sometime]`
+  ).join("\n");
+  const compactAscii = api.renderAscii(terminalChain, {
+    ...deterministicTime, ascii: { layout_profile: "compact" },
+  });
+  const autoAscii = api.renderAscii(terminalChain, {
+    ...deterministicTime, ascii: { layout_profile: "auto", max_width: 120, overflow: "error" },
+  });
+  assert.equal(autoAscii, compactAscii);
+  assert.throws(() => api.renderAscii(terminalChain, {
+    ...deterministicTime, ascii: { layout_profile: "canonical", max_width: 120, overflow: "error" },
+  }), (error) => error?.details?.diagnostic?.code === "merman.ascii.width_overflow");
+  assert.throws(() => api.renderAscii(terminalChain, {
+    ...deterministicTime, ascii: { layout_profile: "auto" },
+  }), (error) => /maximum width/i.test(error?.message ?? ""));
+  assert.ok(api.asciiCapabilities().find((entry) => entry.diagram_type === "flowchart")
+    .layout_profiles.includes("auto"));
 } else {
   assert.equal(typeof api.renderAscii, "undefined");
   assert.equal(typeof api.asciiSupportedDiagrams, "undefined");

@@ -370,9 +370,19 @@
     "merman-modern": "Merman Modern"
   },
   "svgPipelines": {
-    "parity": "Mermaid 对齐",
-    "readable": "可读 SVG",
-    "resvg-safe": "PNG 安全 SVG"
+    "parity": "Mermaid SVG（默认）",
+    "readable": "文字回退 SVG",
+    "resvg-safe": "resvg 兼容 SVG"
+  },
+  "svgPipelineDescriptions": {
+    "parity": "适合浏览器与 Webview，保留 Mermaid 的 HTML 标签和样式。",
+    "readable": "为忽略 HTML 标签的消费端追加 SVG 文字；浏览器可能显示重复文字。",
+    "resvg-safe": "适合 resvg/usvg 消费端，转换 HTML 标签并清理不支持的样式和内容。"
+  },
+  "svgPipelineGuidance": {
+    "advanced": "高级",
+    "browserWarning": "文字回退 SVG 保留 HTML 标签并追加 SVG 文字，两者在当前浏览器预览中可能同时显示并重叠。",
+    "useParity": "使用 Mermaid SVG"
   },
   "presentationStatus": {
     "none": "未选择呈现配置。",

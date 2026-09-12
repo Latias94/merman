@@ -3,8 +3,11 @@ use crate::output::AsciiOutputEncoding;
 use std::sync::OnceLock;
 
 const CANONICAL_LAYOUT_PROFILES: &[AsciiLayoutProfile] = &[AsciiLayoutProfile::Canonical];
-const FLOWCHART_SEQUENCE_LAYOUT_PROFILES: &[AsciiLayoutProfile] =
-    &[AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact];
+const FLOWCHART_SEQUENCE_LAYOUT_PROFILES: &[AsciiLayoutProfile] = &[
+    AsciiLayoutProfile::Canonical,
+    AsciiLayoutProfile::Compact,
+    AsciiLayoutProfile::Auto,
+];
 const TERMINAL_WIDTH_PROFILES: &[TerminalWidthProfile] =
     &[TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk];
 const OUTPUT_ENCODINGS: &[AsciiOutputEncoding] = &[
@@ -941,7 +944,11 @@ mod tests {
             let capability = find(diagram_type);
             assert_eq!(
                 capability.layout_profiles,
-                &[AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact]
+                &[
+                    AsciiLayoutProfile::Canonical,
+                    AsciiLayoutProfile::Compact,
+                    AsciiLayoutProfile::Auto
+                ]
             );
             assert_eq!(capability.width_profiles, TERMINAL_WIDTH_PROFILES);
             assert_eq!(capability.encodings, OUTPUT_ENCODINGS);

@@ -54,7 +54,7 @@ fn assert_plain_ascii_report(bytes: &[u8]) -> serde_json::Value {
         serde_json::from_slice(bytes).expect("ASCII report should be one JSON artifact");
     assert_eq!(report["kind"], "ascii");
     assert_eq!(report["encoding"], "plain");
-    assert_eq!(report["schema_version"], 2);
+    assert_eq!(report["schema_version"], 3);
     let text = report["text"].as_str().expect("report text");
     assert!(!text.contains('\u{1b}'), "report text must be escape-free");
     report
@@ -774,4 +774,70 @@ fn text_admission_ignores_svg_layout_limits_in_combined_builds() {
     );
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
+}
+
+#[test]
+fn auto_layout_report_selects_compact_without_changing_overflow_policy() {
+    let source = "flowchart LR\nA --> B --> C --> D";
+    let render = |profile: &str, max_width: &str, overflow: &str| {
+        run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--format",
+                "unicode",
+                "--ascii-report",
+                "--ascii-layout-profile",
+                profile,
+                "--ascii-max-width",
+                max_width,
+                "--ascii-overflow",
+                overflow,
+            ],
+            source,
+        )
+    };
+    let compact = render("compact", "1000", "allow");
+    assert!(compact.status.success(), "stderr: {:?}", compact.stderr);
+    let compact = assert_plain_ascii_report(&compact.stdout);
+    let width = compact["primary_width"]
+        .as_u64()
+        .expect("primary extent width")
+        .to_string();
+    let automatic = render("auto", &width, "error");
+    assert!(automatic.status.success(), "stderr: {:?}", automatic.stderr);
+    let report = assert_plain_ascii_report(&automatic.stdout);
+    assert_eq!(report["requested_layout_profile"], "auto");
+    assert_eq!(report["layout_profile"], "compact");
+    assert_eq!(report["compact_attempted"], true);
+    assert_eq!(report["overflowed"], false);
+    assert_eq!(report["text"], compact["text"]);
+
+    let wide = render("auto", "1000", "error");
+    assert!(wide.status.success(), "stderr: {:?}", wide.stderr);
+    let report = assert_plain_ascii_report(&wide.stdout);
+    assert_eq!(report["layout_profile"], "canonical");
+    assert_eq!(report["compact_attempted"], false);
+
+    let overflow = render("auto", "1", "error");
+    assert!(!overflow.status.success());
+    assert!(overflow.stdout.is_empty());
+}
+
+#[test]
+fn auto_layout_requires_an_explicit_width() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--format",
+            "unicode",
+            "--ascii-layout-profile",
+            "auto",
+        ],
+        "flowchart LR\nA --> B",
+    );
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("width"));
 }

@@ -107,9 +107,9 @@ unicode\t''
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG output pipeline. Compiled binary exports always start from resvg-safe' -r -f -a "parity\t''
-readable\t''
-resvg-safe\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
+resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s b -l background -d 'Background color for the selected rendered output' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s C -l css-file -d 'CSS file injected into SVG output before export' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s s -l scale -d 'Raster output scale factor. Defaults to 1' -r
@@ -170,8 +170,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-m
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-overflow -d 'Width overflow behavior for ASCII/Unicode output' -r -f -a "allow\t''
 fallback\t''
 error\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-layout-profile -d 'Select the canonical or opt-in compact ASCII layout profile' -r -f -a "canonical\t''
-compact\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-layout-profile -d 'Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width)' -r -f -a "canonical\t''
+compact\t''
+auto\t'Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l resource-profile -d 'Resource policy for input, semantic models, output, and CLI acquisition' -r -f -a "interactive\t'General interactive applications and public binding surfaces'
 constrained\t'Constrained rendering for untrusted or publicly submitted documents'
 trusted-native\t'Local CLI and controlled native batch rendering'
@@ -201,9 +202,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s f -l for
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG output pipeline. Compiled binary exports always start from resvg-safe' -r -f -a "parity\t''
-readable\t''
-resvg-safe\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
+resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s b -l background -d 'Background color for the selected rendered output' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s C -l css-file -d 'CSS file injected into SVG output before export' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s s -l scale -d 'Raster output scale factor. Defaults to 1' -r
@@ -359,9 +360,9 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s j -l jobs
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s e -l outputFormat -l format -d 'Output format. Defaults to the output extension, then SVG' -r -f -a "svg\t''
 png\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG output pipeline. Compiled binary exports always start from resvg-safe' -r -f -a "parity\t''
-readable\t''
-resvg-safe\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
+resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s b -l backgroundColor -d 'Background color for the selected rendered output. `mmdc` defaults to white' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s C -l cssFile -d 'CSS file injected into SVG output before export' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s p -l puppeteerConfigFile -d 'JSON Puppeteer configuration file. Accepted for mmdc compatibility' -r -F

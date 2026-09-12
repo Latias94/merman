@@ -28,13 +28,13 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 6;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 6 therefore
-// replaces the API 5 version-probe symbol before adding ASCII capability axes and output encoding
-// fields, so stale generated bindings fail before decoding either changed record layout.
+// UniFFI 0.32 method checksums include a record's type name but not its fields. API 7 therefore
+// replaces the API 6 version-probe symbol before adding automatic-layout selection metadata,
+// so stale generated bindings fail before decoding the changed ASCII output-plan record.
 #[cfg(test)]
-const UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM: u16 = 32_101;
+const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -332,6 +332,8 @@ pub struct MermanAsciiOutputPlan {
     pub emitted_height: u64,
     pub width_profile: String,
     pub layout_profile: String,
+    pub requested_layout_profile: String,
+    pub compact_attempted: bool,
     pub requested_max_width: Option<u64>,
     pub overflowed: bool,
     pub outcome: String,
@@ -711,7 +713,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v6(&self) -> u32 {
+    pub fn binding_api_version_v7(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -1560,6 +1562,8 @@ fn uniffi_ascii_output_plan(plan: &BindingAsciiOutputPlan) -> MermanAsciiOutputP
         emitted_height: plan.emitted_height(),
         width_profile: plan.width_profile().to_string(),
         layout_profile: plan.layout_profile().to_string(),
+        requested_layout_profile: plan.requested_layout_profile().to_string(),
+        compact_attempted: plan.compact_attempted(),
         requested_max_width: plan.requested_max_width(),
         overflowed: plan.overflowed(),
         outcome: plan.outcome().to_string(),
@@ -2617,16 +2621,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 6);
-        assert_eq!(engine.binding_api_version_v6(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
+        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v5_generated_bindings_are_rejected_before_record_decoding() {
+    fn api_v6_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6(),
-            UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+            UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2634,21 +2638,21 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v5"),
-            "API 5 probe symbol must stay absent so stale bindings fail before record decoding"
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
+            "API 6 probe symbol must stay absent so stale bindings fail before record decoding"
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5"),
-            "API 5 checksum symbol must stay absent from generated bindings"
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
+            "API 6 checksum symbol must stay absent from generated bindings"
         );
     }
 
@@ -2854,7 +2858,7 @@ mod tests {
             .output_plan
             .expect("ASCII metadata output plan");
         let ascii = plan.ascii.expect("typed ASCII output plan");
-        assert_eq!(ascii.schema_version, 2);
+        assert_eq!(ascii.schema_version, 3);
         assert_eq!(ascii.encoding, "ansi16");
         let raw: Value = serde_json::from_str(&plan.raw_json).expect("raw output plan JSON");
         assert_eq!(raw["encoding"], "ansi16");
@@ -3128,7 +3132,7 @@ mod tests {
             assert_eq!(sequence.semantic_coverage.as_deref(), Some("partial"));
             assert_eq!(sequence.primary_projection, "diagrammatic");
             assert_eq!(sequence.support_level, "partial");
-            assert_eq!(sequence.layout_profiles, ["canonical", "compact"]);
+            assert_eq!(sequence.layout_profiles, ["canonical", "compact", "auto"]);
             assert_eq!(sequence.width_profiles, ["unicode", "cjk"]);
             assert_eq!(
                 sequence.encodings,

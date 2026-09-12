@@ -15,15 +15,22 @@ use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SvgPipelinePreset {
-    /// Preserve Mermaid-like SVG output without consumer-oriented cleanup.
+    /// Default SVG output for browsers and Webviews, preserving Mermaid HTML labels and styles.
+    ///
+    /// This does not add text overlays or apply resvg compatibility cleanup. Browser DOM
+    /// admission remains the host's responsibility.
     #[default]
     Parity,
-    /// Add best-effort SVG text fallbacks for labels rendered as `<foreignObject>`.
+    /// Advanced text fallback for consumers that ignore `<foreignObject>` HTML labels.
     ///
-    /// This keeps the original `<foreignObject>` labels for browser parity, so consumers that
-    /// render both native HTML labels and fallback text may display duplicate text.
+    /// Keeps the original HTML and adds a best-effort SVG text overlay without the remaining
+    /// resvg compatibility cleanup. Browsers render both representations and may show overlapping
+    /// text. Use `Parity` for browser previews and `ResvgSafe` for resvg/usvg consumers.
     Readable,
-    /// Produce output for resvg/usvg-like consumers.
+    /// Convert and validate SVG for resvg/usvg consumers and native PNG/JPEG/PDF export.
+    ///
+    /// Native binary exports select this contract automatically. It is not a browser DOM-admission
+    /// guarantee and is not a lossless substitute for `Readable`.
     ///
     /// This starts from the readable fallback path, strips native `<foreignObject>` labels, and
     /// removes known rasterization hazards such as unsupported CSS animation constructs and invalid

@@ -15,13 +15,17 @@ The command line has four explicit workflows:
 
 ## Install
 
-This README describes the published `merman-cli` `0.8.0-alpha.6` package and binary channel. Prefer the complete prebuilt binary from the selected release, with a source-build fallback when no official archive is available for the current target:
+This README documents the current source checkout. The installation examples below pin the
+published `merman-cli` `0.8.0-alpha.6` package and binary channel; development features such as ASCII
+`auto` layout and report schema 3 require a build containing those changes. For the published
+contract, use the README at tag `v0.8.0-alpha.6`. Prefer the complete prebuilt binary from the selected
+release, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
 cargo binstall merman-cli@0.8.0-alpha.6
 ```
 
-The alpha.6 binary channel is published. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at tag `v0.8.0-alpha.6` when you need the source contract documented here.
+The alpha.6 binary channel is published. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at tag `v0.8.0-alpha.6` when you need that published source contract.
 
 Homebrew users can install the stable formula:
 
@@ -107,6 +111,18 @@ Use `--output -` to request stdout explicitly or `--output PATH` to choose a fil
 | Inspect the compiled binary | `merman-cli capabilities --json` |
 
 Run `merman-cli --help` to see only the commands compiled into your binary, then use `<command> --help` for command-owned options.
+
+For a coding-agent or log channel, choose explicit width and Plain report output. Given a Flowchart
+or Sequence input in a build with Auto support:
+
+```sh
+merman-cli render diagram.mmd --format unicode --ascii-layout-profile auto --ascii-max-width 80 --ascii-overflow fallback --ascii-color plain --ascii-report --output -
+```
+
+The caller owns terminal detection, pager actions, caching, and display of returned artifacts. The
+CLI owns command-line I/O and its documented color-auto policy; those behaviors are not implicit
+library behavior. For embedded integrations, use the
+[host integration recipes](../merman/examples/README.md#host-integration-recipes).
 
 `lint` defaults to stable human-readable text. Automation should request `--format json` explicitly; `lint-rules` remains JSON by default, and `--pretty` is valid only with JSON output.
 
@@ -361,12 +377,14 @@ PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bound
 
 `--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
 resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
-rejected. The report uses ASCII output schema 2 and includes `encoding`, logical primary/emitted
-extents, layout and width profiles, and typed overflow/fallback state. A final line terminator is not
-counted as another logical row. Viewport fallback is currently Plain-only. `compact` is admitted only
-for Flowchart and Sequence; other supported families reject that layout profile rather than
-inheriting unrelated density policy. Once report mode is selected, failures use ASCII error-report
-schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
+rejected. The report uses ASCII output schema 3 and includes `encoding`, logical primary/emitted
+extents, width profile, and typed overflow/fallback state. `requested_layout_profile` records the
+request, `layout_profile` records the selected primary geometry, and `compact_attempted` records
+whether Auto tried Compact. A final line terminator is not counted as another logical row.
+Viewport fallback is Plain-only; styled/fallback combinations are invalid even if the input fits.
+`compact` and `auto` are admitted only for Flowchart and Sequence, and Auto requires an explicit
+`--ascii-max-width`. Other supported families use `canonical`. Once report mode is selected,
+failures use ASCII error-report schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
 the requested output target remain unpublished.
 
 Runtime behavior is deterministic by default even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:

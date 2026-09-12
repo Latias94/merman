@@ -139,7 +139,9 @@ _arguments "${_arguments_options[@]}" : \
 '--input-kind=[Interpret the input as Mermaid source or an existing SVG document]:INPUT_KIND:(mermaid svg)' \
 '-f+[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
 '--format=[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
-'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
+resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
@@ -187,7 +189,9 @@ _arguments "${_arguments_options[@]}" : \
 '--ascii-max-grid-cells=[Maximum graph grid cells for text route planning]:ASCII_MAX_GRID_CELLS:_default' \
 '--ascii-max-width=[Maximum terminal display-cell width for ASCII/Unicode output]:ASCII_MAX_WIDTH:_default' \
 '--ascii-overflow=[Width overflow behavior for ASCII/Unicode output]:ASCII_OVERFLOW:(allow fallback error)' \
-'--ascii-layout-profile=[Select the canonical or opt-in compact ASCII layout profile]:ASCII_LAYOUT_PROFILE:(canonical compact)' \
+'--ascii-layout-profile=[Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width)]:ASCII_LAYOUT_PROFILE:((canonical\:""
+compact\:""
+auto\:"Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow"))' \
 '--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
 constrained\:"Constrained rendering for untrusted or publicly submitted documents"
 trusted-native\:"Local CLI and controlled native batch rendering"
@@ -226,7 +230,9 @@ _arguments "${_arguments_options[@]}" : \
 '--jobs=[Maximum number of Markdown charts rendered concurrently]:JOBS:_default' \
 '-f+[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
 '--format=[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
-'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
+resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
@@ -413,7 +419,9 @@ _arguments "${_arguments_options[@]}" : \
 '-e+[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--outputFormat=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--format=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
-'--svg-pipeline=[SVG output pipeline. Compiled binary exports always start from resvg-safe]:SVG_PIPELINE:(parity readable resvg-safe)' \
+'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
+resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \
 '--backgroundColor=[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \
 '-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \

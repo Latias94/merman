@@ -267,7 +267,7 @@ export type AsciiPrimaryProjection =
   | "diagrammatic"
   | "structured_text"
   | "none";
-export type AsciiLayoutProfile = "canonical" | "compact";
+export type AsciiLayoutProfile = "canonical" | "compact" | "auto";
 export type AsciiWidthProfile = "unicode" | "cjk";
 export type AsciiOutputEncoding =
   | "plain"

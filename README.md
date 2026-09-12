@@ -11,6 +11,12 @@ model, computes layout, and renders SVG. Optional features add diagnostics, edit
 ASCII/Unicode output, PNG, JPEG, and PDF. The native path does not start Node.js, Puppeteer,
 Chromium, or another JavaScript runtime.
 
+Hosts provide explicit output, theme, viewport, and resource policy; Merman returns an artifact,
+metadata, or a typed error. Terminal detection, pager interaction, scheduling, caches, and save/open
+or clipboard actions belong to the host. Start with the
+[host integration recipes](crates/merman/examples/README.md#host-integration-recipes) for terminal
+text, agent/log output, browser SVG, and raster export using the existing request types.
+
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 

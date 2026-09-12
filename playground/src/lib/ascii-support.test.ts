@@ -27,7 +27,7 @@ test("fallback uses the complete generated binding capability projection", () =>
   const flowchart = FALLBACK_ASCII_CAPABILITIES.find(
     ({ diagram_type }) => diagram_type === "flowchart"
   );
-  assert.deepEqual(flowchart?.layout_profiles, ["canonical", "compact"]);
+  assert.deepEqual(flowchart?.layout_profiles, ["canonical", "compact", "auto"]);
   assert.deepEqual(flowchart?.width_profiles, ["unicode", "cjk"]);
   assert.deepEqual(flowchart?.encodings, [
     "plain",

@@ -4,6 +4,12 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advance the direct UniFFI binding API to `7`. Schema-3 ASCII output plans add the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `bindingApiVersionV7()` to reject stale record layouts.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching XCFramework archive and checksum were attached to the GitHub Release on 2026-09-04.

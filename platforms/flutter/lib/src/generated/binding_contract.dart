@@ -769,6 +769,8 @@ MermanOutputPlan _decodeMermanOutputPlan(Map<String, Object?> plan) {
         emittedHeight: _requiredGeneratedUint64(plan, 'emitted_height'),
         widthProfile: _requiredGeneratedString(plan, 'width_profile'),
         layoutProfile: _requiredGeneratedString(plan, 'layout_profile'),
+        requestedLayoutProfile: _requiredGeneratedString(plan, 'requested_layout_profile'),
+        compactAttempted: _requiredGeneratedBool(plan, 'compact_attempted'),
         requestedMaxWidth:
             _optionalGeneratedUint64(plan, 'requested_max_width'),
         overflowed: _requiredGeneratedBool(plan, 'overflowed'),

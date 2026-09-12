@@ -297,3 +297,222 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
         .join()
         .expect("deep Flowchart ASCII render should not overflow the stack");
 }
+
+#[test]
+fn host_recipe_preserves_typed_auto_outcomes_and_hard_failures() {
+    use merman::RenderError;
+    use merman::ascii::AsciiLayoutProfile;
+
+    let source = "flowchart LR\nA[Read the complete Mermaid source] --> B[Return the complete rendered artifact]";
+    let renderer = Renderer::new();
+    let options = AsciiRenderOptions::unicode().with_layout_profile(AsciiLayoutProfile::Auto);
+    let request = |width, overflow| AsciiRequest {
+        options,
+        viewport: AsciiViewportPolicy::with_max_width(width).overflow(overflow),
+        ..Default::default()
+    };
+    for (width, overflow, expected) in [
+        (80, OverflowPolicy::Error, AsciiOutputOutcome::Primary),
+        (40, OverflowPolicy::Allow, AsciiOutputOutcome::WideAllowed),
+        (40, OverflowPolicy::Fallback, AsciiOutputOutcome::Fallback),
+    ] {
+        let output = renderer
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                request(width, overflow),
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(report)) = output else {
+            panic!("expected ASCII report")
+        };
+        assert_eq!(report.outcome, expected);
+        assert_eq!(report.requested_layout_profile, AsciiLayoutProfile::Auto);
+        assert_eq!(report.layout_profile, AsciiLayoutProfile::Compact);
+        assert!(report.compact_attempted);
+        assert!(!report.text.contains('\u{1b}'));
+        let json = serde_json::to_value(report.report()).unwrap();
+        assert_eq!(json["text"], report.text);
+        assert_eq!(json["emitted_width"], report.emitted_extent.width);
+        assert_eq!(json["outcome"], expected.as_str());
+        assert_eq!(
+            report.fallback.attempted,
+            expected == AsciiOutputOutcome::Fallback
+        );
+    }
+    let error = renderer
+        .render(RenderRequest::ascii(
+            source,
+            OperationControl::new(),
+            request(40, OverflowPolicy::Error),
+        ))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        RenderError::Ascii(AsciiError::WidthOverflow { max_width: 40, .. })
+    ));
+
+    let cancelled = OperationControl::new();
+    cancelled.cancel();
+    let error = renderer
+        .render(RenderRequest::ascii(
+            source,
+            cancelled,
+            request(40, OverflowPolicy::Fallback),
+        ))
+        .unwrap_err();
+    assert!(matches!(error, RenderError::Cancelled(_)));
+
+    let mut limited = request(40, OverflowPolicy::Fallback);
+    limited
+        .resources
+        .apply_limit(AsciiResourceLimitId::MaxGridCells, 1)
+        .unwrap();
+    let error = renderer
+        .render(RenderRequest::ascii(
+            source,
+            OperationControl::new(),
+            limited,
+        ))
+        .unwrap_err();
+    assert!(matches!(error, RenderError::ResourceLimitExceeded(_)));
+}
+
+#[test]
+fn terminal_palette_recipe_preserves_geometry_and_rejects_styled_fallback() {
+    use merman::RenderError;
+    use merman::ascii::{AsciiColorMode, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
+
+    let source = "flowchart LR\nA[Host] --> B[Text]";
+    let renderer = Renderer::new();
+    let theme = AsciiColorTheme::from_terminal_palette(AsciiTerminalPalette::new(
+        AsciiRgb::new(229, 231, 235),
+        AsciiRgb::new(15, 23, 42),
+    ));
+    let mut plain = None;
+    for mode in [AsciiColorMode::Plain, AsciiColorMode::TrueColor] {
+        let options = AsciiRenderOptions::unicode()
+            .with_color_mode(mode)
+            .with_color_theme(theme);
+        let output = renderer
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options,
+                    viewport: AsciiViewportPolicy::with_max_width(80)
+                        .overflow(OverflowPolicy::Error),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(report)) = output else {
+            panic!("expected ASCII report")
+        };
+        if mode == AsciiColorMode::Plain {
+            assert!(!report.text.contains('\u{1b}'));
+            plain = Some(report.emitted_extent);
+        } else {
+            assert_eq!(Some(report.emitted_extent), plain);
+            assert_eq!(report.metadata().encoding, "truecolor");
+            assert!(report.text.contains("\u{1b}[38;2;229;231;235m"));
+            let error = renderer
+                .render(RenderRequest::ascii(
+                    source,
+                    OperationControl::new(),
+                    AsciiRequest {
+                        options,
+                        viewport: AsciiViewportPolicy::with_max_width(80)
+                            .overflow(OverflowPolicy::Fallback),
+                        ..Default::default()
+                    },
+                ))
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                RenderError::Ascii(AsciiError::InvalidOption {
+                    field: "ascii_viewport.overflow",
+                    ..
+                })
+            ));
+        }
+    }
+}
+
+#[test]
+fn explicit_ascii_request_is_independent_of_terminal_environment() {
+    const CHILD_FLAG: &str = "MERMAN_TEST_TERMINAL_ENV_CHILD";
+    const MARKER: &str = "MERMAN_HOST_REPORT:";
+    if std::env::var_os(CHILD_FLAG).is_some() {
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                "flowchart LR\nA[Host] --> B[Artifact]",
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::unicode(),
+                    viewport: AsciiViewportPolicy::with_max_width(80),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(report)) = output else {
+            panic!("expected ASCII report")
+        };
+        assert!(!report.text.contains('\u{1b}'));
+        println!(
+            "\n{MARKER}{}",
+            serde_json::to_string(&report.report()).unwrap()
+        );
+        return;
+    }
+
+    // Configure child environments instead of mutating process-global state in parallel tests.
+    let environments = [
+        vec![],
+        vec![
+            ("TERM", "dumb"),
+            ("NO_COLOR", "1"),
+            ("COLUMNS", "10"),
+            ("LINES", "1"),
+        ],
+        vec![
+            ("TERM", "xterm-256color"),
+            ("COLORTERM", "truecolor"),
+            ("CLICOLOR_FORCE", "1"),
+            ("COLUMNS", "200"),
+        ],
+    ];
+    let mut reports = Vec::new();
+    for environment in environments {
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "explicit_ascii_request_is_independent_of_terminal_environment",
+                "--nocapture",
+            ])
+            .env(CHILD_FLAG, "1");
+        for key in [
+            "TERM",
+            "NO_COLOR",
+            "COLORTERM",
+            "CLICOLOR",
+            "CLICOLOR_FORCE",
+            "COLUMNS",
+            "LINES",
+        ] {
+            command.env_remove(key);
+        }
+        command.envs(environment);
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "child failed: {:?}", output);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let report = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix(MARKER))
+            .expect("child must emit its report");
+        reports.push(serde_json::from_str::<serde_json::Value>(report).unwrap());
+    }
+    assert_eq!(reports[0], reports[1]);
+    assert_eq!(reports[0], reports[2]);
+}

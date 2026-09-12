@@ -9,6 +9,7 @@ use super::{
     route_cell,
 };
 use crate::error::Result;
+use crate::graph::horizontal_label::HorizontalLabelPadding;
 use crate::resource::ResourceContext;
 
 #[cfg(test)]
@@ -279,37 +280,27 @@ fn planned_direct_labels(
     y: usize,
     points_right: bool,
 ) -> Option<Vec<PlannedRouteLabel>> {
-    let Some(mut label) = planned_label(
-        descriptor,
-        CanvasCoord { x: start, y },
-        CanvasCoord { x: end, y },
-    ) else {
+    let Some(descriptor) = descriptor else {
         return Some(Vec::new());
     };
-    if edge.start_marker == GraphEdgeMarker::Open && edge.end_marker == GraphEdgeMarker::Open {
-        return Some(vec![label]);
-    }
-
-    let left_marker = if points_right {
-        edge.start_marker
-    } else {
-        edge.end_marker
-    };
-    let right_marker = if points_right {
-        edge.end_marker
-    } else {
-        edge.start_marker
-    };
-    let available_start = start + usize::from(left_marker != GraphEdgeMarker::Open);
-    let available_end = end.checked_sub(usize::from(right_marker != GraphEdgeMarker::Open))?;
-    let label_width = label.width();
+    let padding = HorizontalLabelPadding::new(edge.start_marker, edge.end_marker);
+    let (available_start, available_end) = padding.stroke_interval(start, end, points_right)?;
     let available_width = available_end.checked_sub(available_start)? + 1;
-    if label_width > available_width {
+    if descriptor.width() > available_width {
         return None;
     }
 
-    let max_label_x = available_end.checked_add(1)?.checked_sub(label_width)?;
-    let x = label.placement.x().clamp(available_start, max_label_x);
-    label.placement = label.placement.with_position(x, label.placement.y());
+    // Center within actual stroke cells, excluding marker berths before rounding.
+    let label = planned_label(
+        Some(descriptor),
+        CanvasCoord {
+            x: available_start,
+            y,
+        },
+        CanvasCoord {
+            x: available_end,
+            y,
+        },
+    )?;
     Some(vec![label])
 }
