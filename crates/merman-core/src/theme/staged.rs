@@ -153,11 +153,17 @@ impl ThemeState {
         target: &str,
         compute: impl FnOnce(&Self) -> Result<ComputedValue, ColorError>,
     ) -> Result<(), ColorError> {
+        let computed = compute(self)?;
+        self.commit_computed(target, computed);
+        Ok(())
+    }
+
+    fn commit_computed(&mut self, target: &str, computed: ComputedValue) {
         let ComputedValue {
             value,
             dependencies,
             nested_dependencies,
-        } = compute(self)?;
+        } = computed;
         let sources = self.expand_dependencies(&dependencies);
         let nested_sources = nested_dependencies
             .into_iter()
@@ -175,7 +181,6 @@ impl ThemeState {
                     .insert(format!("{target}.{relative_path}"), sources);
             }
         }
-        Ok(())
     }
 
     /// Execute `target = target || fallback`, including short-circuit evaluation.
