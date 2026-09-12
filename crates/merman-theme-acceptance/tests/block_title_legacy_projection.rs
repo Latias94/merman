@@ -65,63 +65,67 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
 }
 
 fn assert_no_native_consumer(target: ThemeTarget) {
-    for look in ["classic", "neo", "handDrawn"] {
-        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
-            MermaidConfig::from_value(serde_json::json!({"htmlLabels": false, "look": look})),
-        ));
-        let baseline = render(
-            &renderer,
-            DiagramThemeCompiler::new()
-                .compile(DiagramThemeSpec::new())
-                .unwrap(),
-        );
-        let view = TargetArtifactView::from_rendered_document(&baseline);
-        let receipt = view.svg_artifact_receipt().unwrap();
-        assert!(receipt.has_native_text());
-        assert!(!receipt.has_foreign_object());
-        assert!(receipt.elements().iter().all(|element| {
-            !element.has_class("flowchartTitleText") && !element.has_class("cluster-label")
-        }));
-        let clusters = receipt
-            .elements()
-            .iter()
-            .filter(|element| element.has_class("cluster"));
-        let mut cluster_count = 0;
-        for cluster in clusters {
-            cluster_count += 1;
-            assert!(
-                receipt
-                    .descendants_of(cluster.index())
-                    .all(|element| { !matches!(element.tag_name(), "text" | "span" | "p") }),
-                "titleColor's cluster descendant selectors must have no text consumer"
+    for scheme in ["default", "base", "dark", "forest", "neutral"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+                MermaidConfig::from_value(
+                    serde_json::json!({"theme": scheme, "htmlLabels": false, "look": look}),
+                ),
+            ));
+            let baseline = render(
+                &renderer,
+                DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new())
+                    .unwrap(),
             );
-        }
-        assert!(cluster_count > 0, "the composite case must be exercised");
-        let baseline_pixels = raster(&baseline);
-        assert!(baseline_pixels.0 > 1 && baseline_pixels.1 > 1);
-        assert!(
-            baseline_pixels
-                .2
-                .chunks_exact(4)
-                .any(|pixel| { pixel[3] != 0 && pixel[..3] != [255; 3] })
-        );
-        for variant in [None, Some(ThemeVariant::Default)] {
-            for transparent in [false, true] {
-                let document = render(&renderer, theme(target, variant, transparent));
-                assert_eq!(
-                    raster(&document),
-                    baseline_pixels,
-                    "{look}/{variant:?}/{transparent}"
+            let view = TargetArtifactView::from_rendered_document(&baseline);
+            let receipt = view.svg_artifact_receipt().unwrap();
+            assert!(receipt.has_native_text());
+            assert!(!receipt.has_foreign_object());
+            assert!(receipt.elements().iter().all(|element| {
+                !element.has_class("flowchartTitleText") && !element.has_class("cluster-label")
+            }));
+            let clusters = receipt
+                .elements()
+                .iter()
+                .filter(|element| element.has_class("cluster"));
+            let mut cluster_count = 0;
+            for cluster in clusters {
+                cluster_count += 1;
+                assert!(
+                    receipt
+                        .descendants_of(cluster.index())
+                        .all(|element| { !matches!(element.tag_name(), "text" | "span" | "p") }),
+                    "titleColor's cluster descendant selectors must have no text consumer"
                 );
             }
-        }
-        for control_target in [ThemeTarget::Node, ThemeTarget::NodeLabel] {
-            let control = render(&renderer, theme(control_target, None, false));
-            assert_ne!(
-                raster(&control),
-                baseline_pixels,
-                "{look}/{control_target:?}: the pixel comparison must detect real paint"
+            assert!(cluster_count > 0, "the composite case must be exercised");
+            let baseline_pixels = raster(&baseline);
+            assert!(baseline_pixels.0 > 1 && baseline_pixels.1 > 1);
+            assert!(
+                baseline_pixels
+                    .2
+                    .chunks_exact(4)
+                    .any(|pixel| { pixel[3] != 0 && pixel[..3] != [255; 3] })
             );
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for transparent in [false, true] {
+                    let document = render(&renderer, theme(target, variant, transparent));
+                    assert_eq!(
+                        raster(&document),
+                        baseline_pixels,
+                        "{look}/{variant:?}/{transparent}"
+                    );
+                }
+            }
+            for control_target in [ThemeTarget::Node, ThemeTarget::NodeLabel] {
+                let control = render(&renderer, theme(control_target, None, false));
+                assert_ne!(
+                    raster(&control),
+                    baseline_pixels,
+                    "{look}/{control_target:?}: the pixel comparison must detect real paint"
+                );
+            }
         }
     }
 }

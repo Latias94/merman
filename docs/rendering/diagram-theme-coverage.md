@@ -22,7 +22,8 @@ The source inventories, not this summary, authorize rendering and retirement:
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
 (four solid/transparent matrix routes). Composite labels use NodeLabel styling;
 the secondaryTextColor/tertiaryTextColor projection had no writer consumer. The
-unused generic Text fallback is also removed. Native pixel comparisons preserve
+unused Block generic Text fallback is also removed. Class retains its generic Text
+compatibility assignments until its own cutover. Native pixel comparisons preserve
 the composite label and retain an active Node paint control. Marker paint remains
 legacy because its arrowMarkerPath consumer is real.
 

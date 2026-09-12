@@ -675,6 +675,23 @@ fn compile_node_family(
         [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
     );
 
+    // Class generic Text keeps its existing assignments until its own cutover.
+    if family == DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            "cluster-label.fill",
+            [
+                (
+                    "secondaryTextColor",
+                    reader.text_fill(ThemeTarget::ClusterLabel),
+                ),
+                (
+                    "tertiaryTextColor",
+                    reader.text_fill(ThemeTarget::ClusterLabel),
+                ),
+            ],
+        );
+    }
+
     contributions.finish_into(builder)
 }
 
@@ -4089,7 +4106,7 @@ gitGraph
     }
 
     #[test]
-    fn generic_text_does_not_recreate_unused_cluster_label_assignments() {
+    fn generic_text_preserves_only_class_cluster_label_assignments() {
         for family in [DiagramFamilyId::BLOCK, DiagramFamilyId::CLASS] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
@@ -4101,9 +4118,21 @@ gitGraph
                 ),
             );
             let artifact = bridge(&spec).compile_for_family(family);
-            assert!(!artifact.contribution_ids.contains(&format!(
-                "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
-            )));
+            assert_eq!(
+                artifact.contribution_ids.contains(&format!(
+                    "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
+                )),
+                family == DiagramFamilyId::CLASS,
+            );
+            if family == DiagramFamilyId::CLASS {
+                let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
+                for path in [
+                    "themeVariables.secondaryTextColor",
+                    "themeVariables.tertiaryTextColor",
+                ] {
+                    assert_eq!(parsed.effective_config.get_str(path), Some("#2468ac"));
+                }
+            }
             assert!(
                 artifact
                     .contribution_ids
