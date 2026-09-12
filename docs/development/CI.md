@@ -272,6 +272,9 @@ the presets became qualified. The separate opaque qualification runner checks Fl
 SVG/PNG output for the three exact native candidate recipes under a declared HostDependent
 system-font profile. Release Preflight and the formal Release's final Linux CLI archive job bind
 those checks to the extracted binary and archive, then replay the record before their gates pass.
+The ordinary push-only Node contract job intentionally stops at source-level contract tests; installed
+package smoke runs on pull requests and release preflight after a real candidate package is built,
+so the expensive artifact-bound check remains attached to an artifact-producing gate.
 See [scoped preset qualification](../rendering/preset-qualification.md) for the commands and evidence
 limits. Public catalog promotion remains open.
 
