@@ -16,7 +16,7 @@ inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md
 
 Use a clean checkout, including untracked files, with the project's Rust toolchain and Python 3.11
 or later. The script does not clean or modify source files. Its Cargo invocation uses the existing
-target directory, two build jobs, Release, and the acceptance crate's explicit `png` feature profile.
+target directory, two build jobs, Release, and the acceptance crate's explicit `png,layout-cytoscape` feature profile.
 
 ```console
 python3 scripts/qualify_theme_presets.py --output target/preset-qualification.json
