@@ -331,6 +331,15 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
+Support discovery now has an independent nine-case golden in
+`crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
+revision 79 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
+are not renderer-qualified. The same responses are exercised through the native C ABI, reusable and
+one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
+surfaces. This is a cross-transport discovery contract check; it does not qualify a document,
+preset, artifact profile, or C7a candidate.
+
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
 60 artifact observations comprise 18 HostDependent Flowchart/State/Sequence outputs from the native
