@@ -39,17 +39,32 @@ def expected_heading_version(path: Path, version: str) -> str:
     return parsed.canonical
 
 
-def first_release_heading(text: str, path: Path) -> tuple[str, str]:
+def first_release_heading(
+    text: str, path: Path, *, require_date: bool = False,
+) -> tuple[str, str]:
+    first: tuple[str, str] | None = None
     for line_number, line in enumerate(text.splitlines(), start=1):
         match = RELEASE_HEADING.match(line)
-        if match is not None:
+        if match is None:
+            continue
+        if match.group("version") == "Unreleased":
+            if require_date:
+                raise ReleaseChangelogError(
+                    f"{path}:{line_number} contains an Unreleased section; assign it to a "
+                    "dated version before immutable release preflight"
+                )
+            if match.group("date") is None:
+                continue
+        if first is None:
             heading_date = match.group("date")
             if heading_date is None:
                 raise ReleaseChangelogError(
                     f"{path}:{line_number} first release heading has no date/status"
                 )
-            return match.group("version"), heading_date
-    raise ReleaseChangelogError(f"{path} has no release heading")
+            first = (match.group("version"), heading_date)
+    if first is None:
+        raise ReleaseChangelogError(f"{path} has no release heading")
+    return first
 
 
 def verify_repository(
@@ -64,7 +79,9 @@ def verify_repository(
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ReleaseChangelogError(f"cannot read {relative_path}: {exc}") from exc
-        actual_version, release_date = first_release_heading(text, relative_path)
+        actual_version, release_date = first_release_heading(
+            text, relative_path, require_date=require_date,
+        )
         expected_version = expected_heading_version(relative_path, version)
         if actual_version != expected_version:
             raise ReleaseChangelogError(
