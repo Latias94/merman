@@ -16,7 +16,7 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum FlowchartPaintOutcome {
     Candidate {
         rule_index: usize,
@@ -37,7 +37,7 @@ impl FlowchartPaintOutcome {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum FlowchartScalarOutcome {
     Candidate {
         rule_index: usize,
@@ -79,7 +79,7 @@ impl FlowchartScalarOutcome {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum FlowchartDasharrayOutcome {
     Candidate {
         rule_index: usize,
@@ -319,6 +319,7 @@ struct FlowchartLabelThemeStyle {
 
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartEdgeThemeStyle {
+    ordinal_theme: Option<ResolvedDiagramTheme>,
     stroke: Option<FlowchartPaintOutcome>,
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
@@ -336,15 +337,39 @@ impl FlowchartEdgeThemeStyle {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };
+        let mut resolved = Self::resolve_shape(theme, None, work_meter)?;
+        work_meter.charge(theme.family_mechanism_routes().len())?;
+        if theme
+            .family_rules()
+            .any(|(_, rule)| rule.target() == ThemeTarget::Edge && rule.ordinal().is_some())
+        {
+            resolved.ordinal_theme = Some(theme.clone());
+        }
+        resolved.label =
+            resolve_label_theme_style(theme, ThemeTarget::EdgeLabel, None, work_meter)?;
+        Ok(resolved)
+    }
+
+    fn resolve_shape(
+        theme: &ResolvedDiagramTheme,
+        ordinal: Option<usize>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
         let mut style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
-            None,
+            ordinal,
             work_meter,
         )?;
         let mut resolved = Self::default();
         resolved.matched_rules = style.take_matched_rules();
 
+        // Fill is a semantic fallback for the stroke terminal, not a second SVG paint channel.
+        // An explicit stroke owns that terminal even when its value is Clear or unsupported.
+        let fill_is_stroke = matches!(
+            style.stroke_resolution().specified(),
+            Specified::Unspecified
+        );
         for (property, origin) in style.winner_rule_properties() {
             let rule_index = origin.rule_index();
             match property {
@@ -368,12 +393,13 @@ impl FlowchartEdgeThemeStyle {
                     );
                 }
                 ResolvedStyleProperty::Fill => {
-                    if let Some(facet) =
-                        FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
-                    {
-                        record_incomplete_edge_facet(theme, &mut resolved, rule_index, facet);
-                    } else {
-                        resolved.incomplete_rules.insert(rule_index);
+                    if fill_is_stroke {
+                        resolved.stroke = resolve_paint(
+                            theme,
+                            rule_index,
+                            style.fill_resolution(),
+                            FamilyThemeRuleFacet::fill,
+                        );
                     }
                 }
                 ResolvedStyleProperty::Typography(property) => record_incomplete_edge_facet(
@@ -402,9 +428,6 @@ impl FlowchartEdgeThemeStyle {
                 ),
             }
         }
-
-        resolved.label =
-            resolve_label_theme_style(theme, ThemeTarget::EdgeLabel, None, work_meter)?;
 
         Ok(resolved)
     }
@@ -1335,6 +1358,7 @@ struct FlowchartThemeEvidenceState {
     node: FlowchartRuleEvidenceState,
     node_label: FlowchartRuleEvidenceState,
     edge: FlowchartRuleEvidenceState,
+    edge_ordinal: usize,
     edge_label: FlowchartRuleEvidenceState,
     cluster: FlowchartRuleEvidenceState,
     title: Option<FamilyThemeEvidence>,
@@ -1578,7 +1602,18 @@ impl FlowchartThemeEvidenceRecorder {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let ordinal = state.edge_ordinal + 1;
+        let emitted_style = style;
+        let ordinal_style;
+        let style = if let Some(theme) = &style.ordinal_theme {
+            ordinal_style =
+                FlowchartEdgeThemeStyle::resolve_shape(theme, Some(ordinal), work_meter)?;
+            &ordinal_style
+        } else {
+            style
+        };
         work_meter.charge_emit_work(state.edge.provenance_work(&style.matched_rules))?;
+        state.edge_ordinal = ordinal;
         state.edge.emitted = true;
         state.edge.record_matches(&style.matched_rules);
         for (rule_index, reason) in &style.residual_rules {
@@ -1588,24 +1623,29 @@ impl FlowchartThemeEvidenceRecorder {
                 .entry(*rule_index)
                 .or_insert(*reason);
         }
+        // The writer receipt belongs to the static style it actually emitted. Ordinal
+        // reconciliation must not reuse that receipt for a different winning rule or value.
+        let static_only = emitted_style.ordinal_theme.is_none();
         record_edge_paint_outcome(
             &mut state.edge,
             style.stroke.as_ref(),
             emission.stroke.precedence,
-            emission.stroke.verified,
+            emission.stroke.verified && (static_only || style.stroke == emitted_style.stroke),
         );
         record_scalar_outcome(
             &mut state.edge,
             style.stroke_width.as_ref(),
             emission.stroke_width.precedence,
-            emission.stroke_width.verified,
+            emission.stroke_width.verified
+                && (static_only || style.stroke_width == emitted_style.stroke_width),
             ThemeCapability::BorderStyling,
         );
         record_dasharray_outcome(
             &mut state.edge,
             style.stroke_dasharray.as_ref(),
             emission.stroke_dasharray.precedence,
-            emission.stroke_dasharray.verified,
+            emission.stroke_dasharray.verified
+                && (static_only || style.stroke_dasharray == emitted_style.stroke_dasharray),
         );
         state
             .edge
@@ -4317,5 +4357,66 @@ mod tests {
             second.fill,
             Some(FlowchartPaintOutcome::Residual { rule_index: 0, .. })
         ));
+    }
+
+    #[test]
+    fn edge_fill_missing_path_is_not_hidden_by_another_verified_path() {
+        let theme = resolved_theme(ThemeTarget::Edge);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter).unwrap();
+        assert_eq!(style.stroke_value(no_override(), true), Some("#ef4444"));
+        assert_eq!(style.stroke_value(no_override(), false), None);
+        for verified_paths in [vec![false], vec![false, true], vec![true, false]] {
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            for verified in verified_paths {
+                recorder
+                    .record_edge_emission(
+                        &style,
+                        edge_emission(no_override(), verified),
+                        &[],
+                        &meter,
+                    )
+                    .unwrap();
+            }
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(evidence.applied().is_empty());
+            assert_eq!(evidence.residuals().len(), 1);
+            assert_eq!(
+                evidence.residuals()[0].reason(),
+                FamilyThemeResidualReason::UnsupportedPaint
+            );
+        }
+    }
+
+    #[test]
+    fn edge_fill_uses_the_emitted_stroke_source_owner_including_unverified_source() {
+        let theme = resolved_theme(ThemeTarget::Edge);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter).unwrap();
+        for precedence in [
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Unverified, false),
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, true),
+        ] {
+            assert_eq!(style.stroke_value(precedence, true), None);
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            recorder
+                .record_edge_emission(&style, edge_emission(precedence, false), &[], &meter)
+                .unwrap();
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.residuals().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Edge
+                }]
+            );
+        }
     }
 }

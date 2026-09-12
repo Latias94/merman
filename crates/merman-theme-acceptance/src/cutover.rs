@@ -572,16 +572,20 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node, _) => Ok(FLOWCHART_NODE_SOURCE),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, _) => Ok(FLOWCHART_NODE_LABEL_SOURCE),
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(FLOWCHART_EDGE_SOURCE)
-        }
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(FLOWCHART_EDGE_SOURCE),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, _) => Ok(FLOWCHART_CLUSTER_SOURCE),
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Node | ThemeTarget::NodeLabel, _) => {
             Ok(SWIMLANE_NODE_SOURCE)
         }
-        (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(SWIMLANE_EDGE_SOURCE)
-        }
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(SWIMLANE_EDGE_SOURCE),
         (
             DiagramFamilyId::SWIMLANE,
             ThemeTarget::Cluster,
@@ -806,12 +810,16 @@ fn source_for_witness(witness: CutoverWitnessId) -> C6ProofResult<&'static str> 
         witness.route().target(),
         witness.route().facet(),
     ) {
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(FLOWCHART_ANIMATED_EDGE_SOURCE)
-        }
-        (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(SWIMLANE_ANIMATED_EDGE_SOURCE)
-        }
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(FLOWCHART_ANIMATED_EDGE_SOURCE),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(SWIMLANE_ANIMATED_EDGE_SOURCE),
         _ => Err(C6ProofError::new(
             "route-source",
             format!(
@@ -2151,6 +2159,56 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_edge_fill_cutover_has_native_stroke_proof() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(
+                    merman_render::diagram_theme::ThemeVariant::Default,
+                ),
+            ] {
+                for profile in CutoverWitnessProfile::EDGE {
+                    let render = |value| {
+                        let route = inventory
+                            .iter()
+                            .copied()
+                            .find(|route| {
+                                route.family_id() == family
+                                    && route.target() == ThemeTarget::Edge
+                                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                                    && route.selector() == selector
+                                    && route.value() == value
+                            })
+                            .expect("edge fill route");
+                        assert_eq!(route.raster_paint_facet(), ThemeRouteCutoverFacet::Stroke);
+                        let id = CutoverWitnessId::new(route, profile);
+                        let case = super::CutoverCase {
+                            id,
+                            source: super::source_for_witness(id).unwrap(),
+                        };
+                        let rendered = super::render_cutover_case(case, vec![route])
+                            .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+                        (route, rendered.document)
+                    };
+                    let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                    let (transparent_route, transparent) =
+                        render(ThemeRouteCutoverValue::Transparent);
+                    merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                        &solid,
+                        &transparent,
+                        solid_route,
+                        transparent_route,
+                        &merman_export::RasterOptions::default().with_scale(2.0),
+                        merman::OperationControl::new(),
+                    )
+                    .unwrap_or_else(|error| panic!("{family}/{profile:?}: {error}"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -2171,11 +2229,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_408_routes_and_598_artifact_witnesses() {
+    fn route_inventory_retains_416_routes_and_622_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 408);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 598);
+        assert_eq!(inventory.len(), 416);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 622);
     }
 
     #[test]

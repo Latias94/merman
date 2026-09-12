@@ -2127,14 +2127,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 126);
+        assert_eq!(status.matrix_route_count(), 118);
         assert_eq!(status.matrix_family_count(), 6);
         assert_eq!(status.dispatched_family_count(), 6);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                194, 103, 201, 95, 249, 164, 178, 19, 138, 128, 26, 192, 136, 44, 238, 22, 63, 214,
-                127, 165, 4, 127, 124, 241, 183, 233, 67, 5, 139, 66, 182, 79
+                161, 254, 189, 242, 87, 234, 161, 30, 38, 251, 129, 43, 102, 110, 104, 142, 92, 78,
+                174, 204, 231, 158, 49, 130, 222, 164, 76, 236, 246, 147, 217, 50
             ]
         );
         assert_eq!(
@@ -3856,6 +3856,67 @@ gitGraph
                 baseline.effective_config.get_str(path),
                 "typed Cluster paint must not mutate legacy `{path}`"
             );
+        }
+    }
+
+    #[test]
+    fn typed_edge_fill_retires_only_the_implicit_marker_fallback() {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::CLASS,
+            DiagramFamilyId::BLOCK,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for paint in [CanvasPaint::Transparent, solid("#22c55e")] {
+                    let mut edge = ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(paint),
+                    )
+                    .for_family(family);
+                    if let Some(variant) = variant {
+                        edge = edge.with_variant(variant);
+                    }
+                    let styles = ThemeRuleSet::default().with_rule(edge);
+                    let spec = DiagramThemeSpec::new().with_styles(styles.clone());
+                    let artifact = bridge(&spec).compile_for_family(family);
+                    let typed = matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                    );
+                    for projection in ["edge.stroke", "marker.paint-from-edge"] {
+                        assert_eq!(
+                            artifact.contribution_ids.contains(&format!(
+                                "{CONTRIBUTION_ID_PREFIX}{family}.{projection}"
+                            )),
+                            !typed,
+                            "{family}/{variant:?}/{projection}"
+                        );
+                    }
+                    if typed {
+                        assert!(artifact.overlay.is_empty());
+                        assert!(artifact.contribution_ids.is_empty());
+                        for marker_patch in [
+                            ThemeStylePatch::default().with_fill(solid("#2468ac")),
+                            ThemeStylePatch::default().with_stroke(solid("#2468ac")),
+                        ] {
+                            let spec = DiagramThemeSpec::new().with_styles(
+                                styles.clone().with_rule(
+                                    ThemeRule::new(ThemeTarget::Marker, marker_patch)
+                                        .for_family(family),
+                                ),
+                            );
+                            let artifact = bridge(&spec).compile_for_family(family);
+                            assert_eq!(
+                                artifact.contribution_ids,
+                                BTreeSet::from([format!(
+                                    "{CONTRIBUTION_ID_PREFIX}{family}.marker.paint"
+                                )])
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 

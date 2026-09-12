@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 74;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 75;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    149, 152, 177, 103, 67, 15, 79, 238, 165, 91, 112, 33, 247, 90, 247, 74, 106, 230, 157, 178,
-    216, 72, 255, 186, 88, 245, 141, 232, 179, 8, 134, 234,
+    51, 133, 108, 77, 142, 164, 124, 160, 132, 206, 144, 159, 88, 68, 67, 243, 73, 248, 250, 169,
+    78, 45, 126, 201, 44, 161, 45, 193, 92, 64, 104, 19,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -451,7 +451,67 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 408] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 416] = [
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::ClusterLabel,

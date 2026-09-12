@@ -12,11 +12,11 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 27/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 6/33; 126 routes | Block 44, Class 26, Flowchart 12, Quadrant Chart 16, Swimlane 12, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 6/33; 118 routes | Block 44, Class 26, Flowchart 8, Quadrant Chart 16, Swimlane 8, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 72 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v74; 408 routes / 598 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 73 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v75; 416 routes / 622 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
@@ -26,13 +26,20 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 74 adds eight Flowchart/Swimlane ClusterLabel.fill routes
+output files. Version 75 adds eight Flowchart/Swimlane Edge.fill routes
+(solid/transparent, unqualified/Default). Fill supplies the edge's native stroke only when Stroke
+is unspecified; transparent, Clear, and unsupported Stroke winners all block that fallback.
+The existing stroke writer and source/config precedence apply. Classic, Neo, and animated Neo
+witnesses inspect native edge-stroke pixels. The line-color bridge and its implicit marker fallback
+retire together; explicit Marker.fill/stroke remain the two families' only legacy routes.
+Version 74 adds eight Flowchart/Swimlane ClusterLabel.fill routes
 (solid/transparent, unqualified/Default), with Classic, Neo, and HandDrawn native SVG/PNG
 witnesses. ClusterLabel overrides only the properties it specifies on the existing Title/Text result;
 author order within each role and the existing Title/Text winner semantics remain unchanged.
-Explicit source/config owners retain precedence, including Base's title-color dependency. Clear, ordinal, and unconsumed sibling requests retain residuals
-when they win at a visible terminal. Overridden rules are NotApplicable. The two families retain
-only Edge.fill and Marker.fill/stroke legacy routes.
+Explicit source/config owners retain precedence, including Base's title-color dependency.
+Clear, ordinal, and unconsumed sibling requests retain residuals when they win at a visible terminal.
+Overridden rules are NotApplicable. At that stage, the two families retained Edge.fill and
+Marker.fill/stroke legacy routes.
 Version 73 adds eight Flowchart/Swimlane EdgeLabelBackground.fill routes
 (solid/transparent, unqualified/Default). Classic, Neo, and HandDrawn native witnesses prove
 actual edge-label background paint. The Swimlane witness makes the lane fill transparent to

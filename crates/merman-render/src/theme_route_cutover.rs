@@ -811,9 +811,8 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill, GitGraph Edge fill, Radar Axis fill, and ER/Requirement Relation fill
-    /// control native stroke colors.
-    /// These routes
+    /// Sequence Message fill, Flowchart/Swimlane/GitGraph Edge fill, Radar Axis fill,
+    /// and ER/Requirement Relation fill control native stroke colors. These routes
     /// are observed in the emitted stroke channel during raster admission, while their semantic
     /// facet remains `Fill` in the route identity and evidence.
     pub fn raster_paint_facet(self) -> ThemeRouteCutoverFacet {
@@ -825,8 +824,12 @@ impl ThemeRouteCutoverDescriptor {
         } else if matches!(self.facet(), ThemeRouteCutoverFacet::Fill)
             && ((self.family_id() == DiagramFamilyId::SEQUENCE
                 && self.target() == ThemeTarget::Message)
-                || (self.family_id() == DiagramFamilyId::GIT_GRAPH
-                    && self.target() == ThemeTarget::Edge)
+                || (matches!(
+                    self.family_id(),
+                    DiagramFamilyId::GIT_GRAPH
+                        | DiagramFamilyId::FLOWCHART
+                        | DiagramFamilyId::SWIMLANE
+                ) && self.target() == ThemeTarget::Edge)
                 || (self.family_id() == DiagramFamilyId::RADAR
                     && self.target() == ThemeTarget::Axis)
                 || (matches!(
@@ -1185,30 +1188,40 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_edge_fill_is_observed_in_the_branch_stroke_channel() {
-        for selector in [
-            ThemeRouteCutoverSelector::StaticUnqualified,
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+    fn edge_fill_is_observed_in_the_native_stroke_channel() {
+        for family in [
+            DiagramFamilyId::GIT_GRAPH,
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
         ] {
-            for value in [
-                ThemeRouteCutoverValue::Solid,
-                ThemeRouteCutoverValue::Transparent,
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
             ] {
-                let descriptor = ThemeRouteCutoverDescriptor::new(
-                    ThemeRouteCutoverId::new(
-                        DiagramFamilyId::GIT_GRAPH,
-                        ThemeTarget::Edge,
-                        selector,
-                        ThemeRouteCutoverFacet::Fill,
-                        value,
-                    ),
-                    ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE,
-                );
-                assert_eq!(descriptor.facet(), ThemeRouteCutoverFacet::Fill);
-                assert_eq!(
-                    descriptor.raster_paint_facet(),
-                    ThemeRouteCutoverFacet::Stroke
-                );
+                for value in [
+                    ThemeRouteCutoverValue::Solid,
+                    ThemeRouteCutoverValue::Transparent,
+                ] {
+                    let descriptor = ThemeRouteCutoverDescriptor::new(
+                        ThemeRouteCutoverId::new(
+                            family,
+                            ThemeTarget::Edge,
+                            selector,
+                            ThemeRouteCutoverFacet::Fill,
+                            value,
+                        ),
+                        if family == DiagramFamilyId::GIT_GRAPH {
+                            ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE
+                        } else {
+                            ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK
+                        },
+                    );
+                    assert_eq!(descriptor.facet(), ThemeRouteCutoverFacet::Fill);
+                    assert_eq!(
+                        descriptor.raster_paint_facet(),
+                        ThemeRouteCutoverFacet::Stroke
+                    );
+                }
             }
         }
     }
