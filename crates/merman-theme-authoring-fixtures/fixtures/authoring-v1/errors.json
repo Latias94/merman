@@ -1,0 +1,38 @@
+[
+  {
+    "id": "empty-font-stack",
+    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{},\"styles\":[{\"kind\":\"rule\",\"target\":\"node\",\"style\":{\"typography\":{\"font_stack\":[]}}}]}",
+    "code_name": "MERMAN_INVALID_ARGUMENT",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.invalid-token-value",
+          "severity": "error",
+          "path": "/styles/0/style/typography/font_stack",
+          "details": {
+            "expected_domain_id": "font-stack"
+          }
+        }
+      ]
+    },
+    "native_status_name": "invalid-argument"
+  },
+  {
+    "id": "empty-series",
+    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{\"series\":[]}}",
+    "code_name": "MERMAN_INVALID_ARGUMENT",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.empty-series",
+          "severity": "error",
+          "path": "/tokens/series",
+          "details": {}
+        }
+      ]
+    },
+    "native_status_name": "invalid-argument"
+  }
+]

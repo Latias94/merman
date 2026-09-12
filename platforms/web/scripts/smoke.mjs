@@ -418,6 +418,29 @@ if (hasCapability("svg")) {
     materializedTheme,
   );
 
+  const errorVectors = JSON.parse(await readFile(path.join(
+    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json",
+  ), "utf8"));
+  for (const vector of errorVectors) {
+    for (const materialize of [
+      () => api.materializeTheme(vector.source),
+      () => exportedWasmModule.materializeTheme(vector.source),
+    ]) {
+      assert.throws(materialize, (error) => {
+        assert.equal(error.code_name, vector.code_name);
+        const envelope = structuredClone(error.details?.theme_authoring);
+        assert.ok(Array.isArray(envelope?.diagnostics));
+        for (const diagnostic of envelope.diagnostics) {
+          assert.equal(typeof diagnostic.message, "string");
+          assert.ok(diagnostic.message.trim().length > 0);
+          delete diagnostic.message;
+        }
+        assert.deepEqual(envelope, vector.theme_authoring, vector.id);
+        return true;
+      });
+    }
+  }
+
   const supportQuery = {
     schema_version: 2,
     family: "sequence",

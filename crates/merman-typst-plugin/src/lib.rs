@@ -644,26 +644,36 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn theme_operation_json_preserves_contract_owned_authoring_details() {
-        let payload: Value = serde_json::from_slice(&theme_operation_json(
-            b"materialize-theme-json",
-            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"series":[]}}"#,
-            b"",
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
         ))
-        .expect("valid theme-authoring error envelope");
-
-        assert_error_envelope(
-            &payload,
-            "materialize-theme-json",
-            "MERMAN_INVALID_ARGUMENT",
-        );
-        assert_eq!(
-            payload["details"]["theme_authoring"]["diagnostics"][0]["code"],
-            "theme-authoring.empty-series"
-        );
-        assert_eq!(
-            payload["details"]["theme_authoring"]["diagnostics"][0]["path"],
-            "/tokens/series"
-        );
+        .unwrap();
+        for vector in vectors.as_array().unwrap() {
+            let payload: Value = serde_json::from_slice(&theme_operation_json(
+                b"materialize-theme-json",
+                vector["source"].as_str().unwrap().as_bytes(),
+                b"",
+            ))
+            .expect("theme-authoring error envelope");
+            assert_error_envelope(
+                &payload,
+                "materialize-theme-json",
+                vector["code_name"].as_str().unwrap(),
+            );
+            let mut authoring = payload["details"]["theme_authoring"].clone();
+            for diagnostic in authoring["diagnostics"]
+                .as_array_mut()
+                .expect("diagnostics array")
+            {
+                let message = diagnostic
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("message")
+                    .expect("diagnostic message");
+                assert!(!message.as_str().expect("string message").trim().is_empty());
+            }
+            assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
+        }
     }
 
     #[test]

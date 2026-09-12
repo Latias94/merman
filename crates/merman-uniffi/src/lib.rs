@@ -1687,47 +1687,49 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn materialize_theme_operation_preserves_authoring_error_envelope() {
-        let request = || {
-            MermanOperationRequestV4 {
-            operation_id: "materialize-theme-json".to_string(),
-            source: r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#.to_string(),
-            uri: None,
-            options_json: None,
-            control: None,
-        }
-        };
-        for error in [
-            engine().execute(request()).expect_err("invalid font stack"),
-            reusable_engine(None)
-                .execute(request())
-                .expect_err("invalid font stack"),
-        ] {
-            let MermanError::Binding {
-                code, details_json, ..
-            } = error;
-            assert_eq!(code, BindingStatus::InvalidArgument.code());
-            let details: Value =
-                serde_json::from_str(&details_json.expect("complete error details")).unwrap();
-            let authoring = &details["theme_authoring"];
-            assert_eq!(authoring["schema_version"], 1);
-            assert_eq!(
-                authoring["diagnostics"][0]["code"],
-                "theme-authoring.invalid-token-value"
-            );
-            assert_eq!(
-                authoring["diagnostics"][0]["path"],
-                "/styles/0/style/typography/font_stack"
-            );
-            assert_eq!(
-                authoring["diagnostics"][0]["details"],
-                serde_json::json!({"expected_domain_id": "font-stack"})
-            );
-            assert!(
-                !authoring["diagnostics"][0]["message"]
-                    .as_str()
-                    .unwrap()
-                    .is_empty()
-            );
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
+        ))
+        .unwrap();
+        let api = engine();
+        let reusable = reusable_engine(None);
+        for vector in vectors.as_array().unwrap() {
+            let request = || MermanOperationRequestV4 {
+                operation_id: "materialize-theme-json".to_owned(),
+                source: vector["source"].as_str().unwrap().to_owned(),
+                uri: None,
+                options_json: None,
+                control: None,
+            };
+            for error in [
+                api.execute(request()).expect_err("invalid definition"),
+                reusable.execute(request()).expect_err("invalid definition"),
+            ] {
+                let MermanError::Binding {
+                    code,
+                    code_name,
+                    details_json,
+                    ..
+                } = error;
+                assert_eq!(code, BindingStatus::InvalidArgument.code());
+                assert_eq!(code_name, vector["code_name"].as_str().unwrap());
+                let details: Value =
+                    serde_json::from_str(&details_json.expect("complete error details")).unwrap();
+                let payload = serde_json::json!({"details": details});
+                let mut authoring = payload["details"]["theme_authoring"].clone();
+                for diagnostic in authoring["diagnostics"]
+                    .as_array_mut()
+                    .expect("diagnostics array")
+                {
+                    let message = diagnostic
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("message")
+                        .expect("diagnostic message");
+                    assert!(!message.as_str().expect("string message").trim().is_empty());
+                }
+                assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
+            }
         }
     }
 

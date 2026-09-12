@@ -146,36 +146,6 @@ def main() -> None:
     else:
         raise RuntimeError("resource failure did not return a binding error")
 
-    for client in (api, engine):
-        try:
-            client.execute(merman.MermanOperationRequestV4(
-                operation_id="materialize-theme-json",
-                source=json.dumps({
-                    "authoring_schema_version": 1,
-                    "expansion_version": 1,
-                    "tokens": {},
-                    "styles": [{"kind": "rule", "target": "node",
-                                "style": {"typography": {"font_stack": []}}}],
-                }),
-                uri=None,
-                options_json=None,
-                control=None,
-            ))
-        except merman.MermanError.Binding as error:
-            authoring = json.loads(error.details_json)["theme_authoring"]
-            diagnostic = authoring["diagnostics"][0]
-            require(
-                error.code_name == "MERMAN_INVALID_ARGUMENT"
-                and authoring["schema_version"] == 1
-                and diagnostic["code"] == "theme-authoring.invalid-token-value"
-                and diagnostic["path"] == "/styles/0/style/typography/font_stack"
-                and diagnostic["details"] == {"expected_domain_id": "font-stack"}
-                and bool(diagnostic["message"]),
-                "theme authoring failure lost its structured details",
-            )
-        else:
-            raise RuntimeError("invalid theme definition was accepted")
-
     deadline = merman.MermanOperationControl(timeout_ms=0)
     try:
         api.execute(

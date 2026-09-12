@@ -72,18 +72,16 @@ export function stateFill(svg) {
   return fill.replace(/\s*!important\s*$/, "").trim();
 }
 
-export function assertAuthoringDiagnostic(error) {
-  assert.equal(error.codeName, "MERMAN_INVALID_ARGUMENT");
-  const envelope = error.details?.theme_authoring;
-  assert.equal(envelope?.schema_version, 1);
-  assert.equal(envelope.diagnostics.length, 1);
-  const diagnostic = envelope.diagnostics[0];
-  assert.equal(diagnostic.code, "theme-authoring.invalid-token-value");
-  assert.equal(diagnostic.severity, "error");
-  assert.equal(diagnostic.path, "/styles/0/style/typography/font_stack");
-  assert.deepEqual(diagnostic.details, { expected_domain_id: "font-stack" });
-  assert.equal(typeof diagnostic.message, "string");
-  assert.ok(diagnostic.message.trim().length > 0);
+export function assertAuthoringDiagnostic(error, vector) {
+  assert.equal(error.codeName, vector.code_name);
+  const envelope = structuredClone(error.details?.theme_authoring);
+  assert.ok(Array.isArray(envelope?.diagnostics));
+  for (const diagnostic of envelope.diagnostics) {
+    assert.equal(typeof diagnostic.message, "string");
+    assert.ok(diagnostic.message.trim().length > 0);
+    delete diagnostic.message;
+  }
+  assert.deepEqual(envelope, vector.theme_authoring, vector.id);
   return true;
 }
 
@@ -246,21 +244,18 @@ export async function runThemeAuthoringSmoke(module, engine) {
     assert.ok(v2Support.reason_ids.includes("theme-support.family-owned-consumer-present"));
     counts.base_typography_queries += 1;
 
-    const invalid = {
-      operationId: "materialize-theme-json",
-      source: JSON.stringify({
-        authoring_schema_version: 1, expansion_version: 1, tokens: {},
-        styles: [{ kind: "rule", target: "node", style: { typography: { font_stack: [] } } }],
-      }),
-    };
-    const checkDiagnostic = (error) => {
-      assert.ok(error instanceof module.MermanOperationError);
-      return assertAuthoringDiagnostic(error);
-    };
-    await assert.rejects(engine.executeOperation(invalid), checkDiagnostic);
-    counts.authoring_diagnostics += 1;
-    assert.throws(() => engine.executeOperationSync(invalid), checkDiagnostic);
-    counts.authoring_diagnostics += 1;
+    const errorVectors = JSON.parse(await readFile(new URL("errors.json", FIXTURES), "utf8"));
+    for (const vector of errorVectors) {
+      const invalid = { operationId: "materialize-theme-json", source: vector.source };
+      const checkDiagnostic = (error) => {
+        assert.ok(error instanceof module.MermanOperationError);
+        return assertAuthoringDiagnostic(error, vector);
+      };
+      await assert.rejects(engine.executeOperation(invalid), checkDiagnostic);
+      counts.authoring_diagnostics += 1;
+      assert.throws(() => engine.executeOperationSync(invalid), checkDiagnostic);
+      counts.authoring_diagnostics += 1;
+    }
 
     const limitedRequest = {
       operationId: "materialize-theme-json",

@@ -2733,40 +2733,41 @@ mod tests {
             MERMAN_NATIVE_STATUS_OK
         );
         unsafe { api.result_free.unwrap()(&mut result) };
-        let source = br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#;
-        let request = native_request(MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON, source);
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
-        );
-        let payload: serde_json::Value = serde_json::from_slice(unsafe {
-            std::slice::from_raw_parts(
-                result.metadata_or_error_json.data,
-                result.metadata_or_error_json.len,
-            )
-        })
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
+        ))
         .unwrap();
-        let authoring = &payload["details"]["theme_authoring"];
-        assert_eq!(authoring["schema_version"], 1);
-        assert_eq!(
-            authoring["diagnostics"][0]["code"],
-            "theme-authoring.invalid-token-value"
-        );
-        assert_eq!(
-            authoring["diagnostics"][0]["path"],
-            "/styles/0/style/typography/font_stack"
-        );
-        assert_eq!(
-            authoring["diagnostics"][0]["details"],
-            serde_json::json!({"expected_domain_id": "font-stack"})
-        );
-        assert!(
-            !authoring["diagnostics"][0]["message"]
-                .as_str()
-                .unwrap()
-                .is_empty()
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
+        for vector in vectors.as_array().unwrap() {
+            let source = vector["source"].as_str().unwrap().as_bytes();
+            let request = native_request(MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON, source);
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+            );
+            let payload: serde_json::Value = serde_json::from_slice(unsafe {
+                std::slice::from_raw_parts(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                )
+            })
+            .unwrap();
+            assert_eq!(payload["status_name"], vector["native_status_name"]);
+            assert_eq!(payload["status"], MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+            let mut authoring = payload["details"]["theme_authoring"].clone();
+            for diagnostic in authoring["diagnostics"]
+                .as_array_mut()
+                .expect("diagnostics array")
+            {
+                let message = diagnostic
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("message")
+                    .expect("diagnostic message");
+                assert!(!message.as_str().expect("string message").trim().is_empty());
+            }
+            assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(engine) },
             MERMAN_NATIVE_STATUS_OK

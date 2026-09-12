@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   assertAuthoringDiagnostic,
   fixtureCanonicalJson,
@@ -39,29 +40,31 @@ test("terminal State oracle rejects malformed or absent native labels and missin
   assert.throws(() => parseSvg('<html xmlns="http://www.w3.org/2000/svg"><text>Active</text></html>'));
 });
 
-test("authoring diagnostic oracle requires structured code, path, details and message", () => {
-  const error = {
-    codeName: "MERMAN_INVALID_ARGUMENT",
-    details: { theme_authoring: { schema_version: 1, diagnostics: [{
-      code: "theme-authoring.invalid-token-value",
-      severity: "error",
-      path: "/styles/0/style/typography/font_stack",
-      details: { expected_domain_id: "font-stack" },
-      message: "font stack must not be empty",
-    }] } },
-  };
-  assert.equal(assertAuthoringDiagnostic(error), true);
-  const mutations = [
-    (value) => { delete value.details; },
-    (value) => { value.details.theme_authoring.schema_version = 2; },
-    (value) => { value.details.theme_authoring.diagnostics[0].code = "generic"; },
-    (value) => { value.details.theme_authoring.diagnostics[0].path = ""; },
-    (value) => { value.details.theme_authoring.diagnostics[0].details = {}; },
-    (value) => { value.details.theme_authoring.diagnostics[0].message = " "; },
-  ];
-  for (const mutate of mutations) {
-    const changed = structuredClone(error);
-    mutate(changed);
-    assert.throws(() => assertAuthoringDiagnostic(changed));
+test("authoring diagnostic oracle preserves the shared structured error vectors", () => {
+  const vectors = JSON.parse(readFileSync(new URL(
+    "../../../crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json", import.meta.url,
+  ), "utf8"));
+  for (const vector of vectors) {
+    const error = {
+      codeName: vector.code_name,
+      details: { theme_authoring: structuredClone(vector.theme_authoring) },
+    };
+    error.details.theme_authoring.diagnostics[0].message = "Invalid authored theme";
+    assert.equal(assertAuthoringDiagnostic(error, vector), true);
+    for (const mutate of [
+      (value) => { delete value.details; },
+      (value) => { value.codeName = "MERMAN_PARSE_ERROR"; },
+      (value) => { value.details.theme_authoring.schema_version = 2; },
+      (value) => { value.details.theme_authoring.diagnostics[0].code = "generic"; },
+      (value) => { value.details.theme_authoring.diagnostics[0].path = ""; },
+      (value) => { value.details.theme_authoring.diagnostics[0].details = { extra: true }; },
+      (value) => { value.details.theme_authoring.diagnostics[0].severity = "warning"; },
+      (value) => { value.details.theme_authoring.diagnostics[0].message = " "; },
+      (value) => { value.details.theme_authoring.diagnostics.push(value.details.theme_authoring.diagnostics[0]); },
+    ]) {
+      const changed = structuredClone(error);
+      mutate(changed);
+      assert.throws(() => assertAuthoringDiagnostic(changed, vector));
+    }
   }
 });

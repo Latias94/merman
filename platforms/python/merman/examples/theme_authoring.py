@@ -90,6 +90,23 @@ def run_theme_authoring_smoke() -> None:
     engine = merman.MermanEngine(None, None)
     fresh = merman.MermanEngine(None, None)
     try:
+        error_vectors = json.loads((FIXTURES / "errors.json").read_text(encoding="utf-8"))
+        for vector in error_vectors:
+            for client in (api, engine):
+                try:
+                    execute_json(client, "materialize-theme-json", vector["source"])
+                except merman.MermanError.Binding as error:
+                    require(error.code_name == vector["code_name"], "wrong outer authoring status")
+                    authoring = json.loads(error.details_json)["theme_authoring"]
+                    for diagnostic in authoring["diagnostics"]:
+                        message = diagnostic.pop("message")
+                        require(isinstance(message, str) and bool(message.strip()),
+                                "missing authoring diagnostic message")
+                    require(authoring == vector["theme_authoring"],
+                            f"{vector['id']} authoring envelope differs from shared golden")
+                else:
+                    raise RuntimeError(f"{vector['id']} invalid definition was accepted")
+
         definitions = {}
         for name in ("light", "dark"):
             readable = (FIXTURES / f"{name}.definition.json").read_text(encoding="utf-8")
