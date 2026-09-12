@@ -503,62 +503,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
     }
 
-    #[derive(Clone)]
-    struct RenderNode {
-        label: String,
-        block_type: String,
-        classes: Vec<String>,
-        styles: Vec<String>,
-        directions: Vec<String>,
-        checkpointed: bool,
-    }
-
-    fn collect_nodes(
-        root: &crate::block::BlockNode,
-        out: &mut std::collections::HashMap<String, RenderNode>,
-    ) {
-        let mut stack = vec![root];
-        while let Some(n) = stack.pop() {
-            if let Some(existing) = out.get_mut(&n.id) {
-                if !n.label.is_empty() {
-                    existing.label = n.label.clone();
-                }
-                if !n.block_type.is_empty() && n.block_type != "na" {
-                    existing.block_type = n.block_type.clone();
-                }
-                if !n.classes.is_empty() {
-                    existing.classes = n.classes.clone();
-                }
-                if !n.styles.is_empty() {
-                    existing.styles = n.styles.clone();
-                }
-                if !n.directions.is_empty() {
-                    existing.directions = n.directions.clone();
-                }
-            } else {
-                out.insert(
-                    n.id.clone(),
-                    RenderNode {
-                        label: n.label.clone(),
-                        block_type: n.block_type.clone(),
-                        classes: n.classes.clone(),
-                        styles: n.styles.clone(),
-                        directions: n.directions.clone(),
-                        checkpointed: false,
-                    },
-                );
-            }
-            for child in n.children.iter().rev() {
-                stack.push(child);
-            }
-        }
-    }
-
-    let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
-        std::collections::HashMap::new();
-    for n in &model.blocks_flat {
-        collect_nodes(n, &mut nodes_by_id);
-    }
+    let nodes_by_id = crate::block::resolve_block_node_sources(model);
     let shape_geometries_by_id: std::collections::HashMap<_, _> = layout
         .shape_geometries
         .iter()
@@ -945,20 +890,20 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
 
     // Ordinary rendering owns terminal completeness. Keep duplicate output attempts so sink
     // failures retain precedence over the deferred terminal error.
-    let mut checkpointed_nodes = 0;
+    let mut checkpointed_nodes = std::collections::HashSet::new();
     let mut node_shells_match = true;
     for (node_index, n) in layout.nodes.iter().enumerate() {
-        let Some(node) = nodes_by_id.get_mut(&n.id) else {
+        let Some(node) = nodes_by_id.get(n.id.as_str()) else {
             continue;
         };
-        let compiled_styles = compile_block_inline_styles(&node.styles);
+        let compiled_styles = compile_block_inline_styles(node.styles);
         let source_owns_fill = node_paint_source_ownership
             .as_ref()
-            .is_some_and(|ownership| ownership.owns_fill(compiled_styles.owns_fill, &node.classes));
+            .is_some_and(|ownership| ownership.owns_fill(compiled_styles.owns_fill, node.classes));
         let source_owns_stroke = node_paint_source_ownership
             .as_ref()
             .is_some_and(|ownership| {
-                ownership.owns_stroke(compiled_styles.owns_stroke, &node.classes)
+                ownership.owns_stroke(compiled_styles.owns_stroke, node.classes)
             });
         let typed_fill = node_paint_theme.typed_fill(node_index, source_owns_fill);
         let typed_stroke = node_paint_theme.typed_stroke(node_index, source_owns_stroke);
@@ -1121,7 +1066,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 points,
                 translation,
             } => {
-                let odd_shape = matches!(node.block_type.as_str(), "odd" | "rect_left_inv_arrow");
+                let odd_shape = matches!(node.block_type, "odd" | "rect_left_inv_arrow");
                 let points_as_tuples: Vec<(f64, f64)> =
                     points.iter().map(|point| (point.x, point.y)).collect();
                 let path_data = closed_path_d_from_points(&points_as_tuples);
@@ -1168,10 +1113,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
         out.checkpoint()?;
         node_shells_match &= shell_kinds == geometry.boundary.canonical_shell_kinds();
-        if !node.checkpointed {
-            node.checkpointed = true;
-            checkpointed_nodes += 1;
-        }
+        checkpointed_nodes.insert(n.id.as_str());
         if let Some(receipt) = node_paint_receipt.as_mut() {
             receipt.record_checkpointed_node(
                 node_index,
@@ -1186,7 +1128,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
         }
 
-        let label = decode_block_label_html(&node.label);
+        let label = decode_block_label_html(node.label);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
         if let Some(receipt) = typography_receipt.as_mut() {
@@ -1197,7 +1139,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
             let label_h = n.label_height.unwrap_or(0.0).max(0.0);
-            let label_dx = if matches!(node.block_type.as_str(), "odd" | "rect_left_inv_arrow") {
+            let label_dx = if matches!(node.block_type, "odd" | "rect_left_inv_arrow") {
                 match &geometry.boundary {
                     BlockShapeBoundary::Polygon { translation, .. } => translation.x,
                     _ => 0.0,
@@ -1462,7 +1404,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     )?;
     let rooted = root_document.complete(out.finish()?)?;
     if !node_shells_match
-        || checkpointed_nodes != layout.nodes.len()
+        || checkpointed_nodes.len() != layout.nodes.len()
         || !node_paint_theme.record_terminal(node_paint_receipt)
     {
         return Err(Error::InvalidModel {

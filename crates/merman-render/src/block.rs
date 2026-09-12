@@ -6,7 +6,10 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod source;
 mod theme;
+
+pub(crate) use source::resolve_block_node_sources;
 
 #[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
@@ -952,38 +955,6 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
     }
 }
 
-#[derive(Debug, Clone)]
-struct BlockShapeSource {
-    block_type: String,
-    directions: Vec<String>,
-    width_in_columns: i64,
-}
-
-fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
-    let mut stack = vec![root];
-    while let Some(block) = stack.pop() {
-        let source = out
-            .entry(block.id.clone())
-            .or_insert_with(|| BlockShapeSource {
-                block_type: block.block_type.clone(),
-                directions: block.directions.clone(),
-                width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
-            });
-        if !block.block_type.is_empty() && block.block_type != "na" {
-            source.block_type = block.block_type.clone();
-        }
-        if !block.directions.is_empty() {
-            source.directions = block.directions.clone();
-        }
-        if let Some(width_in_columns) = block.width_in_columns {
-            source.width_in_columns = width_in_columns.max(1);
-        }
-        for child in block.children.iter().rev() {
-            stack.push(child);
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
@@ -1022,21 +993,18 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
     let mut nodes: Vec<LayoutNode> = Vec::new();
     collect_nodes(&root, &mut nodes);
 
-    let mut shape_sources = HashMap::new();
-    for block in &model.blocks_flat {
-        collect_shape_sources(block, &mut shape_sources);
-    }
+    let shape_sources = resolve_block_node_sources(model);
     let mut shape_geometries = Vec::with_capacity(nodes.len());
     for node in &nodes {
         let source = shape_sources
-            .get(&node.id)
+            .get(node.id.as_str())
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing Block shape source for node `{}`", node.id),
             })?;
         let geometry = BlockShapeGeometry::from_layout_node(
             node,
-            &source.block_type,
-            &source.directions,
+            source.block_type,
+            source.directions,
             padding,
             source.width_in_columns,
         )

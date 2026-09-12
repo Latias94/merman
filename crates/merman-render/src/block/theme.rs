@@ -745,37 +745,23 @@ impl BlockNodePaintSourceOwnership {
         layout: &BlockDiagramLayout,
         mermaid_owns_fill: bool,
     ) -> Vec<bool> {
-        let mut sources = BTreeMap::<String, BlockNodeSourceProperties>::new();
-        for node in &model.blocks_flat {
-            let source = sources.entry(node.id.clone()).or_default();
-            if !node.classes.is_empty() {
-                source.classes = node.classes.clone();
-            }
-            if !node.styles.is_empty() {
-                source.inline_owns_fill = node.styles.iter().any(|raw| {
-                    crate::mermaid_style::parse_style_declaration(raw)
-                        .is_some_and(|declaration| declaration.property() == "fill")
-                });
-            }
-        }
+        let sources = super::resolve_block_node_sources(model);
 
         layout
             .nodes
             .iter()
             .map(|node| {
-                let Some(source) = sources.get(&node.id) else {
+                let Some(source) = sources.get(node.id.as_str()) else {
                     return mermaid_owns_fill;
                 };
-                mermaid_owns_fill || self.owns_fill(source.inline_owns_fill, &source.classes)
+                let inline_owns_fill = source.styles.iter().any(|raw| {
+                    crate::mermaid_style::parse_style_declaration(raw)
+                        .is_some_and(|declaration| declaration.property() == "fill")
+                });
+                mermaid_owns_fill || self.owns_fill(inline_owns_fill, source.classes)
             })
             .collect()
     }
-}
-
-#[derive(Default)]
-struct BlockNodeSourceProperties {
-    classes: Vec<String>,
-    inline_owns_fill: bool,
 }
 
 /// Writer-owned proof that every semantic Block node reached every canonical SVG shell.
@@ -966,6 +952,110 @@ mod tests {
                 not_applicable
             );
             assert_eq!(evidence.residuals().is_empty(), not_applicable);
+        }
+    }
+
+    #[test]
+    fn source_fill_mask_includes_nested_nodes_and_later_source_fragments() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue, ThemeRuleSet,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let theme = theme.resolve(crate::DiagramFamilyId::BLOCK);
+        let config = merman_core::MermaidConfig::empty_object();
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::Node,
+        };
+        for class_owned in [false, true] {
+            let mut value = serde_json::json!({
+                "blocksFlat": [{
+                    "id": "root", "type": "composite", "columns": 1,
+                    "children": [{
+                        "id": "A", "type": "square", "label": "Alpha",
+                        "styles": ["fill:#bb0000"], "classes": []
+                    }]
+                }],
+                "classes": {}
+            });
+            if class_owned {
+                value["blocksFlat"][0]["children"][0]["styles"] = serde_json::json!([]);
+                value["blocksFlat"][0]["children"][0]["classes"] = serde_json::json!(["brand"]);
+                value["classes"] = serde_json::json!({"brand": {
+                    "id": "brand", "styles": ["fill:#bb0000"]
+                }});
+            }
+            let mut model: merman_core::diagrams::block::BlockDiagramRenderModel =
+                serde_json::from_value(value).unwrap();
+            let layout = crate::block::layout_block_diagram_typed(
+                &model,
+                &serde_json::json!({}),
+                &crate::text::DeterministicTextMeasurer::default(),
+            )
+            .unwrap();
+            assert_eq!(layout.nodes.len(), 1);
+            let owners = BlockNodePaintSourceOwnership::new(&model.class_defs);
+            assert_eq!(
+                owners.source_owned_fill_mask(&model, &layout, false),
+                [true]
+            );
+
+            let plan = BlockNodePaintThemePlan::resolve(
+                Some(&theme),
+                &config,
+                &layout,
+                &owners.source_owned_fill_mask(&model, &layout, false),
+                &work_meter,
+            )
+            .unwrap();
+            let evidence = plan.finish_evidence();
+            assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
+            assert!(evidence.residuals().is_empty());
+
+            // Empty fragments preserve the nested source, just as the terminal writer does.
+            model.blocks_flat.push(
+                serde_json::from_value(serde_json::json!({
+                    "id": "A", "type": "na"
+                }))
+                .unwrap(),
+            );
+            assert_eq!(
+                owners.source_owned_fill_mask(&model, &layout, false),
+                [true]
+            );
+
+            // A later non-empty list replaces the corresponding source list.
+            model.blocks_flat.push(
+                serde_json::from_value(serde_json::json!({
+                    "id": "A", "type": "na", "styles": ["stroke:#00bb00"],
+                    "classes": ["unowned"]
+                }))
+                .unwrap(),
+            );
+            assert_eq!(
+                owners.source_owned_fill_mask(&model, &layout, false),
+                [false]
+            );
+            let plan = BlockNodePaintThemePlan::resolve(
+                Some(&theme),
+                &config,
+                &layout,
+                &owners.source_owned_fill_mask(&model, &layout, false),
+                &work_meter,
+            )
+            .unwrap();
+            let evidence = plan.finish_evidence();
+            assert!(!evidence.not_applicable_mechanisms().contains(&palette_key));
+            assert!(!evidence.residuals().is_empty());
         }
     }
 
