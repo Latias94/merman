@@ -5061,6 +5061,42 @@ gitGraph
         ));
     }
     #[test]
+    fn quadrant_axis_fill_does_not_feed_legacy_border_channels() {
+        let spec =
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Axis,
+                ThemeStylePatch::default().with_fill(solid("#2468ac")),
+            )));
+        let baseline = parse(
+            &DiagramThemeSpec::default(),
+            "quadrantChart\nx-axis Low --> High\n",
+        );
+        let parsed = parse(&spec, "quadrantChart\nx-axis Low --> High\n");
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.quadrantExternalBorderStrokeFill"),
+            baseline
+                .effective_config
+                .get_str("themeVariables.quadrantExternalBorderStrokeFill")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.quadrantInternalBorderStrokeFill"),
+            baseline
+                .effective_config
+                .get_str("themeVariables.quadrantInternalBorderStrokeFill")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.quadrantXAxisTextFill"),
+            Some("#2468ac")
+        );
+    }
+
+    #[test]
     fn quadrant_text_cutover_suppresses_each_inherited_legacy_projection() {
         for variant in [None, Some(ThemeVariant::Default)] {
             for paint in [solid("#13579b"), CanvasPaint::Transparent] {
