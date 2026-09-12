@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { runThemeAuthoringSmoke } from "./theme-authoring-smoke.mjs";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -33,12 +34,14 @@ async function main() {
     const svg = await engine.renderSvg("flowchart TD\nA --> B");
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
+    const themeAuthoring = await runThemeAuthoringSmoke(module, engine);
     console.log(
       JSON.stringify({
         package: packageName,
         version: expectedVersion,
         target: expectedTarget,
         svg_bytes: Buffer.byteLength(svg),
+        theme_authoring: themeAuthoring,
       }),
     );
   } finally {

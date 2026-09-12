@@ -757,6 +757,18 @@ jobs:
               git config --global --add safe.directory /work
               npm ci --prefix platforms/node
               node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
+              package_root="$(mktemp -d)/packages"
+              artifact_dir="$(mktemp -d)"
+              smoke_root="$(mktemp -d)"
+              version="$(node -e "const fs=require(\"fs\"); console.log(JSON.parse(fs.readFileSync(\"platforms/node/package-surfaces.json\", \"utf8\")).version)")"
+              node platforms/node/scripts/assemble-packages.mjs --target linux-x64-gnu --output-root "$package_root"
+              node platforms/node/scripts/verify-packages.mjs --packed-root "$package_root"
+              npm pack "$package_root/node" --json --pack-destination "$artifact_dir" >/dev/null
+              npm pack "$package_root/linux-x64-gnu" --json --pack-destination "$artifact_dir" >/dev/null
+              cd "$smoke_root"
+              npm init -y >/dev/null
+              npm install --ignore-scripts --no-audit --no-fund "$artifact_dir"/*.tgz >/dev/null
+              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$version" --target linux-x64-gnu
             '
 
   typst-package:
