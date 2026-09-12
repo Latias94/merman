@@ -6,6 +6,11 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-12
 
+Last verified at commit `d7a26205b`: the private theme acceptance harness passed 138/138,
+the Node contract suite passed 104/104, and the acceptance-boundary and representative
+artifact-closure checks passed. These checks confirm the current ledger; they do not
+promote the remaining legacy routes or close C7a/C7b.
+
 The source inventories, not this summary, authorize rendering and retirement:
 
 | Inventory | Snapshot | Source |
