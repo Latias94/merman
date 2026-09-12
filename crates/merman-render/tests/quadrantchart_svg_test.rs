@@ -1438,3 +1438,80 @@ fn quadrantchart_title_winning_unsupported_facets_and_ordinals_stay_residual() {
         assert_eq!(evidence.not_applicable_count(), 1);
     }
 }
+
+#[test]
+fn quadrantchart_axis_fill_preserves_legacy_border_fallback_and_stroke_ownership() {
+    let source = "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\n";
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (stroke, expected) in [
+            (Specified::Unspecified, Some("#2468ac")),
+            (
+                Specified::Value(CanvasPaint::solid("#abcdef").unwrap()),
+                Some("#abcdef"),
+            ),
+            (
+                Specified::Value(CanvasPaint::Transparent),
+                Some("transparent"),
+            ),
+            (Specified::Clear, None),
+        ] {
+            let mut style =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap());
+            style.stroke.paint = stroke;
+            let mut rule = ThemeRule::new(ThemeTarget::Axis, style);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = quadrantchart_series_rule_theme(rule);
+            for source_owned in [false, true] {
+                let engine = if source_owned {
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "themeVariables": {
+                            "quadrantExternalBorderStrokeFill": "#fedcba",
+                            "quadrantInternalBorderStrokeFill": "#fedcba"
+                        }
+                    })))
+                } else {
+                    Engine::new()
+                };
+                let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+                    source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let border = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("border")
+                    })
+                    .expect("visible border group");
+                let lines = border
+                    .children()
+                    .filter(|node| node.has_tag_name("line"))
+                    .collect::<Vec<_>>();
+                assert_eq!(lines.len(), 6);
+                for line in lines {
+                    let style = line.attribute("style").expect("border paint");
+                    if let Some(expected) = if source_owned {
+                        Some("#fedcba")
+                    } else {
+                        expected
+                    } {
+                        assert!(
+                            style.starts_with(&format!("stroke: {expected};")),
+                            "{variant:?}: {style}"
+                        );
+                    } else {
+                        assert!(
+                            !style.contains("#2468ac"),
+                            "Clear must block fill fallback: {style}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

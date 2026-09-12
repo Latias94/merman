@@ -718,14 +718,13 @@ fn compile_chart_family(
             contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
         }
         DiagramFamilyId::QUADRANT_CHART => {
-            let axis_stroke = reader.stroke(ThemeTarget::Axis);
             contributions.add_theme_variables(
                 "chart.text-axis",
                 [
                     ("quadrantXAxisTextFill", axis_text.clone()),
                     ("quadrantYAxisTextFill", axis_text),
-                    ("quadrantExternalBorderStrokeFill", axis_stroke.clone()),
-                    ("quadrantInternalBorderStrokeFill", axis_stroke),
+                    ("quadrantExternalBorderStrokeFill", axis_line.clone()),
+                    ("quadrantInternalBorderStrokeFill", axis_line),
                 ],
             );
         }
@@ -5060,32 +5059,24 @@ gitGraph
         ));
     }
     #[test]
-    fn quadrant_axis_fill_does_not_feed_legacy_border_channels() {
+    fn quadrant_axis_fill_feeds_legacy_border_channels_when_stroke_is_unspecified() {
         let spec =
             DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
                 ThemeTarget::Axis,
                 ThemeStylePatch::default().with_fill(solid("#2468ac")),
             )));
-        let baseline = parse(
-            &DiagramThemeSpec::default(),
-            "quadrantChart\nx-axis Low --> High\n",
-        );
         let parsed = parse(&spec, "quadrantChart\nx-axis Low --> High\n");
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.quadrantExternalBorderStrokeFill"),
-            baseline
-                .effective_config
-                .get_str("themeVariables.quadrantExternalBorderStrokeFill")
+            Some("#2468ac")
         );
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.quadrantInternalBorderStrokeFill"),
-            baseline
-                .effective_config
-                .get_str("themeVariables.quadrantInternalBorderStrokeFill")
+            Some("#2468ac")
         );
         assert_eq!(
             parsed

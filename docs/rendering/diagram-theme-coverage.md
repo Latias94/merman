@@ -54,7 +54,9 @@ configuration owns each channel independently. Text ordinals follow points, axes
 while Axis and Title selectors use their own occurrence domains. Winning unsupported or sibling
 facets remain residual; absent, source-owned, or fully shadowed requests are NotApplicable.
 The writer checks every text and fill against its prepared receipt before recording Applied.
-The remaining Quadrant bridge handles only dedicated Axis paint routes.
+The remaining Quadrant bridge handles only dedicated Axis paint routes. Axis.fill supplies
+border paint only when Axis.stroke is unspecified; an explicit stroke, including transparent
+or Clear, blocks that fallback. Generic Text.fill does not feed this border channel.
 
 Version 75 adds eight Flowchart/Swimlane Edge.fill routes
 (solid/transparent, unqualified/Default). Fill supplies the edge's native stroke only when Stroke
