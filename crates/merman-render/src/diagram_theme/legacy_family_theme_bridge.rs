@@ -928,20 +928,6 @@ impl FamilyContributions {
         self.add_patch(mapping, root);
     }
 
-    fn add_root_object(
-        &mut self,
-        mapping: &'static str,
-        key: &'static str,
-        object: Map<String, Value>,
-    ) {
-        if object.is_empty() {
-            return;
-        }
-        let mut root = Map::new();
-        root.insert(key.to_string(), Value::Object(object));
-        self.add_patch(mapping, root);
-    }
-
     fn add_patch(&mut self, mapping: &'static str, patch: Map<String, Value>) {
         self.entries.push(PendingContribution { mapping, patch });
     }
