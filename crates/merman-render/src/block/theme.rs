@@ -422,11 +422,18 @@ impl BlockNodePaintThemePlan {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Node,
-                TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(source_owned_fill)],
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(source_owned_fill),
+                // Composite labels are node labels; frontmatter does not create a diagram title.
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+                ),
+            ],
             work_meter,
         )?;
 

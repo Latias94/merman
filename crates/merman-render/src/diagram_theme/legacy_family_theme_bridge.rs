@@ -639,10 +639,13 @@ fn compile_node_family(
             ],
         );
     }
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
+    // Block has no diagram-title terminal, including for the generic Text fallback.
+    if family == DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            "title.fill",
+            [("titleColor", reader.text_fill(ThemeTarget::Title))],
+        );
+    }
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
@@ -2110,14 +2113,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 86);
+        assert_eq!(status.matrix_route_count(), 82);
         assert_eq!(status.matrix_family_count(), 3);
         assert_eq!(status.dispatched_family_count(), 3);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                56, 214, 245, 115, 66, 170, 185, 107, 154, 252, 41, 213, 51, 222, 252, 148, 59, 3,
-                41, 27, 128, 188, 18, 213, 41, 203, 169, 205, 115, 138, 201, 65
+                253, 169, 161, 54, 17, 0, 178, 122, 56, 255, 240, 38, 76, 255, 221, 167, 93, 239,
+                148, 55, 226, 226, 149, 245, 33, 87, 236, 92, 180, 160, 187, 56
             ]
         );
         assert_eq!(
@@ -4191,15 +4194,11 @@ gitGraph
                     let spec = DiagramThemeSpec::new()
                         .with_styles(ThemeRuleSet::default().with_rule(rule));
                     let artifact = bridge(&spec).compile_for_family(family);
-                    let typed = matches!(
-                        family,
-                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-                    );
                     assert_eq!(
                         artifact
                             .contribution_ids
                             .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.title.fill")),
-                        !typed,
+                        family == DiagramFamilyId::CLASS,
                         "family={family}, target={target:?}, variant={variant:?}"
                     );
                 }

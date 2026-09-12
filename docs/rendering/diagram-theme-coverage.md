@@ -12,12 +12,18 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 30/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 3/33; 86 routes | Block 44, Class 26, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 3/33; 82 routes | Block 40, Class 26, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 77 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 78 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v78; 432 routes / 638 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v6; 74 routes / 148 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v7; 76 routes / 152 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
+(four solid/transparent matrix routes). The pinned renderer has no diagram-title
+terminal; frontmatter and composite node labels do not create one. Title requests
+are Unsupported and NotApplicable in this empty domain. Native SVG/PNG comparisons
+preserve existing visible labels, and no typed Title capability is claimed.
 
 KTD23 v6 retires eight Flowchart/Swimlane static unqualified/Default Marker.fill/stroke
 identities against baseline `395a4d2f202b6697f680bc386546f54b3ebcbebd`. Each formerly projected
@@ -103,7 +109,7 @@ and `axisColor` remain independently owned. Version 69 adds two Radar Title.fill
 Version 68 adds four Flowchart and four Swimlane Title.fill routes with Classic,
 Neo, and HandDrawn witnesses for cluster and swimlane titles. Their typed classification suppresses
 only those winners in the shared bridge. Version 72 also replaces Flowchart/Swimlane generic
-Text fallback; Class and Block retain their existing title-color projections. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
+Text fallback; Class retains its namespace-label title-color projection. Block's unused title-color projection is retired by KTD23 v7. Version 67 adds four Requirement Text.fill routes (unqualified/Default,
 solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
 text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
 four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native

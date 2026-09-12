@@ -1691,3 +1691,112 @@ fn block_stadium_renders_rough_outer_path_and_clips_edge() {
     );
     assert!((edge_y - center_y).abs() <= 1e-3);
 }
+
+#[test]
+fn block_title_rules_have_no_terminal_even_with_frontmatter_and_composite_labels() {
+    let source = "---\ntitle: Metadata title\n---\nblock\n  columns 1\n  block:group[\"Composite title\"]\n    A[\"Alpha\"]\n  end\n";
+    for html_labels in [false, true] {
+        for variant in [
+            None,
+            Some(ThemeVariant::Default),
+            Some(ThemeVariant::Active),
+        ] {
+            for transparent in [false, true] {
+                let paint = if transparent {
+                    CanvasPaint::Transparent
+                } else {
+                    CanvasPaint::solid("#b316cd").unwrap()
+                };
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint),
+                )
+                .for_family(DiagramFamilyId::BLOCK);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let rendered = render_block_with_theme_and_engine(
+                    source,
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "htmlLabels": html_labels
+                    }))),
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(document.descendants().all(|node| {
+                    !node
+                        .attribute("class")
+                        .unwrap_or("")
+                        .split_ascii_whitespace()
+                        .any(|class| matches!(class, "flowchartTitleText" | "cluster-label"))
+                }));
+                for cluster in document.descendants().filter(|node| {
+                    node.attribute("class")
+                        .unwrap_or("")
+                        .split_ascii_whitespace()
+                        .any(|class| class == "cluster")
+                }) {
+                    assert!(
+                        cluster.descendants().all(|node| {
+                            !matches!(node.tag_name().name(), "text" | "span" | "p")
+                        })
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn absent_block_title_siblings_do_not_suppress_typed_node_paint() {
+    use merman_render::diagram_theme::{OrdinalSelector, Specified};
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+            .with_stroke(CanvasPaint::solid("#2468ac").unwrap());
+        if clear {
+            patch.paint.fill = Specified::Clear;
+        }
+        let title = ThemeRule::new(ThemeTarget::Title, patch)
+            .for_family(DiagramFamilyId::BLOCK)
+            .with_ordinal(OrdinalSelector::exact(1).unwrap());
+        let node = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#654321").unwrap()),
+        )
+        .for_family(DiagramFamilyId::BLOCK);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(ThemeRuleSet::default().with_rule(title).with_rule(node)),
+            )
+            .unwrap();
+        let rendered =
+            render_block_with_theme_and_engine("block\n A[\"Alpha\"]\n", &theme, Engine::new());
+        assert!(
+            terminal_shell_styles(rendered.svg(), "block-theme-A")
+                .iter()
+                .any(|(_, style)| terminal_fill(style) == Some("#654321"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
