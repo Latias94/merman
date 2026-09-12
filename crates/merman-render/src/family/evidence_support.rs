@@ -246,6 +246,7 @@ pub(crate) struct UnsupportedTerminalDomain<'a> {
     resolution: TerminalStyleResolution<'a>,
     variants: TerminalVariantDomain<'a>,
     source_owned_fill: Option<&'a [bool]>,
+    source_owned_stroke: Option<&'a [bool]>,
     fill_fully_overridden: bool,
     reconcile_rules: bool,
     resolve_ordinal_rules: bool,
@@ -257,6 +258,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
             source_owned_fill: None,
+            source_owned_stroke: None,
             fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
@@ -273,6 +275,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
             source_owned_fill: None,
+            source_owned_stroke: None,
             fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: true,
@@ -286,6 +289,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             resolution: TerminalStyleResolution::Direct(target),
             variants: TerminalVariantDomain::uniform(1, variant),
             source_owned_fill: None,
+            source_owned_stroke: None,
             fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: false,
@@ -298,6 +302,13 @@ impl<'a> UnsupportedTerminalDomain<'a> {
     /// fallback for that occurrence. Other winning properties and effect bindings remain active.
     pub(crate) const fn with_source_owned_fill(mut self, owned: &'a [bool]) -> Self {
         self.source_owned_fill = Some(owned);
+        self
+    }
+
+    /// Suppresses only stroke paint winners owned by source/config at the actual occurrence.
+    /// Fill, stroke geometry, and effect requests keep their independent ownership.
+    pub(crate) const fn with_source_owned_stroke(mut self, owned: &'a [bool]) -> Self {
+        self.source_owned_stroke = Some(owned);
         self
     }
 
@@ -320,10 +331,18 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             },
             variants,
             source_owned_fill: None,
+            source_owned_stroke: None,
             fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
         }
+    }
+
+    fn stroke_is_overridden(self, ordinal: usize) -> bool {
+        self.source_owned_stroke
+            .and_then(|owned| owned.get(ordinal.saturating_sub(1)))
+            .copied()
+            .unwrap_or(false)
     }
 
     fn fill_is_overridden(self, ordinal: usize) -> bool {
@@ -482,7 +501,10 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             };
 
             for (property, origin) in style.winner_rule_properties() {
-                if property == ResolvedStyleProperty::Fill && domain.fill_is_overridden(ordinal) {
+                if (property == ResolvedStyleProperty::Fill && domain.fill_is_overridden(ordinal))
+                    || (property == ResolvedStyleProperty::Stroke
+                        && domain.stroke_is_overridden(ordinal))
+                {
                     continue;
                 }
                 if !domain.resolution.owns_target(origin.target()) {
@@ -1098,5 +1120,86 @@ mod tests {
         .expect("reconcile absent unsupported effect");
         assert_eq!(absent.not_applicable_mechanisms(), &[key]);
         assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn stroke_ownership_does_not_mask_fill_or_other_winning_siblings() {
+        for extra_geometry in [false, true] {
+            let mut patch = ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke(CanvasPaint::solid("#abcdef").unwrap());
+            if extra_geometry {
+                patch = patch.with_stroke_width(3.0).unwrap();
+            }
+            let theme = resolved_theme(
+                DiagramFamilyId::FLOWCHART,
+                [ThemeRule::new(ThemeTarget::Marker, patch)],
+            );
+            for (fill_owned, stroke_owned) in [(false, true), (true, false), (true, true)] {
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                reconcile_unsupported_terminal_domains(
+                    &theme,
+                    &mut evidence,
+                    &[UnsupportedTerminalDomain::direct(
+                        ThemeTarget::Marker,
+                        TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+                    )
+                    .with_source_owned_fill(&[fill_owned])
+                    .with_source_owned_stroke(&[stroke_owned])],
+                    &work_meter(),
+                )
+                .unwrap();
+                let residual = extra_geometry || !fill_owned || !stroke_owned;
+                assert!(evidence.applied().is_empty());
+                assert_eq!(evidence.residuals().len(), usize::from(residual));
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().len(),
+                    usize::from(!residual)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stroke_ownership_is_per_occurrence_and_missing_flags_do_not_suppress_requests() {
+        let theme = resolved_theme(
+            DiagramFamilyId::FLOWCHART,
+            [ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(2).unwrap())],
+        );
+        for owned in [vec![true], vec![true, false], vec![false, true]] {
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Marker,
+                    TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+                )
+                .with_source_owned_stroke(&owned)],
+                &work_meter(),
+            )
+            .unwrap();
+            assert_eq!(
+                evidence.residuals().len(),
+                usize::from(owned.get(1) != Some(&true))
+            );
+        }
+        let mut unchanged = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut unchanged,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Marker,
+                TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&[true, true])],
+            &work_meter(),
+        )
+        .unwrap();
+        assert_eq!(unchanged.residuals().len(), 1);
     }
 }

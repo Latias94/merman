@@ -1362,6 +1362,7 @@ struct FlowchartThemeEvidenceState {
     edge_label: FlowchartRuleEvidenceState,
     cluster: FlowchartRuleEvidenceState,
     title: Option<FamilyThemeEvidence>,
+    marker: Option<FamilyThemeEvidence>,
     node_ordinal_palette: FlowchartMechanismObservation,
     source_residuals: BTreeMap<FlowchartSourceResidualKey, SourceStyleResidual>,
 }
@@ -1717,6 +1718,13 @@ impl FlowchartThemeEvidenceRecorder {
         Ok(())
     }
 
+    pub(crate) fn record_marker_evidence(&self, evidence: FamilyThemeEvidence) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .marker = Some(evidence);
+    }
+
     pub(crate) fn record_title_evidence(&self, evidence: FamilyThemeEvidence) {
         self.state
             .lock()
@@ -1736,6 +1744,9 @@ impl FlowchartThemeEvidenceRecorder {
         let source_residuals = state.source_residuals.values().cloned().collect();
         if let Some(title) = &state.title {
             evidence.merge_accounted_from(title.clone());
+        }
+        if let Some(marker) = &state.marker {
+            evidence.merge_accounted_from(marker.clone());
         }
         let Some(theme) = theme else {
             return (evidence, source_residuals);

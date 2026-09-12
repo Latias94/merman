@@ -595,6 +595,9 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     let rooted = root_document.complete(out.finish()?)?;
+    if let Some(evidence) = marker_plan.finish_theme_evidence(ctx.resolved_theme, ctx.work_meter)? {
+        theme_evidence.record_marker_evidence(evidence);
+    }
     if text_surface_paint.requested() {
         theme_evidence.record_title_evidence(text_surface_paint.finish_evidence());
     }

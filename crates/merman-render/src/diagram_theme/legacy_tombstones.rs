@@ -125,7 +125,7 @@ struct TombstonePattern {
     selectors: &'static [ThemeLegacyRouteSelector],
 }
 
-const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 66;
+const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 74;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -369,7 +369,35 @@ const SEQUENCE_TOMBSTONES: &[TombstonePattern] = &[
     ),
 ];
 
+const FLOWCHART_MARKER_TOMBSTONES: &[TombstonePattern] = &[
+    pattern(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+    pattern(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Stroke,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+    pattern(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+    pattern(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Stroke,
+        UNQUALIFIED_AND_DEFAULT,
+    ),
+];
+
 const TOMBSTONE_GROUPS: &[&[TombstonePattern]] = &[
+    FLOWCHART_MARKER_TOMBSTONES,
     SEQUENCE_TOMBSTONES,
     CLASS_TOMBSTONES,
     MINDMAP_TOMBSTONES,

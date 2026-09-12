@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 73);
+    assert_eq!(support.claim_revision(), 74);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -265,7 +265,7 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 73);
+        assert_eq!(support.claim_revision(), 74);
     }
 }
 
@@ -1693,5 +1693,22 @@ fn flowchart_and_swimlane_edge_fill_is_a_typed_partial_surface() {
                 "theme-support.public-value-domain-partial",
             ]
         );
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_unused_marker_projection_claims_are_unsupported() {
+    for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
+            let query = ThemeSupportQueryV1::known(
+                family.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Marker.id(),
+                facet,
+            );
+            let support = describe_theme_support(&query);
+            assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+            assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+        }
     }
 }

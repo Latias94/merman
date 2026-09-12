@@ -175,6 +175,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     };
     ctx.checkpoint_emit()?;
     let edge_receipt = edge_receipt.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
+    marker_plan.record_edge_checkpoint(
+        super::super::defs::FlowchartMarkerPathCheckpoint {
+            key,
+            has_geometry: !d.is_empty(),
+            attributes: edge_receipt.marker_attributes(out.as_str()),
+        },
+        emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
+        ctx.edge_stroke_config_override,
+        ctx.document_ids.marker_scope(),
+        ctx.diagram_type,
+        ctx.work_meter,
+    )?;
 
     let source_residuals =
         emitted_styles.emitted_edge_source_residuals(edge.id.as_str(), hand_drawn);
@@ -228,12 +240,18 @@ struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FlowchartEdgePathEmissionReceipt {
+    marker_attribute_span: Option<(usize, usize)>,
     typed_stroke: bool,
     typed_stroke_width: bool,
     typed_stroke_dasharray: bool,
 }
 
 impl FlowchartEdgePathEmissionReceipt {
+    fn marker_attributes<'a>(&self, output: &'a str) -> Option<&'a str> {
+        let (start, end) = self.marker_attribute_span?;
+        output.get(start..end)
+    }
+
     const fn typed_stroke_verified(self) -> bool {
         self.typed_stroke
     }
@@ -295,7 +313,17 @@ where
         }
         out.checkpoint()?;
         debug_assert_eq!(out.len() - before, serialized_bytes);
+        let marker_attribute_span = out
+            .as_str()
+            .ends_with(" />")
+            .then(|| {
+                let end = out.len().checked_sub(3)?;
+                let start = end.checked_sub(self.marker_attrs.len())?;
+                (start >= before).then_some((start, end))
+            })
+            .flatten();
         Ok(FlowchartEdgePathEmissionReceipt {
+            marker_attribute_span,
             typed_stroke: self.typed_stroke.is_some(),
             typed_stroke_width: self.typed_stroke_width.is_some(),
             typed_stroke_dasharray: self.typed_stroke_dasharray.is_some(),
@@ -708,6 +736,10 @@ mod tests {
             .append_to(&mut exact, source_style_svg_bytes, &exact_meter)
             .expect("exact whole-edge budgets must pass");
         assert_eq!(exact, format!("{initial}{expected_edge}"));
+        assert_eq!(
+            receipt.marker_attributes(&exact),
+            Some(emission.marker_attrs)
+        );
         assert!(receipt.typed_stroke_verified());
         assert!(receipt.typed_stroke_width_verified());
         assert!(receipt.typed_stroke_dasharray_verified());

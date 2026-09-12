@@ -1338,6 +1338,9 @@ fn legacy_paint_route_without_writer_consumer(
     let unqualified_or_default = matches!(variant, None | Some(ThemeVariant::Default));
 
     match family {
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => {
+            target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke)
+        }
         DiagramFamilyId::CLASS => {
             (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
                 || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
@@ -4610,6 +4613,39 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_and_swimlane_marker_paints_have_no_writer_consumer() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some))
+            {
+                for kind in [
+                    FamilyThemePaintKind::Clear,
+                    FamilyThemePaintKind::Transparent,
+                    FamilyThemePaintKind::Solid,
+                    FamilyThemePaintKind::LinearGradient,
+                    FamilyThemePaintKind::RadialGradient,
+                    FamilyThemePaintKind::Pattern,
+                ] {
+                    for facet in [
+                        FamilyThemeRuleFacet::Fill(kind),
+                        FamilyThemeRuleFacet::Stroke(kind),
+                    ] {
+                        assert_eq!(
+                            classify_rule_facet(
+                                family,
+                                ThemeTarget::Marker,
+                                FamilyThemeSelectorShape::Static { variant },
+                                facet,
+                            ),
+                            FamilyThemeDisposition::Unsupported,
+                            "{family}/{variant:?}/{facet:?}",
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn flowchart_and_swimlane_node_label_fill_owns_unqualified_and_explicit_default_routes() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             for paint_kind in [
@@ -7632,9 +7668,7 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 44),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::FLOWCHART, 8),
                 (DiagramFamilyId::QUADRANT_CHART, 16),
-                (DiagramFamilyId::SWIMLANE, 8),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
             .into_iter()
@@ -7646,9 +7680,7 @@ mod tests {
             [
                 DiagramFamilyId::BLOCK,
                 DiagramFamilyId::CLASS,
-                DiagramFamilyId::FLOWCHART,
                 DiagramFamilyId::QUADRANT_CHART,
-                DiagramFamilyId::SWIMLANE,
                 DiagramFamilyId::XY_CHART,
             ]
             .into_iter()

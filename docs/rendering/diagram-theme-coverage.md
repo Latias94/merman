@@ -4,20 +4,36 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-11
+## Snapshot: 2026-09-12
 
 The source inventories, not this summary, authorize rendering and retirement:
 
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 27/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 6/33; 118 routes | Block 44, Class 26, Flowchart 8, Quadrant Chart 16, Swimlane 8, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families without a family-owned Legacy route | 29/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 4/33; 102 routes | Block 44, Class 26, Quadrant Chart 16, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 73 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 74 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v75; 416 routes / 622 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v6; 74 routes / 148 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD23 v6 retires eight Flowchart/Swimlane static unqualified/Default Marker.fill/stroke
+identities against baseline `395a4d2f202b6697f680bc386546f54b3ebcbebd`. Each formerly projected
+only `marker.paint` to `themeVariables.arrowheadColor`. A pre-retirement Release investigation
+covered 64 combinations across both families, both selectors and facets, solid/transparent, and
+Classic, Neo, animated Neo, and HandDrawn. It confirmed that the old CSS selector
+`.arrowheadPath` matches no emitted marker shape (`arrowMarkerPath`), all six actual references
+resolve, and native PNG pixels equal the same scene without a Marker request. This investigation
+is separate from the nonvisual KTD23 receipts and adds no typed Marker claim.
+
+Flowchart and Swimlane now have no family bridge dispatch. Unsupported Marker rules are
+reconciled over completed edge references, in start/end occurrence order. Unreferenced definitions
+do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
+expected path completion remains incomplete. A winning request on an unowned visible marker
+remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
+The global provider remains necessary for Block, Class, Quadrant Chart, and XY Chart.
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
@@ -31,7 +47,8 @@ output files. Version 75 adds eight Flowchart/Swimlane Edge.fill routes
 is unspecified; transparent, Clear, and unsupported Stroke winners all block that fallback.
 The existing stroke writer and source/config precedence apply. Classic, Neo, and animated Neo
 witnesses inspect native edge-stroke pixels. The line-color bridge and its implicit marker fallback
-retire together; explicit Marker.fill/stroke remain the two families' only legacy routes.
+retire together; explicit Marker.fill/stroke remained the two families' only legacy routes
+until KTD23 v6 retired their dead projections.
 Version 74 adds eight Flowchart/Swimlane ClusterLabel.fill routes
 (solid/transparent, unqualified/Default), with Classic, Neo, and HandDrawn native SVG/PNG
 witnesses. ClusterLabel overrides only the properties it specifies on the existing Title/Text result;
@@ -118,8 +135,8 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Family | Base FontStack | Base FontSize | Family-owned legacy bridge |
 | --- | --- | --- | --- |
 | State | Typed | Typed | None |
-| Flowchart | Typed | Typed | Required |
-| Swimlane | Typed | Typed | Required |
+| Flowchart | Typed | Typed | None |
+| Swimlane | Typed | Typed | None |
 | Sequence | Typed | Typed | None |
 | Class | Typed | Typed | Required |
 | Block | Typed | Typed | Required |

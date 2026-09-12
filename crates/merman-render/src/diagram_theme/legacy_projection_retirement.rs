@@ -344,7 +344,7 @@ struct LegacyProjectionRetirementPattern {
     former_projections: &'static [ThemeLegacyProjectionKey],
 }
 
-const EXPECTED_RETIREMENT_COUNT: usize = 66;
+const EXPECTED_RETIREMENT_COUNT: usize = 74;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -693,7 +693,39 @@ const SEQUENCE_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
     ),
 ];
 
+const FLOWCHART_MARKER_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
+    pattern(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+        MARKER_PAINT,
+    ),
+    pattern(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Stroke,
+        UNQUALIFIED_AND_DEFAULT,
+        MARKER_PAINT,
+    ),
+    pattern(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+        MARKER_PAINT,
+    ),
+    pattern(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Marker,
+        ThemeLegacyRouteFacet::Stroke,
+        UNQUALIFIED_AND_DEFAULT,
+        MARKER_PAINT,
+    ),
+];
+
 const RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
+    FLOWCHART_MARKER_RETIREMENT_PATTERNS,
     SEQUENCE_RETIREMENT_PATTERNS,
     CLASS_RETIREMENT_PATTERNS,
     MINDMAP_RETIREMENT_PATTERNS,
