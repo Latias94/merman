@@ -13,7 +13,8 @@ verification, the current branch has also passed the Flutter Native Assets autho
 the preset qualification feature-recipe guard, the legacy projection/route-cutover check
 (3/3), and the complete repository script gate (582/582), and the current Release theme acceptance
 harness (117/117 with PNG and Cytoscape layout features). These incremental checks keep the
-ledger aligned but do not promote the remaining legacy routes or close C7a/C7b.
+ledger aligned but do not promote the remaining legacy routes or close C7a/C7b. A clean detached checkout at the current HEAD
+(`ec726808c`) regenerated the schema-3 qualification record and passed its replay check.
 
 The source inventories, not this summary, authorize rendering and retirement:
 
