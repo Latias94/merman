@@ -909,10 +909,6 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().math_backend()
     }
 
-    pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
-        self.family.session().resource_policy()
-    }
-
     pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
         std::sync::Arc::clone(self.family.session().work_meter())
     }
