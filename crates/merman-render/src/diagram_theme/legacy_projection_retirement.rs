@@ -344,7 +344,7 @@ struct LegacyProjectionRetirementPattern {
     former_projections: &'static [ThemeLegacyProjectionKey],
 }
 
-const EXPECTED_RETIREMENT_COUNT: usize = 76;
+const EXPECTED_RETIREMENT_COUNT: usize = 78;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -676,13 +676,22 @@ const KANBAN_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[patte
     TITLE_FILL,
 )];
 
-const BLOCK_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[pattern(
-    DiagramFamilyId::BLOCK,
-    ThemeTarget::Title,
-    ThemeLegacyRouteFacet::Fill,
-    UNQUALIFIED_AND_DEFAULT,
-    TITLE_FILL,
-)];
+const BLOCK_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
+    pattern(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Title,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+        TITLE_FILL,
+    ),
+    pattern(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::ClusterLabel,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+        CLUSTER_LABEL_FILL,
+    ),
+];
 
 const SEQUENCE_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
     pattern(

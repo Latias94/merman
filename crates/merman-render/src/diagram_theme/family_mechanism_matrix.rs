@@ -1391,10 +1391,14 @@ fn legacy_paint_route_without_writer_consumer(
                 && unqualified_or_default
                 && fill
         }
-        DiagramFamilyId::ER
-        | DiagramFamilyId::JOURNEY
-        | DiagramFamilyId::KANBAN
-        | DiagramFamilyId::BLOCK => target == ThemeTarget::Title && unqualified_or_default && fill,
+        DiagramFamilyId::ER | DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN => {
+            target == ThemeTarget::Title && unqualified_or_default && fill
+        }
+        DiagramFamilyId::BLOCK => {
+            matches!(target, ThemeTarget::Title | ThemeTarget::ClusterLabel)
+                && unqualified_or_default
+                && fill
+        }
         DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
@@ -7772,7 +7776,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                (DiagramFamilyId::BLOCK, 40),
+                (DiagramFamilyId::BLOCK, 36),
                 (DiagramFamilyId::CLASS, 26),
                 (DiagramFamilyId::XY_CHART, 16),
             ]

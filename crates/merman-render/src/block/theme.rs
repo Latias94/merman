@@ -433,6 +433,10 @@ impl BlockNodePaintThemePlan {
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(0, ThemeVariant::Default),
                 ),
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::ClusterLabel,
+                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+                ),
             ],
             work_meter,
         )?;

@@ -674,19 +674,6 @@ fn compile_node_family(
         ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
         [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
     );
-    contributions.add_theme_variables(
-        "cluster-label.fill",
-        [
-            (
-                "secondaryTextColor",
-                reader.text_fill(ThemeTarget::ClusterLabel),
-            ),
-            (
-                "tertiaryTextColor",
-                reader.text_fill(ThemeTarget::ClusterLabel),
-            ),
-        ],
-    );
 
     contributions.finish_into(builder)
 }
@@ -2113,14 +2100,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 82);
+        assert_eq!(status.matrix_route_count(), 78);
         assert_eq!(status.matrix_family_count(), 3);
         assert_eq!(status.dispatched_family_count(), 3);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                253, 169, 161, 54, 17, 0, 178, 122, 56, 255, 240, 38, 76, 255, 221, 167, 93, 239,
-                148, 55, 226, 226, 149, 245, 33, 87, 236, 92, 180, 160, 187, 56
+                173, 219, 53, 229, 28, 214, 49, 89, 43, 196, 82, 243, 61, 158, 26, 156, 149, 101,
+                58, 100, 217, 68, 103, 200, 11, 132, 138, 206, 67, 98, 5, 30
             ]
         );
         assert_eq!(
@@ -4102,7 +4089,31 @@ gitGraph
     }
 
     #[test]
-    fn cluster_label_cutover_preserves_only_other_families_legacy_projections() {
+    fn generic_text_does_not_recreate_unused_cluster_label_assignments() {
+        for family in [DiagramFamilyId::BLOCK, DiagramFamilyId::CLASS] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#2468ac")),
+                    )
+                    .for_family(family),
+                ),
+            );
+            let artifact = bridge(&spec).compile_for_family(family);
+            assert!(!artifact.contribution_ids.contains(&format!(
+                "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
+            )));
+            assert!(
+                artifact
+                    .contribution_ids
+                    .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.node-label.fill"))
+            );
+        }
+    }
+
+    #[test]
+    fn node_family_cluster_label_rules_do_not_recreate_legacy_projections() {
         for family in [
             DiagramFamilyId::FLOWCHART,
             DiagramFamilyId::SWIMLANE,
@@ -4128,10 +4139,8 @@ gitGraph
                     );
                     let contribution =
                         format!("{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill");
-                    // Class retired this writer-less projection before this typed cutover.
-                    assert_eq!(
-                        artifact.contribution_ids.contains(&contribution),
-                        family == DiagramFamilyId::BLOCK,
+                    assert!(
+                        !artifact.contribution_ids.contains(&contribution),
                         "family={family}, variant={variant:?}",
                     );
                     if typed {

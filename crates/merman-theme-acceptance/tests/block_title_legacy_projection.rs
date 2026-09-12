@@ -1,4 +1,4 @@
-//! Block Title.fill retirement follows actual terminals, not unused CSS selectors.
+//! Block absent text projections follow actual terminals, not unused CSS selectors.
 //!
 //! The pinned Block renderer emits composite and leaf labels but no diagram-title node.
 //! Native pixel comparisons retain those labels and an active Node fill control.
@@ -64,8 +64,7 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
     (frame.width, frame.height, pixels)
 }
 
-#[test]
-fn block_title_projection_has_no_native_consumer() {
+fn assert_no_native_consumer(target: ThemeTarget) {
     for look in ["classic", "neo", "handDrawn"] {
         let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
             MermaidConfig::from_value(serde_json::json!({"htmlLabels": false, "look": look})),
@@ -108,7 +107,7 @@ fn block_title_projection_has_no_native_consumer() {
         );
         for variant in [None, Some(ThemeVariant::Default)] {
             for transparent in [false, true] {
-                let document = render(&renderer, theme(ThemeTarget::Title, variant, transparent));
+                let document = render(&renderer, theme(target, variant, transparent));
                 assert_eq!(
                     raster(&document),
                     baseline_pixels,
@@ -116,39 +115,62 @@ fn block_title_projection_has_no_native_consumer() {
                 );
             }
         }
-        let control = render(&renderer, theme(ThemeTarget::Node, None, false));
-        assert_ne!(
-            raster(&control),
-            baseline_pixels,
-            "{look}: the pixel comparison must detect real paint"
-        );
+        for control_target in [ThemeTarget::Node, ThemeTarget::NodeLabel] {
+            let control = render(&renderer, theme(control_target, None, false));
+            assert_ne!(
+                raster(&control),
+                baseline_pixels,
+                "{look}/{control_target:?}: the pixel comparison must detect real paint"
+            );
+        }
     }
 }
 
 #[test]
-fn retired_block_title_bridge_is_absent() {
-    for look in ["classic", "neo", "handDrawn"] {
-        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
-            serde_json::json!({"htmlLabels": false, "look": look}),
-        ));
-        let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
-        for variant in [None, Some(ThemeVariant::Default)] {
-            for transparent in [false, true] {
-                let theme = theme(ThemeTarget::Title, variant, transparent);
-                let parser =
-                    merman_render::__private::install_parse_compatibility(&theme, engine.clone());
-                let metadata = parser.parse_metadata_sync(SOURCE).unwrap();
-                let evidence = merman::__private::theme_parse_evidence(&metadata);
-                assert_eq!(evidence.fallback_contributions().len(), 0);
-                assert_eq!(
-                    metadata
-                        .effective_config
-                        .get_str("themeVariables.titleColor"),
-                    baseline
-                        .effective_config
-                        .get_str("themeVariables.titleColor"),
-                    "{look}/{variant:?}/{transparent}"
-                );
+fn block_title_projection_has_no_native_consumer() {
+    assert_no_native_consumer(ThemeTarget::Title);
+}
+
+#[test]
+fn block_cluster_label_projection_has_no_native_consumer() {
+    assert_no_native_consumer(ThemeTarget::ClusterLabel);
+}
+
+#[test]
+fn retired_block_text_bridges_are_absent() {
+    for (target, paths) in [
+        (ThemeTarget::Title, &["themeVariables.titleColor"][..]),
+        (
+            ThemeTarget::ClusterLabel,
+            &[
+                "themeVariables.secondaryTextColor",
+                "themeVariables.tertiaryTextColor",
+            ][..],
+        ),
+    ] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": false, "look": look}),
+            ));
+            let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for transparent in [false, true] {
+                    let theme = theme(target, variant, transparent);
+                    let parser = merman_render::__private::install_parse_compatibility(
+                        &theme,
+                        engine.clone(),
+                    );
+                    let metadata = parser.parse_metadata_sync(SOURCE).unwrap();
+                    let evidence = merman::__private::theme_parse_evidence(&metadata);
+                    assert_eq!(evidence.fallback_contributions().len(), 0);
+                    for path in paths {
+                        assert_eq!(
+                            metadata.effective_config.get_str(path),
+                            baseline.effective_config.get_str(path),
+                            "{target:?}/{look}/{variant:?}/{transparent}/{path}"
+                        );
+                    }
+                }
             }
         }
     }

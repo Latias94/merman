@@ -12,12 +12,19 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 30/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 3/33; 82 routes | Block 40, Class 26, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 3/33; 78 routes | Block 36, Class 26, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 78 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 79 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v78; 432 routes / 638 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v7; 76 routes / 152 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v8; 78 routes / 156 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
+(four solid/transparent matrix routes). Composite labels use NodeLabel styling;
+the secondaryTextColor/tertiaryTextColor projection had no writer consumer. The
+unused generic Text fallback is also removed. Native pixel comparisons preserve
+the composite label and retain an active Node paint control. Marker paint remains
+legacy because its arrowMarkerPath consumer is real.
 
 KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
 (four solid/transparent matrix routes). The pinned renderer has no diagram-title
