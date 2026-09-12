@@ -2739,10 +2739,20 @@ mod tests {
         .unwrap();
         for vector in vectors.as_array().unwrap() {
             let source = vector["source"].as_str().unwrap().as_bytes();
-            let request = native_request(MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON, source);
+            let options = vector["options_json"].as_str().unwrap_or("").as_bytes();
+            let request = native_request_with_options(
+                MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
+                source,
+                options,
+            );
+            let expected_status = match vector["native_status_name"].as_str().unwrap() {
+                "invalid-argument" => MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "resource-limit-exceeded" => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+                other => panic!("unknown golden status: {other}"),
+            };
             assert_eq!(
                 unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+                expected_status
             );
             let payload: serde_json::Value = serde_json::from_slice(unsafe {
                 std::slice::from_raw_parts(
@@ -2752,7 +2762,8 @@ mod tests {
             })
             .unwrap();
             assert_eq!(payload["status_name"], vector["native_status_name"]);
-            assert_eq!(payload["status"], MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+            assert_eq!(payload["status"], expected_status);
+            assert_eq!(payload["details"]["resource"], vector["resource"]);
             let mut authoring = payload["details"]["theme_authoring"].clone();
             for diagnostic in authoring["diagnostics"]
                 .as_array_mut()

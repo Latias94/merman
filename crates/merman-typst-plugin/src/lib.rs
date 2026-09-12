@@ -652,7 +652,7 @@ mod tests {
             let payload: Value = serde_json::from_slice(&theme_operation_json(
                 b"materialize-theme-json",
                 vector["source"].as_str().unwrap().as_bytes(),
-                b"",
+                vector["options_json"].as_str().unwrap_or("").as_bytes(),
             ))
             .expect("theme-authoring error envelope");
             assert_error_envelope(
@@ -660,6 +660,7 @@ mod tests {
                 "materialize-theme-json",
                 vector["code_name"].as_str().unwrap(),
             );
+            assert_eq!(payload["details"]["resource"], vector["resource"]);
             let mut authoring = payload["details"]["theme_authoring"].clone();
             for diagnostic in authoring["diagnostics"]
                 .as_array_mut()

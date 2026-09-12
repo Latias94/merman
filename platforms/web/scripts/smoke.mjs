@@ -423,11 +423,12 @@ if (hasCapability("svg")) {
   ), "utf8"));
   for (const vector of errorVectors) {
     for (const materialize of [
-      () => api.materializeTheme(vector.source),
-      () => exportedWasmModule.materializeTheme(vector.source),
+      () => api.materializeTheme(vector.source, vector.options_json),
+      () => exportedWasmModule.materializeTheme(vector.source, vector.options_json),
     ]) {
       assert.throws(materialize, (error) => {
         assert.equal(error.code_name, vector.code_name);
+        assert.deepEqual(error.details?.resource ?? null, vector.resource ?? null);
         const envelope = structuredClone(error.details?.theme_authoring);
         assert.ok(Array.isArray(envelope?.diagnostics));
         for (const diagnostic of envelope.diagnostics) {

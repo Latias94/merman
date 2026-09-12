@@ -74,6 +74,7 @@ export function stateFill(svg) {
 
 export function assertAuthoringDiagnostic(error, vector) {
   assert.equal(error.codeName, vector.code_name);
+  assert.deepEqual(error.details?.resource ?? null, vector.resource ?? null);
   const envelope = structuredClone(error.details?.theme_authoring);
   assert.ok(Array.isArray(envelope?.diagnostics));
   for (const diagnostic of envelope.diagnostics) {
@@ -246,7 +247,10 @@ export async function runThemeAuthoringSmoke(module, engine) {
 
     const errorVectors = JSON.parse(await readFile(new URL("errors.json", FIXTURES), "utf8"));
     for (const vector of errorVectors) {
-      const invalid = { operationId: "materialize-theme-json", source: vector.source };
+      const invalid = {
+        operationId: "materialize-theme-json", source: vector.source,
+        optionsJson: vector.options_json,
+      };
       const checkDiagnostic = (error) => {
         assert.ok(error instanceof module.MermanOperationError);
         return assertAuthoringDiagnostic(error, vector);

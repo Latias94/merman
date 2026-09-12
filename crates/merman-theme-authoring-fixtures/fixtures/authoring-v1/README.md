@@ -2,8 +2,12 @@
 
 `light` and `dark` contain the shared definition and materialized-spec oracles.
 `errors.json` contains exact UTF-8 input strings for `materialize-theme-json` and
-transport-independent error expectations. Send `source` unchanged with default authoring options.
-These invalid definitions fit every supported transport's default resource policy.
+transport-independent error expectations. Send `source` unchanged and use `options_json` when
+present; otherwise use default authoring options. The encoded-byte-limit vector explicitly requests
+the constrained profile so every transport observes the same resource rejection, including Typst.
+Compare the complete optional `resource` details too; an absent expectation requires no resource
+error details. This catches profile, limit, phase, and actual/max drift in addition to authoring
+codes and paths.
 
 Compare the complete `theme_authoring` object after removing each diagnostic's `message`.
 Require every removed message to be a nonempty string. Messages are explanatory text, not

@@ -34,5 +34,35 @@
       ]
     },
     "native_status_name": "invalid-argument"
+  },
+  {
+    "id": "encoded-byte-limit",
+    "source": "{}",
+    "options_json": "{\"resources\":{\"profile\":\"constrained\",\"limits\":{\"max_theme_encoded_bytes\":1}}}",
+    "code_name": "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.resource-limit-exceeded",
+          "severity": "error",
+          "path": "",
+          "details": {
+            "limit_id": "max_theme_encoded_bytes",
+            "actual": 2,
+            "max": 1
+          }
+        }
+      ]
+    },
+    "native_status_name": "resource-limit-exceeded",
+    "resource": {
+      "cause": "ceiling",
+      "limit_id": "max_theme_encoded_bytes",
+      "phase": "theme_input",
+      "actual": 2,
+      "max": 1,
+      "profile": "constrained"
+    }
   }
 ]

@@ -1698,7 +1698,7 @@ mod tests {
                 operation_id: "materialize-theme-json".to_owned(),
                 source: vector["source"].as_str().unwrap().to_owned(),
                 uri: None,
-                options_json: None,
+                options_json: vector["options_json"].as_str().map(str::to_owned),
                 control: None,
             };
             for error in [
@@ -1711,11 +1711,17 @@ mod tests {
                     details_json,
                     ..
                 } = error;
-                assert_eq!(code, BindingStatus::InvalidArgument.code());
+                let expected_status = match vector["code_name"].as_str().unwrap() {
+                    "MERMAN_INVALID_ARGUMENT" => BindingStatus::InvalidArgument,
+                    "MERMAN_RESOURCE_LIMIT_EXCEEDED" => BindingStatus::ResourceLimitExceeded,
+                    other => panic!("unknown golden status: {other}"),
+                };
+                assert_eq!(code, expected_status.code());
                 assert_eq!(code_name, vector["code_name"].as_str().unwrap());
                 let details: Value =
                     serde_json::from_str(&details_json.expect("complete error details")).unwrap();
                 let payload = serde_json::json!({"details": details});
+                assert_eq!(payload["details"]["resource"], vector["resource"]);
                 let mut authoring = payload["details"]["theme_authoring"].clone();
                 for diagnostic in authoring["diagnostics"]
                     .as_array_mut()

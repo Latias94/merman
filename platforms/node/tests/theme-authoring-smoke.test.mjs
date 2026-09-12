@@ -47,7 +47,10 @@ test("authoring diagnostic oracle preserves the shared structured error vectors"
   for (const vector of vectors) {
     const error = {
       codeName: vector.code_name,
-      details: { theme_authoring: structuredClone(vector.theme_authoring) },
+      details: {
+        theme_authoring: structuredClone(vector.theme_authoring),
+        resource: structuredClone(vector.resource),
+      },
     };
     error.details.theme_authoring.diagnostics[0].message = "Invalid authored theme";
     assert.equal(assertAuthoringDiagnostic(error, vector), true);
@@ -56,7 +59,7 @@ test("authoring diagnostic oracle preserves the shared structured error vectors"
       (value) => { value.codeName = "MERMAN_PARSE_ERROR"; },
       (value) => { value.details.theme_authoring.schema_version = 2; },
       (value) => { value.details.theme_authoring.diagnostics[0].code = "generic"; },
-      (value) => { value.details.theme_authoring.diagnostics[0].path = ""; },
+      (value) => { value.details.theme_authoring.diagnostics[0].path = "/wrong"; },
       (value) => { value.details.theme_authoring.diagnostics[0].details = { extra: true }; },
       (value) => { value.details.theme_authoring.diagnostics[0].severity = "warning"; },
       (value) => { value.details.theme_authoring.diagnostics[0].message = " "; },
@@ -65,6 +68,13 @@ test("authoring diagnostic oracle preserves the shared structured error vectors"
       const changed = structuredClone(error);
       mutate(changed);
       assert.throws(() => assertAuthoringDiagnostic(changed, vector));
+    }
+    if (vector.resource) {
+      for (const field of Object.keys(vector.resource)) {
+        const changed = structuredClone(error);
+        delete changed.details.resource[field];
+        assert.throws(() => assertAuthoringDiagnostic(changed, vector));
+      }
     }
   }
 });

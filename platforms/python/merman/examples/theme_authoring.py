@@ -23,9 +23,9 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def execute_json(client, operation: str, source: str):
+def execute_json(client, operation: str, source: str, options_json: str | None = None):
     result = client.execute(merman.MermanOperationRequestV4(
-        operation_id=operation, source=source, uri=None, options_json=None, control=None,
+        operation_id=operation, source=source, uri=None, options_json=options_json, control=None,
     ))
     require(result.operation_id == operation, "operation identity changed")
     require(result.media_type == "application/json", "expected JSON output")
@@ -94,10 +94,14 @@ def run_theme_authoring_smoke() -> None:
         for vector in error_vectors:
             for client in (api, engine):
                 try:
-                    execute_json(client, "materialize-theme-json", vector["source"])
+                    execute_json(client, "materialize-theme-json", vector["source"],
+                                 vector.get("options_json"))
                 except merman.MermanError.Binding as error:
                     require(error.code_name == vector["code_name"], "wrong outer authoring status")
-                    authoring = json.loads(error.details_json)["theme_authoring"]
+                    details = json.loads(error.details_json)
+                    require(details.get("resource") == vector.get("resource"),
+                            "resource rejection differs from shared golden")
+                    authoring = details["theme_authoring"]
                     for diagnostic in authoring["diagnostics"]:
                         message = diagnostic.pop("message")
                         require(isinstance(message, str) and bool(message.strip()),
