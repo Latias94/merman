@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::Hash;
 
 use super::model::AsciiGraph;
@@ -32,21 +32,21 @@ impl<'a> GraphGroupTopology<'a> {
         )?;
         resources.charge_layout_work(construction_work)?;
 
-        let mut group_index_by_id = HashMap::new();
+        let mut group_index_by_id = HashMap::default();
         try_reserve_hash_map(&mut group_index_by_id, graph.groups.len())?;
         for (index, group) in graph.groups.iter().enumerate() {
             group_index_by_id.insert(group.id.as_str(), index);
         }
 
-        let mut node_index_by_id = HashMap::new();
+        let mut node_index_by_id = HashMap::default();
         try_reserve_hash_map(&mut node_index_by_id, graph.nodes.len())?;
         for (index, node) in graph.nodes.iter().enumerate() {
             node_index_by_id.insert(node.id.as_str(), index);
         }
 
-        let mut parent_index_by_group = HashMap::new();
+        let mut parent_index_by_group = HashMap::default();
         try_reserve_hash_map(&mut parent_index_by_group, graph.groups.len())?;
-        let mut direct_group_index_by_node = HashMap::new();
+        let mut direct_group_index_by_node = HashMap::default();
         try_reserve_hash_map(&mut direct_group_index_by_node, graph.nodes.len())?;
 
         for (group_index, group) in graph.groups.iter().enumerate() {
@@ -99,8 +99,8 @@ impl<'a> GraphGroupTopology<'a> {
         group_index: usize,
         resources: &mut ResourceContext,
     ) -> Result<Vec<usize>> {
-        let mut indices = HashSet::new();
-        let mut visited_groups = HashSet::new();
+        let mut indices = HashSet::default();
+        let mut visited_groups = HashSet::default();
         let mut stack = Vec::new();
         push_group_frame(&mut stack, group_index, 1, resources)?;
 
@@ -147,7 +147,7 @@ impl<'a> GraphGroupTopology<'a> {
         endpoint: &str,
         resources: &mut ResourceContext,
     ) -> Result<HashSet<usize>> {
-        let mut groups = HashSet::new();
+        let mut groups = HashSet::default();
         let mut stack = Vec::new();
         // A group endpoint is a compound node in its parent's scope; the group does not contain
         // itself. Nodes and groups both follow the same first-parent topology used by layout.
@@ -361,6 +361,6 @@ mod tests {
             .groups_containing_endpoint("child", &mut resources)
             .expect("group endpoint scope should be bounded");
 
-        assert_eq!(containing, HashSet::from([1]));
+        assert_eq!(containing, HashSet::from_iter([1]));
     }
 }

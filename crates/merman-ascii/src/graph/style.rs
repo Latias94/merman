@@ -6,7 +6,7 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::OperationPhase;
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 #[derive(Clone, Copy)]
 struct StyleTargets {
@@ -140,7 +140,7 @@ impl FlowchartStylePlan {
         nodes
             .try_reserve_exact(model.nodes.len())
             .map_err(|_| style_allocation_failed())?;
-        let mut direct_group_overlays = HashMap::new();
+        let mut direct_group_overlays = HashMap::default();
         if render_context.is_none() {
             let overlay_capacity = model.nodes.len().min(model.subgraphs.len());
             resources.charge_layout_work(overlay_capacity)?;

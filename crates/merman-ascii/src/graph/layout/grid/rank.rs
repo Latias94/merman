@@ -11,7 +11,7 @@ use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{
     EdgeLabel, GraphLabel as DagreGraphLabel, NodeLabel, RankDir, WorkControl, WorkError,
 };
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 const GRID_UNITS_PER_RANK: usize = 4;
 
@@ -318,7 +318,7 @@ fn project_dagre_rank_levels(
         resources.checked_work_mul(endpoint_count, 4)?,
     )?;
     resources.charge_layout_work(projection_work)?;
-    let mut rank_by_id = HashMap::new();
+    let mut rank_by_id = HashMap::default();
     try_reserve_hash_map(&mut rank_by_id, plan.nodes.len())?;
     for (index, node) in plan.nodes.into_iter().enumerate() {
         checkpoint_layout(execution, index)?;
@@ -371,7 +371,7 @@ fn project_dagre_rank_levels(
     charge_sort_work(occupied_ranks.len(), resources)?;
     occupied_ranks.sort_unstable();
     occupied_ranks.dedup();
-    let mut dense_rank = HashMap::new();
+    let mut dense_rank = HashMap::default();
     try_reserve_hash_map(&mut dense_rank, occupied_ranks.len())?;
     for (index, rank) in occupied_ranks.into_iter().enumerate() {
         checkpoint_layout(execution, index)?;
@@ -722,7 +722,7 @@ fn find_non_cluster_child_anchor(
     let mut stack = Vec::new();
     try_reserve_vec(&mut stack, root_children.len())?;
     stack.extend(root_children.into_iter().rev());
-    let mut visited_groups = HashSet::new();
+    let mut visited_groups = HashSet::default();
     try_reserve_hash_set(&mut visited_groups, graph.groups.len())?;
     let mut reserve = None;
 
@@ -768,7 +768,7 @@ fn ordered_direct_group_children(
     resources.charge_layout_work(group.nodes.len())?;
     let mut children = Vec::new();
     try_reserve_vec(&mut children, group.nodes.len())?;
-    let mut seen = HashSet::new();
+    let mut seen = HashSet::default();
     try_reserve_hash_set(&mut seen, group.nodes.len())?;
     for (creation_index, member_id) in group.nodes.iter().enumerate() {
         let endpoint = match topology.endpoint_index(member_id) {
@@ -824,7 +824,7 @@ fn group_anchor_has_common_edge(
     // Pinned Mermaid snapshots both incident edge lists and compares the endpoint pairs after its
     // intentionally asymmetric `w` rewrite. A hash set preserves that behavior in linear work.
     resources.charge_layout_work(resources.checked_work_mul(graph.edges.len(), 2)?)?;
-    let mut candidate_edges = HashSet::new();
+    let mut candidate_edges = HashSet::default();
     try_reserve_hash_set(&mut candidate_edges, graph.edges.len())?;
     for edge in &graph.edges {
         if edge.from == candidate_id || edge.to == candidate_id {
@@ -885,7 +885,7 @@ fn rank_endpoint_id<'a>(
 }
 
 fn node_indices_by_id(graph: &AsciiGraph) -> Result<NodeIndexById<'_>> {
-    let mut index_by_id = HashMap::new();
+    let mut index_by_id = HashMap::default();
     try_reserve_hash_map(&mut index_by_id, graph.nodes.len())?;
     for (index, node) in graph.nodes.iter().enumerate() {
         index_by_id.insert(node.id.as_str(), index);
