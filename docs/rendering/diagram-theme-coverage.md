@@ -10,9 +10,9 @@ The last full verification at commit `ca257394a` passed the private theme accept
 138/138, the Node contract suite 104/104, the cross-transport support and resource golden
 checks, and the acceptance-boundary and representative artifact-closure checks. Since that
 verification, the current branch has also passed the Flutter Native Assets authoring witness,
-the preset qualification feature-recipe guard, and the legacy projection/route-cutover check
-(3/3). These incremental checks keep the ledger aligned but do not promote the remaining
-legacy routes or close C7a/C7b.
+the preset qualification feature-recipe guard, the legacy projection/route-cutover check
+(3/3), and the complete repository script gate (582/582). These incremental checks keep the
+ledger aligned but do not promote the remaining legacy routes or close C7a/C7b.
 
 The source inventories, not this summary, authorize rendering and retirement:
 
