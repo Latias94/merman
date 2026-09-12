@@ -574,6 +574,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 for changed_catalog in [
                     {**catalog, "schema_version": True},
                     {**catalog, "render_config": {"htmlLabels": 0}},
+                    {**catalog, "artifact": {**catalog["artifact"], "executable_sha256": "stale"}},
                 ]:
                     catalog_path.write_text(json.dumps(changed_catalog))
                     with self.assertRaisesRegex(RuntimeError, "Stale"):
