@@ -16,6 +16,7 @@ harness (117/117 with PNG and Cytoscape layout features). These incremental chec
 ledger aligned but do not promote the remaining legacy routes or close C7a/C7b. A clean detached checkout at the current HEAD
 (`8e3831d11`) regenerated the schema-3 qualification record and passed its replay check.
 The current C6 runtime and preset qualification sub-gates also pass 4/4.
+The optimized renderer regression for the remaining family/bridge evidence paths passes 213/213.
 
 The source inventories, not this summary, authorize rendering and retirement:
 
