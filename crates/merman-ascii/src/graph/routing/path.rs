@@ -4,8 +4,9 @@ use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
 use merman_core::OperationPhase;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::BinaryHeap;
 use std::hash::Hash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,8 +283,8 @@ fn find_grid_path(
     let max_y = resources.checked_grid_add(max_y, 6)?;
     let occupied = occupied_grid_cells(layouts, resources, execution)?;
     let mut open = BinaryHeap::new();
-    let mut cost_so_far = HashMap::new();
-    let mut came_from = HashMap::<GridCoord, GridCoord>::new();
+    let mut cost_so_far = HashMap::default();
+    let mut came_from = HashMap::<GridCoord, GridCoord>::default();
     open.try_reserve(1)
         .map_err(|_| layout_allocation_failed())?;
     try_reserve_hash_map(&mut cost_so_far, 1)?;
@@ -392,7 +393,7 @@ fn occupied_grid_cells(
 ) -> Result<HashSet<GridCoord>> {
     const NODE_GRID_FOOTPRINT: usize = 9;
     let capacity = resources.checked_work_mul(layouts.len(), NODE_GRID_FOOTPRINT)?;
-    let mut occupied = HashSet::new();
+    let mut occupied = HashSet::default();
     occupied
         .try_reserve(capacity)
         .map_err(|_| layout_allocation_failed())?;

@@ -299,7 +299,7 @@ fn paint_graph_render_controlled(
         execution,
     )?;
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    let mut route_cells = routing::RouteCells::new();
+    let mut route_cells = routing::RouteCells::default();
     route_cells
         .try_reserve(route_scene.planned_cell_count())
         .map_err(|_| AsciiError::AllocationFailed {

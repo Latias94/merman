@@ -10,7 +10,7 @@ use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
 use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::Hash;
 
 mod rank;
@@ -778,7 +778,7 @@ fn minimum_node_grid_cells(node_count: usize, resources: &ResourceContext) -> Re
 }
 
 fn node_indices_by_id(graph: &AsciiGraph) -> Result<NodeIndexById<'_>> {
-    let mut index_by_id = HashMap::new();
+    let mut index_by_id = HashMap::default();
     try_reserve_hash_map(&mut index_by_id, graph.nodes.len())?;
     for (index, node) in graph.nodes.iter().enumerate() {
         index_by_id.insert(node.id.as_str(), index);
@@ -790,7 +790,7 @@ fn node_coords_by_id<'a>(
     graph: &'a AsciiGraph,
     placements: &[GridCoord],
 ) -> Result<HashMap<&'a str, GridCoord>> {
-    let mut coord_by_id = HashMap::new();
+    let mut coord_by_id = HashMap::default();
     try_reserve_hash_map(&mut coord_by_id, graph.nodes.len())?;
     for (node, coord) in graph.nodes.iter().zip(placements.iter().copied()) {
         coord_by_id.insert(node.id.as_str(), coord);
@@ -802,7 +802,7 @@ fn new_occupied_grid(
     node_count: usize,
     resources: &ResourceContext,
 ) -> Result<HashSet<(usize, usize)>> {
-    let mut occupied = HashSet::new();
+    let mut occupied = HashSet::default();
     try_reserve_hash_set(
         &mut occupied,
         minimum_node_grid_cells(node_count, resources)?,
@@ -811,13 +811,13 @@ fn new_occupied_grid(
 }
 
 fn new_level_positions(node_count: usize) -> Result<LevelPositions> {
-    let mut positions = HashMap::new();
+    let mut positions = HashMap::default();
     try_reserve_hash_map(&mut positions, node_count)?;
     Ok(positions)
 }
 
 fn new_axis_sizes(node_count: usize, resources: &ResourceContext) -> Result<AxisSizes> {
-    let mut axis_sizes = HashMap::new();
+    let mut axis_sizes = HashMap::default();
     let capacity = resources.checked_grid_mul(node_count, AXIS_ENTRIES_PER_NODE)?;
     try_reserve_hash_map(&mut axis_sizes, capacity)?;
     Ok(axis_sizes)
@@ -1105,8 +1105,8 @@ mod tests {
 
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         let mut placements = Vec::with_capacity(NODE_COUNT);
-        let mut column_widths = AxisSizes::new();
-        let mut row_heights = AxisSizes::new();
+        let mut column_widths = AxisSizes::default();
+        let mut row_heights = AxisSizes::default();
         for index in 0..NODE_COUNT {
             let id = format!("node-{index}");
             graph.add_node(id.clone(), id);
@@ -1192,8 +1192,8 @@ mod tests {
                 direction,
                 edge,
                 &options,
-                &mut AxisSizes::new(),
-                &mut AxisSizes::new(),
+                &mut AxisSizes::default(),
+                &mut AxisSizes::default(),
                 &measured_resources,
             )
             .expect("unbounded label spacing should pass");
@@ -1208,8 +1208,8 @@ mod tests {
                 direction,
                 edge,
                 &options,
-                &mut AxisSizes::new(),
-                &mut AxisSizes::new(),
+                &mut AxisSizes::default(),
+                &mut AxisSizes::default(),
                 &exact_resources,
             )
             .expect("edge label spacing should pass at the exact work limit");
@@ -1219,8 +1219,8 @@ mod tests {
                 .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
                 .expect("layout work limit should be valid");
             let below_resources = ResourceContext::new(below_policy);
-            let mut column_widths = AxisSizes::new();
-            let mut row_heights = AxisSizes::new();
+            let mut column_widths = AxisSizes::default();
+            let mut row_heights = AxisSizes::default();
             let error = apply_test_edge_label_spacing(
                 direction,
                 edge,

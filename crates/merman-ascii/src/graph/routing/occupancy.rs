@@ -11,7 +11,8 @@ use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use merman_core::{OperationControl, OperationPhase};
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::collections::hash_map::Entry;
 
 mod labels;
 mod marker;
@@ -306,11 +307,11 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         let mut scene = Self {
-            route_cells: HashMap::new(),
+            route_cells: HashMap::default(),
             route_bounds: Vec::new(),
-            terminal_claims: HashMap::new(),
-            markers: HashMap::new(),
-            labels: HashSet::new(),
+            terminal_claims: HashMap::default(),
+            markers: HashMap::default(),
+            labels: HashSet::default(),
             protected: Vec::new(),
             label_lane_radius,
             control: execution.cloned_control(),

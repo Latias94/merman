@@ -48,7 +48,7 @@ fn relocated_marker_suppresses_only_its_route_local_terminal_tail() {
     .unwrap();
 
     let mut local_canvas = RawCanvas::with_width_profile(3, 1, TerminalWidthProfile::Unicode);
-    let mut local_cells = RouteCells::new();
+    let mut local_cells = RouteCells::default();
     paint_route_plan(
         &mut RouteDrawing::new(&mut local_canvas, &mut local_cells),
         &routes[1].plan,
@@ -80,7 +80,7 @@ fn relocated_marker_suppresses_only_its_route_local_terminal_tail() {
     );
 
     let mut shared_canvas = RawCanvas::with_width_profile(3, 1, TerminalWidthProfile::Unicode);
-    let mut shared_cells = RouteCells::new();
+    let mut shared_cells = RouteCells::default();
     let mut drawing = RouteDrawing::new(&mut shared_canvas, &mut shared_cells);
     for route in &routes {
         route.paint_body(&mut drawing).unwrap();
@@ -126,7 +126,7 @@ fn relocated_marker_suppresses_a_three_cell_mixed_body_tail() {
         .unwrap();
 
     let mut canvas = RawCanvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
-    let mut route_cells = RouteCells::new();
+    let mut route_cells = RouteCells::default();
     paint_route_plan(&mut RouteDrawing::new(&mut canvas, &mut route_cells), &plan).unwrap();
     assert_eq!(
         candidate.terminal_tail(),
