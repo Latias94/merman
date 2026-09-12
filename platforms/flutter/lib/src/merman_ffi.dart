@@ -2312,7 +2312,10 @@ final _LoadedNativeLibrary _packageNativeLibrary = _loadNativeEntry(
   expectedPackageVersion: mermanPackageVersion,
 );
 
-String? _oneShotRequestOptionsJson(String? optionsJson) {
+String? _oneShotRequestOptionsJson(
+  String? optionsJson, {
+  bool themeAuthoring = false,
+}) {
   if (optionsJson == null || optionsJson.trim().isEmpty) {
     return null;
   }
@@ -2383,7 +2386,9 @@ class Merman {
   }) {
     final engine = _native.createEngine(
       runtimeCatalog: runtimeCatalog,
-      optionsJson: optionsJson,
+      optionsJson: operation == MermanOperation.materializeThemeJson
+          ? null
+          : _oneShotRequestOptionsJson(optionsJson),
       services: const MermanEngineServices(),
     );
     try {
@@ -2391,7 +2396,10 @@ class Merman {
         operation,
         source,
         uri: uri,
-        optionsJson: _oneShotRequestOptionsJson(optionsJson),
+        optionsJson: _oneShotRequestOptionsJson(
+          optionsJson,
+          themeAuthoring: operation == MermanOperation.materializeThemeJson,
+        ),
         control: control,
       );
     } finally {

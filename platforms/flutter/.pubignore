@@ -19,6 +19,7 @@ __pycache__/
 # Repository-only release tooling.
 /build-native.py
 /ffigen.yaml
+/tool/theme_authoring_smoke.dart
 
 # CI creates `native/` before publishing. It is intentionally included because
 # this file, rather than .gitignore, controls the pub package.

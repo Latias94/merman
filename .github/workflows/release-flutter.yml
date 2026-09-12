@@ -193,6 +193,7 @@ jobs:
             example tool hook
           dart run tool/abi3_contract_test.dart
           dart run example/main.dart
+          dart run tool/theme_authoring_smoke.dart
           python3 ../../scripts/verify_flutter_pub_package.py \
             --package-root . \
             --max-compressed-mb 99
