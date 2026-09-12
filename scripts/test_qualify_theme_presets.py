@@ -8,10 +8,13 @@ import subprocess
 import tempfile
 import unittest
 
-from scripts.qualify_theme_presets import clean_revision, qualify_cli, verify_record
+from scripts.qualify_theme_presets import BUILD, clean_revision, qualify_cli, verify_record
 
 
 class PresetQualificationTests(unittest.TestCase):
+    def test_build_recipe_includes_svg_and_png_layout_features(self):
+        self.assertEqual(BUILD[BUILD.index("--features") + 1], "png,layout-cytoscape")
+
     def test_clean_revision_rejects_untracked_unstaged_and_staged_work(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
