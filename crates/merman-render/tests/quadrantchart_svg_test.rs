@@ -981,3 +981,324 @@ quadrantChart
 
     assert_contains(&svg, r##"fill="#123456""##);
 }
+
+const TEXT_PAINT_SOURCE: &str = "quadrantChart\ntitle Title\nx-axis Low --> High\ny-axis Bottom --> Top\nquadrant-1 Caption\nAlpha: [0.2, 0.3]\nBeta: [0.7, 0.8]\n";
+
+fn quadrant_text_fills(svg: &str) -> std::collections::BTreeMap<String, String> {
+    roxmltree::Document::parse(svg)
+        .unwrap()
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .filter_map(|node| {
+            Some((
+                node.text()?.to_string(),
+                node.attribute("fill")?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+#[test]
+fn quadrantchart_text_fill_reaches_all_legacy_text_consumers() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for paint in [
+            CanvasPaint::solid("#13579b").unwrap(),
+            CanvasPaint::Transparent,
+        ] {
+            let css = if paint == CanvasPaint::Transparent {
+                "transparent"
+            } else {
+                "#13579b"
+            };
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = quadrantchart_series_rule_theme(rule);
+            let rendered = render_quadrantchart_with_theme_and_engine(
+                TEXT_PAINT_SOURCE,
+                &theme,
+                Engine::new(),
+            );
+            let fills = quadrant_text_fills(rendered.svg());
+            for text in ["Alpha", "Beta", "Low", "High", "Bottom", "Top", "Title"] {
+                assert_eq!(fills[text], css, "{text}");
+            }
+            assert_ne!(fills["Caption"], css);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn quadrantchart_text_fill_respects_each_config_channel() {
+    let theme = quadrantchart_series_rule_theme(ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+    ));
+    for (path, labels) in [
+        ("quadrantPointTextFill", vec!["Alpha", "Beta"]),
+        ("quadrantXAxisTextFill", vec!["Low", "High"]),
+        ("quadrantYAxisTextFill", vec!["Bottom", "Top"]),
+        ("quadrantTitleFill", vec!["Title"]),
+    ] {
+        let config = serde_json::json!({"themeVariables": {path: "#abcdef"}});
+        let rendered = render_quadrantchart_with_theme_and_engine(
+            TEXT_PAINT_SOURCE,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        );
+        let fills = quadrant_text_fills(rendered.svg());
+        for text in ["Alpha", "Beta", "Low", "High", "Bottom", "Top", "Title"] {
+            assert_eq!(
+                fills[text],
+                if labels.contains(&text) {
+                    "#abcdef"
+                } else {
+                    "#13579b"
+                }
+            );
+        }
+        assert_eq!(
+            merman_render::__private::family_evidence(rendered.into_completion().report())
+                .applied_count(),
+            1
+        );
+    }
+    let rendered = render_quadrantchart_with_theme_and_engine(
+        TEXT_PAINT_SOURCE,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"themeVariables": {
+                "quadrantPointTextFill": "#abcdef", "quadrantXAxisTextFill": "#abcdef",
+                "quadrantYAxisTextFill": "#abcdef", "quadrantTitleFill": "#abcdef"
+            }}),
+        )),
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn quadrantchart_text_inheritance_preserves_author_order_with_specific_roles() {
+    let text = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+    );
+    let title = ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+    );
+    let axis = ThemeRule::new(
+        ThemeTarget::Axis,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    );
+    for (rules, specific_wins) in [
+        (vec![text.clone(), title.clone(), axis.clone()], true),
+        (vec![title, axis, text], false),
+    ] {
+        let theme = quadrantchart_series_rules_theme(rules);
+        let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+            TEXT_PAINT_SOURCE,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let fills = quadrant_text_fills(rendered.svg());
+        assert_eq!(fills["Alpha"], "#13579b");
+        assert_eq!(
+            fills["Title"],
+            if specific_wins { "#abcdef" } else { "#13579b" }
+        );
+        assert_eq!(
+            fills["Low"],
+            if specific_wins { "#2468ac" } else { "#13579b" }
+        );
+    }
+}
+
+#[test]
+fn quadrantchart_later_text_ordinals_remain_residual_unless_shadowed_or_absent() {
+    let text = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+    );
+    for index in [2, 4, 7, 8] {
+        let ordinal = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::Exact(index));
+        for shadowed in [false, true] {
+            let rules = if shadowed {
+                vec![ordinal.clone(), text.clone()]
+            } else {
+                vec![text.clone(), ordinal.clone()]
+            };
+            let theme = quadrantchart_series_rules_theme(rules);
+            let result = render_quadrantchart_with_theme_requirement_and_engine(
+                TEXT_PAINT_SOURCE,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(
+                result.is_ok(),
+                shadowed || index == 8,
+                "ordinal={index}, shadowed={shadowed}"
+            );
+            let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+                TEXT_PAINT_SOURCE,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(!shadowed && index != 8)
+            );
+        }
+    }
+    let theme = quadrantchart_series_rule_theme(text);
+    let rendered = render_quadrantchart_with_theme_and_engine(
+        "quadrantChart\nquadrant-1 Caption\n",
+        &theme,
+        Engine::new(),
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn quadrantchart_text_sibling_facets_and_palette_fallback_keep_exact_residuals() {
+    let fill = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap());
+    let mixed = quadrantchart_series_rule_theme(ThemeRule::new(
+        ThemeTarget::Text,
+        fill.clone()
+            .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+    ));
+    let result = render_quadrantchart_with_theme_requirement_and_engine(
+        TEXT_PAINT_SOURCE,
+        &mixed,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    assert!(
+        result.is_err(),
+        "an unconsumed sibling cannot be certified with fill"
+    );
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        TEXT_PAINT_SOURCE,
+        &mixed,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    assert_eq!(quadrant_text_fills(rendered.svg())["Alpha"], "#13579b");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap();
+    for covers_all in [false, true] {
+        let mut styles =
+            ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette.clone());
+        if covers_all {
+            styles = styles.with_rule(ThemeRule::new(ThemeTarget::Text, fill.clone()));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let result = render_quadrantchart_with_theme_requirement_and_engine(
+            TEXT_PAINT_SOURCE,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(result.is_ok(), covers_all);
+    }
+    let clear = quadrantchart_series_rules_theme([
+        ThemeRule::new(ThemeTarget::Text, fill),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch {
+                paint: merman_render::diagram_theme::ThemePaintPatch {
+                    fill: Specified::Clear,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ),
+    ]);
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        TEXT_PAINT_SOURCE,
+        &clear,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn quadrantchart_specific_role_ordinals_do_not_use_the_global_text_index() {
+    let text = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+    );
+    let title = ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+    )
+    .with_ordinal(OrdinalSelector::Exact(1));
+    let theme = quadrantchart_series_rules_theme([text, title]);
+    let source = "quadrantChart\nx-axis Low --> High\ntitle Title\n";
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    // Text still wins axis labels. The unsupported Title ordinal is its own first occurrence.
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        "quadrantChart\ntitle Title\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"quadrantXAxisTextFill": "#fedcba"}
+        }))),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}

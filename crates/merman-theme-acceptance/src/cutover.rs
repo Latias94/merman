@@ -537,6 +537,9 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
+        (DiagramFamilyId::QUADRANT_CHART, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => Ok(
+            "quadrantChart\ntitle Priorities\nx-axis Low --> High\ny-axis Low --> High\nAlpha: [0.3, 0.4]\nBeta: [0.7, 0.8]\n",
+        ),
         (
             DiagramFamilyId::FLOWCHART,
             ThemeTarget::EdgeLabelBackground,
@@ -1371,12 +1374,14 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             // compositing for Mermaid's default edge-label background.
             "edgeLabelBackground": "#ECECFF"
         }),
-        (DiagramFamilyId::CYNEFIN, ThemeTarget::Text) => serde_json::json!({
-            // Cynefin emits plain SVG text without prepared-label tokens. Pin the deterministic
-            // route witness to the embedded catalog face so native raster admission can classify
-            // every visible text glyph without a host fallback.
-            "fontFamily": "Excalifont"
-        }),
+        (DiagramFamilyId::CYNEFIN | DiagramFamilyId::QUADRANT_CHART, ThemeTarget::Text) => {
+            serde_json::json!({
+                // These families emit plain SVG text without prepared-label tokens. Pin the deterministic
+                // route witness to the embedded catalog face so native raster admission can classify
+                // every visible text glyph without a host fallback.
+                "fontFamily": "Excalifont"
+            })
+        }
         (DiagramFamilyId::MINDMAP, ThemeTarget::Node) => serde_json::json!({
             // The route-local raster proof isolates paint and intentionally rejects SVG group
             // effects. Keep the Redux Neo writer path that consumes `mainBkg`/`nodeBorder`, but
@@ -2229,11 +2234,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_416_routes_and_622_artifact_witnesses() {
+    fn route_inventory_retains_420_routes_and_626_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 416);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 622);
+        assert_eq!(inventory.len(), 420);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 626);
     }
 
     #[test]

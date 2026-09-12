@@ -693,7 +693,6 @@ fn compile_chart_family(
 ) -> BridgeResult<()> {
     let family = reader.family;
     let mut contributions = FamilyContributions::new();
-    let text = reader.text_fill(ThemeTarget::Text);
     let title = reader.text_fill(ThemeTarget::Title);
     let axis_text = reader.text_fill(ThemeTarget::Axis);
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
@@ -702,7 +701,7 @@ fn compile_chart_family(
             let mut xy = Map::new();
             for (key, value) in [
                 ("titleColor", title),
-                ("dataLabelColor", text),
+                ("dataLabelColor", reader.text_fill(ThemeTarget::Text)),
                 ("xAxisTitleColor", axis_text.clone()),
                 ("xAxisLabelColor", axis_text.clone()),
                 ("xAxisTickColor", axis_line.clone()),
@@ -723,7 +722,6 @@ fn compile_chart_family(
                 "chart.text-axis",
                 [
                     ("quadrantTitleFill", title),
-                    ("quadrantPointTextFill", text),
                     ("quadrantXAxisTextFill", axis_text.clone()),
                     ("quadrantYAxisTextFill", axis_text),
                     ("quadrantExternalBorderStrokeFill", axis_line.clone()),
@@ -2128,14 +2126,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 102);
+        assert_eq!(status.matrix_route_count(), 98);
         assert_eq!(status.matrix_family_count(), 4);
         assert_eq!(status.dispatched_family_count(), 4);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                35, 93, 117, 250, 86, 59, 92, 114, 252, 147, 211, 249, 204, 4, 26, 228, 170, 239,
-                9, 70, 206, 4, 155, 235, 3, 250, 6, 9, 11, 9, 168, 133
+                131, 103, 35, 194, 151, 72, 172, 247, 40, 16, 95, 195, 193, 190, 76, 52, 73, 0, 87,
+                225, 192, 165, 123, 241, 22, 206, 71, 89, 85, 41, 69, 52
             ]
         );
         assert_eq!(
@@ -5060,5 +5058,30 @@ gitGraph
         assert!(!bridge.owns_contribution_id(
             ThemeRouteCutoverProjection::TimelineEventStroke.contribution_id()
         ));
+    }
+    #[test]
+    fn quadrant_text_cutover_suppresses_each_inherited_legacy_projection() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for paint in [solid("#13579b"), CanvasPaint::Transparent] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let bridge = bridge(&spec);
+                let quadrant = bridge.compile_for_family(DiagramFamilyId::QUADRANT_CHART);
+                assert!(quadrant.overlay.is_empty());
+                assert!(quadrant.contribution_ids.is_empty());
+                let xy = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
+                assert!(
+                    !xy.overlay.is_empty(),
+                    "XY still owns its legacy text projections"
+                );
+            }
+        }
     }
 }

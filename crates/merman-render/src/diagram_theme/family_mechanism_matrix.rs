@@ -387,6 +387,9 @@ fn legacy_bridge_projections(
     selector: ThemeRouteCutoverSelector,
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
+        (DiagramFamilyId::QUADRANT_CHART, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT)
+        }
         (DiagramFamilyId::RADAR, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_RADAR_TEXT_PAINT)
         }
@@ -2029,7 +2032,10 @@ pub(super) fn classify_rule_facet(
     }
     if matches!(
         family,
-        DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN | DiagramFamilyId::GIT_GRAPH
+        DiagramFamilyId::JOURNEY
+            | DiagramFamilyId::KANBAN
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::QUADRANT_CHART
     ) && target == ThemeTarget::Text
         && matches!(
             selector,
@@ -6262,6 +6268,20 @@ mod tests {
                 vec!["slice.stroke"],
             ),
             (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
                 DiagramFamilyId::RADAR,
                 ThemeTarget::Title,
                 Fill,
@@ -7028,7 +7048,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 208);
+        assert_eq!(qualified.len(), 210);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7668,7 +7688,7 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 44),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::QUADRANT_CHART, 16),
+                (DiagramFamilyId::QUADRANT_CHART, 12),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
             .into_iter()

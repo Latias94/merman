@@ -31,7 +31,7 @@ fn quadrantchart_transform(x: f64, y: f64, rotation: f64) -> String {
 fn write_quadrantchart_axis_labels(
     out: &mut impl SvgOutput,
     axis_labels: &[crate::model::QuadrantChartAxisLabelData],
-    mut record_text: impl FnMut(&str),
+    mut record_text: impl FnMut(&crate::model::QuadrantChartTextData),
 ) -> Result<()> {
     for label in axis_labels {
         let _ = write!(
@@ -45,7 +45,7 @@ fn write_quadrantchart_axis_labels(
             text = escape_xml(&label.text),
         );
         out.checkpoint()?;
-        record_text(&label.text);
+        record_text(label);
     }
     Ok(())
 }
@@ -88,6 +88,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
     model: &QuadrantChartRenderModel,
     point_theme: &crate::quadrantchart::QuadrantChartPointThemePlan,
+    text_paint: &crate::quadrantchart::QuadrantChartTextPaintPlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -152,6 +153,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     }
 
     let mut point_theme_receipt = point_theme.begin_terminal_receipt(layout);
+    let mut text_paint_receipt = text_paint.begin_terminal_receipt();
 
     out.push_str("<style>");
     out.checkpoint()?;
@@ -285,6 +287,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         if let Some(receipt) = point_theme_receipt.as_mut() {
             receipt.record_point_text(&point.text.text);
         }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record(&point.text);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -294,9 +299,12 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     // Axis labels.
     out.push_str(r#"<g class="labels">"#);
     out.checkpoint()?;
-    write_quadrantchart_axis_labels(&mut out, &layout.axis_labels, |text| {
+    write_quadrantchart_axis_labels(&mut out, &layout.axis_labels, |label| {
         if let Some(receipt) = point_theme_receipt.as_mut() {
-            receipt.record_axis_label(text);
+            receipt.record_axis_label(&label.text);
+        }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record(label);
         }
     })?;
     out.push_str("</g>");
@@ -320,6 +328,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         if let Some(receipt) = point_theme_receipt.as_mut() {
             receipt.record_title_text(&t.text);
         }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record(t);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -330,6 +341,11 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         return Err(crate::Error::InvalidModel {
             message: "Quadrant Chart point theme receipt did not match the terminal SVG"
                 .to_string(),
+        });
+    }
+    if text_paint_receipt.is_some_and(|receipt| !text_paint.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Quadrant Chart text paint receipt does not match terminal SVG".into(),
         });
     }
     Ok(rooted_svg)

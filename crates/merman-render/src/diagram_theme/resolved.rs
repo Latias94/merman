@@ -561,7 +561,7 @@ impl ResolvedThemeStyle {
         self.effect.apply(&patch.effects.effect, origin);
     }
 
-    pub(super) fn merge_from(&mut self, other: &Self) {
+    pub(crate) fn merge_from(&mut self, other: &Self) {
         self.fill.merge_from(&other.fill);
         self.stroke.merge_from(&other.stroke);
         self.stroke_width.merge_from(&other.stroke_width);

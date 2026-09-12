@@ -380,11 +380,12 @@ pub enum ThemeRouteCutoverProjection {
     RadarTextPaint = 52,
     ClusterLabelFill = 53,
     EdgeLabelBackgroundFill = 54,
+    ChartTextPaint = 55,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 55] = [
+    const ALL: [Self; 56] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -440,6 +441,7 @@ impl ThemeRouteCutoverProjection {
         Self::RadarTextPaint,
         Self::ClusterLabelFill,
         Self::EdgeLabelBackgroundFill,
+        Self::ChartTextPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -468,6 +470,7 @@ impl ThemeRouteCutoverProjection {
             Self::LoopLabelFill => "loop-label.fill",
             Self::NoteLabelFill => "note-label.fill",
             Self::TextFill => "text.fill",
+            Self::ChartTextPaint => "chart.text-axis",
             Self::GanttTaskDefaultFill => "task.default.fill",
             Self::GanttTaskActiveFill => "task.active.fill",
             Self::GanttTaskSuccessFill => "task.success.fill",
@@ -530,6 +533,7 @@ impl ThemeRouteCutoverProjection {
             | Self::LoopLabelFill
             | Self::NoteLabelFill
             | Self::TextFill
+            | Self::ChartTextPaint
             | Self::GanttTaskDefaultFill
             | Self::GanttTaskActiveFill
             | Self::GanttTaskSuccessFill
@@ -635,6 +639,8 @@ impl ThemeRouteCutoverProjectionSet {
             | ThemeRouteCutoverProjection::TitleFill.bit()
             | ThemeRouteCutoverProjection::ClusterLabelFill.bit(),
     );
+    pub const REPLACE_CHART_TEXT_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ChartTextPaint);
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
     pub const REPLACE_GITGRAPH_TEXT_FILL: Self = Self(
         ThemeRouteCutoverProjection::TextFill.bit()

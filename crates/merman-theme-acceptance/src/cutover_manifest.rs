@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 75;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 76;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    51, 133, 108, 77, 142, 164, 124, 160, 132, 206, 144, 159, 88, 68, 67, 243, 73, 248, 250, 169,
-    78, 45, 126, 201, 44, 161, 45, 193, 92, 64, 104, 19,
+    152, 143, 240, 155, 222, 143, 138, 103, 53, 136, 94, 0, 58, 20, 132, 20, 163, 246, 67, 3, 178,
+    180, 144, 148, 61, 75, 107, 44, 51, 228, 135, 123,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 55] = [
+); 56] = [
+    (
+        ThemeRouteCutoverProjection::ChartTextPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::EdgeLabelBackgroundFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -451,7 +455,37 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 416] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 420] = [
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::QUADRANT_CHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Edge,
@@ -4835,5 +4869,26 @@ mod tests {
             QUALIFIED_ROUTE.id.selector(),
             ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active)
         );
+    }
+    #[test]
+    fn quadrant_text_authority_covers_only_the_four_static_scalar_routes() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| route.id.family_id() == DiagramFamilyId::QUADRANT_CHART)
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for route in routes {
+            assert_eq!(route.id.target(), ThemeTarget::Text);
+            assert_eq!(route.id.facet(), ThemeRouteCutoverFacet::Fill);
+            assert!(matches!(
+                route.id.selector(),
+                ThemeRouteCutoverSelector::StaticUnqualified
+                    | ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            ));
+            assert_eq!(
+                route.projections,
+                &[ThemeRouteCutoverProjection::ChartTextPaint]
+            );
+        }
     }
 }

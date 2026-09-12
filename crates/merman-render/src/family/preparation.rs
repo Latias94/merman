@@ -824,17 +824,24 @@ fn prepare_quadrant_chart_family(
         &model,
         execution.work_meter_ref(),
     )?;
-    let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
+    let mut layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
         &model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
         &point_theme,
         execution.text_measurer(),
     )?;
+    let text_paint = crate::quadrantchart::QuadrantChartTextPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &mut layout,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::QuadrantChart(Box::new(
         QuadrantChartFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             point_theme,
+            text_paint,
         },
     )))
 }

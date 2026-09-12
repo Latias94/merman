@@ -12,11 +12,11 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 29/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 4/33; 102 routes | Block 44, Class 26, Quadrant Chart 16, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 4/33; 98 routes | Block 44, Class 26, Quadrant Chart 12, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 74 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v75; 416 routes / 622 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 75 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v76; 420 routes / 626 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v6; 74 routes / 148 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v6 retires eight Flowchart/Swimlane static unqualified/Default Marker.fill/stroke
@@ -42,7 +42,16 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 75 adds eight Flowchart/Swimlane Edge.fill routes
+output files. Version 76 adds four Quadrant Chart Text.fill routes (solid/transparent,
+unqualified/Default). The direct text plan preserves author-order inheritance into point labels,
+axis labels, and the title; quadrant captions retain their separate color channels. Explicit
+configuration owns each channel independently. Text ordinals follow points, axes, then title,
+while Axis and Title selectors use their own occurrence domains. Winning unsupported or sibling
+facets remain residual; absent, source-owned, or fully shadowed requests are NotApplicable.
+The writer checks every text and fill against its prepared receipt before recording Applied.
+The remaining Quadrant bridge handles only dedicated Title and Axis paint routes.
+
+Version 75 adds eight Flowchart/Swimlane Edge.fill routes
 (solid/transparent, unqualified/Default). Fill supplies the edge's native stroke only when Stroke
 is unspecified; transparent, Clear, and unsupported Stroke winners all block that fallback.
 The existing stroke writer and source/config precedence apply. Classic, Neo, and animated Neo

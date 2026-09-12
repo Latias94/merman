@@ -11,9 +11,11 @@ use merman_core::diagrams::quadrant_chart::{
 use serde_json::Value;
 
 mod config;
+mod text_paint;
 mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
+pub(crate) use text_paint::QuadrantChartTextPaintPlan;
 pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {

@@ -1213,6 +1213,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.point_theme(),
+                artifact.text_paint(),
                 effective_config_value,
                 options,
             )

@@ -1603,9 +1603,14 @@ pub(crate) struct QuadrantChartFamilyArtifact {
     pair:
         FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>,
     point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
+    text_paint: crate::quadrantchart::QuadrantChartTextPaintPlan,
 }
 
 impl QuadrantChartFamilyArtifact {
+    pub(crate) const fn text_paint(&self) -> &crate::quadrantchart::QuadrantChartTextPaintPlan {
+        &self.text_paint
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>
@@ -2515,7 +2520,11 @@ impl BuiltinFamilyArtifact {
 
     fn quadrant_chart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::QuadrantChart(artifact) => Some(artifact.point_theme().finish_evidence()),
+            Self::QuadrantChart(artifact) => {
+                let mut evidence = artifact.point_theme().finish_evidence();
+                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
+                Some(evidence)
+            }
             _ => None,
         }
     }
