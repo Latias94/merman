@@ -7798,6 +7798,26 @@ mod tests {
     }
 
     #[test]
+    fn explicit_default_font_size_is_distinct_from_omission() {
+        let omitted =
+            compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &TextStyle::default());
+        assert!(omitted.iter().all(|route| {
+            route.mechanism()
+                != FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+        }));
+
+        let explicit = TextStyle::default()
+            .with_font_size_px(16.0)
+            .expect("default-valued font size remains a valid explicit request");
+        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &explicit);
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+    }
+
+    #[test]
     fn sequence_directly_owns_only_base_font_stack_and_size() {
         let typography = TextStyle::default()
             .with_font_stack(
