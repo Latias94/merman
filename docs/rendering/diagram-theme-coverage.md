@@ -15,6 +15,7 @@ the preset qualification feature-recipe guard, the legacy projection/route-cutov
 harness (117/117 with PNG and Cytoscape layout features). These incremental checks keep the
 ledger aligned but do not promote the remaining legacy routes or close C7a/C7b. A clean detached checkout at the current HEAD
 (`8e3831d11`) regenerated the schema-3 qualification record and passed its replay check.
+The current C6 runtime and preset qualification sub-gates also pass 4/4.
 
 The source inventories, not this summary, authorize rendering and retirement:
 
