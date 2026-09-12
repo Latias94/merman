@@ -15,6 +15,13 @@ EXCLUDED_MODULES = {
     "merman-render": {"src/svg_artifact_receipts.rs", "src/theme_raster_paint.rs"},
     "merman-export": {"src/raster_paint_cutover.rs"},
 }
+RETIRED_PUBLIC_SYMBOLS = (
+    "PresentationTheme",
+    "HostTheme",
+    "supportedHostThemePresets",
+)
+SOURCE_ROOTS = ("crates", "platforms")
+
 PRIVATE_IMPORTS = (
     "merman::__theme_acceptance::TargetArtifactView",
     "merman_render::__private::ThemeRouteCutoverReceipt",
@@ -23,7 +30,35 @@ PRIVATE_IMPORTS = (
 )
 
 
+
+def verify_retired_public_symbols() -> None:
+    """Reject reintroducing the removed alpha theme facade into public source APIs."""
+    declarations = []
+    for root_name in SOURCE_ROOTS:
+        root = ROOT / root_name
+        for path in root.rglob("*"):
+            if path.suffix not in {".rs", ".swift", ".dart", ".ts", ".mjs"}:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for line_number, line in enumerate(text.splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("pub(crate)") or stripped.startswith("pub(super)"):
+                    continue
+                if not stripped.startswith("pub ") and not stripped.startswith("public "):
+                    continue
+                if any(symbol in stripped for symbol in RETIRED_PUBLIC_SYMBOLS):
+                    declarations.append(f"{path.relative_to(ROOT)}:{line_number}: {stripped}")
+    if declarations:
+        raise RuntimeError(
+            "retired public theme symbols found:\n" + "\n".join(declarations)
+        )
+    print("retired PresentationTheme/HostTheme public symbols remain absent", flush=True)
+
 def main() -> None:
+    verify_retired_public_symbols()
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"],
         cwd=ROOT, text=True,
