@@ -718,14 +718,15 @@ fn compile_chart_family(
             contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
         }
         DiagramFamilyId::QUADRANT_CHART => {
+            let axis_stroke = reader.stroke(ThemeTarget::Axis);
             contributions.add_theme_variables(
                 "chart.text-axis",
                 [
                     ("quadrantTitleFill", title),
                     ("quadrantXAxisTextFill", axis_text.clone()),
                     ("quadrantYAxisTextFill", axis_text),
-                    ("quadrantExternalBorderStrokeFill", axis_line.clone()),
-                    ("quadrantInternalBorderStrokeFill", axis_line),
+                    ("quadrantExternalBorderStrokeFill", axis_stroke.clone()),
+                    ("quadrantInternalBorderStrokeFill", axis_stroke),
                 ],
             );
         }
