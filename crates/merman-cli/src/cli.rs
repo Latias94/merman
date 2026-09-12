@@ -941,7 +941,10 @@ pub(crate) struct MmdcArgs {
     )]
     pub(crate) output_format: Option<MmdcOutputFormat>,
 
-    /// SVG output pipeline. Compiled binary exports always start from resvg-safe.
+    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    ///
+    /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
+    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1068,7 +1071,10 @@ pub(crate) struct BatchRenderOptions {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct GraphicalRenderCliArgs {
     #[cfg(feature = "svg")]
-    /// SVG output pipeline. Compiled binary exports always start from resvg-safe.
+    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    ///
+    /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
+    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1483,7 +1489,7 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_trim_trailing_spaces: bool,
 
-    /// Select the canonical or opt-in compact ASCII layout profile.
+    /// Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width).
     #[arg(
         long = "ascii-layout-profile",
         value_enum,
@@ -1538,6 +1544,8 @@ pub(crate) enum TextLayoutProfile {
     #[default]
     Canonical,
     Compact,
+    /// Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow.
+    Auto,
 }
 
 #[cfg(feature = "ascii")]
@@ -1563,8 +1571,11 @@ pub(crate) enum MathRendererKind {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum SvgPipelineKind {
+    /// Default for browsers and Webviews; preserves Mermaid HTML labels and styles.
     Parity,
+    /// Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates.
     Readable,
+    /// Converts HTML labels and cleans SVG for resvg/usvg consumers.
     #[value(name = "resvg-safe", alias = "resvg_safe")]
     ResvgSafe,
 }

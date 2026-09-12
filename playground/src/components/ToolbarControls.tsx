@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useMemo,
   type ReactNode,
@@ -29,7 +30,6 @@ import {
 import { presentationProfileStatus } from "@/src/runtime/presentation-status";
 import {
   isMermanSvgPipeline,
-  MERMAN_SVG_PIPELINES,
 } from "@/src/runtime/merman-core";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import {
@@ -75,6 +75,11 @@ const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
 const TEXT_MEASUREMENT_VALUES: readonly TextMeasurementMode[] = [
   "browser",
   "headless",
+];
+const SVG_PIPELINE_MENU_OPTIONS: readonly SvgPipeline[] = [
+  "parity",
+  "resvg-safe",
+  "readable",
 ];
 const NO_PRESENTATION_SELECTION = "__none__";
 const PRESENTATION_STATUS_ID = "presentation-profile-status";
@@ -324,10 +329,30 @@ export function ToolbarControls() {
         value={svgPipeline}
         onValueChange={(value) => setSvgPipeline(normalizeSvgPipeline(value))}
       >
-        {MERMAN_SVG_PIPELINES.map((pipeline) => (
-          <DropdownMenuRadioItem key={pipeline} value={pipeline}>
-            {t(`svgPipelines.${pipeline}`)}
-          </DropdownMenuRadioItem>
+        {SVG_PIPELINE_MENU_OPTIONS.map((pipeline) => (
+          <Fragment key={pipeline}>
+            {pipeline === "readable" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>{t("svgPipelineGuidance.advanced")}</DropdownMenuLabel>
+              </>
+            )}
+            <DropdownMenuRadioItem
+              value={pipeline}
+              aria-label={t(`svgPipelines.${pipeline}`)}
+              aria-describedby={`svg-pipeline-${pipeline}-description`}
+            >
+              <span className="max-w-64 whitespace-normal">
+                <span className="block">{t(`svgPipelines.${pipeline}`)}</span>
+                <span
+                  id={`svg-pipeline-${pipeline}-description`}
+                  className="block text-xs text-muted-foreground"
+                >
+                  {t(`svgPipelineDescriptions.${pipeline}`)}
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+          </Fragment>
         ))}
       </DropdownMenuRadioGroup>
       <div className="xl:hidden">

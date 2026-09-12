@@ -1389,6 +1389,7 @@ fn resolve_text_layout_profile(args: &TextOutputCliArgs) -> merman::ascii::Ascii
     match args.ascii_layout_profile {
         TextLayoutProfile::Canonical => merman::ascii::AsciiLayoutProfile::Canonical,
         TextLayoutProfile::Compact => merman::ascii::AsciiLayoutProfile::Compact,
+        TextLayoutProfile::Auto => merman::ascii::AsciiLayoutProfile::Auto,
     }
 }
 

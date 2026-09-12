@@ -124,3 +124,23 @@ Family capability records are the request-preflight authority. In addition to se
 projection, they publish admitted layout profiles, width profiles, primary encodings, and fallback
 encodings. CLI, bindings-core, UniFFI, Web, Flutter, Python, Apple, and generated contract snapshots
 must project those same source descriptors rather than maintaining transport-local admission tables.
+
+## 2026-09-11 automatic layout selection addendum
+
+Flowchart and Sequence additionally admit `AsciiLayoutProfile::Auto` with an explicit width bound.
+Auto makes at most two primary attempts: Canonical followed by Compact on width overflow. It
+selects the narrower valid diagram, keeping Canonical on ties, then applies the existing
+Allow/Error/Fallback policy. Fixed Canonical and Compact requests retain their fixed selection.
+Flowchart Compact now defaults to a three-cell horizontal rank gap, alongside its existing
+24-cell node wrap; explicit family overrides win. Other family density policies are unchanged.
+
+Primary work remains cumulative across attempts. Retained candidate text is included in storage
+admission; resource/cancellation failures remain terminal. Canonical route errors are not converted
+to width fallback. A route error encountered only in the optional Compact candidate can retain a
+previously valid Canonical primary. The structured fallback remains Plain-only.
+
+ASCII report and metadata schema 3 add `requested_layout_profile` and `compact_attempted`.
+`layout_profile` and primary extent identify the selected primary geometry, including when the
+final output is structured fallback. Compact selection is independent from fallback selection.
+The options JSON schema remains version 2. Width fitting does not guarantee reduced height/area,
+and it does not authorize edge-label truncation or automatic direction changes.

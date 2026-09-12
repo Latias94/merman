@@ -303,7 +303,7 @@ export type CommonBindingOptions = BindingVersionOptions &
 
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiWidthProfileOption = "unicode" | "cjk";
-export type AsciiLayoutProfileOption = "canonical" | "compact";
+export type AsciiLayoutProfileOption = "canonical" | "compact" | "auto";
 export type AsciiOverflowOption = "allow" | "fallback" | "error";
 export type AsciiDirectionOption =
   | "lr"
@@ -348,6 +348,7 @@ export interface AsciiRenderOptions {
   overflow?: AsciiOverflowOption;
   trim_trailing_spaces?: boolean;
   trimTrailingSpaces?: boolean;
+  /** Auto requires max_width and tries Compact once when Canonical exceeds it. */
   layout_profile?: AsciiLayoutProfileOption;
   layoutProfile?: AsciiLayoutProfileOption;
   width_profile?: AsciiWidthProfileOption;

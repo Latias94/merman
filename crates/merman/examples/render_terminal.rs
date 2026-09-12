@@ -1,4 +1,6 @@
-use merman::ascii::{AsciiOutputOutcome, AsciiRenderOptions, AsciiViewportPolicy, OverflowPolicy};
+use merman::ascii::{
+    AsciiLayoutProfile, AsciiOutputOutcome, AsciiRenderOptions, AsciiViewportPolicy, OverflowPolicy,
+};
 use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 
 const SOURCE: &str = r#"sequenceDiagram
@@ -14,6 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         AsciiRenderOptions::unicode()
     };
+    // This example is Sequence, which admits Auto. Generic hosts must check family capabilities.
+    let options = options.with_layout_profile(AsciiLayoutProfile::Auto);
     let renderer = Renderer::new().with_parse_options(merman::ParseOptions::strict());
     let output = renderer.render(RenderRequest::ascii(
         SOURCE,

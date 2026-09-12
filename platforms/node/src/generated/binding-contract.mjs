@@ -231,6 +231,20 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "open_value": false
         },
         {
+          "name": "requested_layout_profile",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "compact_attempted",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
           "name": "requested_max_width",
           "json_type": "unsigned-integer",
           "required": false,

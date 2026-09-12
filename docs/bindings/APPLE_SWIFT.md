@@ -47,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV6() == 6 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -165,9 +165,11 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 5 generated source and native libraries together to API 6. API 6 adds ASCII
-  layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding; the generated
-  source and native library must move atomically. `MermanOperationRequestV4` remains the current
+- Move API 6 or older generated source and native libraries together to API 7. Replace the
+  version probe with `bindingApiVersionV7()`. API 7 adds `requestedLayoutProfile` and
+  `compactAttempted` to the schema-3 ASCII output plan; `layoutProfile` identifies the selected
+  Canonical or Compact geometry. API 6 introduced the capability admission arrays and encoding.
+  The generated source and native library must move atomically. `MermanOperationRequestV4` remains the current
   request record; add `control: nil` to generic request construction until the host adopts
   `MermanOperationControl`. Handle the optional `diagnostic`
   `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or

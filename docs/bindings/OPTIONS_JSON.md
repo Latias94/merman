@@ -361,13 +361,17 @@ defined by ADR 0070.
 ## ASCII Options
 
 `ascii` applies to `render_ascii` and reusable engines that call ASCII rendering. These options do
-not affect SVG, parse JSON, layout JSON, or validation output.
+not affect SVG, parse JSON, layout JSON, or validation output. Availability depends on the compiled
+transport/package as well as family capabilities; shared option parsing does not imply that every
+package ships an ASCII operation. The host supplies resolved environment facts. See the
+[host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes) for
+explicit terminal, machine-channel, SVG, and raster request composition.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
-| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` is admitted only for Flowchart and Sequence: it resolves the Flowchart wrap default from 40 to 24 cells and Sequence participant spacing from 5 to 3 unless the corresponding family option is explicit. Other supported families reject `compact`. |
+| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` uses a 24-cell Flowchart node wrap and a 3-cell horizontal rank gap, or 3-cell Sequence participant spacing, unless explicitly overridden. `auto` requires `max_width` and tries Compact once after Canonical overflows. Both are admitted only for Flowchart and Sequence. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`/`none`, `ansi16`/`ansi-16`/`ansi_16`, `ansi256`/`ansi-256`/`ansi_256`, `truecolor`/`true-color`/`true_color`, or `html`. Bindings reject host-dependent `auto`; the host must resolve it before constructing environment-independent options. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
@@ -383,9 +387,15 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
-| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound applied after normal layout. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
+| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound used for planned-extent admission and Auto selection. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
 | `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
 | `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
+
+`ascii.theme` is independent of SVG `presentation.theme`. TrueColor resolves terminal roles through
+the supplied RGB palette; ANSI256 approximates those colors. ANSI16 instead uses terminal Reset and
+named ANSI colors for semantic roles, so it does not apply that RGB palette to those roles. The host
+owns any mapping of its application theme into both output-specific inputs. See
+[terminal themes](../rendering/presentation-themes.md#terminal-themes).
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
@@ -395,14 +405,40 @@ ASCII capability records expose `layout_profiles`, `width_profiles`, `encodings`
 `fallback_encodings` (camelCase in generated host DTOs where applicable). Preflight those arrays for
 the detected diagram family before rendering. Every supported family currently admits `unicode` and
 `cjk` width profiles plus Plain, ANSI16, ANSI256, TrueColor, and HTML primary encodings. Only
-Flowchart and Sequence admit `compact`; all other supported families are canonical-only.
+Flowchart and Sequence admit `compact` and `auto`; all other supported families are canonical-only.
 
 Viewport `fallback` is currently admitted only with `color_mode: "plain"`. Styled fallback requests
-are rejected instead of returning an ambiguous or partially styled compatibility projection.
+are rejected before rendering, even if the diagram would fit, instead of returning an ambiguous or
+partially styled compatibility projection.
 `allow` and `error` remain valid with every admitted primary encoding. The canonical ASCII output
-plan is schema `2`; it includes an explicit `encoding` field, and its logical height excludes a final
-line terminator. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
+plan is schema `3`; it includes `encoding`, `requested_layout_profile`, `layout_profile` (the
+selected primary geometry), and `compact_attempted`. Its logical height excludes a final line
+terminator. The options JSON version remains `2`; the output schema version is independent. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
 to Plain there and an explicit styled report request is rejected.
+
+Auto selects the narrower valid primary candidate and prefers Canonical on equal width. It does
+not change graph direction or truncate long edge labels. A narrower result may be taller. After
+selection, `overflow` determines whether a still-wide diagram is emitted, rejected, or replaced
+with the existing complete structured projection. Canonical and Compact remain fixed selections.
+No resource or cancellation failure triggers another attempt. With `allow`, retaining the first
+candidate while trying Compact consumes additional bounded text storage.
+
+For an 80-column Flowchart or Sequence request in an ASCII-capable artifact, use:
+
+```json
+{
+  "ascii": {
+    "layout_profile": "auto",
+    "max_width": 80,
+    "overflow": "fallback",
+    "color_mode": "plain"
+  }
+}
+```
+
+Use `allow` or `error` with styled primary output; Auto does not relax the Plain-only fallback
+contract. `primary_width`/`primary_height` and `overflowed` describe the selected primary candidate,
+even when structured fallback is emitted. `compact_attempted` is independent of `fallback_attempted`.
 
 The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
 
@@ -604,7 +640,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `6`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `7`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for
@@ -626,9 +662,21 @@ does not depend on them.
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
-`readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
-renderer compatibility, including structural cleanup for labels that already include native SVG
-`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
+Choose the pipeline for the consumer that will display the SVG:
+
+| Consumer | Pipeline | Behavior |
+| --- | --- | --- |
+| Browser or Webview | `parity` (default) | Preserves Mermaid HTML labels and styles without adding text overlays. |
+| resvg/usvg, including native PNG/JPEG/PDF export | `resvg-safe` | Converts HTML labels, applies compatibility cleanup, and validates the result. Native binary exports select this contract automatically. |
+| Custom consumer that ignores HTML labels but needs the remaining SVG preserved | `readable` (advanced) | Keeps HTML and appends best-effort SVG text. Browsers can display both copies and show overlapping text. |
+
+`readable` is a text-fallback overlay, not pretty-printing or a higher-quality browser mode. Use
+`parity` for browser previews. `resvg-safe` also removes unsupported styles and active content,
+so it is not a lossless replacement for `readable`. Neither option substitutes for the host's
+browser DOM-admission policy. All three pipeline values and their defaults remain unchanged.
+
+`resvg-safe` includes structural cleanup for labels that already include native SVG `<switch>`
+text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
 additional native/fallback duplicate surfaces, including hosts that already request `resvg-safe`.
 Its generic text matching should be treated as an opt-in postprocessing policy. HTML label fallback
 text inherits Mermaid label/root fill colors when
@@ -671,13 +719,13 @@ PDF filter sampling is explicit, while its localized-image ceiling remains part 
 
 ## Examples
 
-Readable SVG with a stable id:
+Default browser SVG with a stable id:
 
 ```json
 {
   "svg": {
     "diagram_id": "docs-flow",
-    "pipeline": "readable"
+    "pipeline": "parity"
   }
 }
 ```
@@ -699,7 +747,8 @@ External Mermaid theme defaults for plain source:
 }
 ```
 
-Readable SVG with generic duplicate native/fallback labels removed:
+Advanced text-fallback SVG for a custom consumer that ignores HTML labels, with generic
+native/fallback duplicate cleanup. This cleanup does not prevent HTML/fallback overlap in browsers:
 
 ```json
 {

@@ -370,9 +370,19 @@
     "merman-modern": "Merman Modern"
   },
   "svgPipelines": {
-    "parity": "Mermaid parity",
-    "readable": "Readable SVG",
-    "resvg-safe": "PNG-safe SVG"
+    "parity": "Mermaid SVG (default)",
+    "readable": "Text fallback SVG",
+    "resvg-safe": "resvg-compatible SVG"
+  },
+  "svgPipelineDescriptions": {
+    "parity": "For browsers and Webviews. Preserves Mermaid HTML labels and styles.",
+    "readable": "Adds SVG text for consumers that ignore HTML labels. May show duplicate text in browsers.",
+    "resvg-safe": "For resvg/usvg consumers. Converts HTML labels and cleans unsupported styles and content."
+  },
+  "svgPipelineGuidance": {
+    "advanced": "Advanced",
+    "browserWarning": "Text fallback SVG keeps HTML labels and adds SVG text. Both can appear in this browser preview and overlap.",
+    "useParity": "Use Mermaid SVG"
   },
   "presentationStatus": {
     "none": "No presentation profile selected.",

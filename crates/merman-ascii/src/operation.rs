@@ -17,6 +17,7 @@ pub(crate) struct AsciiExecution<'a> {
     control: &'a OperationControl,
     resources: &'a AsciiResourcePolicy,
     viewport: AsciiViewportPolicy,
+    optional_layout_candidate: bool,
     render_ledger: Option<&'a ResourceContext>,
 }
 
@@ -28,6 +29,7 @@ impl<'a> AsciiExecution<'a> {
             resources,
             viewport: AsciiViewportPolicy::unrestricted(),
             render_ledger: None,
+            optional_layout_candidate: false,
         }
     }
 
@@ -44,6 +46,15 @@ impl<'a> AsciiExecution<'a> {
     pub(crate) const fn with_render_ledger(mut self, ledger: &'a ResourceContext) -> Self {
         self.render_ledger = Some(ledger);
         self
+    }
+
+    pub(crate) const fn with_optional_layout_candidate(mut self) -> Self {
+        self.optional_layout_candidate = true;
+        self
+    }
+
+    pub(crate) const fn is_optional_layout_candidate(self) -> bool {
+        self.optional_layout_candidate
     }
 
     pub(crate) fn admit_primary_extent(

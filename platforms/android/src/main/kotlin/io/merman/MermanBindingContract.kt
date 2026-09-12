@@ -242,6 +242,8 @@ private fun decodeMermanOutputPlan(plan: JSONObject): MermanOutputPlan {
             emittedHeight = plan.requiredGeneratedLong("emitted_height"),
             widthProfile = plan.requiredGeneratedString("width_profile"),
             layoutProfile = plan.requiredGeneratedString("layout_profile"),
+            requestedLayoutProfile = plan.requiredGeneratedString("requested_layout_profile"),
+            compactAttempted = plan.requiredGeneratedBoolean("compact_attempted"),
             requestedMaxWidth = plan.optionalGeneratedLong("requested_max_width"),
             overflowed = plan.requiredGeneratedBoolean("overflowed"),
             outcome = plan.requiredGeneratedString("outcome"),

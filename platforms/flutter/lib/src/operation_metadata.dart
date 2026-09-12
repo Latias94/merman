@@ -53,6 +53,8 @@ final class MermanAsciiOutputPlan extends MermanOutputPlan {
     required this.emittedHeight,
     required this.widthProfile,
     required this.layoutProfile,
+    required this.requestedLayoutProfile,
+    required this.compactAttempted,
     required this.requestedMaxWidth,
     required this.overflowed,
     required this.outcome,
@@ -76,6 +78,8 @@ final class MermanAsciiOutputPlan extends MermanOutputPlan {
   final int emittedHeight;
   final String widthProfile;
   final String layoutProfile;
+  final String requestedLayoutProfile;
+  final bool compactAttempted;
   final int? requestedMaxWidth;
   final bool overflowed;
   final String outcome;

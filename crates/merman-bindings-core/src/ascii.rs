@@ -158,10 +158,11 @@ fn ascii_options_from_json(
         render_options.layout_profile = match option_key(profile).as_str() {
             "canonical" => merman::ascii::AsciiLayoutProfile::Canonical,
             "compact" => merman::ascii::AsciiLayoutProfile::Compact,
+            "auto" => merman::ascii::AsciiLayoutProfile::Auto,
             _ => {
                 return Err(invalid_ascii_option(
                     "ascii.layout_profile",
-                    "expected `canonical` or `compact`",
+                    "expected `canonical`, `compact`, or `auto`",
                 ));
             }
         };
@@ -483,7 +484,7 @@ mod tests {
         );
         assert_eq!(plan.family(), "timeline");
         assert_eq!(plan.projection(), "structured_text");
-        assert_eq!(plan.schema_version(), 2);
+        assert_eq!(plan.schema_version(), 3);
         assert_eq!(plan.encoding(), "plain");
         assert_eq!(plan.outcome(), "fallback");
         assert_eq!(plan.requested_max_width(), Some(10));
@@ -766,6 +767,49 @@ mod tests {
                 compiled.layout_profile,
                 merman::ascii::AsciiLayoutProfile::Compact
             );
+        }
+    }
+
+    #[test]
+    fn auto_layout_aliases_select_and_round_trip_the_effective_profile() {
+        let source = b"flowchart LR\nA --> B --> C --> D";
+        let compact =
+            crate::render_ascii_result(source, br#"{"ascii":{"layout_profile":"compact"}}"#)
+                .expect("fixed compact render");
+        let Some(crate::BindingOutputPlan::Ascii(compact_plan)) = compact.metadata().output_plan()
+        else {
+            panic!("ASCII output plan");
+        };
+        for key in ["layout_profile", "layoutProfile"] {
+            let options = serde_json::json!({"ascii": {
+                key: "auto", "max_width": compact_plan.primary_width(), "overflow": "error"
+            }});
+            let result = crate::render_ascii_result(source, &serde_json::to_vec(&options).unwrap())
+                .expect("automatic selection should fit using compact");
+            let parsed = crate::BindingOperationMetadata::from_json_bytes(result.metadata_json())
+                .expect("schema 3 metadata must round-trip");
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = parsed.output_plan() else {
+                panic!("ASCII output plan");
+            };
+            assert_eq!(plan.schema_version(), 3);
+            assert_eq!(plan.requested_layout_profile(), "auto");
+            assert_eq!(plan.layout_profile(), "compact");
+            assert!(plan.compact_attempted());
+            assert!(!plan.overflowed());
+            assert_eq!(plan.primary_width(), compact_plan.primary_width());
+            assert_eq!(result.data(), compact.data());
+        }
+    }
+
+    #[test]
+    fn auto_layout_requires_width_and_supported_family() {
+        for (source, options) in [
+            (b"flowchart LR\nA --> B".as_slice(), br#"{"ascii":{"layout_profile":"auto"}}"#.as_slice()),
+            (b"stateDiagram-v2\nA --> B".as_slice(), br#"{"ascii":{"layout_profile":"auto","max_width":80}}"#.as_slice()),
+            (b"flowchart LR\nA --> B".as_slice(), br#"{"ascii":{"layout_profile":"auto","max_width":80,"overflow":"fallback","color_mode":"ansi16"}}"#.as_slice()),
+        ] {
+            let error = crate::render_ascii_result(source, options).expect_err("invalid automatic request");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
         }
     }
 

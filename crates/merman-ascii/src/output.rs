@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
-pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 2;
+pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 3;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
 /// 宽度超限时的输出策略。
@@ -296,6 +296,8 @@ pub struct AsciiOutput {
     pub emitted_extent: AsciiExtent,
     pub width_profile: TerminalWidthProfile,
     pub layout_profile: crate::options::AsciiLayoutProfile,
+    pub requested_layout_profile: crate::options::AsciiLayoutProfile,
+    pub compact_attempted: bool,
     pub requested_max_width: Option<usize>,
     pub overflowed: bool,
     pub outcome: AsciiOutputOutcome,
@@ -416,6 +418,8 @@ pub struct AsciiOutputMetadata {
     pub emitted_height: u64,
     pub width_profile: String,
     pub layout_profile: String,
+    pub requested_layout_profile: String,
+    pub compact_attempted: bool,
     pub requested_max_width: Option<u64>,
     pub overflowed: bool,
     pub outcome: String,
@@ -536,6 +540,8 @@ impl AsciiOutput {
             emitted_height: self.emitted_extent.height as u64,
             width_profile: self.width_profile.as_str().to_owned(),
             layout_profile: self.layout_profile.as_str().to_owned(),
+            requested_layout_profile: self.requested_layout_profile.as_str().to_owned(),
+            compact_attempted: self.compact_attempted,
             requested_max_width: self.requested_max_width.map(|value| value as u64),
             overflowed: self.overflowed,
             outcome: self.outcome.as_str().to_owned(),
@@ -738,6 +744,8 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
         emitted_extent,
         width_profile: profile,
         layout_profile,
+        requested_layout_profile: layout_profile,
+        compact_attempted: false,
         requested_max_width: policy.max_width,
         overflowed: matches!(
             outcome,

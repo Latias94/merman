@@ -193,6 +193,11 @@ pub(crate) fn render_graph_with_resolved_policy_and_execution(
             // A viewport fallback reuses the render-wide ledger. Keep the work spent proving
             // that the primary graph is too wide, but discard its speculative document cells.
             Err(error @ crate::error::AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Err(error @ crate::error::AsciiError::UnsupportedFeature { .. })
+                if execution.is_optional_layout_candidate() =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
