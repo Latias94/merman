@@ -1739,6 +1739,33 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_support_matches_shared_golden() {
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+        ))
+        .unwrap();
+        let api = engine();
+        let reusable = reusable_engine(None);
+        for vector in vectors.as_array().unwrap() {
+            let request = || MermanOperationRequestV4 {
+                operation_id: "describe-theme-support-json".to_owned(),
+                source: vector["query"].to_string(),
+                uri: None,
+                options_json: None,
+                control: None,
+            };
+            for response in [api.execute(request()), reusable.execute(request())] {
+                let response = response.expect("support query succeeds even when unverified");
+                assert_eq!(response.operation_id, "describe-theme-support-json");
+                assert_eq!(response.media_type, "application/json");
+                let actual: Value = serde_json::from_slice(&response.data).unwrap();
+                assert_eq!(actual, vector["expected"], "{}", vector["id"]);
+            }
+        }
+    }
+
     #[test]
     fn operation_control_can_be_cancelled_from_another_thread() {
         let control = MermanOperationControl::new(None);

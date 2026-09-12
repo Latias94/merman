@@ -677,6 +677,29 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_support_matches_shared_golden() {
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+        ))
+        .unwrap();
+        for vector in vectors.as_array().unwrap() {
+            let payload: Value = serde_json::from_slice(&theme_operation_json(
+                b"describe-theme-support-json",
+                vector["query"].to_string().as_bytes(),
+                b"",
+            ))
+            .unwrap();
+            assert_success_envelope(&payload, "describe-theme-support-json");
+            assert_eq!(
+                payload["data"]["result"], vector["expected"],
+                "{}",
+                vector["id"]
+            );
+        }
+    }
+
     #[test]
     fn typst_transport_keeps_a_fixed_constrained_resource_policy() {
         let options = typst_options_json(b"").expect("default Typst options");

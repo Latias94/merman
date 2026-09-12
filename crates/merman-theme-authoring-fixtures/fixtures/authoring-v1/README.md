@@ -20,3 +20,12 @@ Typst plugin JSON entry point, installed Node package smoke, installed Python wh
 and real Web/WASM package smoke. A test implementation or configured CI step is not evidence
 that every final package or host has been executed. These vectors do not qualify artifact
 profiles, admission states, public catalog cells, or the C7a release candidate.
+
+`support.json` pins complete successful `describe-theme-support-json` responses to the reviewed
+support-claim revision. It covers V1/V2 rules, base typography, ordinal palettes, unsupported
+routes, ASCII applicability, unqualified browser/native outputs, and unknown identifiers. Compare
+all fields, including the echoed query, claim revision, and ordered reason IDs. An Unverified or
+Unsupported descriptor is a successful query, not a transport error. Review semantic changes
+against the renderer-owned support manifest before updating these independent expectations.
+Stale installed artifacts must be rebuilt; do not drop the revision assertion to accept them.
+These static upper bounds do not certify actual document admission or qualify output artifacts.

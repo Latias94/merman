@@ -111,8 +111,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     rule_override_checks: 0,
     cold_spec_checks: 0,
     preset_export_checks: 0,
-    unsupported_queries: 0,
-    base_typography_queries: 0,
+    support_queries: 0,
     authoring_diagnostics: 0,
     resource_limit_checks: 0,
     json_operations: 0,
@@ -218,32 +217,20 @@ export async function runThemeAuthoringSmoke(module, engine) {
       counts.preset_export_checks += 1;
     }
 
-    const query = {
-      schema_version: 1, family: "er", output: "standalone-svg", target: "title", facet: "fill",
-    };
-    const support = await executeJson(engine, "describe-theme-support-json", JSON.stringify(query));
-    assert.deepEqual(support.query, query);
-    assert.equal(support.state, "unsupported");
-    assert.ok(Array.isArray(support.reason_ids) && support.reason_ids.length > 0);
-    assert.ok(support.reason_ids.every((reason) => typeof reason === "string" && reason.length > 0));
-    counts.unsupported_queries += 1;
-
-    const v2Query = {
-      schema_version: 2,
-      family: "flowchart",
-      output: "standalone-svg",
-      subject: { kind: "base-typography", property: "font-size" },
-    };
-    const v2Support = await executeJson(
-      engine,
-      "describe-theme-support-json",
-      JSON.stringify(v2Query),
-    );
-    assert.equal(v2Support.schema_version, 2);
-    assert.deepEqual(v2Support.query, v2Query);
-    assert.equal(v2Support.state, "conditional");
-    assert.ok(v2Support.reason_ids.includes("theme-support.family-owned-consumer-present"));
-    counts.base_typography_queries += 1;
+    const supportVectors = JSON.parse(await readFile(new URL("support.json", FIXTURES), "utf8"));
+    for (const vector of supportVectors) {
+      const request = {
+        operationId: "describe-theme-support-json", source: JSON.stringify(vector.query),
+      };
+      for (const response of [
+        await engine.executeOperation(request), engine.executeOperationSync(request),
+      ]) {
+        assert.equal(response.operation_id, request.operationId);
+        assert.equal(response.media_type, "application/json");
+        assert.deepEqual(JSON.parse(response.data), vector.expected, vector.id);
+        counts.support_queries += 1;
+      }
+    }
 
     const errorVectors = JSON.parse(await readFile(new URL("errors.json", FIXTURES), "utf8"));
     for (const vector of errorVectors) {

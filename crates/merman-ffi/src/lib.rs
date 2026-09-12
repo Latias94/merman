@@ -2785,6 +2785,48 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_support_matches_shared_golden() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+        ))
+        .unwrap();
+        let api = api_table();
+        let mut result = native_result();
+        let mut engine = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        for vector in vectors.as_array().unwrap() {
+            let source = vector["query"].to_string();
+            let request = native_request(
+                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
+                source.as_bytes(),
+            );
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+                MERMAN_NATIVE_STATUS_OK
+            );
+            assert_eq!(
+                result.operation,
+                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON
+            );
+            let actual: serde_json::Value = serde_json::from_slice(unsafe {
+                std::slice::from_raw_parts(result.data.data, result.data.len)
+            })
+            .unwrap();
+            assert_eq!(actual, vector["expected"], "{}", vector["id"]);
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
     fn native_config() -> MermanNativeEngineConfig {
         MermanNativeEngineConfig {
             struct_size: native_struct_size::<MermanNativeEngineConfig>(),

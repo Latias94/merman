@@ -1,0 +1,247 @@
+[
+  {
+    "id": "unsupported-rule-v1",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "standalone-svg",
+      "target": "title",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "standalone-svg",
+        "target": "title",
+        "facet": "fill"
+      },
+      "state": "unsupported",
+      "reason_ids": [
+        "theme-support.no-supported-route"
+      ]
+    }
+  },
+  {
+    "id": "unsupported-rule-v2",
+    "query": {
+      "schema_version": 2,
+      "family": "er",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "rule",
+        "target": "title",
+        "facet": "fill"
+      }
+    },
+    "expected": {
+      "schema_version": 2,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 2,
+        "family": "er",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "rule",
+          "target": "title",
+          "facet": "fill"
+        }
+      },
+      "state": "unsupported",
+      "reason_ids": [
+        "theme-support.no-supported-route"
+      ]
+    }
+  },
+  {
+    "id": "base-font-size",
+    "query": {
+      "schema_version": 2,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "base-typography",
+        "property": "font-size"
+      }
+    },
+    "expected": {
+      "schema_version": 2,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 2,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "base-typography",
+          "property": "font-size"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.document-surface-dependent"
+      ]
+    }
+  },
+  {
+    "id": "ordinal-palette",
+    "query": {
+      "schema_version": 2,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "ordinal-palette",
+        "target": "node"
+      }
+    },
+    "expected": {
+      "schema_version": 2,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 2,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "ordinal-palette",
+          "target": "node"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.document-surface-dependent"
+      ]
+    }
+  },
+  {
+    "id": "ascii-has-no-visual-theme",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "ascii",
+      "target": "title",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "ascii",
+        "target": "title",
+        "facet": "fill"
+      },
+      "state": "not-applicable",
+      "reason_ids": [
+        "theme-support.visual-theme-not-applicable-to-output"
+      ]
+    }
+  },
+  {
+    "id": "browser-is-unverified",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "browser-svg",
+      "target": "title",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "browser-svg",
+        "target": "title",
+        "facet": "fill"
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.terminal-qualification-incomplete"
+      ]
+    }
+  },
+  {
+    "id": "png-is-not-renderer-qualified",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "png",
+      "target": "title",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "png",
+        "target": "title",
+        "facet": "fill"
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.output-qualification-not-owned-by-renderer"
+      ]
+    }
+  },
+  {
+    "id": "unknown-family",
+    "query": {
+      "schema_version": 1,
+      "family": "future-family",
+      "output": "standalone-svg",
+      "target": "title",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 1,
+        "family": "future-family",
+        "output": "standalone-svg",
+        "target": "title",
+        "facet": "fill"
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.unknown-family"
+      ]
+    }
+  },
+  {
+    "id": "unknown-base-property",
+    "query": {
+      "schema_version": 2,
+      "family": "flowchart",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "base-typography",
+        "property": "future-property"
+      }
+    },
+    "expected": {
+      "schema_version": 2,
+      "claim_revision": 79,
+      "query": {
+        "schema_version": 2,
+        "family": "flowchart",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "base-typography",
+          "property": "future-property"
+        }
+      },
+      "state": "unverified",
+      "reason_ids": [
+        "theme-support.unknown-base-typography-property"
+      ]
+    }
+  }
+]

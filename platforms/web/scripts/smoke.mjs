@@ -442,19 +442,14 @@ if (hasCapability("svg")) {
     }
   }
 
-  const supportQuery = {
-    schema_version: 2,
-    family: "sequence",
-    output: "standalone-svg",
-    subject: { kind: "base-typography", property: "font-stack" },
-  };
-  const support = api.describeThemeSupport(supportQuery);
-  assert.equal(support.schema_version, 2);
-  assert.equal(support.query.family, "sequence");
-  assert.deepEqual(
-    exportedWasmModule.describeThemeSupport(JSON.stringify(supportQuery)),
-    support,
-  );
+  const supportVectors = JSON.parse(await readFile(path.join(
+    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json",
+  ), "utf8"));
+  for (const vector of supportVectors) {
+    assert.deepEqual(api.describeThemeSupport(vector.query), vector.expected, vector.id);
+    assert.deepEqual(exportedWasmModule.describeThemeSupport(JSON.stringify(vector.query)),
+      vector.expected, vector.id);
+  }
 
   const presetExport = api.exportThemePreset("editor-light");
   assert.equal(presetExport.kind, "complete_spec");

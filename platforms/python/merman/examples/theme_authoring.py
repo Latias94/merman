@@ -1,5 +1,7 @@
 """Exercise shared theme JSON through an installed, generated UniFFI consumer."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -187,13 +189,13 @@ def run_theme_authoring_smoke() -> None:
             }))
             require(from_preset == from_export, f"{preset} export changed the rendered recipe")
 
-        query = {"schema_version": 1, "family": "er", "output": "standalone-svg",
-                 "target": "title", "facet": "fill"}
-        for client in (api, engine):
-            support = execute_json(client, "describe-theme-support-json", json.dumps(query))
-            require(support["query"] == query and support["state"] == "unsupported"
-                    and bool(support["reason_ids"]),
-                    "unsupported ER title paint must remain explainable")
+        support_vectors = json.loads((FIXTURES / "support.json").read_text(encoding="utf-8"))
+        for vector in support_vectors:
+            for client in (api, engine):
+                support = execute_json(client, "describe-theme-support-json",
+                                       json.dumps(vector["query"]))
+                require(support == vector["expected"],
+                        f"{vector['id']} support descriptor differs from shared golden")
         print("Python theme authoring passed: shared vectors, three families, isolation, "
               "rule, cold start, preset export, discovery")
     finally:
