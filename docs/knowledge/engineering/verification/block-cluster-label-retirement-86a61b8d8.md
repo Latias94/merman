@@ -72,7 +72,14 @@ not guard the unrelated Class configuration assignment, which is now retained.
 The corrected implementation passed 3,844 Release renderer tests (four skipped),
 including the Class effective-configuration guard, and 138 private acceptance
 tests including the five-theme native matrix. The complete SVG structure comparison
-and formatting checks also passed. Clean-checkout verification remains to be
-recorded against the corrected implementation commit. This slice does
+and formatting checks also passed.
+
+A clean detached checkout of corrected implementation
+`5e90b8940bdc14cba449d3045f420654839d4391` passed 89 focused renderer tests
+(Block, support discovery, and the Class assignment guard; 2,487 tests excluded
+by the filter), followed by the complete private acceptance suite: 138 passed,
+none skipped. The checkout remained clean. Both runs used the pinned toolchain,
+two build jobs and the shared target with affected crate roots invalidated before
+the checkout build. No Web artifact rebuild was performed for this slice. This slice does
 not close C7a or establish fresh Web artifact qualification; the previous five-profile
 Web size-budget failure remains unclosed.
