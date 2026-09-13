@@ -176,6 +176,12 @@ else Secondary path
 Bob-->>Alice: Pong
 end
 "#;
+const XYCHART_TITLE_SOURCE: &str = r#"xychart-beta
+ title Cutover xychart title
+ x-axis [A, B]
+ y-axis 0 --> 10
+ bar [3, 7]
+"#;
 const TREEMAP_TITLE_SOURCE: &str = r#"treemap
 title Cutover treemap title
 "Section"
@@ -623,6 +629,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop | ThemeTarget::LoopLabel, _) => {
             Ok(SEQUENCE_LOOP_SOURCE)
+        }
+        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(XYCHART_TITLE_SOURCE)
         }
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(TREEMAP_TITLE_SOURCE)
@@ -1379,6 +1388,7 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             "edgeLabelBackground": "#ECECFF"
         }),
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text)
+        | (DiagramFamilyId::XY_CHART, ThemeTarget::Title)
         | (
             DiagramFamilyId::QUADRANT_CHART,
             ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
@@ -2242,11 +2252,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_432_routes_and_638_artifact_witnesses() {
+    fn route_inventory_retains_436_routes_and_642_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 432);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 638);
+        assert_eq!(inventory.len(), 436);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 642);
     }
 
     #[test]

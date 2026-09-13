@@ -387,6 +387,9 @@ fn legacy_bridge_projections(
     selector: ThemeRouteCutoverSelector,
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
+        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT)
+        }
         (
             DiagramFamilyId::QUADRANT_CHART,
             ThemeTarget::Text | ThemeTarget::Title,
@@ -2109,8 +2112,10 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::QUADRANT_CHART
-        && target == ThemeTarget::Title
+    if matches!(
+        family,
+        DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::XY_CHART
+    ) && target == ThemeTarget::Title
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -7100,6 +7105,20 @@ mod tests {
                 vec!["text.fill"],
             ),
             (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
                 DiagramFamilyId::ZENUML,
                 ThemeTarget::Title,
                 Fill,
@@ -7138,7 +7157,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 216);
+        assert_eq!(qualified.len(), 218);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7778,7 +7797,7 @@ mod tests {
             [
                 (DiagramFamilyId::BLOCK, 36),
                 (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::XY_CHART, 16),
+                (DiagramFamilyId::XY_CHART, 12),
             ]
             .into_iter()
             .collect(),

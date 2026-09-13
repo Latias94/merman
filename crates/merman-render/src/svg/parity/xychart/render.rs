@@ -84,6 +84,7 @@ struct Node {
     text: Option<String>,
     children: Vec<usize>,
     series_terminal: Option<SeriesTerminal>,
+    title_terminal: bool,
 }
 
 impl Node {
@@ -124,6 +125,7 @@ fn node(tag: &'static str) -> Node {
         text: None,
         children: Vec::with_capacity(2),
         series_terminal: None,
+        title_terminal: false,
     }
 }
 
@@ -179,6 +181,7 @@ pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
     series_paint: &crate::xychart::XyChartSeriesPaintPlan,
+    title_theme: &crate::xychart::XyChartTitleThemePlan,
     typography_theme: &crate::xychart::XyChartTypographyThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
@@ -273,6 +276,7 @@ pub(crate) fn render_xychart_diagram_svg(
         None
     };
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
+    let mut title_receipt = title_theme.begin_terminal_receipt(escape_xml);
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
@@ -510,6 +514,7 @@ pub(crate) fn render_xychart_diagram_svg(
                         ),
                     );
                     n.text = Some(escape_xml(&t.text));
+                    n.title_terminal = group_texts.len() == 1 && group_texts[0] == "chart-title";
                     n.series_terminal =
                         line_label_plot_index.map(|plot| SeriesTerminal::LineLabel {
                             plot,
@@ -542,6 +547,18 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     render_node(&mut out, &arena, 0, &mut |emitted| {
+        if emitted.title_terminal
+            && let Some(receipt) = title_receipt.as_mut()
+        {
+            receipt.record_text(
+                emitted.text.as_deref(),
+                emitted
+                    .attrs
+                    .iter()
+                    .find(|(key, _)| *key == "fill")
+                    .map(|(_, value)| value.as_str()),
+            );
+        }
         if emitted.tag == "text"
             && emitted.text.as_deref().is_some_and(|text| !text.is_empty())
             && let Some(receipt) = typography_receipt.as_mut()
@@ -558,6 +575,11 @@ pub(crate) fn render_xychart_diagram_svg(
     if series_paint_receipt.is_some_and(|receipt| !series_paint.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "XY Chart series paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if title_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "XY Chart title paint receipt did not match the terminal SVG".to_string(),
         });
     }
     if let Some(receipt) = typography_receipt {
@@ -672,6 +694,117 @@ mod tests {
             let mut observed = 0;
             assert!(render_node(&mut out, &arena, 0, &mut |_| observed += 1).is_err());
             assert_eq!(observed, 0, "partial node after {allowed_writes} writes");
+        }
+    }
+
+    #[test]
+    fn xychart_title_receipt_binds_owner_and_exactly_one_written_title() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch, ThemeTarget,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let theme = theme.resolve(crate::DiagramFamilyId::XY_CHART);
+        let prepare = || {
+            let mut layout: crate::model::XyChartDiagramLayout =
+                serde_json::from_value(serde_json::json!({
+                    "width": 700.0, "height": 500.0, "chartOrientation": "vertical",
+                    "showDataLabel": false, "showDataLabelOutsideBar": false, "labelData": [], "backgroundColor": "white",
+                    "drawables": []
+                }))
+                .unwrap();
+            layout
+                .drawables
+                .push(crate::model::XyChartDrawableElem::Text {
+                    group_texts: vec!["chart-title".into()],
+                    data: vec![crate::model::XyChartTextData {
+                        text: "A & B".into(),
+                        x: 0.0,
+                        y: 0.0,
+                        fill: "black".into(),
+                        font_size: 20.0,
+                        rotation: 0.0,
+                        vertical_pos: "middle".into(),
+                        horizontal_pos: "center".into(),
+                    }],
+                });
+            crate::xychart::XyChartTitleThemePlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::default(),
+                &mut layout,
+                &crate::resources::OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::interactive(),
+                ),
+            )
+            .unwrap()
+        };
+        for mutation in [
+            "none",
+            "detached",
+            "missing-fill",
+            "wrong-text",
+            "repeated",
+            "wrong-role",
+            "unwritten",
+            "foreign",
+        ] {
+            let plan = prepare();
+            let foreign = prepare();
+            let mut receipt = if mutation == "foreign" {
+                &foreign
+            } else {
+                &plan
+            }
+            .begin_terminal_receipt(escape_xml)
+            .unwrap();
+            let mut arena = vec![node("g")];
+            let mut title = node("text");
+            title.attr("fill", "#123456");
+            title.text = Some(escape_xml("A & B"));
+            title.title_terminal = true;
+            let id = push_child(&mut arena, 0, title);
+            match mutation {
+                "detached" => arena[0].children.clear(),
+                "missing-fill" => arena[id].attrs.clear(),
+                "wrong-text" => arena[id].text = Some("Other".into()),
+                "repeated" => arena[0].children.push(id),
+                "wrong-role" => arena[id].title_terminal = false,
+                _ => {}
+            }
+            if mutation != "unwritten" {
+                render_node(&mut String::new(), &arena, 0, &mut |emitted| {
+                    if emitted.title_terminal {
+                        receipt.record_text(
+                            emitted.text.as_deref(),
+                            emitted
+                                .attrs
+                                .iter()
+                                .find(|(key, _)| *key == "fill")
+                                .map(|(_, value)| value.as_str()),
+                        );
+                    }
+                })
+                .unwrap();
+            }
+            assert_eq!(
+                plan.record_terminal(receipt),
+                mutation == "none",
+                "{mutation}"
+            );
+            assert_eq!(
+                plan.finish_evidence().applied().len(),
+                usize::from(mutation == "none")
+            );
         }
     }
 

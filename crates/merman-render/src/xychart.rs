@@ -14,7 +14,8 @@ use std::fmt::Write as _;
 mod theme;
 
 pub(crate) use theme::{
-    XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt, XyChartTypographyThemePlan,
+    XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt, XyChartTitleThemePlan,
+    XyChartTypographyThemePlan,
 };
 
 #[derive(Debug, Clone)]

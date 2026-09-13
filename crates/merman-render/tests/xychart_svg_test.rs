@@ -843,3 +843,190 @@ fn xychart_mixed_base_typography_fails_closed() {
     );
     assert_eq!(error.incomplete_family_theme(), None);
 }
+
+#[test]
+fn xychart_title_fill_is_portable_and_reaches_the_final_text() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch, ThemeVariant};
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, expected) in [
+            (CanvasPaint::solid("#c12345").unwrap(), "#c12345"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(paint),
+            )
+            .for_family(DiagramFamilyId::XY_CHART);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let rendered = render_xychart_with_theme_and_engine(
+                "xychart-beta\ntitle Revenue\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]\n",
+                &theme,
+                Engine::new(),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = xychart_plot_group(&document, "chart-title")
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(title.attribute("fill"), Some(expected));
+            assert_eq!(title.text(), Some("Revenue"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+fn xychart_title_rules(
+    rules: impl IntoIterator<Item = merman_render::diagram_theme::ThemeRule>,
+) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                rules
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |styles, rule| {
+                        styles.with_rule(rule.for_family(DiagramFamilyId::XY_CHART))
+                    }),
+            ),
+        )
+        .unwrap()
+}
+
+#[test]
+fn xychart_title_absence_and_configuration_release_only_the_fill_obligation() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+    let theme = xychart_title_rules([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c12345").unwrap()),
+    )]);
+    for (source, config, expected_title) in [
+        (
+            "xychart-beta\nx-axis [A, B]\nbar [3, 7]\n",
+            serde_json::json!({}),
+            None,
+        ),
+        (
+            "xychart-beta\ntitle Revenue\nx-axis [A, B]\nbar [3, 7]\n",
+            serde_json::json!({"xyChart":{"showTitle":false}}),
+            None,
+        ),
+        (
+            "xychart-beta\ntitle Revenue\nx-axis [A, B]\nbar [3, 7]\n",
+            serde_json::json!({"themeVariables":{"xyChart":{"titleColor":"#abcdef"}}}),
+            Some("#abcdef"),
+        ),
+    ] {
+        let rendered = render_xychart_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        );
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = doc
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("chart-title"));
+        assert_eq!(
+            title
+                .and_then(|node| node.children().find(|node| node.has_tag_name("text")))
+                .and_then(|node| node.attribute("fill")),
+            expected_title
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_title_overridden_rules_are_not_applicable_and_mixed_winners_remain_residual() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, OrdinalSelector, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let source = "xychart-beta\ntitle Revenue\nx-axis [A, B]\nbar [3, 7]\n";
+    let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c12345").unwrap());
+    let theme = xychart_title_rules([
+        ThemeRule::new(ThemeTarget::Title, fill()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        ),
+    ]);
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    for rule in [
+        ThemeRule::new(
+            ThemeTarget::Title,
+            fill().with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+        ),
+        ThemeRule::new(ThemeTarget::Title, fill()).with_ordinal(OrdinalSelector::Exact(1)),
+    ] {
+        let theme = xychart_title_rules([rule]);
+        let result = try_render_xychart_with_theme(
+            source,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "title-residual",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported winning facet must prevent portable rendering"
+        );
+    }
+}
+
+#[test]
+fn xychart_title_preserves_generic_text_author_order() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+    for title_last in [false, true] {
+        let title = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c12345").unwrap()),
+        );
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        );
+        let theme = xychart_title_rules(if title_last {
+            [text, title]
+        } else {
+            [title, text]
+        });
+        let (_, rendered) = try_render_xychart_with_theme(
+            "xychart-beta\ntitle Revenue\nx-axis [A, B]\nbar [3, 7]\n",
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic(),
+            "title-fallback",
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = xychart_plot_group(&doc, "chart-title")
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(
+            title.attribute("fill"),
+            Some(if title_last { "#c12345" } else { "#abcdef" })
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(title_last));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
+    }
+}

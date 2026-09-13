@@ -2103,14 +2103,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 78);
+        assert_eq!(status.matrix_route_count(), 74);
         assert_eq!(status.matrix_family_count(), 3);
         assert_eq!(status.dispatched_family_count(), 3);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                173, 219, 53, 229, 28, 214, 49, 89, 43, 196, 82, 243, 61, 158, 26, 156, 149, 101,
-                58, 100, 217, 68, 103, 200, 11, 132, 138, 206, 67, 98, 5, 30
+                73, 76, 30, 23, 203, 191, 101, 36, 47, 127, 186, 169, 17, 148, 160, 246, 255, 153,
+                156, 58, 17, 85, 116, 229, 225, 251, 229, 202, 125, 242, 20, 95
             ]
         );
         assert_eq!(
@@ -5083,9 +5083,10 @@ gitGraph
                     assert!(quadrant.overlay.is_empty());
                     assert!(quadrant.contribution_ids.is_empty());
                     let xy = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
-                    assert!(
-                        !xy.overlay.is_empty(),
-                        "XY still owns its legacy {target:?} projections"
+                    assert_eq!(
+                        xy.overlay.is_empty(),
+                        target == ThemeTarget::Title,
+                        "XY retains only Text and Axis projections in this tranche"
                     );
                 }
             }
