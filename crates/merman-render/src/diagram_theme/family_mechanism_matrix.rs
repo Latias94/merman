@@ -990,15 +990,32 @@ fn classify_ordinal_palette(
     family: DiagramFamilyId,
     target: ThemeTarget,
 ) -> FamilyThemeDisposition {
-    if family == DiagramFamilyId::STATE
-        || (matches!(
-            family,
-            DiagramFamilyId::FLOWCHART
-                | DiagramFamilyId::SWIMLANE
-                | DiagramFamilyId::MINDMAP
-                | DiagramFamilyId::GIT_GRAPH
-                | DiagramFamilyId::SANKEY
-        ) && target == ThemeTarget::Node)
+    if family == DiagramFamilyId::STATE {
+        return if matches!(
+            target,
+            ThemeTarget::State
+                | ThemeTarget::StateLabel
+                | ThemeTarget::Transition
+                | ThemeTarget::TransitionLabel
+                | ThemeTarget::Composite
+                | ThemeTarget::CompositeLabel
+                | ThemeTarget::SpecialState
+                | ThemeTarget::Note
+                | ThemeTarget::NoteLabel
+        ) {
+            FamilyThemeDisposition::TypedAdapter
+        } else {
+            FamilyThemeDisposition::Unsupported
+        };
+    }
+    if (matches!(
+        family,
+        DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::SANKEY
+    ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
         || (family == DiagramFamilyId::JOURNEY && target == ThemeTarget::JourneyTask)
@@ -1023,21 +1040,6 @@ pub(super) fn summarize_theme_support(
     facet: ThemeSupportFacetV1,
 ) -> FamilyThemeSupportSummary {
     let mut summary = FamilyThemeSupportSummary::default();
-    if family == DiagramFamilyId::STATE {
-        match crate::state::static_theme_support(target, facet) {
-            crate::state::StateStaticThemeSupport::Partial => {
-                summary.record(FamilyThemeDisposition::TypedAdapter);
-                summary.record(FamilyThemeDisposition::Unsupported);
-            }
-            crate::state::StateStaticThemeSupport::SurfaceDependent => {
-                summary.record(FamilyThemeDisposition::TypedAdapter);
-            }
-            crate::state::StateStaticThemeSupport::Unsupported => {
-                summary.record(FamilyThemeDisposition::Unsupported);
-            }
-        }
-        return summary;
-    }
     let rule_facet = match facet {
         ThemeSupportFacetV1::OrdinalPalette => {
             summary.record(classify_ordinal_palette(family, target));
@@ -1048,7 +1050,7 @@ pub(super) fn summarize_theme_support(
     };
 
     let effect_binding =
-        (rule_facet == ThemeRuleFacetV1::Effect).then(|| classify_effect_binding(family));
+        (rule_facet == ThemeRuleFacetV1::Effect).then(|| classify_effect_binding(family, target));
     for_each_matrix_selector(|selector| {
         for_each_public_rule_facet(rule_facet, |matrix_facet| {
             let mut disposition = classify_rule_facet(family, target, selector, matrix_facet);
@@ -1061,6 +1063,11 @@ pub(super) fn summarize_theme_support(
             summary.record(disposition);
         });
     });
+    if family == DiagramFamilyId::STATE {
+        // Paint already accounts for unsupported value kinds. Other facets do not encode Clear
+        // or exact terminal-surface admission, so State's typed routes still have a partial domain.
+        summary.record(FamilyThemeDisposition::Unsupported);
+    }
     summary
 }
 
@@ -1212,12 +1219,12 @@ pub(super) fn compile_effect_binding_route(
             binding_index,
             target,
         },
-        classify_effect_binding(family),
+        classify_effect_binding(family, target),
     )
 }
 
-fn classify_effect_binding(family: DiagramFamilyId) -> FamilyThemeDisposition {
-    if family == DiagramFamilyId::STATE {
+fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::STATE && target == ThemeTarget::State {
         FamilyThemeDisposition::TypedAdapter
     } else {
         FamilyThemeDisposition::Unsupported
@@ -1411,6 +1418,73 @@ fn legacy_paint_route_without_writer_consumer(
     }
 }
 
+/// State's possible terminal consumers, before source ownership and value-dependent admission.
+fn classify_state_rule_facet(
+    target: ThemeTarget,
+    facet: FamilyThemeRuleFacet,
+) -> FamilyThemeDisposition {
+    let text_surface = matches!(
+        target,
+        ThemeTarget::Text
+            | ThemeTarget::Title
+            | ThemeTarget::StateLabel
+            | ThemeTarget::TransitionLabel
+            | ThemeTarget::CompositeLabel
+            | ThemeTarget::NoteLabel
+    );
+    let shape_surface = matches!(
+        target,
+        ThemeTarget::State
+            | ThemeTarget::Transition
+            | ThemeTarget::TransitionMarker
+            | ThemeTarget::TransitionLabelBackground
+            | ThemeTarget::Composite
+            | ThemeTarget::CompositeHeader
+            | ThemeTarget::SpecialState
+            | ThemeTarget::SpecialStateInner
+            | ThemeTarget::Note
+    );
+    let supported = match facet {
+        FamilyThemeRuleFacet::Fill(
+            FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent,
+        ) => text_surface || shape_surface,
+        FamilyThemeRuleFacet::Stroke(
+            FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent,
+        ) => shape_surface,
+        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_) => false,
+        FamilyThemeRuleFacet::StrokeWidth
+        | FamilyThemeRuleFacet::StrokeDasharray
+        | FamilyThemeRuleFacet::StrokeLinecap
+        | FamilyThemeRuleFacet::StrokeLinejoin
+        | FamilyThemeRuleFacet::Opacity
+        | FamilyThemeRuleFacet::FillOpacity
+        | FamilyThemeRuleFacet::StrokeOpacity => shape_surface,
+        FamilyThemeRuleFacet::Radius | FamilyThemeRuleFacet::Padding => matches!(
+            target,
+            ThemeTarget::State | ThemeTarget::Composite | ThemeTarget::Note
+        ),
+        FamilyThemeRuleFacet::Typography(property) => {
+            text_surface
+                && classify_base_typography(DiagramFamilyId::STATE, property)
+                    == FamilyThemeDisposition::TypedAdapter
+        }
+        // Clear suppresses a target binding on all node surfaces. A non-clear graph is admitted
+        // only for a classic State rectangle; the terminal adapter retains that distinction.
+        FamilyThemeRuleFacet::Effect => matches!(
+            target,
+            ThemeTarget::State
+                | ThemeTarget::Composite
+                | ThemeTarget::SpecialState
+                | ThemeTarget::Note
+        ),
+    };
+    if supported {
+        FamilyThemeDisposition::TypedAdapter
+    } else {
+        FamilyThemeDisposition::Unsupported
+    }
+}
+
 pub(super) fn classify_rule_facet(
     family: DiagramFamilyId,
     target: ThemeTarget,
@@ -1418,7 +1492,7 @@ pub(super) fn classify_rule_facet(
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
     if family == DiagramFamilyId::STATE {
-        return FamilyThemeDisposition::TypedAdapter;
+        return classify_state_rule_facet(target, facet);
     }
     if family == DiagramFamilyId::PACKET
         && matches!(
@@ -4946,7 +5020,7 @@ mod tests {
     }
 
     #[test]
-    fn state_owns_every_applicable_rule_facet() {
+    fn state_splits_unsupported_clear_paint_from_supported_geometry() {
         let rule = ThemeRule::new(
             ThemeTarget::State,
             ThemeStylePatch {
@@ -4961,11 +5035,106 @@ mod tests {
             },
         );
 
-        assert!(
-            compile_rule_routes(DiagramFamilyId::STATE, 0, &rule)
-                .iter()
-                .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+        let routes = compile_rule_routes(DiagramFamilyId::STATE, 0, &rule);
+        assert_eq!(routes.len(), 2);
+        let dispositions = routes
+            .iter()
+            .map(|route| {
+                let FamilyThemeMechanism::RuleFacet { facet, .. } = route.mechanism() else {
+                    panic!("expected a State rule facet");
+                };
+                (facet, route.disposition())
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            dispositions,
+            std::collections::BTreeMap::from([
+                (
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear),
+                    FamilyThemeDisposition::Unsupported,
+                ),
+                (
+                    FamilyThemeRuleFacet::Radius,
+                    FamilyThemeDisposition::TypedAdapter
+                ),
+            ]),
         );
+    }
+
+    #[test]
+    fn state_routes_reject_mechanisms_without_a_terminal_consumer() {
+        use FamilyThemeDisposition::{TypedAdapter, Unsupported};
+        use FamilyThemePaintKind::{Clear, LinearGradient, Solid};
+        use FamilyThemeRuleFacet::{Effect, Fill, Padding, Stroke, StrokeWidth, Typography};
+
+        for (target, facet, expected) in [
+            (ThemeTarget::State, Fill(Solid), TypedAdapter),
+            (ThemeTarget::State, Fill(Clear), Unsupported),
+            (ThemeTarget::StateLabel, Fill(LinearGradient), Unsupported),
+            (ThemeTarget::StateLabel, Stroke(Solid), Unsupported),
+            (ThemeTarget::StateLabel, StrokeWidth, Unsupported),
+            (ThemeTarget::Transition, Padding, Unsupported),
+            (ThemeTarget::Note, Padding, TypedAdapter),
+            (ThemeTarget::State, Effect, TypedAdapter),
+            (ThemeTarget::Note, Effect, TypedAdapter),
+            (ThemeTarget::Composite, Effect, TypedAdapter),
+            (ThemeTarget::SpecialState, Effect, TypedAdapter),
+            (ThemeTarget::StateLabel, Effect, Unsupported),
+            (
+                ThemeTarget::State,
+                Typography(ThemeTypographyProperty::FontStack),
+                Unsupported,
+            ),
+            (
+                ThemeTarget::StateLabel,
+                Typography(ThemeTypographyProperty::FontStack),
+                TypedAdapter,
+            ),
+            (
+                ThemeTarget::StateLabel,
+                Typography(ThemeTypographyProperty::LineHeight),
+                Unsupported,
+            ),
+        ] {
+            for_each_matrix_selector(|selector| {
+                assert_eq!(
+                    classify_rule_facet(DiagramFamilyId::STATE, target, selector, facet),
+                    expected,
+                    "{target:?} {selector:?} {facet:?}",
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn state_palette_and_effect_bindings_require_their_actual_target_domains() {
+        use FamilyThemeDisposition::{TypedAdapter, Unsupported};
+
+        for (target, expected) in [
+            (ThemeTarget::StateLabel, TypedAdapter),
+            (ThemeTarget::Transition, TypedAdapter),
+            (ThemeTarget::Title, Unsupported),
+            (ThemeTarget::CompositeHeader, Unsupported),
+            (ThemeTarget::TransitionMarker, Unsupported),
+        ] {
+            assert_eq!(
+                compile_ordinal_palette_route(DiagramFamilyId::STATE, target).disposition(),
+                expected,
+                "palette {target:?}",
+            );
+        }
+        for (target, expected) in [
+            (ThemeTarget::State, TypedAdapter),
+            (ThemeTarget::StateLabel, Unsupported),
+            (ThemeTarget::Composite, Unsupported),
+            (ThemeTarget::Note, Unsupported),
+        ] {
+            assert_eq!(
+                compile_effect_binding_route(DiagramFamilyId::STATE, 0, target).disposition(),
+                expected,
+                "effect {target:?}",
+            );
+        }
     }
 
     #[test]

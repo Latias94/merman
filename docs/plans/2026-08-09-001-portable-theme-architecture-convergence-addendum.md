@@ -1388,6 +1388,13 @@ and public theme scope from the independent renderer taxonomy before adding face
   Terminal bridge-route deletion requires exact private C6 route authorization; full native
   contract eligibility remains the separate 18-cell C6a responsibility.
 
+Current-source State reconciliation (2026-09-13) removes the separate coarse support table and
+classifies rules, palettes, and bindings from their possible terminal consumers. The existing
+Composite/Note/SpecialState effect-Clear consumer is retained, and public revision-85 claims stay
+unchanged. See the [State classification record](../knowledge/engineering/verification/2026-09-13-state-mechanism-classification.md)
+for the 882-test owner scope, default-output gate, and exact boundaries. The full C5 closure audit
+and C7a delivery gates remain open.
+
 ### C6a. Complete The Native Contract-Eligibility Slices
 
 - **Covers:** The native portions of R16a, R17-R24, R29-R32, R38-R41, and R44-R49.

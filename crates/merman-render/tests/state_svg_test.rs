@@ -6,9 +6,9 @@ use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
     EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontAssetSpec, FontCatalogSpec,
     FontEmbeddingRequirement, FontStack, GenericFontFamily, OrdinalSelector, Specified,
-    TextStylePatch, ThemeAssets, ThemeColorValue, ThemeGeometryPatch, ThemePortabilityRequirement,
-    ThemeResourceLimitId, ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    TextStylePatch, ThemeAssets, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
+    ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -556,6 +556,82 @@ fn render_strict_state_svg_with_theme_and_config(
         residual: evidence.theme_residual_count(),
     };
     (svg, counts)
+}
+
+#[test]
+fn state_effect_clear_suppresses_bindings_on_non_filter_node_surfaces() {
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (target, source) in [
+        (
+            ThemeTarget::Note,
+            "stateDiagram-v2\nstate Ready\nnote right of Ready: Details\n",
+        ),
+        (
+            ThemeTarget::Composite,
+            "stateDiagram-v2\nstate Group {\nstate Inner\n}\n",
+        ),
+        (
+            ThemeTarget::SpecialState,
+            "stateDiagram-v2\n[*] --> Ready\n",
+        ),
+    ] {
+        let graph = EffectGraph::new(
+            "shadow",
+            [EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 2.0,
+                offset_y: 2.0,
+                blur_radius: 0.0,
+                spread: 0.0,
+                color: ThemeColorValue::parse("#111827").unwrap(),
+            }],
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(graph)
+                            .unwrap()
+                            .with_binding(EffectBinding::new(target, "shadow").unwrap())
+                            .unwrap(),
+                    )
+                    .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        target,
+                        ThemeStylePatch {
+                            effects: ThemeEffectPatch {
+                                effect: Specified::Clear,
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ))),
+            )
+            .unwrap();
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            source,
+            serde_json::json!({}),
+            "site",
+        );
+        let (baseline, _) = render_strict_state_svg_with_theme_and_config(
+            &empty_theme,
+            source,
+            serde_json::json!({}),
+            "site",
+        );
+        assert_eq!(
+            svg, baseline,
+            "{target:?} Clear must preserve the unmodified SVG"
+        );
+        assert_eq!(evidence.required, 2, "{target:?}");
+        assert_eq!(evidence.accounted, 2, "{target:?}");
+        assert_eq!(evidence.applied, 1, "{target:?}");
+        assert_eq!(evidence.not_applicable, 1, "{target:?}");
+        assert_eq!(evidence.residual, 0, "{target:?}");
+    }
 }
 
 fn state_terminal_owner_config_for_origin(
