@@ -110,6 +110,11 @@ although production smoke and a real installed Chromium consumer pass. The expli
 `-Oz` candidate was rejected because compressed sizes grew. Preserve the budgets and capabilities;
 continue source/ownership attribution from the [current artifact checkpoint](theme_web_artifact_gate_2026-09-13.md).
 
+The [typography winner guard](theme_typography_recomputation_2026-09-13.md) removes repeated font-stack
+copying for paint-only rules. Its bounded public SVG probe reduces cumulative allocated bytes by
+90.719% with unchanged peak heap growth; the Web render artifact has a small measured size cost.
+This allocation repair does not close the artifact-size gate or change family support.
+
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
 | P1 | `requirement_medium` | 196.96 us | Historical candidate was 2.12-2.25x before the focused fix | 2.77x (+125.88 us) | Operation-scoped label reuse removed 60.6% of SVG emission. Latest gaps are layout (2.81x) and SVG emission (3.85x), while parse is 0.72x mmdr. |
