@@ -67,6 +67,21 @@ process and requires rejection for a different native target. The actual install
 still passes with `darwin-arm64`; the false Windows target exits 1 without emitting a success
 report. The installed WASM package passes after the same change. Node tests pass 105/105.
 
+# Clean-checkout confirmation
+
+The smoke repair at `14b17c70cf5e5a35c0ac4b62a9da6b04e42462f5` was checked out at
+`/tmp/merman-node-smoke-14b17c70c`. Running `npm ci --ignore-scripts` from its resolved
+`/private/tmp/.../platforms/node` working directory succeeded without changing the lockfile;
+`npm test` passed 105/105. An initial invocation with an absolute `/tmp` alias in `--prefix`
+failed lock validation; the direct working-directory invocation succeeded with the same files.
+No lockfile repair or dependency update was needed.
+
+The committed script then replayed both installed artifacts recorded above: darwin-arm64 and
+Node WASM passed with the same counts, while the false Windows target exited 1 before loading.
+`git status --short` remained empty. This checks the committed smoke/fixtures against the existing
+installed artifacts; it is not a second binary build. Logs are
+`/tmp/theme-node-installed-20260913-clean-{npm-direct,tests,smoke}.log`.
+
 # Reproduction and limits
 
 Use the commands in `.github/workflows/release-node.yml`: `build-candidate.mjs --candidate napi
