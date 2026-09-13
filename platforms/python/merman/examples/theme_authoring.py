@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -73,14 +74,23 @@ def render_definition(client, definition: str, family: str) -> str:
 
 def state_fill(svg: str) -> str:
     root = ET.fromstring(svg)
-    states = [element for element in root.iter()
+    namespace = "{http://www.w3.org/2000/svg}"
+    require(root.tag == namespace + "svg", "expected SVG root")
+    states = [element for element in root.iter(namespace + "g")
               if "statediagram-state" in element.get("class", "").split()
               and "".join(element.itertext()).strip() == "Active"]
     require(len(states) == 1, "expected one visible Active state")
-    shapes = [element for element in states[0].iter()
+    shapes = [element for element in states[0].iter(namespace + "rect")
               if "label-container" in element.get("class", "").split()]
     require(len(shapes) == 1, "expected one Active state shape")
     shape = shapes[0]
+    for name in ("width", "height"):
+        try:
+            value = float(shape.get(name, ""))
+        except ValueError:
+            raise RuntimeError(f"Active shape needs positive finite {name}") from None
+        require(math.isfinite(value) and value > 0,
+                f"Active shape needs positive finite {name}")
     # Inspect the writer's terminal declaration; do not recreate stylesheet cascade.
     declarations = dict(part.split(":", 1) for part in shape.get("style", "").split(";")
                         if ":" in part)

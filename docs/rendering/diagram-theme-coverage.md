@@ -390,6 +390,9 @@ one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both 
 surfaces. Revision 82 adds the retired Class background query. Installed N-API darwin-arm64 and
 Node-WASM packages rebuilt from `840560118` pass all ten shared support vectors through two
 engines; see the [installed Node record](../knowledge/engineering/verification/2026-09-13-node-installed-authoring.md).
+The native Python wheel rebuilt from `983708e33` also passes those vectors through one-shot and
+reusable APIs, plus catalog/diagnostic/authoring smoke; see the
+[installed Python record](../knowledge/engineering/verification/2026-09-13-python-installed-authoring.md).
 Other installed artifacts still require fresh revision-82 runs. This is a cross-transport discovery
 contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
