@@ -49,7 +49,8 @@ and the CLI does not trust ambient files placed beside its binary.
   plan-time injection rejection, and workflow consumer/source/dependency guards.
 - `actionlint .github/workflows/release.yml` and `git diff --check` passed. Independent final
   review found no remaining issue in this scope.
-- Clean-checkout replay is pending.
+- Clean-checkout replay at `a7a4662f5` passed **593/593**, actionlint and diff checks; the
+  checkout was clean before and after.
 
 Commands and raw logs:
 
@@ -74,3 +75,16 @@ immutable Linux candidate must execute the changed workflow and validate the res
 asset set before this path can count as a completed artifact-profile delivery observation.
 C7a remains open for that matrix, shared discovery rollout and contract freeze; C7b remains open
 for long-tail bridge and provider/probe retirement. C5 remains closed.
+
+# Clean-source replay
+
+The committed implementation `a7a4662f57a8cdfac0f1947232b8b6c104011ba3` was checked out at
+`/tmp/merman-c7a-publication-candidate`. The same full script command passed 593/593,
+`actionlint .github/workflows/release.yml` returned zero, and `git diff --check` passed.
+Git status was empty before and after. Logs are `/tmp/theme-c7a-clean-scripts.log`,
+`/tmp/theme-c7a-clean-actionlint.log`, `/tmp/theme-c7a-clean-diff.log`, and
+`/tmp/theme-c7a-clean-state.json`.
+
+This clean-source replay validates the assembly and workflow changes with their test fixtures.
+It does not run the Rust qualification producer or GitHub's publishing jobs. No current
+published artifact is asserted to contain the companion introduced by this commit.
