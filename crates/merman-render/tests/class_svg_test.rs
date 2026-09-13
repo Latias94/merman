@@ -4769,3 +4769,221 @@ fn class_namespace_math_title_cannot_prove_inherited_paint() {
         Some((merman_render::DiagramFamilyId::CLASS, 1, 0))
     );
 }
+
+#[test]
+fn class_node_label_keeps_generic_text_author_order() {
+    for html_labels in [false, true] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for label_last in [false, true] {
+                let mut label = ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                );
+                let mut text = ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+                );
+                if let Some(variant) = variant {
+                    label = label.with_variant(variant);
+                    text = text.with_variant(variant);
+                }
+                let theme = class_edge_rules_theme(if label_last {
+                    [text, label]
+                } else {
+                    [label, text]
+                });
+                let rendered = try_render_class_svg_with_theme_requirement(
+                    "classDiagram\nclass Account {\n+String owner\n+close()\n}\n",
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                        "htmlLabels": html_labels,
+                    }))),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let node = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("id")
+                            .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                    })
+                    .unwrap();
+                assert_eq!(
+                    node.descendants().any(|node| node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("#123456"))),
+                    label_last,
+                    "NodeLabel and Text must share author order: html={html_labels}, variant={variant:?}, label_last={label_last}"
+                );
+                if !label_last {
+                    assert!(rendered.svg().contains(".edgeLabel{color:#456789;}"));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), usize::from(label_last));
+                assert_eq!(evidence.not_applicable_count(), usize::from(!label_last));
+                assert!(evidence.compatibility_residual_count() > 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn class_node_label_generic_text_ordinal_blocks_only_its_occurrence() {
+    let theme = class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+    ]);
+    let source = "classDiagram\nclass Alpha\nclass Beta\n";
+    for html_labels in [false, true] {
+        let engine = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels})));
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (id, expected) in [("Alpha", false), ("Beta", true)] {
+            let prefix = format!("merman-classId-{id}-");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with(&prefix))
+                })
+                .unwrap();
+            assert_eq!(
+                node.descendants().any(|node| node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("#123456"))),
+                expected,
+                "generic Text ordinal must mask NodeLabel at its own occurrence: {id}, html={html_labels}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        // Generic Text ordinal is not yet covered by the Class terminal ledger.
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(
+            evidence.status(),
+            merman_render::__private::FamilyEvidenceStatus::Incomplete
+        );
+        let error = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .err()
+        .expect("unaccounted Text ordinal must reject strict rendering");
+        assert_eq!(
+            error.incomplete_family_theme(),
+            Some((DiagramFamilyId::CLASS, 2, 1))
+        );
+    }
+}
+
+#[test]
+fn class_node_label_generic_text_clear_and_transparent_mask_older_fill() {
+    for fill in [Specified::Clear, Specified::Value(CanvasPaint::Transparent)] {
+        for html_labels in [false, true] {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = fill.clone();
+            let theme = class_edge_rules_theme([
+                ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+                ThemeRule::new(ThemeTarget::Text, patch),
+            ]);
+            let rendered = try_render_class_svg_with_theme_requirement(
+                "classDiagram\nclass Account\n",
+                &theme,
+                Engine::new()
+                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                })
+                .unwrap();
+            assert!(
+                !node.descendants().any(|node| node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("#123456"))),
+                "Text clear/transparent must mask an older NodeLabel fill: {fill:?}, html={html_labels}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+        }
+    }
+}
+
+#[test]
+fn class_node_label_generic_text_precedence_preserves_source_paint() {
+    for html_labels in [false, true] {
+        for label_last in [false, true] {
+            let label = ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            );
+            let text = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+            );
+            let theme = class_edge_rules_theme(if label_last {
+                [text, label]
+            } else {
+                [label, text]
+            });
+            let rendered = try_render_class_svg_with_theme_requirement(
+                "classDiagram\nclass Account\nstyle Account color:#cc0000\n",
+                &theme,
+                Engine::new()
+                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                })
+                .unwrap();
+            assert!(node.descendants().any(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("#cc0000"))
+            }));
+            assert!(!node.descendants().any(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("#123456") || style.contains("#456789"))
+            }));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+        }
+    }
+}

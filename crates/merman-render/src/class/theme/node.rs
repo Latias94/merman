@@ -87,7 +87,7 @@ impl ClassNodeThemePlan {
             None,
             work_meter,
         )?;
-        let node_label_style = theme.style_with_work_meter(
+        let node_label_style = theme.text_style_with_work_meter(
             ThemeTarget::NodeLabel,
             ThemeVariant::Default,
             None,
@@ -128,7 +128,7 @@ impl ClassNodeThemePlan {
                 Some(ordinal),
                 work_meter,
             )?;
-            let node_label_style = theme.style_with_work_meter(
+            let node_label_style = theme.text_style_with_work_meter(
                 ThemeTarget::NodeLabel,
                 ThemeVariant::Default,
                 Some(ordinal),
@@ -219,7 +219,7 @@ impl ClassNodeThemePlan {
             Some(ordinal),
             work_meter,
         )?;
-        let node_label_style = theme.style_with_work_meter(
+        let node_label_style = theme.text_style_with_work_meter(
             ThemeTarget::NodeLabel,
             ThemeVariant::Default,
             Some(ordinal),
@@ -390,5 +390,53 @@ mod tests {
         assert_eq!(meter.used(), work_after_plan);
         assert_eq!(expectations[0].typed_fill(false), None);
         assert_eq!(expectations[1].typed_fill(false), Some((0, "#123456")));
+    }
+
+    #[test]
+    fn generic_text_ordinal_is_charged_once_before_node_binding() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::NodeLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#654321").unwrap()),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                        ),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::CLASS);
+        let meter = work_meter();
+        let config = merman_core::MermaidConfig::default();
+        let plan = ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter).unwrap();
+        let work_after_plan = meter.used();
+        let expectations = plan
+            .resolve_node_expectations(["Alpha".to_string(), "Beta".to_string()], &meter)
+            .unwrap();
+        assert_eq!(meter.used(), work_after_plan);
+        assert_eq!(expectations[0].typed_label_fill(false), None);
+        assert_eq!(
+            expectations[1].typed_label_fill(false),
+            Some((0, "#123456"))
+        );
+        assert!(work_after_plan > 1);
+        let limited = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    crate::resources::ResourceLimitId::MaxLayoutWorkUnits,
+                    work_after_plan - 1,
+                )
+                .unwrap(),
+        );
+        assert!(ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &limited).is_err());
     }
 }

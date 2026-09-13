@@ -174,7 +174,8 @@ impl ClassRelationThemePlan {
             theme,
             node_count,
             ordinal_rule_targets.contains(&ThemeTarget::Node)
-                || ordinal_rule_targets.contains(&ThemeTarget::NodeLabel),
+                || ordinal_rule_targets.contains(&ThemeTarget::NodeLabel)
+                || ordinal_rule_targets.contains(&ThemeTarget::Text),
             work_meter,
         )?;
         let stroke = typed_stroke_expectation(theme, &style, mermaid_owns_stroke);
