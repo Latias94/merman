@@ -67,3 +67,13 @@ Logs: `/tmp/theme-web-wasm-all-20260913.log`, `/tmp/theme-web-packages-20260913-
 Package outputs under `platforms/web/packages` are generated/ignored build material and were not
 staged. Browser suites, Windows/Linux package execution, final size budget checks, and C7a contract
 freeze remain open.
+
+# Release profile gates
+
+After the rebuild, the representative artifact dependency closure verifier passed every selected
+profile, including the five Web profiles; the feature matrix verifier validated 34 exact artifact
+profiles, 15 packages, 110 capability leaves, 17 feature allowlists, 70 forwarding edges, and 14
+transport engines. These checks used the current source and lockfile and found no dependency
+closure drift.
+
+Logs: `/tmp/theme-artifact-closures-20260913.log` and `/tmp/theme-feature-matrix-20260913.log`.
