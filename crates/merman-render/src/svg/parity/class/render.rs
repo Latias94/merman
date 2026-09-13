@@ -77,8 +77,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         })
         .collect();
     let marker_expectations = class_marker_terminal_expectations(&model.relations);
+    options.work_meter().charge(layout.clusters.len())?;
     let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
         node_expectations.clone(),
+        layout
+            .clusters
+            .iter()
+            .map(|cluster| cluster.id.clone())
+            .collect(),
         relation_expectations,
         marker_expectations,
         settings.look == "handDrawn",

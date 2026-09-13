@@ -160,6 +160,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             .map(String::as_str)
                             .collect::<Vec<_>>(),
                         ClassNamespaceClusterGroupContext {
+                            relation_theme: edge_ctx.relation_theme,
                             diagram_id: ctx.diagram_id,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
@@ -174,6 +175,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         namespace_id,
                         origin.0,
                         origin.1,
+                        theme_receipt,
                         typography_receipt,
                     )?;
                 } else {
@@ -193,6 +195,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         content_bounds,
                         &clusters,
                         ClassNamespaceClusterGroupContext {
+                            relation_theme: edge_ctx.relation_theme,
                             diagram_id: ctx.diagram_id,
                             content_tx: ctx.content_tx,
                             content_ty: ctx.content_ty,
@@ -204,6 +207,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             timing: ctx.timing,
                             emit: ctx.emit,
                         },
+                        theme_receipt,
                         typography_receipt,
                     )?;
                 }
@@ -356,6 +360,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         content_bounds,
         &ctx.layout.clusters,
         ClassNamespaceClusterGroupContext {
+            relation_theme: edge_ctx.relation_theme,
             diagram_id: ctx.diagram_id,
             content_tx: ctx.content_tx,
             content_ty: ctx.content_ty,
@@ -367,6 +372,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             timing: ctx.timing,
             emit: ctx.emit,
         },
+        theme_receipt,
         typography_receipt,
     )?;
 

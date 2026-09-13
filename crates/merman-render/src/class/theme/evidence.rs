@@ -48,6 +48,7 @@ impl ClassThemeEvidenceRecorder {
         if receipt.expected_relation_count() != self.expected_relation_paths
             || receipt.expected_note_attachment_count() != self.expected_note_paths
             || receipt.expected_node_count() < self.node_count
+            || receipt.expected_cluster_count() != self.cluster_label_count
             || !receipt.proves_complete()
         {
             return false;
@@ -85,7 +86,10 @@ impl ClassThemeEvidenceRecorder {
                     facet,
                 } if matches!(
                     target,
-                    ThemeTarget::Edge | ThemeTarget::Node | ThemeTarget::NodeLabel
+                    ThemeTarget::Edge
+                        | ThemeTarget::Node
+                        | ThemeTarget::NodeLabel
+                        | ThemeTarget::Cluster
                 ) =>
                 {
                     let observation = rules.entry((rule_index, target)).or_default();
@@ -100,6 +104,10 @@ impl ClassThemeEvidenceRecorder {
                                 );
                             (has_relations || has_static_note_paint)
                                 && plan.route_won(rule_index, target, selector, facet)
+                        }
+                        ThemeTarget::Cluster => {
+                            self.cluster_label_count != 0
+                                && plan.cluster_plan.route_won(rule_index, selector, facet)
                         }
                         ThemeTarget::Node | ThemeTarget::NodeLabel => {
                             visible_node_count != 0
@@ -124,6 +132,45 @@ impl ClassThemeEvidenceRecorder {
                         continue;
                     }
                     observation.applicable = true;
+                    if target == ThemeTarget::Cluster {
+                        match (route.disposition(), facet) {
+                            (
+                                FamilyThemeDisposition::TypedAdapter,
+                                FamilyThemeRuleFacet::Fill(
+                                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                                )
+                                | FamilyThemeRuleFacet::Stroke(
+                                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                                ),
+                            ) => {
+                                if receipt.is_some_and(|receipt| {
+                                    receipt.proves_typed_cluster_paint(rule_index, property)
+                                }) {
+                                    observation.capabilities.insert(match facet {
+                                        FamilyThemeRuleFacet::Fill(
+                                            FamilyThemePaintKind::Transparent,
+                                        )
+                                        | FamilyThemeRuleFacet::Stroke(
+                                            FamilyThemePaintKind::Transparent,
+                                        ) => ThemeCapability::TransparentPaint,
+                                        _ => ThemeCapability::SolidPaint,
+                                    });
+                                } else {
+                                    observation.incomplete = true;
+                                }
+                            }
+                            (FamilyThemeDisposition::Unsupported, facet) => {
+                                observation
+                                    .residual
+                                    .get_or_insert(unsupported_residual_for_facet(facet));
+                            }
+                            (FamilyThemeDisposition::TypedAdapter, _)
+                            | (FamilyThemeDisposition::LegacyCompatibility, _) => {
+                                observation.incomplete = true;
+                            }
+                        }
+                        continue;
+                    }
                     if matches!(target, ThemeTarget::Node | ThemeTarget::NodeLabel) {
                         match (route.disposition(), facet) {
                             (
@@ -257,7 +304,14 @@ impl ClassThemeEvidenceRecorder {
             }
         }
 
-        let mut unsupported_domains = Vec::with_capacity(7);
+        let mut unsupported_domains = Vec::with_capacity(8);
+        unsupported_domains.push(
+            UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Cluster,
+                TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
+            )
+            .with_fill_fully_overridden(plan.cluster_plan.mermaid_owns_fill),
+        );
         if let Some(count) =
             receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count)
         {
@@ -400,6 +454,22 @@ mod tests {
         assert!(!recorder.record_terminal(complete_receipt(1)));
         assert!(recorder.record_terminal(complete_receipt(2)));
         assert!(!recorder.record_terminal(complete_receipt(2)));
+    }
+
+    #[test]
+    fn terminal_recorder_requires_layout_cluster_count_and_completed_checkpoints() {
+        let recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 1, Vec::new());
+        assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
+            Vec::new(),
+            Vec::new(),
+            None,
+            false
+        )));
+        let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+            .with_clusters(vec!["Outer".into()], None, None);
+        assert!(!recorder.record_terminal(receipt.clone()));
+        receipt.record_cluster("Outer", None, None, "");
+        assert!(recorder.record_terminal(receipt));
     }
 
     #[test]

@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 82;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 83;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    78, 188, 0, 181, 22, 54, 246, 59, 121, 178, 132, 183, 66, 178, 23, 155, 190, 32, 107, 102, 65,
-    182, 249, 160, 235, 132, 43, 137, 23, 22, 234, 143,
+    163, 244, 21, 246, 61, 81, 178, 207, 155, 110, 130, 78, 62, 12, 166, 89, 87, 108, 32, 81, 188,
+    17, 163, 5, 84, 176, 150, 75, 124, 210, 74, 61,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,7 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 458] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 466] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2595,6 +2595,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 458] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::CLASS,

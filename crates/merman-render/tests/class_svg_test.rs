@@ -4176,3 +4176,236 @@ fn class_edge_ordinal_fill_is_residual_only_when_stroke_does_not_mask_it() {
         }
     }
 }
+
+#[test]
+fn class_cluster_scalar_reaches_namespace_rectangles() {
+    for (source, extracted) in [
+        (
+            "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nX --> A\n",
+            false,
+        ),
+        (
+            "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\n",
+            true,
+        ),
+    ] {
+        for fill in [false, true] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for paint in [
+                    CanvasPaint::solid("#123456").unwrap(),
+                    CanvasPaint::Transparent,
+                ] {
+                    let css = if paint == CanvasPaint::Transparent {
+                        "transparent"
+                    } else {
+                        "#123456"
+                    };
+                    let property = if fill { "fill" } else { "stroke" };
+                    let patch = if fill {
+                        ThemeStylePatch::default().with_fill(paint)
+                    } else {
+                        ThemeStylePatch::default().with_stroke(paint)
+                    };
+                    let mut rule = ThemeRule::new(ThemeTarget::Cluster, patch);
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let theme = class_edge_rules_theme([rule]);
+                    for look in ["classic", "handDrawn"] {
+                        let rendered = try_render_class_svg_with_theme_and_engine(
+                            source,
+                            &theme,
+                            Engine::new()
+                                .with_site_config(MermaidConfig::from_value(json!({"look": look}))),
+                        )
+                        .expect("typed namespace scalar paint");
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        let rectangles = document
+                            .descendants()
+                            .filter(|node| {
+                                node.has_tag_name("rect")
+                                    && node
+                                        .parent_element()
+                                        .and_then(|parent| parent.attribute("class"))
+                                        == Some("cluster undefined")
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(rectangles.len(), 1);
+                        assert_eq!(
+                            rectangles[0]
+                                .ancestors()
+                                .any(|ancestor| ancestor.attribute("class") == Some("root")
+                                    && ancestor.attribute("transform").is_some()),
+                            extracted
+                        );
+                        assert!(rectangles[0].attribute("style").is_some_and(|style| {
+                            style.contains(&format!("{property}:{css} !important"))
+                        }));
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(evidence.applied_count(), 1);
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_cluster_scalar_preserves_independent_and_derived_source_ownership() {
+    let source = "classDiagram\nnamespace Group {\nclass A\nclass B\n}\nA --> B : relation\nnote for A \"memo\"\n";
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+    )]);
+    for (selected, variable, fill_owned, stroke_owned) in [
+        ("default", "clusterBkg", true, false),
+        ("default", "clusterBorder", false, true),
+        ("base", "tertiaryColor", true, true),
+        ("base", "tertiaryBorderColor", false, true),
+        ("base", "primaryColor", true, true),
+        ("base", "secondaryColor", false, false),
+        ("dark", "secondBkg", false, false),
+        ("dark", "mainBkg", true, false),
+        ("dark", "border2", false, true),
+    ] {
+        let config = json!({"theme": selected, "themeVariables": { variable: "#456789" }});
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        )
+        .expect("source-owned namespace paint");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rectangle = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .parent_element()
+                        .and_then(|parent| parent.attribute("class"))
+                        == Some("cluster undefined")
+            })
+            .unwrap();
+        let style = rectangle.attribute("style").unwrap_or_default();
+        assert_eq!(
+            style.contains("fill:#123456 !important"),
+            !fill_owned,
+            "{selected}/{variable}: {style}"
+        );
+        assert_eq!(
+            style.contains("stroke:#abcdef !important"),
+            !stroke_owned,
+            "{selected}/{variable}: {style}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(!(fill_owned && stroke_owned))
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_cluster_unsupported_winners_require_real_namespace_occurrences() {
+    let source = "classDiagram\nnamespace Group {\nclass A\n}\n";
+    let mut clear = ThemeStylePatch::default();
+    clear.paint.fill = Specified::Clear;
+    for rule in [
+        ThemeRule::new(ThemeTarget::Cluster, clear),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+    ] {
+        let theme = class_edge_rules_theme([rule]);
+        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            "classDiagram\nclass A\n",
+            &theme,
+            Engine::new(),
+        )
+        .expect("absent cluster makes the route not applicable");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_elk_cluster_scalar_reaches_the_shared_namespace_writer() {
+    let source = "---\nconfig:\n  layout: elk\n---\nclassDiagram\nnamespace Group {\nclass A\nclass B\n}\nA --> B\n";
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::Transparent),
+    )]);
+    let rendered =
+        try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let rect = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .parent_element()
+                    .and_then(|parent| parent.attribute("class"))
+                    == Some("cluster undefined")
+        })
+        .unwrap();
+    assert_eq!(
+        rect.attribute("style"),
+        Some("fill:#123456 !important;stroke:transparent !important;")
+    );
+}
+
+#[test]
+fn class_cluster_source_selected_theme_and_mixed_facets_keep_their_own_outcomes() {
+    let source = "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"tertiaryColor\": \"#456789\"}}}%%\nclassDiagram\nnamespace Group {\nclass A\n}\n";
+    let paint = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        source,
+        &paint,
+        legacy_init_theme_compat_engine(),
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.not_applicable_count(), 1);
+
+    let source = "classDiagram\nnamespace Group {\nclass A\n}\n";
+    let gradient = LinearGradient::new(
+        0.0,
+        [
+            GradientStop::new(0.0, ThemeColorValue::parse("red").unwrap()).unwrap(),
+            GradientStop::new(1.0, ThemeColorValue::parse("blue").unwrap()).unwrap(),
+        ],
+    )
+    .unwrap();
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    patch.stroke.paint = Specified::Value(CanvasPaint::LinearGradient(gradient));
+    let theme = class_edge_rules_theme([ThemeRule::new(ThemeTarget::Cluster, patch)]);
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    assert!(rendered.svg().contains("fill:#123456 !important;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
+}

@@ -565,12 +565,12 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE),
@@ -1749,7 +1749,7 @@ pub(super) fn classify_rule_facet(
         && matches!(
             (target, facet),
             (
-                ThemeTarget::Edge | ThemeTarget::Node,
+                ThemeTarget::Edge | ThemeTarget::Node | ThemeTarget::Cluster,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 ) | FamilyThemeRuleFacet::Stroke(
@@ -5696,6 +5696,34 @@ mod tests {
                 vec!["edge.stroke", "marker.paint-from-edge"],
             ),
             (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Cluster,
+                Fill,
+                Transparent,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Cluster,
+                Fill,
+                Solid,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Cluster,
+                Stroke,
+                Transparent,
+                vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Cluster,
+                Stroke,
+                Solid,
+                vec!["cluster.stroke"],
+            ),
+            (
                 DiagramFamilyId::CYNEFIN,
                 ThemeTarget::Text,
                 Fill,
@@ -7196,7 +7224,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 230);
+        assert_eq!(qualified.len(), 234);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7303,7 +7331,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
-            10
+            14
         );
         assert_eq!(
             qualified
@@ -7538,6 +7566,12 @@ mod tests {
                     }
                     (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
                         vec![ThemeRouteCutoverProjection::NodeLabelFill]
+                    }
+                    (ThemeTarget::Cluster, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::ClusterFill]
+                    }
+                    (ThemeTarget::Cluster, ThemeRouteCutoverFacet::Stroke) => {
+                        vec![ThemeRouteCutoverProjection::ClusterStroke]
                     }
                     _ => panic!("unexpected Class qualified route: {route:?}"),
                 };
@@ -7845,7 +7879,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 16)]
+            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 8)]
                 .into_iter()
                 .collect(),
             "bridge retirement must update the exact route ledger"

@@ -454,6 +454,8 @@ const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
     assigned_theme_dependency!(Base, "primaryBorderColor", "gradientStart"),
     assigned_theme_dependency!(Base, "secondaryBorderColor", "gradientStop"),
     copied_theme_dependency!(Base, "primaryBorderColor", "nodeBorder"),
+    copied_theme_dependency!(Base, "tertiaryColor", "clusterBkg"),
+    copied_theme_dependency!(Base, "tertiaryBorderColor", "clusterBorder"),
     copied_theme_dependency!(Base, "tertiaryTextColor", "titleColor"),
     copied_theme_dependency!(Base, "primaryColor", "taskBkgColor"),
     ThemeVariableDependency::transformed(
@@ -2899,6 +2901,55 @@ mod tests {
                 "theme {theme} must not generalize derived ownership to sibling variables"
             );
         }
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_follows_base_cluster_dependencies() {
+        for (source, owned_fill, owned_stroke) in [
+            ("primaryColor", true, true),
+            ("tertiaryColor", true, true),
+            ("tertiaryBorderColor", false, true),
+            ("secondaryColor", false, false),
+        ] {
+            for explicit in [false, true] {
+                let values = json!({ "themeVariables": { source: "#123456" } });
+                let mut config = MermaidConfig::from_value(json!({"theme": "base"}));
+                if explicit {
+                    config.deep_merge_explicit(&values);
+                } else {
+                    config.deep_merge(&values);
+                }
+                apply_theme_defaults(&mut config).unwrap();
+                for (target, owns) in [("clusterBkg", owned_fill), ("clusterBorder", owned_stroke)]
+                {
+                    assert_eq!(
+                        config.config_path_overrides_typed_default(&format!(
+                            "themeVariables.{target}"
+                        )),
+                        explicit && owns,
+                        "source={source}, target={target}, explicit={explicit}"
+                    );
+                }
+                assert_eq!(
+                    config.get_str("themeVariables.clusterBkg"),
+                    config.get_str("themeVariables.tertiaryColor")
+                );
+                assert_eq!(
+                    config.get_str("themeVariables.clusterBorder"),
+                    config.get_str("themeVariables.tertiaryBorderColor")
+                );
+            }
+        }
+        let mut config = MermaidConfig::from_value(json!({"theme": "base"}));
+        config.deep_merge_explicit(&json!({"themeVariables": {
+            "tertiaryColor": "#123456", "clusterBkg": "#abcdef", "clusterBorder": "#fedcba"
+        }}));
+        apply_theme_defaults(&mut config).unwrap();
+        assert_eq!(config.get_str("themeVariables.clusterBkg"), Some("#abcdef"));
+        assert_eq!(
+            config.get_str("themeVariables.clusterBorder"),
+            Some("#fedcba")
+        );
     }
 
     #[test]

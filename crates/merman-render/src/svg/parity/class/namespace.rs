@@ -13,6 +13,7 @@ use crate::Result;
 #[derive(Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
+    pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -29,14 +30,15 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;
     for c in clusters {
-        let typography = render_class_namespace_cluster(out, content_bounds, c, ctx)?;
-        out.checkpoint()?;
+        let typography =
+            render_class_namespace_cluster(out, content_bounds, c, ctx, theme_receipt)?;
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_namespace(&c.id, typography);
         }
@@ -53,6 +55,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
 ) -> Result<crate::class::ClassTypographyTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
@@ -79,24 +82,29 @@ fn render_class_namespace_cluster(
     );
 
     let (title_html, typography) = class_namespace_title_html(&cluster.title, ctx);
+    let terminal_style = ctx.relation_theme.cluster_terminal_style();
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
         fmt(top),
         fmt(w),
         fmt(h),
+        escape_attr_display(terminal_style),
         fmt(label_x),
         fmt(label_y),
         fmt(label_w),
         MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
         title_html
     );
+    out.checkpoint()?;
+    let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
+    theme_receipt.record_cluster(&cluster.id, fill_rule, stroke_rule, terminal_style);
     Ok(typography)
 }
 
@@ -132,6 +140,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
@@ -173,18 +182,20 @@ pub(super) fn render_class_namespace_clusters_in_root(
         );
 
         let (title_html, typography) = class_namespace_title_html(&c.title, ctx);
+        let terminal_style = ctx.relation_theme.cluster_terminal_style();
         out.push_str(r#"<g class="cluster undefined" id=""#);
         let _ = write!(out, "{}", ctx.diagram_id);
         ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+            r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
             escape_attr_display(&c.id),
             escape_attr_display(ctx.look),
             fmt(left),
             fmt(top),
             fmt(w),
             fmt(h),
+            escape_attr_display(terminal_style),
             fmt(label_x),
             fmt(label_y),
             fmt(label_w),
@@ -192,6 +203,8 @@ pub(super) fn render_class_namespace_clusters_in_root(
             title_html
         );
         out.checkpoint()?;
+        let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
+        theme_receipt.record_cluster(&c.id, fill_rule, stroke_rule, terminal_style);
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_namespace(&c.id, typography);
         }

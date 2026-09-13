@@ -1091,6 +1091,12 @@ fn prepare_class_family(
         &typography_theme,
     )?;
     let cluster_label_count = layout.clusters.len();
+    let relation_theme = relation_theme.with_cluster_domain(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        cluster_label_count,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Class(Box::new(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),

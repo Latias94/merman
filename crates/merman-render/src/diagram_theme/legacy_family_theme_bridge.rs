@@ -658,17 +658,19 @@ fn compile_node_family(
             [("arrowheadColor", marker_paint.value)],
         );
     }
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
-        [
-            ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
-            ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
-        ],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
-        [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
-    );
+    if family != DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
+            [
+                ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
+                ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
+            ],
+        );
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
+            [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
+        );
+    }
 
     // Class generic Text keeps its existing assignments until its own cutover.
     if family == DiagramFamilyId::CLASS {
@@ -2054,14 +2056,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 48);
+        assert_eq!(status.matrix_route_count(), 40);
         assert_eq!(status.matrix_family_count(), 2);
         assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                157, 63, 103, 194, 178, 168, 55, 156, 218, 207, 91, 181, 87, 61, 6, 131, 178, 13,
-                176, 192, 173, 164, 217, 50, 32, 232, 238, 254, 206, 79, 233, 242
+                78, 231, 114, 5, 82, 75, 181, 188, 219, 97, 104, 194, 58, 131, 110, 109, 65, 92,
+                41, 86, 57, 10, 231, 78, 108, 164, 54, 22, 162, 66, 76, 101
             ]
         );
         assert_eq!(
@@ -2928,6 +2930,73 @@ gitGraph
             );
         }
         assert_eq!(fallback_contribution_count(&flowchart), 0);
+    }
+
+    #[test]
+    fn class_cluster_scalar_retires_all_legacy_assignments_without_rederiving_other_paint() {
+        const SOURCE: &str = "classDiagram\nnamespace Group {\nclass A\nclass B\n}\nA --> B : relation\nnote for A \"memo\"\n";
+        for selected in ["base", "dark", "neo"] {
+            for explicit_secondary in [None, Some("#456789")] {
+                let mut compatibility = MermaidThemeCompatibility::default()
+                    .with_theme(selected)
+                    .unwrap();
+                if let Some(color) = explicit_secondary {
+                    compatibility = compatibility
+                        .with_variable("secondaryColor", color)
+                        .unwrap();
+                }
+                let baseline_spec =
+                    DiagramThemeSpec::new().with_mermaid_compatibility(compatibility.clone());
+                let baseline = parse_with_compatibility(
+                    &baseline_spec,
+                    SOURCE,
+                    baseline_spec.mermaid().to_mermaid_config(),
+                );
+                for paint in [CanvasPaint::Transparent, solid("#123456")] {
+                    for variant in [None, Some(ThemeVariant::Default)] {
+                        let mut rule = ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default()
+                                .with_fill(paint.clone())
+                                .with_stroke(paint.clone()),
+                        );
+                        if let Some(variant) = variant {
+                            rule = rule.with_variant(variant);
+                        }
+                        let spec = baseline_spec
+                            .clone()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule));
+                        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::CLASS);
+                        assert!(artifact.overlay.is_empty());
+                        assert!(artifact.contribution_ids.is_empty());
+                        let parsed = parse_with_compatibility(
+                            &spec,
+                            SOURCE,
+                            spec.mermaid().to_mermaid_config(),
+                        );
+                        assert_eq!(fallback_contribution_count(&parsed), 0);
+                        for key in [
+                            "clusterBkg",
+                            "clusterBorder",
+                            "secondaryColor",
+                            "noteBkgColor",
+                            "noteBorderColor",
+                            "noteTextColor",
+                            "edgeLabelBackground",
+                            "secondaryBorderColor",
+                            "gradientStop",
+                        ] {
+                            let path = format!("themeVariables.{key}");
+                            assert_eq!(
+                                parsed.effective_config.get_str(&path),
+                                baseline.effective_config.get_str(&path),
+                                "{selected}/{key}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

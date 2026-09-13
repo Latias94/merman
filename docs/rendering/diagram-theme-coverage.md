@@ -32,12 +32,14 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 2/33; 48 routes | Block 32, Class 16. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 2/33; 40 routes | Block 32, Class 8. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 84 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v82; 458 routes / 678 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 85 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v83; 466 routes / 694 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD17 v83 replaces Class's eight remaining scalar Cluster routes after the Edge cutover, covering unqualified/Default fill and stroke, solid/transparent. Namespace rectangles in ordinary, extracted, and ELK writers receive typed terminal paint with facet-independent receipts. Source ownership for clusterBkg/clusterBorder and derived base/dark variables remains explicit.
 
 KTD17 v82 replaces Class's six remaining scalar Edge routes: unqualified/Default
 fill and Default stroke, each solid/transparent. Fill supplies relation, attached-note connector,

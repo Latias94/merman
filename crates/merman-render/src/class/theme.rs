@@ -10,11 +10,13 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod cluster;
 mod evidence;
 mod node;
 mod terminal;
 mod typography;
 
+use cluster::ClassClusterThemePlan;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use node::ClassNodeThemePlan;
 pub(crate) use terminal::ClassTerminalReceiptSummary;
@@ -57,6 +59,7 @@ pub(crate) struct ClassRelationThemePlan {
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
+    cluster_plan: ClassClusterThemePlan,
     track_edge_label_backgrounds: bool,
     mermaid_owns_edge_label_background: bool,
 }
@@ -207,9 +210,39 @@ impl ClassRelationThemePlan {
             static_winner_rules,
             ordinal_winner_rules,
             node_plan,
+            cluster_plan: ClassClusterThemePlan::default(),
             track_edge_label_backgrounds,
             mermaid_owns_edge_label_background,
         })
+    }
+
+    pub(crate) fn with_cluster_domain(
+        mut self,
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        cluster_count: usize,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        self.cluster_plan =
+            ClassClusterThemePlan::resolve(theme, config, cluster_count, work_meter)?;
+        Ok(self)
+    }
+
+    pub(crate) fn cluster_terminal_style(&self) -> &str {
+        self.cluster_plan.terminal_style()
+    }
+
+    pub(crate) fn cluster_paint_rule_indices(&self) -> (Option<usize>, Option<usize>) {
+        (
+            self.cluster_plan
+                .fill
+                .as_ref()
+                .map(|paint| paint.rule_index),
+            self.cluster_plan
+                .stroke
+                .as_ref()
+                .map(|paint| paint.rule_index),
+        )
     }
 
     pub(crate) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
@@ -265,12 +298,18 @@ impl ClassRelationThemePlan {
     pub(crate) fn begin_terminal_receipt_with_nodes(
         &self,
         nodes: Vec<ClassNodeTerminalExpectation>,
+        cluster_ids: Vec<String>,
         relations: Vec<ClassRelationTerminalExpectation>,
         markers: Vec<ClassMarkerTerminalExpectation>,
         hand_drawn: bool,
     ) -> ClassRelationThemeReceipt {
         self.begin_terminal_receipt(relations, markers, hand_drawn)
             .with_nodes(nodes)
+            .with_clusters(
+                cluster_ids,
+                self.cluster_plan.fill.clone(),
+                self.cluster_plan.stroke.clone(),
+            )
     }
 
     pub(crate) fn resolve_node_expectations(

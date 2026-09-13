@@ -317,6 +317,18 @@ complex
 "Retrospective"
 clear --> complex : "Probe"
 "#;
+const CLASS_CLUSTER_SOURCE: &str = r#"classDiagram
+namespace Internal {
+  class A
+  class B
+}
+namespace External {
+  class C
+  class D
+}
+A --> C : relation
+note for A "attached note"
+"#;
 const CLASS_EDGE_SOURCE: &str = r#"classDiagram
   A *-- B
   C <|-- D
@@ -528,8 +540,10 @@ impl CutoverWitnessProfile {
             && route.target() == ThemeTarget::Node
         {
             &Self::MINDMAP_NODE
-        } else if route.family_id() == DiagramFamilyId::FLOWCHART
-            && route.target() == ThemeTarget::Cluster
+        } else if matches!(
+            route.family_id(),
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::CLASS
+        ) && route.target() == ThemeTarget::Cluster
         {
             &Self::CLUSTER
         } else {
@@ -747,6 +761,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(CYNEFIN_TEXT_SOURCE)
         }
+        (
+            DiagramFamilyId::CLASS,
+            ThemeTarget::Cluster,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(CLASS_CLUSTER_SOURCE),
         (
             DiagramFamilyId::CLASS,
             ThemeTarget::Edge,
@@ -2416,11 +2435,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_458_routes_and_678_artifact_witnesses() {
+    fn route_inventory_retains_466_routes_and_694_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 458);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 678);
+        assert_eq!(inventory.len(), 466);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 694);
     }
 
     #[test]

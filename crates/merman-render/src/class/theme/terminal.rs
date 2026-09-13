@@ -208,6 +208,12 @@ impl ClassMarkerTerminalExpectation {
 /// canonical terminal SVG checkpoint with the exact typed terminal value.
 #[derive(Debug, Clone)]
 pub(crate) struct ClassRelationThemeReceipt {
+    expected_clusters: BTreeSet<String>,
+    duplicate_expected_cluster: bool,
+    expected_cluster_fill: Option<ExpectedPaint>,
+    expected_cluster_stroke: Option<ExpectedPaint>,
+    cluster_events: BTreeMap<String, ClassClusterTerminalEvent>,
+    duplicate_cluster_event: bool,
     expected_nodes: BTreeMap<String, ClassNodeTerminalExpectation>,
     duplicate_expected_node: bool,
     expected_relations: Vec<ClassRelationTerminalExpectation>,
@@ -233,6 +239,12 @@ impl ClassRelationThemeReceipt {
         hand_drawn: bool,
     ) -> Self {
         Self {
+            expected_clusters: BTreeSet::new(),
+            duplicate_expected_cluster: false,
+            expected_cluster_fill: None,
+            expected_cluster_stroke: None,
+            cluster_events: BTreeMap::new(),
+            duplicate_cluster_event: false,
             expected_nodes: BTreeMap::new(),
             duplicate_expected_node: false,
             expected_relations,
@@ -249,6 +261,79 @@ impl ClassRelationThemeReceipt {
             checkpointed_typed_width_paths: 0,
             edge_label_background_events: None,
         }
+    }
+
+    pub(super) fn with_clusters(
+        mut self,
+        ids: Vec<String>,
+        fill: Option<ExpectedPaint>,
+        stroke: Option<ExpectedPaint>,
+    ) -> Self {
+        for id in ids {
+            if !self.expected_clusters.insert(id) {
+                self.duplicate_expected_cluster = true;
+            }
+        }
+        self.expected_cluster_fill = fill;
+        self.expected_cluster_stroke = stroke;
+        self
+    }
+
+    pub(super) fn expected_cluster_count(&self) -> usize {
+        self.expected_clusters.len()
+    }
+
+    pub(crate) fn record_cluster(
+        &mut self,
+        id: &str,
+        fill_rule: Option<usize>,
+        stroke_rule: Option<usize>,
+        terminal_style: &str,
+    ) {
+        let event = ClassClusterTerminalEvent {
+            fill_rule,
+            stroke_rule,
+            terminal_style: terminal_style.to_string(),
+        };
+        if self.cluster_events.insert(id.to_string(), event).is_some() {
+            self.duplicate_cluster_event = true;
+        }
+    }
+
+    fn proves_complete_cluster_emission(&self) -> bool {
+        !self.duplicate_expected_cluster
+            && !self.duplicate_cluster_event
+            && self.expected_clusters.len() == self.cluster_events.len()
+            && self.expected_clusters.iter().all(|id| {
+                self.cluster_events.get(id).is_some_and(|event| {
+                    cluster_paint_event_matches(
+                        self.expected_cluster_fill.as_ref(),
+                        event.fill_rule,
+                        &event.terminal_style,
+                        "fill",
+                    ) && cluster_paint_event_matches(
+                        self.expected_cluster_stroke.as_ref(),
+                        event.stroke_rule,
+                        &event.terminal_style,
+                        "stroke",
+                    )
+                })
+            })
+    }
+
+    pub(super) fn proves_typed_cluster_paint(
+        &self,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        let expected = match property {
+            ResolvedStyleProperty::Fill => self.expected_cluster_fill.as_ref(),
+            ResolvedStyleProperty::Stroke => self.expected_cluster_stroke.as_ref(),
+            _ => None,
+        };
+        !self.expected_clusters.is_empty()
+            && expected.is_some_and(|paint| paint.rule_index == rule_index)
+            && self.proves_complete_cluster_emission()
     }
 
     pub(super) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
@@ -463,7 +548,8 @@ impl ClassRelationThemeReceipt {
     }
 
     pub(super) fn proves_complete(&self) -> bool {
-        self.proves_complete_node_emission()
+        self.proves_complete_cluster_emission()
+            && self.proves_complete_node_emission()
             && self.proves_complete_relation_emission()
             && self.proves_complete_note_attachment_emission()
             && self.proves_complete_marker_emission()
@@ -473,7 +559,8 @@ impl ClassRelationThemeReceipt {
         let complete_nodes = self.proves_complete_node_emission();
         let complete_relations = self.proves_complete_relation_emission();
         let complete_markers = self.proves_complete_marker_emission();
-        let complete = complete_nodes
+        let complete = self.proves_complete_cluster_emission()
+            && complete_nodes
             && complete_relations
             && self.proves_complete_note_attachment_emission()
             && complete_markers;
@@ -529,6 +616,8 @@ impl ClassRelationThemeReceipt {
                 .len()
                 .saturating_add(self.node_events.len())
                 .saturating_mul(NODE_PAINT_TARGETS.len())
+                .saturating_add(self.expected_clusters.len().saturating_mul(2))
+                .saturating_add(self.cluster_events.len().saturating_mul(2))
                 .saturating_add(self.expected_relations.len())
                 .saturating_add(self.relation_events.len())
                 .saturating_add(self.expected_note_attachments.len())
@@ -633,6 +722,28 @@ const NODE_PAINT_TARGETS: [(ThemeTarget, ResolvedStyleProperty); 3] = [
     (ThemeTarget::Node, ResolvedStyleProperty::Stroke),
     (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill),
 ];
+
+#[derive(Debug, Clone)]
+struct ClassClusterTerminalEvent {
+    fill_rule: Option<usize>,
+    stroke_rule: Option<usize>,
+    terminal_style: String,
+}
+
+fn cluster_paint_event_matches(
+    expected: Option<&ExpectedPaint>,
+    rule: Option<usize>,
+    style: &str,
+    property: &str,
+) -> bool {
+    match (expected, rule) {
+        (None, None) => terminal_paint(style, property).is_none(),
+        (Some(paint), Some(rule)) => {
+            paint.rule_index == rule && terminal_paint(style, property) == Some(paint.css.as_str())
+        }
+        (None, Some(_)) | (Some(_), None) => false,
+    }
+}
 
 #[derive(Debug, Clone)]
 struct ClassRelationTerminalEvent {
@@ -791,6 +902,83 @@ mod tests {
         terminal_value: &str,
     ) -> ClassNodePaintTerminalEmission {
         ClassNodePaintTerminalEmission::new(source_owned, emitted, terminal_value)
+    }
+
+    #[test]
+    fn cluster_receipt_requires_exact_ids_and_each_final_paint_facet() {
+        let expected = || {
+            ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false).with_clusters(
+                vec!["Outer".into(), "Inner".into()],
+                expected_paint(3, "#123456"),
+                expected_paint(4, "transparent"),
+            )
+        };
+        let record = |receipt: &mut ClassRelationThemeReceipt, id: &str| {
+            receipt.record_cluster(id, Some(3), Some(4), "fill:#123456;stroke:transparent;");
+        };
+        let mut complete = expected();
+        record(&mut complete, "Inner");
+        assert!(!complete.proves_complete());
+        record(&mut complete, "Outer");
+        assert!(complete.proves_complete());
+        assert!(complete.proves_typed_cluster_paint(3, ResolvedStyleProperty::Fill));
+        assert!(complete.proves_typed_cluster_paint(4, ResolvedStyleProperty::Stroke));
+        assert!(!complete.proves_typed_cluster_paint(3, ResolvedStyleProperty::Stroke));
+        assert!(!complete.proves_typed_cluster_paint(9, ResolvedStyleProperty::Fill));
+
+        let mut duplicate = complete.clone();
+        record(&mut duplicate, "Inner");
+        assert!(!duplicate.proves_complete());
+        let mut wrong_id = expected();
+        record(&mut wrong_id, "Outer");
+        record(&mut wrong_id, "Other");
+        assert!(!wrong_id.proves_complete());
+        let duplicate_expectation =
+            ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false).with_clusters(
+                vec!["Outer".into(), "Outer".into()],
+                None,
+                None,
+            );
+        assert!(!duplicate_expectation.proves_complete());
+
+        for (fill_rule, stroke_rule, style) in [
+            (None, Some(4), "stroke:transparent;"),
+            (Some(3), None, "fill:#123456;"),
+            (Some(9), Some(4), "fill:#123456;stroke:transparent;"),
+            (Some(3), Some(9), "fill:#123456;stroke:transparent;"),
+            (Some(3), Some(4), "fill:#654321;stroke:transparent;"),
+            (Some(3), Some(4), "fill:#123456;stroke:#654321;"),
+            (
+                Some(3),
+                Some(4),
+                "fill:#123456;stroke:transparent;fill:#654321;",
+            ),
+            (Some(3), Some(4), "fill:#123456stroke:transparent;"),
+        ] {
+            let mut receipt = expected();
+            record(&mut receipt, "Outer");
+            receipt.record_cluster("Inner", fill_rule, stroke_rule, style);
+            assert!(
+                !receipt.proves_complete(),
+                "accepted invalid cluster style {style:?}"
+            );
+            assert!(!receipt.proves_typed_cluster_paint(3, ResolvedStyleProperty::Fill));
+        }
+    }
+
+    #[test]
+    fn cluster_receipt_keeps_empty_paint_and_sibling_ownership_independent() {
+        let mut empty = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+            .with_clusters(vec!["Outer".into()], None, None);
+        empty.record_cluster("Outer", None, None, "");
+        assert!(empty.proves_complete());
+        assert!(!empty.proves_typed_cluster_paint(0, ResolvedStyleProperty::Fill));
+        let mut fill_only = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+            .with_clusters(vec!["Outer".into()], expected_paint(0, "#123456"), None);
+        fill_only.record_cluster("Outer", Some(0), None, "fill:#123456;");
+        assert!(fill_only.proves_complete());
+        assert!(fill_only.proves_typed_cluster_paint(0, ResolvedStyleProperty::Fill));
+        assert!(!fill_only.proves_typed_cluster_paint(0, ResolvedStyleProperty::Stroke));
     }
 
     #[test]
