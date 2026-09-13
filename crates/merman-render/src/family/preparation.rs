@@ -1030,6 +1030,19 @@ fn prepare_class_family(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
     let relation_count = model.relations.len();
+    execution.work_meter_ref().charge(model.notes.len())?;
+    let note_attachment_indices = model
+        .notes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, note)| {
+            note.class_id
+                .as_ref()
+                .filter(|class_id| model.classes.contains_key(*class_id))
+                .map(|_| index)
+        })
+        .collect::<Vec<_>>();
+    let note_attachment_count = note_attachment_indices.len();
     let node_count = model.classes.len();
     let needs_unsupported_table_evidence = execution.resolved_theme().is_some_and(|theme| {
         theme.family_mechanism_routes().iter().any(|route| {
@@ -1064,7 +1077,8 @@ fn prepare_class_family(
         relation_count,
         node_count,
         execution.work_meter_ref(),
-    )?;
+    )?
+    .with_note_attachments(note_attachment_indices);
     let typography_theme = crate::class::ClassTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -1084,6 +1098,7 @@ fn prepare_class_family(
             typography_theme,
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
                 relation_count,
+                note_attachment_count,
                 node_count,
                 cluster_label_count,
                 table_group_lengths,

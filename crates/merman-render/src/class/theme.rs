@@ -5,6 +5,9 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeTarget,
     ThemeVariant,
 };
+use crate::family::{
+    DirectStaticSelectorDomain, resolve_direct_static_fill, resolve_direct_static_stroke,
+};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod evidence;
@@ -49,6 +52,7 @@ enum ClassRelationStrokeWidth {
 pub(crate) struct ClassRelationThemePlan {
     stroke: Option<ExpectedStroke>,
     mermaid_owns_stroke: bool,
+    note_attachment_indices: Vec<usize>,
     stroke_width: ClassRelationStrokeWidth,
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -125,6 +129,13 @@ impl ClassRelationThemePlan {
         )?;
         let static_winner_rules = style
             .winner_rule_properties()
+            .filter(|(property, _)| {
+                *property != ResolvedStyleProperty::Fill
+                    || matches!(
+                        style.stroke_resolution().specified(),
+                        Specified::Unspecified
+                    )
+            })
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
         node_plan.resolve_static(theme, work_meter)?;
@@ -132,28 +143,7 @@ impl ClassRelationThemePlan {
             .family_rules()
             .filter_map(|(_, rule)| rule.ordinal().is_some().then_some(rule.target()))
             .collect::<BTreeSet<_>>();
-        let typed_ordinal_edge_stroke_rules = theme
-            .family_mechanism_routes()
-            .iter()
-            .filter_map(|route| {
-                (route.disposition() == FamilyThemeDisposition::TypedAdapter)
-                    .then(|| match route.mechanism() {
-                        FamilyThemeMechanism::RuleFacet {
-                            rule_index,
-                            target: ThemeTarget::Edge,
-                            selector: FamilyThemeSelectorShape::Ordinal { .. },
-                            facet: FamilyThemeRuleFacet::Stroke(_),
-                        } => Some(rule_index),
-                        FamilyThemeMechanism::BaseTypography(_)
-                        | FamilyThemeMechanism::RuleFacet { .. }
-                        | FamilyThemeMechanism::OrdinalPalette { .. }
-                        | FamilyThemeMechanism::EffectBinding { .. } => None,
-                    })
-                    .flatten()
-            })
-            .collect::<BTreeSet<_>>();
         let mut ordinal_winner_rules = BTreeSet::new();
-        let mut has_applicable_ordinal_stroke_winner = false;
         if ordinal_rule_targets.contains(&ThemeTarget::Edge) {
             for ordinal in 1..=relation_count {
                 let ordinal_style = theme.style_with_work_meter(
@@ -163,11 +153,14 @@ impl ClassRelationThemePlan {
                     work_meter,
                 )?;
                 for (property, origin) in ordinal_style.winner_rule_properties() {
-                    has_applicable_ordinal_stroke_winner |= property
-                        == ResolvedStyleProperty::Stroke
-                        && origin.ordinal().is_some()
-                        && typed_ordinal_edge_stroke_rules.contains(&origin.rule_index());
-                    ordinal_winner_rules.insert((origin.rule_index(), property));
+                    if property != ResolvedStyleProperty::Fill
+                        || matches!(
+                            ordinal_style.stroke_resolution().specified(),
+                            Specified::Unspecified
+                        )
+                    {
+                        ordinal_winner_rules.insert((origin.rule_index(), property));
+                    }
                 }
             }
         }
@@ -178,11 +171,7 @@ impl ClassRelationThemePlan {
                 || ordinal_rule_targets.contains(&ThemeTarget::NodeLabel),
             work_meter,
         )?;
-        let stroke = if has_applicable_ordinal_stroke_winner {
-            None
-        } else {
-            typed_stroke_expectation(theme, &style, mermaid_owns_stroke)
-        };
+        let stroke = typed_stroke_expectation(theme, &style, mermaid_owns_stroke);
         let typed_stroke_width = style
             .stroke_width_resolution()
             .winner()
@@ -213,6 +202,7 @@ impl ClassRelationThemePlan {
         Ok(Self {
             stroke,
             mermaid_owns_stroke,
+            note_attachment_indices: Vec::new(),
             stroke_width,
             static_winner_rules,
             ordinal_winner_rules,
@@ -220,6 +210,13 @@ impl ClassRelationThemePlan {
             track_edge_label_backgrounds,
             mermaid_owns_edge_label_background,
         })
+    }
+
+    pub(crate) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
+        // Note attachments share static edge paint, but do not enter the relation ordinal or
+        // stroke-width domains. Retain declaration indices, including gaps from unattached notes.
+        self.note_attachment_indices = indices;
+        self
     }
 
     pub(crate) const fn paint_stroke_width(&self) -> Option<f32> {
@@ -261,6 +258,7 @@ impl ClassRelationThemePlan {
             self.stroke.clone(),
             hand_drawn,
         )
+        .with_note_attachments(self.note_attachment_indices.clone())
         .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
     }
 
@@ -316,7 +314,10 @@ impl ClassRelationThemePlan {
                 self.stroke_width,
                 ClassRelationStrokeWidth::MermaidOwned { .. }
             ))
-            || (matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && self.mermaid_owns_stroke)
+            || (matches!(
+                facet,
+                FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+            ) && self.mermaid_owns_stroke)
         {
             return false;
         }
@@ -355,39 +356,37 @@ fn typed_stroke_expectation(
     if mermaid_owns_stroke {
         return None;
     }
-    let origin = style.stroke_resolution().winner()?;
-    let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
-    let has_direct_static_route = theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .any(|route| {
-            route.disposition() == FamilyThemeDisposition::TypedAdapter
-                && matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        rule_index,
-                        target: ThemeTarget::Edge,
-                        selector: FamilyThemeSelectorShape::Static { variant: None },
-                        facet: route_facet,
-                    } if rule_index == origin.rule_index() && route_facet == facet
-                )
-        });
-    if !has_direct_static_route {
-        return None;
-    }
-    let css = match style.stroke_resolution().specified() {
-        Specified::Value(crate::diagram_theme::CanvasPaint::Transparent) => "transparent".into(),
-        Specified::Value(crate::diagram_theme::CanvasPaint::Solid(color)) => color.as_css(),
+    // Class uses fill as a relation paint fallback only when stroke was never specified.
+    // Clear and unsupported stroke values still own the terminal and block that fallback.
+    let (property, paint) = if matches!(
+        style.stroke_resolution().specified(),
         Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(crate::diagram_theme::CanvasPaint::LinearGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::RadialGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::Pattern(_)) => return None,
+    ) {
+        (
+            ResolvedStyleProperty::Fill,
+            resolve_direct_static_fill(
+                theme,
+                style,
+                &[ThemeTarget::Edge],
+                DirectStaticSelectorDomain::Default,
+            ),
+        )
+    } else {
+        (
+            ResolvedStyleProperty::Stroke,
+            resolve_direct_static_stroke(
+                theme,
+                style,
+                &[ThemeTarget::Edge],
+                DirectStaticSelectorDomain::Default,
+            ),
+        )
     };
+    let (css, rule_index, _) = paint?.into_parts();
     Some(ExpectedStroke {
-        rule_index: origin.rule_index(),
-        css,
+        rule_index,
+        property,
+        css: css.into_string(),
     })
 }
 

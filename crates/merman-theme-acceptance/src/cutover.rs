@@ -323,6 +323,7 @@ const CLASS_EDGE_SOURCE: &str = r#"classDiagram
   E ..> F
   G o-- H
   I ()-- J
+  note for A "attached paint terminal"
 "#;
 const ER_RELATION_SOURCE: &str = r#"erDiagram
   A ||--o{ B : owns
@@ -746,9 +747,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(CYNEFIN_TEXT_SOURCE)
         }
-        (DiagramFamilyId::CLASS, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(CLASS_EDGE_SOURCE)
-        }
+        (
+            DiagramFamilyId::CLASS,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(CLASS_EDGE_SOURCE),
         (
             DiagramFamilyId::CLASS,
             ThemeTarget::Node,
@@ -2413,11 +2416,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_452_routes_and_666_artifact_witnesses() {
+    fn route_inventory_retains_458_routes_and_678_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 452);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 666);
+        assert_eq!(inventory.len(), 458);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 678);
     }
 
     #[test]

@@ -10,7 +10,7 @@ use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyProperty
 ///
 /// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
 /// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 83;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 84;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -183,7 +183,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "class",
         target: "edge",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["stroke-paint", "stroke-width"],
+        facets: &["fill", "stroke-paint", "stroke-width"],
     },
     RuleClaim {
         family: "class",
@@ -988,12 +988,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "class",
         target: "edge-label-background",
         kind: SupportClaimKind::Unsupported,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "class",
-        target: "edge",
-        kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
     },
     RuleClaim {

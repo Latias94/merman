@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 81;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 82;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    104, 42, 31, 123, 33, 37, 106, 171, 62, 190, 142, 87, 242, 107, 237, 84, 37, 242, 33, 124, 112,
-    229, 119, 62, 242, 73, 31, 138, 86, 162, 133, 131,
+    78, 188, 0, 181, 22, 54, 246, 59, 121, 178, 132, 183, 66, 178, 23, 155, 190, 32, 107, 102, 65,
+    182, 249, 160, 235, 132, 43, 137, 23, 22, 234, 143,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,7 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 452] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 458] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2595,6 +2595,52 @@ const ACTIVE_ROUTES: [RouteAuthorization; 452] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::CLASS,

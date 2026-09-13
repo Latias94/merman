@@ -3,8 +3,8 @@ use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
-    ThemeTarget, ThemeVariant,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
+    ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
@@ -19,6 +19,7 @@ use super::{ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTerminalRece
 #[derive(Debug)]
 pub(crate) struct ClassThemeEvidenceRecorder {
     expected_relation_paths: usize,
+    expected_note_paths: usize,
     node_count: usize,
     cluster_label_count: usize,
     table_group_lengths: Vec<usize>,
@@ -28,12 +29,14 @@ pub(crate) struct ClassThemeEvidenceRecorder {
 impl ClassThemeEvidenceRecorder {
     pub(crate) fn new(
         expected_relation_paths: usize,
+        expected_note_paths: usize,
         node_count: usize,
         cluster_label_count: usize,
         table_group_lengths: Vec<usize>,
     ) -> Self {
         Self {
             expected_relation_paths,
+            expected_note_paths,
             node_count,
             cluster_label_count,
             table_group_lengths,
@@ -43,6 +46,7 @@ impl ClassThemeEvidenceRecorder {
 
     pub(crate) fn record_terminal(&self, receipt: ClassRelationThemeReceipt) -> bool {
         if receipt.expected_relation_count() != self.expected_relation_paths
+            || receipt.expected_note_attachment_count() != self.expected_note_paths
             || receipt.expected_node_count() < self.node_count
             || !receipt.proves_complete()
         {
@@ -88,7 +92,14 @@ impl ClassThemeEvidenceRecorder {
                     let property = resolved_style_property_for_facet(facet);
                     let route_applies = match target {
                         ThemeTarget::Edge => {
-                            has_relations && plan.route_won(rule_index, target, selector, facet)
+                            let has_static_note_paint = self.expected_note_paths != 0
+                                && matches!(selector, FamilyThemeSelectorShape::Static { .. })
+                                && matches!(
+                                    facet,
+                                    FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+                                );
+                            (has_relations || has_static_note_paint)
+                                && plan.route_won(rule_index, target, selector, facet)
                         }
                         ThemeTarget::Node | ThemeTarget::NodeLabel => {
                             visible_node_count != 0
@@ -160,16 +171,19 @@ impl ClassThemeEvidenceRecorder {
                     match (route.disposition(), facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeRuleFacet::Stroke(
+                            FamilyThemeRuleFacet::Fill(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            )
+                            | FamilyThemeRuleFacet::Stroke(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
                         ) => {
                             if let Some((winner, css)) = plan.typed_stroke() {
                                 if winner != rule_index {
                                     observation.incomplete = true;
-                                } else if receipt
-                                    .is_some_and(|receipt| receipt.proves_typed_stroke(rule_index))
-                                {
+                                } else if receipt.is_some_and(|receipt| {
+                                    receipt.proves_typed_stroke(rule_index, property)
+                                }) {
                                     observation.capabilities.insert(if css == "transparent" {
                                         ThemeCapability::TransparentPaint
                                     } else {
@@ -382,16 +396,32 @@ mod tests {
             }
             receipt
         };
-        let recorder = ClassThemeEvidenceRecorder::new(2, 0, 0, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(2, 0, 0, 0, Vec::new());
         assert!(!recorder.record_terminal(complete_receipt(1)));
         assert!(recorder.record_terminal(complete_receipt(2)));
         assert!(!recorder.record_terminal(complete_receipt(2)));
     }
 
     #[test]
+    fn terminal_recorder_requires_source_note_attachment_count() {
+        let recorder = ClassThemeEvidenceRecorder::new(0, 1, 0, 0, Vec::new());
+        assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+        )));
+        let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+            .with_note_attachments(vec![2]);
+        assert!(!recorder.record_terminal(receipt.clone()));
+        receipt.record_note_attachment(2, None, "", None);
+        assert!(recorder.record_terminal(receipt));
+    }
+
+    #[test]
     fn visible_relation_marker_keeps_unsupported_paint_as_a_residual() {
         let theme = resolved_fill(ThemeTarget::Marker, None);
-        let recorder = ClassThemeEvidenceRecorder::new(1, 0, 0, Vec::new());
+        let recorder = ClassThemeEvidenceRecorder::new(1, 0, 0, 0, Vec::new());
         let mut receipt = ClassRelationThemeReceipt::new(
             vec![super::super::ClassRelationTerminalExpectation::new(
                 0,
@@ -429,7 +459,7 @@ mod tests {
     #[test]
     fn table_odd_even_variants_restart_for_each_member_group() {
         let odd_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Odd));
-        let odd_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
+        let odd_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 0, vec![1, 1]);
         let odd_evidence = odd_recorder
             .finish(
                 Some(&odd_theme),
@@ -440,7 +470,7 @@ mod tests {
         assert_eq!(odd_evidence.residuals().len(), 1);
 
         let even_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Even));
-        let even_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
+        let even_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, 0, vec![1, 1]);
         let even_evidence = even_recorder
             .finish(
                 Some(&even_theme),

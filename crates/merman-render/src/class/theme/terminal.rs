@@ -5,6 +5,7 @@ use crate::diagram_theme::{ResolvedStyleProperty, ThemeTarget};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ExpectedStroke {
     pub(super) rule_index: usize,
+    pub(super) property: ResolvedStyleProperty,
     pub(super) css: String,
 }
 
@@ -203,19 +204,22 @@ impl ClassMarkerTerminalExpectation {
     }
 }
 
-/// Writer-owned proof that every semantic Class node, relation, and referenced marker reached its
+/// Writer-owned proof that every semantic Class node, relation, attached note, and referenced marker reached its
 /// canonical terminal SVG checkpoint with the exact typed terminal value.
 #[derive(Debug, Clone)]
 pub(crate) struct ClassRelationThemeReceipt {
     expected_nodes: BTreeMap<String, ClassNodeTerminalExpectation>,
     duplicate_expected_node: bool,
     expected_relations: Vec<ClassRelationTerminalExpectation>,
+    expected_note_attachments: Vec<usize>,
     expected_markers: Vec<ClassMarkerTerminalExpectation>,
     expected_stroke: Option<ExpectedStroke>,
     hand_drawn: bool,
     node_events: BTreeMap<String, ClassNodeTerminalEmission>,
     duplicate_node_event: bool,
     relation_events: Vec<ClassRelationTerminalEvent>,
+    note_attachment_events: BTreeMap<usize, ClassNoteAttachmentTerminalEvent>,
+    duplicate_note_attachment_event: bool,
     marker_events: Vec<ClassMarkerTerminalEvent>,
     checkpointed_typed_width_paths: usize,
     edge_label_background_events: Option<Vec<(usize, bool)>>,
@@ -232,15 +236,48 @@ impl ClassRelationThemeReceipt {
             expected_nodes: BTreeMap::new(),
             duplicate_expected_node: false,
             expected_relations,
+            expected_note_attachments: Vec::new(),
             expected_markers,
             expected_stroke,
             hand_drawn,
             node_events: BTreeMap::new(),
             duplicate_node_event: false,
             relation_events: Vec::new(),
+            note_attachment_events: BTreeMap::new(),
+            duplicate_note_attachment_event: false,
             marker_events: Vec::new(),
             checkpointed_typed_width_paths: 0,
             edge_label_background_events: None,
+        }
+    }
+
+    pub(super) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
+        self.expected_note_attachments = indices;
+        self
+    }
+
+    pub(super) fn expected_note_attachment_count(&self) -> usize {
+        self.expected_note_attachments.len()
+    }
+
+    pub(crate) fn record_note_attachment(
+        &mut self,
+        note_index: usize,
+        emitted_stroke: Option<(usize, &str)>,
+        terminal_style: &str,
+        hand_drawn_stroke: Option<&str>,
+    ) {
+        let event = ClassNoteAttachmentTerminalEvent {
+            emitted_stroke: emitted_stroke.map(|(rule_index, css)| (rule_index, css.to_string())),
+            terminal_style: terminal_style.to_string(),
+            hand_drawn_stroke: hand_drawn_stroke.map(str::to_string),
+        };
+        if self
+            .note_attachment_events
+            .insert(note_index, event)
+            .is_some()
+        {
+            self.duplicate_note_attachment_event = true;
         }
     }
 
@@ -362,6 +399,29 @@ impl ClassRelationThemeReceipt {
                 })
     }
 
+    fn proves_complete_note_attachment_emission(&self) -> bool {
+        // Namespace groups may emit attachments in a different order from their declarations.
+        !self.duplicate_note_attachment_event
+            && self
+                .expected_note_attachments
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+            && self.note_attachment_events.len() == self.expected_note_attachments.len()
+            && self.expected_note_attachments.iter().all(|index| {
+                self.note_attachment_events.get(index).is_some_and(|event| {
+                    stroke_event_matches(
+                        self.expected_stroke.as_ref(),
+                        event.emitted_stroke.as_ref(),
+                        &event.terminal_style,
+                    ) && hand_drawn_stroke_matches(
+                        self.expected_stroke.as_ref(),
+                        self.hand_drawn,
+                        event.hand_drawn_stroke.as_deref(),
+                    )
+                })
+            })
+    }
+
     fn proves_complete_marker_emission(&self) -> bool {
         self.marker_events.len() == self.expected_markers.len()
             && self
@@ -405,6 +465,7 @@ impl ClassRelationThemeReceipt {
     pub(super) fn proves_complete(&self) -> bool {
         self.proves_complete_node_emission()
             && self.proves_complete_relation_emission()
+            && self.proves_complete_note_attachment_emission()
             && self.proves_complete_marker_emission()
     }
 
@@ -412,7 +473,10 @@ impl ClassRelationThemeReceipt {
         let complete_nodes = self.proves_complete_node_emission();
         let complete_relations = self.proves_complete_relation_emission();
         let complete_markers = self.proves_complete_marker_emission();
-        let complete = complete_nodes && complete_relations && complete_markers;
+        let complete = complete_nodes
+            && complete_relations
+            && self.proves_complete_note_attachment_emission()
+            && complete_markers;
         let visible_marker_occurrence_count = complete.then(|| {
             self.relation_events
                 .iter()
@@ -467,6 +531,8 @@ impl ClassRelationThemeReceipt {
                 .saturating_mul(NODE_PAINT_TARGETS.len())
                 .saturating_add(self.expected_relations.len())
                 .saturating_add(self.relation_events.len())
+                .saturating_add(self.expected_note_attachments.len())
+                .saturating_add(self.note_attachment_events.len())
                 .saturating_add(self.expected_markers.len())
                 .saturating_add(self.marker_events.len())
                 .saturating_add(
@@ -483,16 +549,23 @@ impl ClassRelationThemeReceipt {
             && self.checkpointed_typed_width_paths == self.expected_relations.len()
     }
 
-    fn has_effective_stroke_rule(&self, rule_index: usize) -> bool {
-        self.expected_stroke
-            .as_ref()
-            .is_some_and(|expected| expected.rule_index == rule_index)
-            && !self.expected_relations.is_empty()
+    fn has_effective_stroke_rule(
+        &self,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.expected_stroke.as_ref().is_some_and(|expected| {
+            expected.rule_index == rule_index && expected.property == property
+        }) && (!self.expected_relations.is_empty() || !self.expected_note_attachments.is_empty())
     }
 
-    pub(super) fn proves_typed_stroke(&self, rule_index: usize) -> bool {
+    pub(super) fn proves_typed_stroke(
+        &self,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
         self.proves_complete()
-            && self.has_effective_stroke_rule(rule_index)
+            && self.has_effective_stroke_rule(rule_index, property)
             && self.relation_events.iter().all(|event| {
                 event
                     .emitted_stroke
@@ -566,6 +639,13 @@ struct ClassRelationTerminalEvent {
     relation_index: usize,
     start_marker: Option<&'static str>,
     end_marker: Option<&'static str>,
+    emitted_stroke: Option<(usize, String)>,
+    terminal_style: String,
+    hand_drawn_stroke: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ClassNoteAttachmentTerminalEvent {
     emitted_stroke: Option<(usize, String)>,
     terminal_style: String,
     hand_drawn_stroke: Option<String>,
@@ -693,6 +773,7 @@ mod tests {
     fn expected_stroke() -> Option<ExpectedStroke> {
         Some(ExpectedStroke {
             rule_index: 3,
+            property: ResolvedStyleProperty::Stroke,
             css: "#123456".to_string(),
         })
     }
@@ -710,6 +791,165 @@ mod tests {
         terminal_value: &str,
     ) -> ClassNodePaintTerminalEmission {
         ClassNodePaintTerminalEmission::new(source_owned, emitted, terminal_value)
+    }
+
+    #[test]
+    fn relation_receipt_only_proves_the_source_paint_property() {
+        for property in [ResolvedStyleProperty::Fill, ResolvedStyleProperty::Stroke] {
+            let mut receipt = ClassRelationThemeReceipt::new(
+                vec![ClassRelationTerminalExpectation::new(0, None, None)],
+                Vec::new(),
+                Some(ExpectedStroke {
+                    rule_index: 3,
+                    property,
+                    css: "#123456".to_string(),
+                }),
+                false,
+            );
+            assert!(!receipt.proves_typed_stroke(3, property));
+            receipt.record_relation(
+                0,
+                None,
+                None,
+                Some((3, "#123456")),
+                "stroke:#123456 !important",
+                None,
+                false,
+            );
+            assert!(receipt.proves_typed_stroke(3, property));
+            let sibling = if property == ResolvedStyleProperty::Fill {
+                ResolvedStyleProperty::Stroke
+            } else {
+                ResolvedStyleProperty::Fill
+            };
+            assert!(!receipt.proves_typed_stroke(3, sibling));
+            assert!(!receipt.proves_typed_stroke(4, property));
+        }
+    }
+
+    #[test]
+    fn note_attachment_receipt_binds_source_indices_paint_and_hand_drawn_checkpoint() {
+        for property in [ResolvedStyleProperty::Fill, ResolvedStyleProperty::Stroke] {
+            for hand_drawn in [false, true] {
+                let receipt = || {
+                    ClassRelationThemeReceipt::new(
+                        Vec::new(),
+                        Vec::new(),
+                        Some(ExpectedStroke {
+                            rule_index: 3,
+                            property,
+                            css: "#123456".to_string(),
+                        }),
+                        hand_drawn,
+                    )
+                    .with_note_attachments(vec![1, 3])
+                };
+                let record = |receipt: &mut ClassRelationThemeReceipt, index| {
+                    receipt.record_note_attachment(
+                        index,
+                        Some((3, "#123456")),
+                        "stroke:#123456 !important",
+                        hand_drawn.then_some("#123456"),
+                    );
+                };
+                let mut complete = receipt();
+                assert!(!complete.proves_complete());
+                record(&mut complete, 1);
+                assert!(!complete.proves_typed_stroke(3, property));
+                record(&mut complete, 3);
+                assert!(complete.proves_complete());
+                assert!(complete.proves_typed_stroke(3, property));
+                let sibling = if property == ResolvedStyleProperty::Fill {
+                    ResolvedStyleProperty::Stroke
+                } else {
+                    ResolvedStyleProperty::Fill
+                };
+                assert!(!complete.proves_typed_stroke(3, sibling));
+                assert!(!complete.proves_typed_stroke(4, property));
+                record(&mut complete, 3);
+                assert!(!complete.proves_complete());
+
+                let mut reordered = receipt();
+                record(&mut reordered, 3);
+                record(&mut reordered, 1);
+                assert!(reordered.proves_typed_stroke(3, property));
+
+                for indices in [[1, 1], [0, 1]] {
+                    let mut wrong = receipt();
+                    for index in indices {
+                        record(&mut wrong, index);
+                    }
+                    assert!(!wrong.proves_complete(), "indices: {indices:?}");
+                }
+                for (emitted, terminal, rough) in [
+                    (
+                        None,
+                        "stroke:#123456 !important",
+                        hand_drawn.then_some("#123456"),
+                    ),
+                    (
+                        Some((4, "#123456")),
+                        "stroke:#123456 !important",
+                        hand_drawn.then_some("#123456"),
+                    ),
+                    (
+                        Some((3, "#abcdef")),
+                        "stroke:#123456 !important",
+                        hand_drawn.then_some("#123456"),
+                    ),
+                    (
+                        Some((3, "#123456")),
+                        "stroke:#abcdef !important",
+                        hand_drawn.then_some("#123456"),
+                    ),
+                    (
+                        Some((3, "#123456")),
+                        "stroke:#123456 !important",
+                        if hand_drawn { None } else { Some("#123456") },
+                    ),
+                    (
+                        Some((3, "#123456")),
+                        "stroke:#123456 !important",
+                        Some("#abcdef"),
+                    ),
+                ] {
+                    let mut wrong = receipt();
+                    record(&mut wrong, 1);
+                    wrong.record_note_attachment(3, emitted, terminal, rough);
+                    assert!(!wrong.proves_complete());
+                    assert!(!wrong.proves_typed_stroke(3, property));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn note_attachment_paint_does_not_expand_relation_width_or_marker_domains() {
+        let mut receipt = ClassRelationThemeReceipt::new(
+            vec![ClassRelationTerminalExpectation::new(0, None, None)],
+            Vec::new(),
+            expected_stroke(),
+            false,
+        )
+        .with_note_attachments(vec![2]);
+        receipt.record_relation(
+            0,
+            None,
+            None,
+            Some((3, "#123456")),
+            "stroke:#123456 !important;stroke-width:6px !important",
+            None,
+            true,
+        );
+        assert!(receipt.proves_typed_width());
+        assert!(!receipt.proves_typed_stroke(3, ResolvedStyleProperty::Stroke));
+        receipt.record_note_attachment(2, Some((3, "#123456")), "stroke:#123456 !important", None);
+        assert!(receipt.proves_complete());
+        assert!(receipt.proves_typed_width());
+        assert_eq!(
+            receipt.terminal_summary().visible_marker_occurrence_count(),
+            Some(0)
+        );
     }
 
     #[test]

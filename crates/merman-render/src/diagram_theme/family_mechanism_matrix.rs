@@ -465,7 +465,7 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK),
@@ -1741,26 +1741,15 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::CLASS
         && matches!(
-            (target, selector),
-            (
-                ThemeTarget::Edge,
-                FamilyThemeSelectorShape::Static { variant: None }
-            ) | (
-                ThemeTarget::Node | ThemeTarget::NodeLabel,
-                FamilyThemeSelectorShape::Static {
-                    variant: None | Some(ThemeVariant::Default)
-                }
-            )
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
         )
         && matches!(
             (target, facet),
             (
-                ThemeTarget::Edge,
-                FamilyThemeRuleFacet::Stroke(
-                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-                )
-            ) | (
-                ThemeTarget::Node,
+                ThemeTarget::Edge | ThemeTarget::Node,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 ) | FamilyThemeRuleFacet::Stroke(
@@ -3796,28 +3785,9 @@ mod tests {
             FamilyThemePaintKind::Transparent,
             FamilyThemePaintKind::Solid,
         ] {
-            assert_eq!(
-                classify_rule_facet(
-                    DiagramFamilyId::CLASS,
-                    ThemeTarget::Edge,
-                    FamilyThemeSelectorShape::Static { variant: None },
-                    FamilyThemeRuleFacet::Stroke(paint_kind),
-                ),
-                FamilyThemeDisposition::TypedAdapter
-            );
-            assert_eq!(
-                classify_rule_facet(
-                    DiagramFamilyId::CLASS,
-                    ThemeTarget::Edge,
-                    FamilyThemeSelectorShape::Static {
-                        variant: Some(ThemeVariant::Default),
-                    },
-                    FamilyThemeRuleFacet::Stroke(paint_kind),
-                ),
-                FamilyThemeDisposition::LegacyCompatibility
-            );
-
             for (target, facet) in [
+                (ThemeTarget::Edge, FamilyThemeRuleFacet::Fill(paint_kind)),
+                (ThemeTarget::Edge, FamilyThemeRuleFacet::Stroke(paint_kind)),
                 (ThemeTarget::Node, FamilyThemeRuleFacet::Fill(paint_kind)),
                 (ThemeTarget::Node, FamilyThemeRuleFacet::Stroke(paint_kind)),
                 (
@@ -5700,6 +5670,20 @@ mod tests {
             (
                 DiagramFamilyId::CLASS,
                 ThemeTarget::Edge,
+                Fill,
+                Transparent,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Edge,
+                Fill,
+                Solid,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Edge,
                 Stroke,
                 Transparent,
                 vec!["edge.stroke", "marker.paint-from-edge"],
@@ -7212,7 +7196,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 226);
+        assert_eq!(qualified.len(), 230);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7319,7 +7303,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
-            6
+            10
         );
         assert_eq!(
             qualified
@@ -7365,7 +7349,10 @@ mod tests {
             }
             let expected_projection_count = if matches!(
                 route.family_id(),
-                DiagramFamilyId::GIT_GRAPH | DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::SWIMLANE
+                    | DiagramFamilyId::CLASS
             ) && route.target() == ThemeTarget::Text
             {
                 3
@@ -7374,7 +7361,7 @@ mod tests {
                 || route.family_id() == DiagramFamilyId::C4
                 || (matches!(
                     route.family_id(),
-                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS
                 ) && route.target() == ThemeTarget::Edge)
             {
                 2
@@ -7535,17 +7522,26 @@ mod tests {
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::CLASS {
-                let expected = match route.facet() {
-                    ThemeRouteCutoverFacet::Fill if route.target() == ThemeTarget::Node => {
-                        ThemeRouteCutoverProjection::NodeFill
+                let expected = match (route.target(), route.facet()) {
+                    (
+                        ThemeTarget::Edge,
+                        ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+                    ) => vec![
+                        ThemeRouteCutoverProjection::EdgeStroke,
+                        ThemeRouteCutoverProjection::MarkerPaintFromEdge,
+                    ],
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::NodeFill]
                     }
-                    ThemeRouteCutoverFacet::Stroke => ThemeRouteCutoverProjection::NodeStroke,
-                    ThemeRouteCutoverFacet::Fill if route.target() == ThemeTarget::NodeLabel => {
-                        ThemeRouteCutoverProjection::NodeLabelFill
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+                        vec![ThemeRouteCutoverProjection::NodeStroke]
+                    }
+                    (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::NodeLabelFill]
                     }
                     _ => panic!("unexpected Class qualified route: {route:?}"),
                 };
-                assert_eq!(projections, vec![expected], "route={route:?}");
+                assert_eq!(projections, expected, "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::GIT_GRAPH {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
@@ -7849,7 +7845,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 22)]
+            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 16)]
                 .into_iter()
                 .collect(),
             "bridge retirement must update the exact route ledger"

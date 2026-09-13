@@ -32,12 +32,23 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 2/33; 54 routes | Block 32, Class 22. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 2/33; 48 routes | Block 32, Class 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 83 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v81; 452 routes / 666 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 84 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v82; 458 routes / 678 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD17 v82 replaces Class's six remaining scalar Edge routes: unqualified/Default
+fill and Default stroke, each solid/transparent. Fill supplies relation, attached-note connector,
+and referenced-marker stroke only when stroke is unspecified; Clear and unsupported stroke block that fallback.
+The terminal receipt binds the winning rule and source property, including source-indexed note
+connector checkpoints. Notes do not extend relation ordinals or width. Class no longer executes
+edge or marker-fallback bridge assignments; source `lineColor` keeps ownership. The added
+Classic/HandDrawn native witnesses observe Edge.fill in the SVG stroke channel. Public support
+revision 84 reports a partial typed Edge.fill surface. KTD23 v9 is unchanged. Class Title still
+has a real namespace-label consumer and is not an unused projection. See the
+[Class edge record](../knowledge/engineering/verification/2026-09-13-class-edge-scalar-cutover.md).
 
 KTD17 v81 replaces Block's four unqualified/Default scalar EdgeLabelBackground.fill
 routes with typed stylesheet and visible-label consumers. The background bridge projection is
@@ -45,7 +56,7 @@ removed; explicit source configuration retains ownership. Classic, Neo, and Hand
 route witnesses cover solid and transparent fills. Public support revision 83 reports a partial
 typed surface; unsupported ordinal and sibling facets remain residuals. This is a typed replacement,
 so KTD23 v9 is unchanged. Revision-82 installed artifacts remain historical evidence and need
-rebuilding before they can attest revision 83. See the
+rebuilding before they can attest the current revision 84. See the
 [Block background record](../knowledge/engineering/verification/2026-09-13-block-edge-label-background-legacy.md).
 
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
@@ -65,7 +76,7 @@ is fixed at `9babbfa248ea505053d24d8314b09d8e25a529b6`. After removal, all SVG b
 PNG pixels match the unthemed scenes across five schemes, three looks, and both input label modes.
 Unsupported background requests reconcile against completed visible label backgrounds; absent,
 shadowed, and source-owned fills are NotApplicable. Missing label checkpoints stay incomplete.
-This adds no typed background support. Class retains 22 other legacy routes. The
+This adds no typed background support. The later Edge scalar cutover leaves Class with 16 legacy routes. The
 [retirement record](../knowledge/engineering/verification/2026-09-13-class-background-retirement.md)
 separates current checks from the independent pre-removal baseline.
 

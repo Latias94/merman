@@ -4742,7 +4742,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
 }
 
 #[test]
-fn class_mixed_direct_width_and_legacy_paint_is_not_reported_as_applied() {
+fn class_mixed_direct_width_and_scalar_paint_share_terminal_evidence() {
     let theme = class_rule_theme(
         ThemeRule::new(
             ThemeTarget::Edge,
@@ -4753,53 +4753,32 @@ fn class_mixed_direct_width_and_legacy_paint_is_not_reported_as_applied() {
         )
         .for_family(DiagramFamilyId::CLASS),
     );
-    const SOURCE: &str = "classDiagram\nclass A\nclass B\nA --> B\n";
-    let parse = || {
-        theme
+    for requirement in [
+        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
+    ] {
+        let parsed = theme
             .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .parse_diagram_for_render_model_sync("classDiagram\nA --> B\n", ParseOptions::strict())
             .unwrap()
-            .expect("mixed Class relation source should produce a render model")
-    };
-    let rendered = prepare(
-        parse(),
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .begin_session_with_theme(&theme)
-            .expect("begin best-effort mixed Class session"),
-    )
-    .expect("prepare mixed Class relation fixture")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render best-effort mixed Class relation fixture");
-
-    assert!(rendered.svg().contains("stroke-width:6px !important"));
-    assert!(
-        rendered
-            .style_report()
-            .theme_applied_mechanisms()
-            .is_empty()
-    );
-    assert!(rendered.style_report().theme_residuals().is_empty());
-    assert!(rendered.style_report().compatibility_residual_count() > 0);
-
-    let error = match prepare(
-        parse(),
-        &LayoutOptions::default(),
-        crate::environment::RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin strict mixed Class session"),
-    ) {
-        Ok(_) => panic!("legacy Class paint must reject before false Applied evidence"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        Error::LegacyFamilyThemeCompatibility {
-            family_id: DiagramFamilyId::CLASS,
-            ..
-        }
-    ));
+            .unwrap();
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(requirement)
+                .begin_session_with_theme(&theme)
+                .unwrap(),
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        assert!(rendered.svg().contains("stroke-width:6px !important"));
+        assert!(rendered.svg().contains("stroke:#2563eb !important"));
+        assert_eq!(rendered.style_report().theme_applied_mechanisms().len(), 1);
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+    }
 }
 
 #[test]

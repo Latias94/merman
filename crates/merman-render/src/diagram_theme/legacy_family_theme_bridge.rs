@@ -646,16 +646,18 @@ fn compile_node_family(
             [("titleColor", reader.text_fill(ThemeTarget::Title))],
         );
     }
-    let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", edge_paint)],
-    );
-    let marker_paint = reader.marker_paint_contribution();
-    contributions.add_theme_variables(
-        marker_paint.contribution_id,
-        [("arrowheadColor", marker_paint.value)],
-    );
+    if family != DiagramFamilyId::CLASS {
+        let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            [("lineColor", edge_paint)],
+        );
+        let marker_paint = reader.marker_paint_contribution();
+        contributions.add_theme_variables(
+            marker_paint.contribution_id,
+            [("arrowheadColor", marker_paint.value)],
+        );
+    }
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
         [
@@ -2052,14 +2054,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 54);
+        assert_eq!(status.matrix_route_count(), 48);
         assert_eq!(status.matrix_family_count(), 2);
         assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                166, 225, 50, 254, 152, 24, 166, 91, 247, 25, 106, 187, 49, 71, 255, 97, 115, 249,
-                80, 49, 253, 100, 56, 110, 31, 62, 115, 71, 71, 223, 28, 125,
+                157, 63, 103, 194, 178, 168, 55, 156, 218, 207, 91, 181, 87, 61, 6, 131, 178, 13,
+                176, 192, 173, 164, 217, 50, 32, 232, 238, 254, 206, 79, 233, 242
             ]
         );
         assert_eq!(
@@ -3808,7 +3810,7 @@ gitGraph
     }
 
     #[test]
-    fn bridge_free_edge_fill_and_marker_paint_leave_class_and_block_unchanged() {
+    fn bridge_free_edge_fill_and_marker_paint_leave_block_unchanged() {
         for family in [
             DiagramFamilyId::FLOWCHART,
             DiagramFamilyId::SWIMLANE,
@@ -3830,7 +3832,9 @@ gitGraph
                     let artifact = bridge(&spec).compile_for_family(family);
                     let typed = matches!(
                         family,
-                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                        DiagramFamilyId::FLOWCHART
+                            | DiagramFamilyId::SWIMLANE
+                            | DiagramFamilyId::CLASS
                     );
                     for projection in ["edge.stroke", "marker.paint-from-edge"] {
                         assert_eq!(
@@ -4034,33 +4038,33 @@ gitGraph
     }
 
     #[test]
-    fn unsupported_class_marker_rule_does_not_block_legacy_edge_marker_fallback() {
-        let edge = ThemeRule::new(
-            ThemeTarget::Edge,
-            ThemeStylePatch::default().with_stroke(solid("#22c55e")),
-        )
-        .with_variant(ThemeVariant::Default)
-        .for_family(DiagramFamilyId::CLASS);
-        let marker = ThemeRule::new(
-            ThemeTarget::Marker,
-            ThemeStylePatch::default().with_stroke(solid("#ef4444")),
-        )
-        .for_family(DiagramFamilyId::CLASS);
-        let spec = DiagramThemeSpec::new()
-            .with_styles(ThemeRuleSet::default().with_rule(edge).with_rule(marker));
-        let parsed = parse(&spec, "classDiagram\nA *-- B\n");
-
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.lineColor"),
-            Some("#22c55e"),
-        );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.arrowheadColor"),
-            Some("#22c55e"),
-            "an unsupported Marker rule must not consume the Edge fallback slot",
-        );
+    fn unsupported_class_marker_rule_does_not_recreate_edge_bridge_assignments() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for patch in [
+                ThemeStylePatch::default().with_fill(solid("#22c55e")),
+                ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+            ] {
+                let mut edge =
+                    ThemeRule::new(ThemeTarget::Edge, patch).for_family(DiagramFamilyId::CLASS);
+                if let Some(variant) = variant {
+                    edge = edge.with_variant(variant);
+                }
+                let marker = ThemeRule::new(
+                    ThemeTarget::Marker,
+                    ThemeStylePatch::default().with_stroke(solid("#ef4444")),
+                )
+                .for_family(DiagramFamilyId::CLASS);
+                let spec = DiagramThemeSpec::new()
+                    .with_styles(ThemeRuleSet::default().with_rule(edge).with_rule(marker));
+                let parsed = parse(&spec, "classDiagram\nA *-- B\n");
+                let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nA *-- B\n");
+                assert_eq!(
+                    parsed.effective_config.as_value(),
+                    baseline.effective_config.as_value()
+                );
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+            }
+        }
     }
 
     #[test]

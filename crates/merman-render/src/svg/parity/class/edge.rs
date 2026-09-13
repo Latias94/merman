@@ -214,7 +214,11 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
         let relation_stroke_width = relation.and(ctx.relation_theme.paint_stroke_width());
-        let typed_stroke = relation.and(ctx.relation_theme.typed_stroke());
+        let typed_stroke = if relation.is_some() || is_note_edge {
+            ctx.relation_theme.typed_stroke()
+        } else {
+            None
+        };
         let typed_stroke_width = relation.and(ctx.relation_theme.typed_stroke_width());
         let stroke_outset = relation_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
         let start_marker_name =
@@ -418,6 +422,9 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         let base_style = class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn");
         let mut terminal_style = base_style.to_string();
         if let Some((_, stroke)) = typed_stroke {
+            if !terminal_style.ends_with(';') {
+                terminal_style.push(';');
+            }
             let _ = write!(&mut terminal_style, "stroke:{stroke} !important;");
         }
         if let Some(width) = typed_stroke_width {
@@ -430,7 +437,18 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         let _ = write!(out, r#" style="{}""#, escape_attr_display(&terminal_style));
         out.push_str("/>");
         out.checkpoint()?;
-        if relation.is_some() {
+        if is_note_edge {
+            let note_index =
+                e.id.strip_prefix("edgeNote")
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .unwrap_or(usize::MAX);
+            theme_receipt.record_note_attachment(
+                note_index,
+                typed_stroke,
+                &terminal_style,
+                hand_drawn_stroke,
+            );
+        } else if relation.is_some() {
             let relation_index = ctx
                 .relation_index_by_id
                 .get(e.id.as_str())
