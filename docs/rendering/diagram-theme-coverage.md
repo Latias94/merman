@@ -6,6 +6,12 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+All five Web packages were rebuilt from clean source `4e4f3acc3`, packed, installed offline and
+checked through Chromium public entries. Full/render each passed the 15 revision-86 support
+vectors and the shared authoring/catalog task. All twenty size-budget checks still fail; this
+updates installed-consumer evidence without closing C7a. See the
+[Web consumer record](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md).
+
 C5 closed at `ff486589c` after 1128/1128 private Release owner tests passed in a clean checkout.
 The scope includes all 41 parser variants through typed preparation and SVG writers, all 33 logical
 family theme scopes, bounded program/evidence work, primary-family direct consumers and authorized

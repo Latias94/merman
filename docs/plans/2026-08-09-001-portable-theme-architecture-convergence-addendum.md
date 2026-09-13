@@ -1072,7 +1072,11 @@ The clean source `51f6308ac` now has installed N-API, Node WASM and macOS ARM64 
 observations for all 15 revision-86 support vectors and the shared authoring/catalog task. Node
 used pinned 24.13.1; the same wheel passed Python 3.12.8 and 3.9.6. Installed Class namespace
 Title/source-owner terminals also passed. See the [consumer evidence](../knowledge/engineering/verification/2026-09-13-installed-theme-consumers-revision86.md).
-Browser Web artifacts, other hosts, qualification publication and formal rollout remain open.
+All five Web packages at clean source `4e4f3acc3` now also have installed Chromium public-entry
+observations; full/render each passed all 15 revision-86 support vectors. The
+[Web consumer record](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md)
+records the fresh artifacts and all twenty still-failing size checks. Web size gates, other hosts,
+qualification publication and formal rollout remain open.
 
 The clean macOS ARM64 CLI archive at `5c0d1a3a5` passed all 18 exact runner/CLI qualification
 comparisons and complete record/companion replay; see
