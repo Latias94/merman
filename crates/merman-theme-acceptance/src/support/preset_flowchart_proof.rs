@@ -578,6 +578,16 @@ mod tests {
                 "class=\"missing-background\"".to_owned(),
                 "background",
             ),
+            (
+                "class=\"flowchartTitleText\"".to_owned(),
+                "class=\"missing-cluster-title\"".to_owned(),
+                "cluster title",
+            ),
+            (
+                "class=\"edgeLabel\"".to_owned(),
+                "class=\"missing-edge-label\"".to_owned(),
+                "edge label",
+            ),
         ] {
             assert!(document.svg().contains(&old));
             let changed = observe(&document.svg().replace(&old, &new));
