@@ -134,7 +134,13 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
             && cluster_rect.style_value("stroke") == Some(palette.cluster_border),
         "wrong cluster paint"
     );
-    require_text(receipt, cluster, "Review", palette.text)?;
+    let cluster_title = receipt
+        .descendants_of(cluster.index())
+        .find(|e| e.tag_name() == "g" && e.has_class("cluster-label"))
+        .ok_or_else(|| {
+            C6ProofError::new("preset-flowchart-cluster-title", "missing cluster title")
+        })?;
+    require_text(receipt, cluster_title, "Review", palette.text)?;
     let mut node_bounds = Vec::with_capacity(2);
     for (id, label) in [("A", "Alpha"), ("B", "Beta")] {
         let nodes: Vec<_> = receipt
@@ -213,6 +219,14 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
             e.tag_name() == "g" && e.has_class("label") && e.attribute("data-id") == Some("L_A_B_0")
         })
         .ok_or_else(|| C6ProofError::new("preset-flowchart-edge-label", "missing Advance label"))?;
+    c6_ensure!(
+        "preset-flowchart-edge-label",
+        label
+            .parent_index()
+            .and_then(|index| receipt.elements().get(index))
+            .is_some_and(|parent| parent.tag_name() == "g" && parent.has_class("edgeLabel")),
+        "missing edge label owner"
+    );
     let bg = receipt
         .descendants_of(label.index())
         .find(|e| e.tag_name() == "rect" && e.has_class("background"))
@@ -580,6 +594,11 @@ mod tests {
             ),
             (
                 "class=\"flowchartTitleText\"".to_owned(),
+                "class=\"missing-title\"".to_owned(),
+                "preset-flowchart-title",
+            ),
+            (
+                "class=\"cluster-label\"".to_owned(),
                 "class=\"missing-cluster-title\"".to_owned(),
                 "cluster title",
             ),
