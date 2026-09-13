@@ -104,3 +104,25 @@ cargo fmt --all --check
 git diff --check
 python3 -m unittest discover -s scripts -p test_release_workflow_security.py
 ```
+
+# Clean-checkout confirmation
+
+The committed implementation `05ef33898b7bf77f8d7f39a66aa09d85ea086c44` passed the same
+**895/895** owner tests from `/tmp/merman-palette-domain-05ef33898`. Git status was empty
+before and after. The checkout reused the active worktree's target directory through
+`CARGO_TARGET_DIR`, with two Cargo jobs. Fresh checkout timestamps triggered recompilation;
+the log identifies core, renderer, and the other workspace dependencies under this checkout.
+This was clean-source verification with a shared dependency cache, not an empty-target build.
+
+The resulting `state_svg_test-f66e607ba44a9308` binary has SHA-256
+`4f84260007a10be32fa3780599f8b2ff109c361659ade597378589d291371044`.
+It contains eight core source-path references to the clean checkout and zero references to the
+stale pre-Class baseline used in the earlier cache investigation. The experiment directory
+contains `clean-owner.log`, `clean-state.json`, and `clean-linkage.json`. The SVG structure,
+Clippy, and diagnostic curve checks were run on this same implementation before commit in the
+active worktree; they were not repeated in the clean checkout.
+
+A subsequent read-only primary-family audit also found that Flowchart/Swimlane candidate and
+residual helpers query `rule_facet_disposition`, while Sequence typography and evidence consume
+the same route disposition. No duplicate narrow support table or blanket Typed classification
+was found in that scope. This is source-review evidence, not an additional executed test count.
