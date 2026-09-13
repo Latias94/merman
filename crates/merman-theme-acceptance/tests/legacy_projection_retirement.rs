@@ -93,3 +93,50 @@ fn class_edge_label_background_selector_has_no_historical_group_consumer() {
         assert!(svg.contains(".edgeLabel .label span{background:"));
     }
 }
+
+#[test]
+fn class_edge_label_background_historical_projection_baseline_digest() {
+    use sha2::{Digest as _, Sha256};
+    let fixtures = [
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"
+        ),
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.svg"
+        ),
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.svg"
+        ),
+    ];
+    let mut digest = Sha256::new();
+    for svg in fixtures {
+        let style = svg
+            .split_once("<style>")
+            .and_then(|(_, rest)| rest.split_once("</style>"))
+            .map(|(style, _)| style)
+            .expect("historical Class fixture style block");
+        for marker in [
+            ".edgeLabel[data-look=\"neo\"]",
+            ".edgeLabel .label rect",
+            ".labelBkg",
+            ".edgeLabel .label span",
+        ] {
+            let start = style.find(marker).expect("historical Class CSS marker");
+            let end = style[start..]
+                .find('}')
+                .map(|offset| start + offset + 1)
+                .expect("historical Class CSS declaration");
+            digest.update(&style[start..end]);
+        }
+    }
+    let digest: [u8; 32] = digest.finalize().into();
+    assert_eq!(
+        digest,
+        [
+            0x04, 0x44, 0x4e, 0xec, 0xf9, 0x1d, 0x09, 0xda, 0x2f, 0x89, 0x2e, 0x04, 0x58, 0x33,
+            0xc0, 0x97, 0xc2, 0x49, 0x69, 0x57, 0x79, 0x9e, 0x23, 0x2a, 0x6d, 0x81, 0x75, 0x6d,
+            0xb3, 0x25, 0x98, 0x4b
+        ],
+        "Class edge-label background CSS projection baseline changed",
+    );
+}
