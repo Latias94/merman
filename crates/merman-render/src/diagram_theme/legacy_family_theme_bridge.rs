@@ -656,16 +656,6 @@ fn compile_node_family(
         marker_paint.contribution_id,
         [("arrowheadColor", marker_paint.value)],
     );
-    // Class's former projection only colored selectors without matching terminals.
-    if family == DiagramFamilyId::BLOCK {
-        contributions.add_theme_variables(
-            "edge-label-background.fill",
-            [(
-                "edgeLabelBackground",
-                reader.fill(ThemeTarget::EdgeLabelBackground),
-            )],
-        );
-    }
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
         [
@@ -2062,14 +2052,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 58);
+        assert_eq!(status.matrix_route_count(), 54);
         assert_eq!(status.matrix_family_count(), 2);
         assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                163, 37, 209, 89, 198, 180, 98, 246, 128, 109, 142, 29, 21, 157, 122, 107, 82, 82,
-                219, 196, 129, 60, 20, 171, 73, 40, 150, 145, 148, 95, 165, 112,
+                166, 225, 50, 254, 152, 24, 166, 91, 247, 25, 106, 187, 49, 71, 255, 97, 115, 249,
+                80, 49, 253, 100, 56, 110, 31, 62, 115, 71, 71, 223, 28, 125,
             ]
         );
         assert_eq!(
@@ -3552,6 +3542,32 @@ gitGraph
 
             assert!(!legacy.contribution_ids.contains(contribution_id));
             assert!(!legacy_bridge.owns_contribution_id(contribution_id));
+        }
+    }
+
+    #[test]
+    fn block_background_has_no_legacy_projection_after_typed_cutover() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for paint in [solid("#b316cd"), CanvasPaint::Transparent] {
+                let rule = ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(paint),
+                )
+                .for_family(DiagramFamilyId::BLOCK);
+                let rule = match variant {
+                    Some(variant) => rule.with_variant(variant),
+                    None => rule,
+                };
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let bridge = bridge(&spec);
+                let projection = bridge.compile_for_family(DiagramFamilyId::BLOCK);
+                assert!(projection.overlay.is_empty());
+                assert!(projection.contribution_ids.is_empty());
+                assert!(!bridge.owns_contribution_id(
+                    "merman.legacy-family-theme.v1.block.edge-label-background.fill"
+                ));
+            }
         }
     }
 

@@ -484,7 +484,7 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE)
         }
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::BLOCK | DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::EdgeLabelBackground,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_LABEL_BACKGROUND_FILL),
@@ -5628,6 +5628,20 @@ mod tests {
                 vec!["node.stroke"],
             ),
             (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Transparent,
+                vec!["edge-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Solid,
+                vec!["edge-label-background.fill"],
+            ),
+            (
                 DiagramFamilyId::C4,
                 ThemeTarget::Text,
                 Fill,
@@ -7198,7 +7212,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 224);
+        assert_eq!(qualified.len(), 226);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7242,7 +7256,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
-            4
+            6
         );
         assert_eq!(
             qualified
@@ -7835,7 +7849,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 36), (DiagramFamilyId::CLASS, 22)]
+            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 22)]
                 .into_iter()
                 .collect(),
             "bridge retirement must update the exact route ledger"

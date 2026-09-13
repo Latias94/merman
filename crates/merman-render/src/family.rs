@@ -875,20 +875,6 @@ impl FamilyThemeEvidence {
             self.mark_residual(residual.key, residual.reason);
         }
     }
-    /// Merge evidence from a plan that intentionally owns only a target subset.
-    pub(crate) fn merge_accounted_subset_from(&mut self, mut other: Self) {
-        for key in other.applied {
-            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
-            self.mark_applied_with_capabilities(key, capabilities);
-        }
-        for key in other.not_applicable {
-            self.mark_not_applicable(key);
-        }
-        for residual in other.residuals {
-            self.mark_residual(residual.key, residual.reason);
-        }
-    }
-
     #[cfg(test)]
     pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
         &self.applied
@@ -1777,7 +1763,9 @@ impl BlockFamilyArtifact {
 
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.node_paint_theme.finish_evidence();
-        evidence.merge_accounted_subset_from(self.label_background_theme.finish_evidence());
+        if self.label_background_theme.requested() {
+            evidence.merge_accounted_from(self.label_background_theme.finish_evidence());
+        }
         evidence.merge_accounted_from(self.typography_theme.finish_evidence());
         evidence
     }

@@ -37,6 +37,10 @@ impl BlockLabelBackgroundPlan {
         ))
     }
 
+    pub(crate) fn requested(&self) -> bool {
+        self.0.requested()
+    }
+
     pub(crate) fn color<'a>(&'a self, configured: &'a str) -> &'a str {
         self.0.color(configured)
     }

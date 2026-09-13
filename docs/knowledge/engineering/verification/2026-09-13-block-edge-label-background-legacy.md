@@ -1,26 +1,58 @@
-# Block EdgeLabelBackground legacy consumer verification
+# Block EdgeLabelBackground typed cutover
 
 Date: 2026-09-13
 
-The Block `EdgeLabelBackground.fill` route is now owned by the Block typed plan while preserving the existing CSS
-consumer. The Block SVG writer emits the resolved value into the family-scoped
-`.edgeLabel`, `.edgeLabel rect`, and `.labelBkg` CSS selectors, and the label
-writer emits matching edge-label terminals for both HTML and SVG label modes.
+The baseline at `f1e25cbc3` established a real legacy CSS consumer. The first typed
+implementation at `02e1a030e` passed its narrow Block tests, but did not close
+acceptance: the private-cfg runner exposed missing projection obligations, stale
+inventory assertions, and a stale public support claim. A plain Cargo invocation
+without `merman_internal_theme_acceptance` ran zero acceptance tests and is not
+verification evidence.
 
-The migration characterization test is:
+The completed slice uses KTD17 v81 with four added route identities (unqualified
+and Default, each solid/transparent) and the existing EdgeLabelBackgroundFill
+projection. The total is 452 routes and 666 route-profile witnesses. Each added
+route runs Classic, Neo, and HandDrawn SVG/native PNG proof. KTD23 v9 remains
+unchanged because this is a typed replacement, not Unsupported retirement.
+
+The Block writer consumes the typed background in `.edgeLabel`, `.edgeLabel rect`,
+and `.labelBkg`. Only finite positive label areas contribute terminal paint evidence.
+The obsolete `themeVariables.edgeLabelBackground` bridge assignment is removed.
+Explicit user configuration retains ownership; absent labels are NotApplicable;
+unsupported ordinal fills and winning stroke siblings remain residuals. The normal
+family evidence merge is retained, including its required-set assertion; an inactive
+background plan is skipped instead of introducing a weaker subset-merge API.
+
+Public support revision 83 changes Block background fill from legacy partial to
+partial typed support. The shared support JSON adds a Block query. Compiled Native
+C ABI, UniFFI, and Typst tests consume all shared vectors; installed packages last
+verified at revision 82 must be rebuilt separately.
+
+Verified locally during implementation:
+
+- Block SVG and public discovery integration tests: 91/91.
+- Acceptance manifest and background native proof unit tests: 22/22.
+- Final Release renderer matrix, bridge, Block, and public discovery tests: 311/311.
+  This includes the exact Block theme-residual error in strict mode.
+- Native C ABI, UniFFI, and Typst shared support golden: 3/3 with explicit SVG features.
+
+The complete structure gate passed:
 
 ```text
-cargo nextest run --locked -p merman-render --test block_svg_test \
-  -E 'test(block_edge_label_background_typed_route_has_a_real_css_consumer)'
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode structure --dom-decimals 3 \
+  --diagnostic-browser-text-layout
 ```
 
-The test passed on the current revision after the typed-plan cutover. Its evidence summary is:
+The final KTD17 v81 Release integration gate passed 9/9, including the complete
+route-cutover authorization and Block/Class historical retirement witnesses:
 
-- `required_count = 1`
-- `applied_count = 1`
-- `compatibility_residual_count = 0`
-- `theme_residual_count = 0`
+```text
+python3 scripts/run_theme_acceptance.py nextest run --release --locked \
+  -p merman-theme-acceptance --test route_cutover_runtime \
+  --test legacy_projection_retirement --test block_title_legacy_projection \
+  --test class_edge_label_background_legacy_projection --no-fail-fast
+```
 
-The typed plan owns the stylesheet color and records each emitted edge-label
-terminal. The compatibility bridge can now be retired only after the independent
-route inventory and clean-checkout retirement witness are updated. The full Block SVG test binary also passed (`44/44`).
+The internal-cfg wrapper is required. These checks do not close C7a, C7b, or the
+outstanding WASM size gate.

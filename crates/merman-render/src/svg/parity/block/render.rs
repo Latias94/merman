@@ -1339,7 +1339,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             out.push_str("</g></g>");
         }
         out.checkpoint()?;
-        label_background_theme.record_terminal(true, true, options.work_meter())?;
+        label_background_theme.record_terminal(
+            lbl.width.is_finite() && lbl.height.is_finite() && lbl.width > 0.0 && lbl.height > 0.0,
+            true,
+            options.work_meter(),
+        )?;
     }
 
     let bounds_scan_end = out.len();

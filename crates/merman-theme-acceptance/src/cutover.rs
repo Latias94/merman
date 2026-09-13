@@ -294,6 +294,7 @@ const BLOCK_NODE_SOURCE: &str = r#"block-beta
   columns 5
   rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
 "#;
+const BLOCK_EDGE_LABEL_SOURCE: &str = "block-beta\n  A[\"Alpha\"] -- \"relates\" --> B[\"Beta\"]\n";
 const ZENUML_TITLE_SOURCE: &str = "zenuml\ntitle Cutover ZenUML title\nClient->Service: request\n";
 const VENN_THEME_SOURCE: &str = r#"venn-beta
 title Cutover Venn title
@@ -459,6 +460,11 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
+        if route.family_id() == DiagramFamilyId::BLOCK
+            && route.target() == ThemeTarget::EdgeLabelBackground
+        {
+            return &Self::TEXT_LOOKS;
+        }
         if matches!(
             route.family_id(),
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -718,6 +724,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_NODE_SOURCE),
+        (
+            DiagramFamilyId::BLOCK,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(BLOCK_EDGE_LABEL_SOURCE),
         (DiagramFamilyId::ZENUML, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(ZENUML_TITLE_SOURCE)
         }
@@ -2240,9 +2251,13 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_background_cutover_has_native_terminal_proof() {
+    fn edge_label_background_cutover_has_native_terminal_proof() {
         let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
-        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        for family in [
+            DiagramFamilyId::BLOCK,
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+        ] {
             for profile in CutoverWitnessProfile::TEXT_LOOKS {
                 let render = |value| {
                     let route = inventory
@@ -2398,11 +2413,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_448_routes_and_654_artifact_witnesses() {
+    fn route_inventory_retains_452_routes_and_666_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 448);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 654);
+        assert_eq!(inventory.len(), 452);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 666);
     }
 
     #[test]

@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 82);
+    assert_eq!(support.claim_revision(), 83);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -305,7 +305,7 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 82);
+        assert_eq!(support.claim_revision(), 83);
     }
 }
 
@@ -1777,4 +1777,24 @@ fn block_cluster_label_discovery_reports_unsupported_after_projection_retirement
     let support = describe_theme_support(&query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
     assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+}
+
+#[test]
+fn block_background_discovery_reports_a_partial_typed_consumer() {
+    let query = ThemeSupportQueryV1::known(
+        "block",
+        ThemeSupportOutputV1::StandaloneSvg,
+        "edge-label-background",
+        ThemeRuleFacetV1::Fill,
+    );
+    let support = describe_theme_support(&query);
+    assert_eq!(support.claim_revision(), 83);
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.public-value-domain-partial"
+        ]
+    );
 }

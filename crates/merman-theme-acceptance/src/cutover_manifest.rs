@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 80;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 81;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    216, 26, 49, 226, 198, 202, 222, 41, 252, 168, 9, 21, 5, 169, 239, 41, 248, 166, 239, 163, 67,
-    133, 247, 253, 146, 160, 120, 78, 165, 209, 172, 232,
+    104, 42, 31, 123, 33, 37, 106, 171, 62, 190, 142, 87, 242, 107, 237, 84, 37, 242, 33, 124, 112,
+    229, 119, 62, 242, 73, 31, 138, 86, 162, 133, 131,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,7 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 448] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 452] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2449,6 +2449,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 448] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
     ),
     route(
         DiagramFamilyId::ZENUML,
@@ -4688,7 +4718,7 @@ mod tests {
                 if family == DiagramFamilyId::REQUIREMENT {
                     10
                 } else {
-                    4
+                    6
                 }
             );
         }

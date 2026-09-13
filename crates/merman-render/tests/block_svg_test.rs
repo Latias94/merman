@@ -4,8 +4,8 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -1827,7 +1827,7 @@ fn block_edge_label_background_typed_route_has_a_real_css_consumer() {
         "block\n  A[\"Alpha\"] -- \"relates\" --> B[\"Beta\"]\n",
         &theme,
         Engine::new(),
-        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
     );
     assert!(
         rendered
@@ -1839,4 +1839,111 @@ fn block_edge_label_background_typed_route_has_a_real_css_consumer() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_background_reconciles_missing_labels_and_explicit_config() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::EdgeLabelBackground,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for config_owned in [false, true] {
+            for has_label in [false, true] {
+                let mut config = serde_json::json!({"htmlLabels": html_labels});
+                if config_owned {
+                    config["themeVariables"] =
+                        serde_json::json!({"edgeLabelBackground": "#123456"});
+                }
+                let source = if has_label {
+                    "block\n A -- \"relates\" --> B\n"
+                } else {
+                    "block\n A --> B\n"
+                };
+                let rendered = render_block_with_theme_and_engine(
+                    source,
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                );
+                let expected = if config_owned { "#123456" } else { "#b316cd" };
+                assert!(rendered.svg().contains(&format!(
+                    "#block-theme .edgeLabel{{background-color:{expected};"
+                )));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let applied = usize::from(has_label && !config_owned);
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), applied);
+                assert_eq!(evidence.not_applicable_count(), 1 - applied);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn block_background_unsupported_winning_facet_stays_residual() {
+    for ordinal in [false, true] {
+        let patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap());
+        let patch = if ordinal {
+            patch
+        } else {
+            patch.with_stroke(CanvasPaint::solid("#2468ac").unwrap())
+        };
+        let rule = ThemeRule::new(ThemeTarget::EdgeLabelBackground, patch)
+            .for_family(DiagramFamilyId::BLOCK);
+        let rule = if ordinal {
+            rule.with_ordinal(OrdinalSelector::exact(2).unwrap())
+        } else {
+            rule
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let source = "block\n A -- \"first\" --> B\n B -- \"second\" --> C\n";
+        let rendered = render_block_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert!(
+            matches!(
+                result,
+                Err(merman_render::Error::UnverifiedFamilyTheme {
+                    family_id: DiagramFamilyId::BLOCK,
+                    residual_count: 1,
+                })
+            ),
+            "unsupported winning background facet must produce a Block theme residual"
+        );
+    }
 }
