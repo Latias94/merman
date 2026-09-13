@@ -6,6 +6,12 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+Class NodeLabel now shares generic Text author order in all paint resolution paths, including
+per-node ordinal caching. Source `00174dc2a` passed 3278 private Release owner tests in both
+the main worktree and a clean checkout (two existing skips), plus main-worktree SVG structure
+and Clippy checks. Generic Text remains legacy/incomplete where unproved; no support or
+retirement counts changed. See the [author-order repair record](../knowledge/engineering/verification/2026-09-13-class-text-node-author-order.md).
+
 The evidence requirement index repair at `d92dee3ad` passed 3,273 private Release owner tests
 (with two existing skips), SVG structure comparison and actual Typst package checks in a clean
 checkout. It removes quadratic key deduplication while preserving ordered requirements and
