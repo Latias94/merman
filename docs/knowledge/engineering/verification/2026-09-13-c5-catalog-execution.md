@@ -36,7 +36,8 @@ portability remains the responsibility of the separate terminal and acceptance s
 # C5 requirement reconciliation
 
 The unified current-source owner suite passed. The table maps every C5 completion condition
-to implementation and executed evidence. Final closure awaits clean-checkout confirmation.
+to implementation and executed evidence. Clean-checkout confirmation at `ff486589c` passed;
+C5 is closed within its declared scope.
 
 | C5 requirement | Authority and executable evidence |
 | --- | --- |
@@ -65,8 +66,9 @@ public discovery rollout and contract freezing remain separate delivery requirem
   the reconciliation table were individually confirmed as PASS in the output.
 - Formatting and `git diff --check` passed. Independent test review and a separate C5
   completion-condition audit found no remaining blocker within C5's defined scope.
-- Clean-checkout confirmation is pending. No production code changed in this slice; the
-  no-theme structure evidence is the exact production-equivalent `05ef33898` checkpoint.
+- Clean-checkout confirmation at `ff486589c` passed **1128/1128**. No production code changed
+  in this slice; no-theme structure evidence remains the exact production-equivalent
+  `05ef33898` checkpoint.
 
 The final owner scope includes core catalog, registry and detection tests, binding catalog
 projection, renderer `diagram_theme::` and `family::` tests, primary-family SVG integrations,
@@ -87,3 +89,28 @@ Raw logs are `/tmp/theme-c5-catalog-first.log`, `/tmp/theme-c5-catalog-minimal.l
 vector for clean-source replay. These are local test records, not artifact qualification receipts.
 The production-equivalent default-output record is
 [the palette-domain checkpoint](2026-09-13-unsupported-palette-domain-scan.md).
+
+# Clean-checkout confirmation and decision
+
+The committed test/implementation source `ff486589c34dca7d6aeb6fff2a6bddc674b760dd` passed the
+same 1128-test owner command from `/tmp/merman-c5-catalog-candidate`. Git status was empty before
+and after. With approximately 4.8 GiB free disk, the checkout reused the active target through
+`CARGO_TARGET_DIR` and two Cargo jobs. New checkout timestamps forced recompilation; logs show
+core and renderer sources under the clean checkout. This is clean-source verification, not an
+empty-cache build.
+
+The resulting `state_svg_test-f66e607ba44a9308` binary has SHA-256
+`49d66660c76d40796a34f053ae946cc5191ec49cdb21ed3c8ec2f283dc0e072a`.
+It contains eight core source references to this clean checkout and none to the stale pre-Class
+baseline. Logs and provenance are `/tmp/theme-c5-closure-clean.log`,
+`/tmp/theme-c5-closure-clean-state.json`, and `/tmp/theme-c5-closure-clean-linkage.json`.
+The 46-test minimal-feature run was executed before commit on the same test source; it was not
+repeated in this checkout. The default-output gate is intentionally reused from the identical
+production code, not represented as a fresh browser run.
+
+C5 is closed: catalog authority, bounded selected-family programs, primary direct writers,
+explicit mechanism classification and the authorized transition boundary meet its Done-when
+clause. This closes an implementation milestone, not C7a-candidate or C7a-contract. Public catalog
+qualification still requires artifact-bound promotion; first-party rollout and contract freeze
+remain open. C7b retains Block/Class bridge migration, provider/probe retirement and complete
+external-reference mechanism classification. The full project goal remains active.

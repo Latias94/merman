@@ -6,6 +6,14 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+C5 closed at `ff486589c` after 1128/1128 private Release owner tests passed in a clean checkout.
+The scope includes all 41 parser variants through typed preparation and SVG writers, all 33 logical
+family theme scopes, bounded program/evidence work, primary-family direct consumers and authorized
+route/typography retirement. Minimal-feature catalog tests passed 46/46 on the same source.
+See the [C5 closure record](../knowledge/engineering/verification/2026-09-13-c5-catalog-execution.md)
+for production-equivalent default-output evidence and precise limits. This does not close C7a
+artifact qualification/public rollout or C7b long-tail migration and provider/probe retirement.
+
 The Class retirement source at `f1046a9cf` passed 144/144 private Release theme acceptance tests,
 276/276 focused renderer/support tests, 15/15 compiled Rust transport/authoring tests, and the full
 SVG structure gate. These results do not replace installed-package or final artifact-profile
