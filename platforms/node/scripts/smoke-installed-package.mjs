@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { runThemeAuthoringSmoke } from "./theme-authoring-smoke.mjs";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { resolveNodeTarget } from "../src/native-loader.mjs";
+import { runThemeAuthoringSmoke } from "./theme-authoring-smoke.mjs";
 
 if (isMainModule()) {
   await main();
@@ -17,6 +19,14 @@ async function main() {
   if (!project || !expectedVersion || !expectedTarget) {
     throw new Error(
       "usage: node smoke-installed-package.mjs --project <dir> --version <version> --target <target>",
+    );
+  }
+
+  if (expectedTarget !== "node-wasm") {
+    assert.equal(
+      expectedTarget,
+      resolveNodeTarget(),
+      "Installed native package smoke target must match the current host.",
     );
   }
 

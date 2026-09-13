@@ -387,8 +387,10 @@ revision 82 and checks V1/V2 rule, base-typography, and ordinal queries across C
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
-surfaces. Revision 82 adds the retired Class background query; installed artifacts must be rebuilt
-before their previous revision-81 results can cover this revision. This is a cross-transport discovery
+surfaces. Revision 82 adds the retired Class background query. Installed N-API darwin-arm64 and
+Node-WASM packages rebuilt from `840560118` pass all ten shared support vectors through two
+engines; see the [installed Node record](../knowledge/engineering/verification/2026-09-13-node-installed-authoring.md).
+Other installed artifacts still require fresh revision-82 runs. This is a cross-transport discovery
 contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
