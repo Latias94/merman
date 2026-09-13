@@ -82,6 +82,25 @@ Raw logs are `/tmp/theme-c5-current-source-acceptance.log` (baseline),
 `/tmp/theme-c5-state-full-structure.log` (full structure gate).
 `/tmp/theme-c5-final-command.json` retains the final command arguments for clean-checkout replay.
 
+# Clean-checkout confirmation
+
+The committed implementation at `4fc8f4532a8eb2bd607de78937fb256ae75a6125` was checked out at
+`/tmp/merman-state-classification-4fc8f4532`. The same final owner command passed **882/882**;
+`git status --porcelain` was empty before and after the run.
+
+With approximately 5.5 GiB free disk space, this same-source checkout reused the active worktree's
+`target` through `CARGO_TARGET_DIR`. The new checkout timestamps forced recompilation; the log
+identifies core, renderer, binding core, and acceptance sources under the clean checkout.
+The resulting `state_svg_test-f66e607ba44a9308` binary has SHA-256
+`ceb76e91b54f28a0e33840d14febf5da64710ec631e8aa2c151116b48ea383aa`. It contains eight clean-checkout core path references
+and zero references to the stale pre-Class baseline that affected an earlier verification.
+This is a clean-source replay, not a cold build with an empty dependency cache.
+
+The full SVG structure comparison was run on the same implementation before commit in the active
+worktree; it was not repeated in the clean checkout. Logs and provenance are
+`/tmp/theme-c5-4fc8f4532-clean.log`, `/tmp/theme-c5-4fc8f4532-clean-state.json`, and
+`/tmp/theme-c5-4fc8f4532-clean-linkage.json`.
+
 # Remaining scope
 
 This slice closes State's duplicate static classification. The complete C5 requirement-by-
