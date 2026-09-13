@@ -6,6 +6,12 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+The evidence requirement index repair at `d92dee3ad` passed 3,273 private Release owner tests
+(with two existing skips), SVG structure comparison and actual Typst package checks in a clean
+checkout. It removes quadratic key deduplication while preserving ordered requirements and
+legacy/native ownership. See the [structural repair record](../performance/theme_evidence_requirement_index_2026-09-13.md).
+Support revision, bridge counts and qualification cells are unchanged; C7a/C7b remain open.
+
 The final Typst publish artifact at clean source `f151192c9` passed all 15 revision-86 support
 vectors, two materializations, three authoring/resource errors and the shared preset catalog
 through its actual WASM ABI. The pinned Typst CLI passed 22 compilations and nine expected failures;

@@ -114,6 +114,13 @@ encoding/font-catalog candidate is also rejected: render shrinks only 2552 bytes
 683 bytes and Brotli grows 2034 bytes. Keep that rejected result closed and require a distinct
 causal hypothesis for further size work; raw stable-sort symbol totals are not admission evidence.
 
+The [family evidence index repair](theme_evidence_requirement_index_2026-09-13.md) at `d92dee3ad`
+removes the quadratic ordered-key deduplication step by using the ledger's existing membership
+index. Native route order and compatibility ownership are preserved, with no added retained index.
+The clean private Release owner suite passed 3,273 tests, SVG structure and real Typst package
+checks passed, and all four Typst size controls decreased slightly. This is a structural work-bound
+repair, not a measured latency or peak-memory improvement; the release size gates remain open.
+
 The [typography winner guard](theme_typography_recomputation_2026-09-13.md) removes repeated font-stack
 copying for paint-only rules. Its bounded public SVG probe reduces cumulative allocated bytes by
 90.719% with unchanged peak heap growth; the Web render artifact has a small measured size cost.
