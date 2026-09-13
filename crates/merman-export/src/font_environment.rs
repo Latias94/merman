@@ -152,7 +152,7 @@ impl ExportFontPlan {
         self.prepared_label_terminal_incomplete_count
     }
 
-    /// Returns the number of final font faces that were absent from the operation font map.
+    /// Returns the number of final font faces absent from the operation's admitted sources.
     pub const fn unclassified_face_count(self) -> usize {
         self.unclassified_face_count
     }
@@ -194,7 +194,7 @@ pub(crate) struct ExportFontPlanSeed {
     catalog_fingerprint: FontCatalogFingerprint,
     source_mode: ExportFontMode,
     loaded_embedded_face_count: usize,
-    faces: Arc<HashMap<usvg::fontdb::ID, ExportResolvedFace>>,
+    faces: ExportFaceOrigins,
     catalog_assets: Arc<[ExportCatalogAssetEvidence]>,
     recorder: Arc<FontResolutionRecorder>,
 }
@@ -207,8 +207,7 @@ impl ExportFontPlanSeed {
         expected_label_count: usize,
         receipt: Option<&PreparedTextTerminalReceipt>,
     ) -> ExportFontPlan {
-        let evidence =
-            FinalTreeFontEvidence::collect(tree, self.faces.as_ref(), &self.catalog_assets);
+        let evidence = FinalTreeFontEvidence::collect(tree, &self.faces, &self.catalog_assets);
         let prepared = verify_prepared_text_labels(
             self.catalog_fingerprint,
             source,
@@ -257,6 +256,24 @@ struct ExportFaceKey {
 struct ExportResolvedFace {
     key: Option<ExportFaceKey>,
     source: FontSource,
+}
+
+/// Immutable system membership is already owned by the shared database. Only faces
+/// loaded for this operation need an additional origin index.
+struct ExportFaceOrigins {
+    system: Option<Arc<usvg::fontdb::Database>>,
+    loaded: HashMap<usvg::fontdb::ID, ExportResolvedFace>,
+}
+
+impl ExportFaceOrigins {
+    fn get(&self, id: usvg::fontdb::ID) -> Option<ExportResolvedFace> {
+        self.loaded.get(&id).copied().or_else(|| {
+            self.system.as_ref()?.face(id).map(|_| ExportResolvedFace {
+                key: None,
+                source: FontSource::System,
+            })
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -328,7 +345,7 @@ struct FinalTreeFontEvidence {
 impl FinalTreeFontEvidence {
     fn collect(
         tree: &usvg::Tree,
-        faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
+        faces: &ExportFaceOrigins,
         catalog_assets: &[ExportCatalogAssetEvidence],
     ) -> Self {
         let mut evidence = Self::default();
@@ -352,7 +369,7 @@ impl FinalTreeFontEvidence {
         &mut self,
         group: &usvg::Group,
         fontdb: &usvg::fontdb::Database,
-        faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
+        faces: &ExportFaceOrigins,
         catalog_assets: &[ExportCatalogAssetEvidence],
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
@@ -400,7 +417,7 @@ impl FinalTreeFontEvidence {
         &mut self,
         text: &usvg::Text,
         fontdb: &usvg::fontdb::Database,
-        faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
+        faces: &ExportFaceOrigins,
         catalog_assets: &[ExportCatalogAssetEvidence],
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
@@ -427,7 +444,7 @@ impl FinalTreeFontEvidence {
                 if glyph.id.0 == 0 {
                     self.notdef_glyph_count = self.notdef_glyph_count.saturating_add(1);
                 }
-                let face = if let Some(mut face) = faces.get(&glyph.font).copied() {
+                let face = if let Some(mut face) = faces.get(glyph.font) {
                     if face.source == FontSource::System && face.key.is_none() {
                         face.key =
                             *selected_system_face_keys
@@ -667,18 +684,10 @@ impl ExportFontEnvironment {
         let mut retained_db = usvg::fontdb::Database::new();
         let mut retained_to_combined = HashMap::new();
         let mut retained_face_ids = Vec::new();
-        let mut resolved_faces = fontdb
-            .faces()
-            .map(|face| {
-                (
-                    face.id,
-                    ExportResolvedFace {
-                        key: None,
-                        source: FontSource::System,
-                    },
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let mut resolved_faces = ExportFaceOrigins {
+            system: system_db.as_ref().map(Arc::clone),
+            loaded: HashMap::new(),
+        };
         let catalog_assets: Arc<[ExportCatalogAssetEvidence]> = catalog
             .assets()
             .iter()
@@ -726,7 +735,7 @@ impl ExportFontEnvironment {
                         return Err(ExportError::FontCatalogLoad);
                     }
                     retained_to_combined.insert(retained, combined);
-                    resolved_faces.insert(
+                    resolved_faces.loaded.insert(
                         combined,
                         ExportResolvedFace {
                             key: Some(ExportFaceKey {
@@ -773,7 +782,7 @@ impl ExportFontEnvironment {
                 catalog_fingerprint: catalog.fingerprint(),
                 source_mode: mode,
                 loaded_embedded_face_count: retained_face_ids.len(),
-                faces: Arc::new(resolved_faces),
+                faces: resolved_faces,
                 catalog_assets,
                 recorder,
             },
@@ -1369,7 +1378,7 @@ mod tests {
         let tree = usvg::Tree::from_str(&source, &options).unwrap();
         let evidence = FinalTreeFontEvidence::collect(
             &tree,
-            environment.plan.faces.as_ref(),
+            &environment.plan.faces,
             &environment.plan.catalog_assets,
         );
         let asset = &catalog.assets()[0];
@@ -1643,6 +1652,162 @@ mod tests {
     }
 
     #[test]
+    fn system_font_origin_index_has_no_per_face_owned_entries() {
+        let fixture = font_database_from_catalog(&custom_catalog(&[FontSource::Embedded]));
+        let face = fixture.faces().next().unwrap().clone();
+        for count in [0, 1, 64, 1024] {
+            let mut database = usvg::fontdb::Database::new();
+            for _ in 0..count {
+                database.push_face_info(face.clone());
+            }
+            let database = Arc::new(database);
+            let environment = ExportFontEnvironment::from_resources(
+                &FontCatalog::system_fonts(),
+                &FontSourcePolicy::system_only(),
+                || Arc::clone(&database),
+            )
+            .unwrap();
+            let owned_entries = environment.plan.faces.loaded.len();
+            eprintln!("system_faces={count} owned_origin_entries={owned_entries}");
+            assert_eq!(owned_entries, 0);
+            assert!(Arc::ptr_eq(&environment.fontdb, &database));
+        }
+    }
+
+    #[test]
+    fn font_origins_keep_snapshot_membership_and_reject_untracked_glyphs() {
+        let catalog = custom_catalog(&[FontSource::Embedded, FontSource::System]);
+        let fixture = font_database_from_catalog(&catalog);
+        let mut database = (*fixture).clone();
+        let stale = database.faces().next().unwrap().id;
+        let face = database.face(stale).unwrap().clone();
+        database.remove_face(stale);
+        let live = database.push_face_info(face.clone());
+        assert_ne!(stale, live);
+        let mut system = Arc::new(database);
+        let environment = ExportFontEnvironment::from_resources(
+            &catalog,
+            &FontSourcePolicy::system_only(),
+            || Arc::clone(&system),
+        )
+        .unwrap();
+        assert_eq!(environment.plan.faces.get(stale), None);
+        assert_eq!(environment.plan.faces.get(usvg::fontdb::ID::dummy()), None);
+        assert_eq!(
+            environment.plan.faces.get(live).unwrap().source,
+            FontSource::System
+        );
+
+        // Changing a caller's Arc must leave the operation's snapshot intact.
+        Arc::make_mut(&mut system).remove_face(live);
+        let mut untracked = face;
+        untracked.families[0].0 = "NotTracked".to_string();
+        let unknown = Arc::make_mut(&mut system).push_face_info(untracked);
+        assert_eq!(environment.plan.faces.get(unknown), None);
+        assert_eq!(
+            environment.plan.faces.get(live).unwrap().source,
+            FontSource::System
+        );
+
+        // A glyph added outside this operation's admitted source databases stays unclassified.
+        let options = usvg::Options {
+            fontdb: system,
+            ..usvg::Options::default()
+        };
+        let tree = usvg::Tree::from_str(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="180" height="64"><text x="8" y="44" font-family="NotTracked" font-size="32">MW</text></svg>"#,
+            &options,
+        ).unwrap();
+        let evidence = FinalTreeFontEvidence::collect(&tree, &environment.plan.faces, &[]);
+        assert_eq!(evidence.unclassified_face_count, 1);
+        assert!(!evidence.used_system_fonts);
+        assert!(!evidence.used_embedded_fonts);
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn sparse_font_origins_match_eager_font_plans_and_pixels() {
+        let catalog = custom_catalog(&[FontSource::Embedded, FontSource::System]);
+        let system = font_database_from_catalog(&catalog);
+        for policy in [
+            FontSourcePolicy::system_only(),
+            FontSourcePolicy::embedded_only(),
+            FontSourcePolicy::embedded_then_system(),
+            FontSourcePolicy::system_then_embedded(),
+        ] {
+            for (family, text) in [
+                ("Sketch", "MW"),
+                ("Sketch", "A &amp; B"),
+                ("Missing Family", "MW你"),
+                ("Sketch", ""),
+            ] {
+                let svg = sealed_sized_svg_with_text(catalog.clone(), policy.clone(), family, text);
+                let render = |eager: bool| {
+                    let mut environment = ExportFontEnvironment::from_resources(
+                        svg.font_catalog(),
+                        svg.font_source_policy(),
+                        || Arc::clone(&system),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        environment.plan.faces.loaded.len(),
+                        environment.plan.loaded_embedded_face_count
+                    );
+                    if eager {
+                        // Reconstruct the previous eager algorithm independently of get().
+                        let mut faces = environment
+                            .plan
+                            .faces
+                            .system
+                            .as_ref()
+                            .map(|db| {
+                                db.faces()
+                                    .map(|face| {
+                                        (
+                                            face.id,
+                                            ExportResolvedFace {
+                                                key: None,
+                                                source: FontSource::System,
+                                            },
+                                        )
+                                    })
+                                    .collect::<HashMap<_, _>>()
+                            })
+                            .unwrap_or_default();
+                        faces.extend(environment.plan.faces.loaded);
+                        environment.plan.faces = ExportFaceOrigins {
+                            system: None,
+                            loaded: faces,
+                        };
+                    }
+                    let options = usvg::Options {
+                        fontdb: environment.fontdb,
+                        font_family: environment.default_family,
+                        font_resolver: environment.resolver,
+                        ..usvg::Options::default()
+                    };
+                    let tree = usvg::Tree::from_str(native_export_svg(&svg), &options).unwrap();
+                    let plan = environment.plan.finish_with_tree(
+                        native_export_svg(&svg),
+                        &tree,
+                        prepared_text_label_count(&svg),
+                        prepared_text_terminal_receipt(&svg),
+                    );
+                    let size = tree.size().to_int_size();
+                    let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
+                    resvg::render(
+                        &tree,
+                        tiny_skia::Transform::identity(),
+                        &mut pixmap.as_mut(),
+                    );
+                    (plan, pixmap.take())
+                };
+                assert_eq!(render(false), render(true), "{policy:?}/{family}/{text}");
+            }
+        }
+    }
+
+    #[test]
     fn system_font_catalog_reuses_the_shared_system_database() {
         let svg = sealed_svg(
             FontCatalog::system_fonts(),
@@ -1721,7 +1886,10 @@ mod tests {
                     environment.fontdb.face(face.id).unwrap().families,
                     face.families
                 );
-                assert_eq!(environment.plan.faces[&face.id].source, FontSource::System);
+                assert_eq!(
+                    environment.plan.faces.get(face.id).unwrap().source,
+                    FontSource::System
+                );
             }
         }
 
@@ -1760,10 +1928,10 @@ mod tests {
         assert_eq!(environment.plan.loaded_embedded_face_count, 0);
         assert!(environment.retained_face_ids.is_empty());
         assert!(Arc::ptr_eq(&environment.fontdb, &synthetic_system));
-        assert_eq!(environment.plan.faces.len(), synthetic_system.len());
+        assert!(environment.plan.faces.loaded.is_empty());
         for face in synthetic_system.faces() {
             assert_eq!(
-                environment.plan.faces[&face.id],
+                environment.plan.faces.get(face.id).unwrap(),
                 ExportResolvedFace {
                     key: None,
                     source: FontSource::System
