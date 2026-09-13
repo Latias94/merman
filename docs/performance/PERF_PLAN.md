@@ -104,6 +104,12 @@ Before implementation:
 
 ## Priorities
 
+The current Web artifact-size gate is open independently of the latency table below.
+At `eda8c3846`, all five final Web profiles exceed raw, stripped, Gzip and Brotli limits,
+although production smoke and a real installed Chromium consumer pass. The explicit Binaryen
+`-Oz` candidate was rejected because compressed sizes grew. Preserve the budgets and capabilities;
+continue source/ownership attribution from the [current artifact checkpoint](theme_web_artifact_gate_2026-09-13.md).
+
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
 | P1 | `requirement_medium` | 196.96 us | Historical candidate was 2.12-2.25x before the focused fix | 2.77x (+125.88 us) | Operation-scoped label reuse removed 60.6% of SVG emission. Latest gaps are layout (2.81x) and SVG emission (3.85x), while parse is 0.72x mmdr. |

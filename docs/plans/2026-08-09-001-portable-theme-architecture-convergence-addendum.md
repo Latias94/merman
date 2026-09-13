@@ -1072,6 +1072,11 @@ comparisons and complete record/companion replay; see
 This is a new HostDependent observation for that final archive. The Linux publication run,
 other artifact profiles and formal C7a rollout/freeze remain open.
 
+At `eda8c3846`, all five Web packages were rebuilt, packed and installed into a fresh consumer;
+real Chromium public-entry authoring/discovery checks passed. The
+[Web artifact checkpoint](../performance/theme_web_artifact_gate_2026-09-13.md) records the exact
+scope and the still-failing twenty WASM size checks. This does not close the artifact release gate.
+
 The latest C5 Mindmap slice moves only the family `FontStack` route to a typed terminal. One
 `InheritedFontStackPlan` value now drives foreignObject label measurement, inherited stylesheet
 emission, and the writer-owned CSS receipt; explicit site/root font ownership is reported
