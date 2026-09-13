@@ -360,7 +360,7 @@ boundary checks do not qualify presets or close the remaining C7a authoring/cons
 
 Support discovery now has an independent nine-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 79 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+revision 81 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. The same responses are exercised through the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
