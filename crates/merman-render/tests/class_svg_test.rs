@@ -3765,3 +3765,110 @@ fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
         }
     }
 }
+
+#[test]
+fn class_background_retirement_accounts_for_visible_empty_shadowed_and_source_owned_rules() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let source = "classDiagram\nA --> B : first\nB --> C\nC --> D : second\n";
+    let rule = |ordinal| {
+        let rule = ThemeRule::new(
+            ThemeTarget::EdgeLabelBackground,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        )
+        .for_family(DiagramFamilyId::CLASS);
+        if let Some(ordinal) = ordinal {
+            rule.with_ordinal(OrdinalSelector::Exact(ordinal))
+        } else {
+            rule
+        }
+    };
+    let compile = |rules: Vec<ThemeRule>| {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    rules
+                        .into_iter()
+                        .fold(ThemeRuleSet::default(), |set, rule| set.with_rule(rule)),
+                ),
+            )
+            .unwrap()
+    };
+    for (ordinal, residual, not_applicable) in [(None, 1, 0), (Some(2), 1, 0), (Some(3), 0, 1)] {
+        let theme = compile(vec![rule(ordinal)]);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        assert_eq!(evidence.not_applicable_count(), not_applicable);
+        assert_eq!(
+            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err(),
+            residual != 0
+        );
+    }
+    let theme = compile(vec![rule(None), rule(None)]);
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let theme = compile(vec![rule(None)]);
+    for config in [
+        json!({"themeVariables": {"mainBkg": "#654321"}}),
+        json!({"themeVariables": {"primaryColor": "#654321"}}),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine).unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    // Source ownership of fill must not erase a winning sibling stroke facet.
+    let mixed = compile(vec![
+        ThemeRule::new(
+            ThemeTarget::EdgeLabelBackground,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .for_family(DiagramFamilyId::CLASS),
+    ]);
+    let source_owned = Engine::new().with_site_config(MermaidConfig::from_value(
+        json!({"themeVariables": {"mainBkg": "#654321"}}),
+    ));
+    assert!(try_render_class_svg_with_theme_and_engine(source, &mixed, source_owned).is_err());
+
+    #[cfg(feature = "layout-elk")]
+    for (ordinal, rejected) in [(2, true), (3, false)] {
+        let elk_source = format!("---\nconfig:\n  layout: elk\n---\n{source}");
+        let theme = compile(vec![rule(Some(ordinal))]);
+        assert_eq!(
+            try_render_class_svg_with_theme_and_engine(&elk_source, &theme, Engine::new()).is_err(),
+            rejected,
+        );
+    }
+    for source in ["classDiagram\n", "classDiagram\nA --> B\n"] {
+        let rendered =
+            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

@@ -53,6 +53,8 @@ pub(crate) struct ClassRelationThemePlan {
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
+    track_edge_label_backgrounds: bool,
+    mermaid_owns_edge_label_background: bool,
 }
 
 impl ClassRelationThemePlan {
@@ -92,6 +94,29 @@ impl ClassRelationThemePlan {
                 ..Self::default()
             });
         };
+        let track_edge_label_backgrounds = theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::EdgeLabelBackground,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::EdgeLabelBackground
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::EdgeLabelBackground,
+                    ..
+                }
+            )
+        });
+        let mermaid_owns_edge_label_background =
+            ["themeVariables.mainBkg", "themeVariables.primaryColor"]
+                .into_iter()
+                .any(|path| {
+                    merman_core::__private::config_path_overrides_typed_default(
+                        effective_config,
+                        path,
+                    )
+                });
         let style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
@@ -192,6 +217,8 @@ impl ClassRelationThemePlan {
             static_winner_rules,
             ordinal_winner_rules,
             node_plan,
+            track_edge_label_backgrounds,
+            mermaid_owns_edge_label_background,
         })
     }
 
@@ -234,6 +261,7 @@ impl ClassRelationThemePlan {
             self.stroke.clone(),
             hand_drawn,
         )
+        .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
     }
 
     pub(crate) fn begin_terminal_receipt_with_nodes(

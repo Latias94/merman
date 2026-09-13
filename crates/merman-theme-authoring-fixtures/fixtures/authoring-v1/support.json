@@ -10,7 +10,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -38,7 +38,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 2,
         "family": "er",
@@ -68,7 +68,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -98,7 +98,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -126,7 +126,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -151,7 +151,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -176,7 +176,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -201,7 +201,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 1,
         "family": "future-family",
@@ -228,7 +228,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 81,
+      "claim_revision": 82,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -241,6 +241,37 @@
       "state": "unverified",
       "reason_ids": [
         "theme-support.unknown-base-typography-property"
+      ]
+    }
+  },
+  {
+    "id": "retired-class-edge-label-background",
+    "query": {
+      "schema_version": 2,
+      "family": "class",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "rule",
+        "target": "edge-label-background",
+        "facet": "fill"
+      }
+    },
+    "expected": {
+      "schema_version": 2,
+      "claim_revision": 82,
+      "query": {
+        "schema_version": 2,
+        "family": "class",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "rule",
+          "target": "edge-label-background",
+          "facet": "fill"
+        }
+      },
+      "state": "unsupported",
+      "reason_ids": [
+        "theme-support.no-supported-route"
       ]
     }
   }

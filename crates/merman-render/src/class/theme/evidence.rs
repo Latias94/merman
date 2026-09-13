@@ -243,7 +243,18 @@ impl ClassThemeEvidenceRecorder {
             }
         }
 
-        let mut unsupported_domains = Vec::with_capacity(6);
+        let mut unsupported_domains = Vec::with_capacity(7);
+        if let Some(count) =
+            receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count)
+        {
+            unsupported_domains.push(
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::EdgeLabelBackground,
+                    TerminalVariantDomain::uniform(count, ThemeVariant::Default),
+                )
+                .with_fill_fully_overridden(plan.mermaid_owns_edge_label_background),
+            );
+        }
         unsupported_domains.push(UnsupportedTerminalDomain::fallbacks_only(
             ThemeTarget::Node,
             TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),

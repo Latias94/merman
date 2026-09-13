@@ -9,7 +9,7 @@ use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{ThemeTarget, ThemeVariant};
 use sha2::{Digest as _, Sha256};
 
-const RETIREMENT_MANIFEST_VERSION: u16 = 8;
+const RETIREMENT_MANIFEST_VERSION: u16 = 9;
 const V1_RETIREMENT_BASELINE_REVISION: &str = "a4b1db26d315f044140a33378723ca8834452a75";
 const V2_RETIREMENT_BASELINE_REVISION: &str = "4c3a2d839584555d506792aa76c4ee3a7332a9c8";
 const V3_RETIREMENT_BASELINE_REVISION: &str = "dab18e2e5351be8605fd8d696075bca87953d29b";
@@ -20,6 +20,8 @@ const V7_RETIREMENT_BASELINE_REVISION: &str = "ceabee68f5a612f06b689539bb07eca41
 const V7_EXPECTED_RETIREMENT_COUNT: usize = 2;
 const V8_RETIREMENT_BASELINE_REVISION: &str = "86a61b8d873a130f8d74fae8dbbe8a8cb3c07003";
 const V8_EXPECTED_RETIREMENT_COUNT: usize = 2;
+const V9_RETIREMENT_BASELINE_REVISION: &str = "9babbfa248ea505053d24d8314b09d8e25a529b6";
+const V9_EXPECTED_RETIREMENT_COUNT: usize = 2;
 const V1_EXPECTED_RETIREMENT_COUNT: usize = 56;
 const V2_EXPECTED_RETIREMENT_COUNT: usize = 2;
 const V3_EXPECTED_RETIREMENT_COUNT: usize = 2;
@@ -33,7 +35,8 @@ const EXPECTED_RETIREMENT_COUNT: usize = V1_EXPECTED_RETIREMENT_COUNT
     + V5_EXPECTED_RETIREMENT_COUNT
     + V6_EXPECTED_RETIREMENT_COUNT
     + V7_EXPECTED_RETIREMENT_COUNT
-    + V8_EXPECTED_RETIREMENT_COUNT;
+    + V8_EXPECTED_RETIREMENT_COUNT
+    + V9_EXPECTED_RETIREMENT_COUNT;
 const EXPECTED_VALUE_PROBE_COUNT: usize = EXPECTED_RETIREMENT_COUNT * 2;
 
 // Acceptance-owned authority. Update only after reviewing the independent historical witness,
@@ -78,17 +81,21 @@ const EXPECTED_V8_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
     57, 240, 89, 29, 217, 248, 35, 49, 112, 168, 227, 108, 175, 177, 192, 7, 77, 28, 187, 141, 41,
     218, 56, 2, 228, 249, 238, 98, 239, 41, 193, 208,
 ];
+const EXPECTED_V9_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
+    91, 137, 76, 47, 29, 1, 184, 11, 159, 70, 8, 94, 250, 250, 84, 100, 160, 30, 26, 161, 236, 196,
+    120, 150, 229, 60, 63, 236, 51, 122, 250, 151,
+];
 const EXPECTED_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
-    156, 234, 121, 189, 121, 197, 224, 166, 99, 238, 249, 147, 68, 218, 49, 224, 82, 96, 143, 143,
-    207, 160, 213, 200, 20, 240, 89, 117, 166, 35, 193, 75,
+    86, 183, 145, 51, 124, 86, 132, 223, 208, 101, 195, 122, 43, 227, 184, 192, 24, 239, 253, 200,
+    39, 140, 242, 161, 237, 236, 147, 237, 88, 236, 47, 174,
 ];
 const EXPECTED_PRODUCTION_INVENTORY_DIGEST: [u8; 32] = [
-    173, 215, 146, 58, 95, 237, 166, 167, 191, 72, 176, 1, 154, 147, 202, 26, 157, 8, 45, 229, 154,
-    227, 61, 137, 99, 161, 218, 94, 84, 226, 247, 2,
+    3, 201, 63, 133, 62, 106, 243, 96, 223, 151, 56, 19, 93, 84, 163, 71, 182, 162, 239, 179, 70,
+    41, 64, 81, 92, 19, 54, 85, 19, 50, 22, 42,
 ];
 const EXPECTED_RECEIPT_REPORT_DIGEST: [u8; 32] = [
-    249, 221, 97, 181, 124, 81, 92, 134, 220, 8, 146, 80, 142, 205, 176, 20, 37, 145, 136, 177,
-    119, 157, 254, 52, 130, 199, 167, 90, 29, 35, 110, 164,
+    19, 228, 247, 210, 39, 76, 225, 240, 194, 53, 152, 24, 155, 119, 215, 5, 211, 213, 95, 162, 29,
+    103, 45, 110, 213, 226, 45, 153, 113, 81, 191, 49,
 ];
 
 /// Successful authorization of the independently frozen KTD23 retirement boundary.
@@ -617,6 +624,15 @@ const FLOWCHART_MARKER_RETIREMENTS: &[HistoricalRetirementPattern] = &[
 ];
 const V6_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[FLOWCHART_MARKER_RETIREMENTS];
 
+const CLASS_BACKGROUND_RETIREMENTS: &[HistoricalRetirementPattern] = &[pattern(
+    DiagramFamilyId::CLASS,
+    ThemeTarget::EdgeLabelBackground,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+    EDGE_LABEL_BACKGROUND_FILL,
+)];
+const V9_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[CLASS_BACKGROUND_RETIREMENTS];
+
 const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
     HistoricalRetirementBatchSpec {
         version: 1,
@@ -665,6 +681,12 @@ const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
         baseline_revision: V8_RETIREMENT_BASELINE_REVISION,
         expected_count: V8_EXPECTED_RETIREMENT_COUNT,
         groups: V8_RETIREMENT_GROUPS,
+    },
+    HistoricalRetirementBatchSpec {
+        version: 9,
+        baseline_revision: V9_RETIREMENT_BASELINE_REVISION,
+        expected_count: V9_EXPECTED_RETIREMENT_COUNT,
+        groups: V9_RETIREMENT_GROUPS,
     },
 ];
 
@@ -715,6 +737,7 @@ pub fn authorize_legacy_projection_retirements()
     let v6_batch = historical_retirement_batch(&batches, 6)?;
     let v7_batch = historical_retirement_batch(&batches, 7)?;
     let v8_batch = historical_retirement_batch(&batches, 8)?;
+    let v9_batch = historical_retirement_batch(&batches, 9)?;
     let historical_witness_digest = historical_witness_digest(&batches);
     let v1_historical_witness_digest = historical_batch_digest(v1_batch);
     let v2_historical_witness_digest = historical_batch_digest(v2_batch);
@@ -724,6 +747,7 @@ pub fn authorize_legacy_projection_retirements()
     let v6_historical_witness_digest = historical_batch_digest(v6_batch);
     let v7_historical_witness_digest = historical_batch_digest(v7_batch);
     let v8_historical_witness_digest = historical_batch_digest(v8_batch);
+    let v9_historical_witness_digest = historical_batch_digest(v9_batch);
     let cumulative_production_inventory_digest = production_inventory_digest(&production_inventory);
     let v1_production_inventory = production_inventory_for_batch(v1_batch, &production_inventory);
     let v1_production_inventory_digest = production_inventory_digest(&v1_production_inventory);
@@ -735,6 +759,7 @@ pub fn authorize_legacy_projection_retirements()
         || v6_historical_witness_digest != EXPECTED_V6_HISTORICAL_WITNESS_DIGEST
         || v7_historical_witness_digest != EXPECTED_V7_HISTORICAL_WITNESS_DIGEST
         || v8_historical_witness_digest != EXPECTED_V8_HISTORICAL_WITNESS_DIGEST
+        || v9_historical_witness_digest != EXPECTED_V9_HISTORICAL_WITNESS_DIGEST
         || historical_witness_digest != EXPECTED_HISTORICAL_WITNESS_DIGEST
         || v1_production_inventory_digest != EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST
         || cumulative_production_inventory_digest != EXPECTED_PRODUCTION_INVENTORY_DIGEST
@@ -742,7 +767,7 @@ pub fn authorize_legacy_projection_retirements()
         return Err(LegacyProjectionVerificationError::new(
             "legacy-projection-authority",
             format!(
-                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; v3 historical expected {}, observed {}; v4 historical expected {}, observed {}; v5 historical expected {}, observed {}; v6 historical expected {}, observed {}; v7 historical expected {}, observed {}; v8 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
+                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; v3 historical expected {}, observed {}; v4 historical expected {}, observed {}; v5 historical expected {}, observed {}; v6 historical expected {}, observed {}; v7 historical expected {}, observed {}; v8 historical expected {}, observed {}; v9 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
                 hex_digest(EXPECTED_V1_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v1_historical_witness_digest),
                 hex_digest(EXPECTED_V2_HISTORICAL_WITNESS_DIGEST),
@@ -759,6 +784,8 @@ pub fn authorize_legacy_projection_retirements()
                 hex_digest(v7_historical_witness_digest),
                 hex_digest(EXPECTED_V8_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v8_historical_witness_digest),
+                hex_digest(EXPECTED_V9_HISTORICAL_WITNESS_DIGEST),
+                hex_digest(v9_historical_witness_digest),
                 hex_digest(EXPECTED_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(historical_witness_digest),
                 hex_digest(EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST),
@@ -1448,8 +1475,30 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             UNQUALIFIED_AND_DEFAULT.iter().copied().collect()
         );
-        assert_eq!(EXPECTED_RETIREMENT_COUNT, 78);
-        assert_eq!(EXPECTED_VALUE_PROBE_COUNT, 156);
+        assert_eq!(EXPECTED_RETIREMENT_COUNT, 80);
+        assert_eq!(EXPECTED_VALUE_PROBE_COUNT, 160);
+    }
+
+    #[test]
+    fn class_v9_retires_only_the_unused_background_projection() {
+        let batches = historical_retirement_batches().unwrap();
+        let batch = historical_retirement_batch(&batches, 9).unwrap();
+        assert_eq!(batch.baseline_revision, V9_RETIREMENT_BASELINE_REVISION);
+        assert_eq!(batch.retirements.len(), 2);
+        assert!(batch.retirements.iter().all(|row| {
+            row.family_id == DiagramFamilyId::CLASS
+                && row.target == ThemeTarget::EdgeLabelBackground
+                && row.facet == ThemeLegacyRouteFacet::Fill
+                && row.former_projections == EDGE_LABEL_BACKGROUND_FILL
+        }));
+        assert_eq!(
+            batch
+                .retirements
+                .iter()
+                .map(|row| row.selector)
+                .collect::<BTreeSet<_>>(),
+            UNQUALIFIED_AND_DEFAULT.iter().copied().collect()
+        );
     }
 
     #[test]

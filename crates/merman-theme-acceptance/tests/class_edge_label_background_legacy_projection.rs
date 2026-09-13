@@ -61,30 +61,6 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
     (frame.width, frame.height, pixels)
 }
 
-// Normalize only the four color values in the three independently unmatched selectors.
-fn svg_without_unused_background_value(svg: &str) -> String {
-    let mut normalized = svg.to_owned();
-    let mut color = None;
-    for marker in [
-        ".edgeLabel[data-look=\"neo\"]{background-color:",
-        ".edgeLabel[data-look=\"neo\"] p{background-color:",
-        ".edgeLabel[data-look=\"neo\"] rect{opacity:0.5;background-color:",
-        ".edgeLabel[data-look=\"neo\"] rect{opacity:0.5;background-color:unused;fill:",
-    ] {
-        assert_eq!(normalized.matches(marker).count(), 1);
-        let start = normalized.find(marker).unwrap() + marker.len();
-        let end = start + normalized[start..].find(';').unwrap();
-        let value = &normalized[start..end];
-        if let Some(color) = color.as_deref() {
-            assert_eq!(value, color, "the legacy projection must use one color");
-        } else {
-            color = Some(value.to_owned());
-        }
-        normalized.replace_range(start..end, "unused");
-    }
-    normalized
-}
-
 #[test]
 fn class_edge_label_background_projection_has_no_native_consumer() {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
@@ -117,7 +93,6 @@ fn class_edge_label_background_projection_has_no_native_consumer() {
                         .iter()
                         .all(|group| group.attribute("data-look").is_none())
                 );
-                let baseline_svg = svg_without_unused_background_value(baseline.svg());
                 let pixels = raster(&baseline);
                 assert!(pixels.0 > 1 && pixels.1 > 1);
                 assert!(
@@ -132,20 +107,10 @@ fn class_edge_label_background_projection_has_no_native_consumer() {
                             &renderer,
                             theme(ThemeTarget::EdgeLabelBackground, variant, transparent),
                         );
-                        // Freeze the live projection before removal; pixel equality alone could
-                        // otherwise pass because a requested rule never reached the bridge.
-                        let color = if transparent {
-                            "transparent"
-                        } else {
-                            "#b316cd"
-                        };
-                        assert!(document.svg().contains(&format!(
-                            ".edgeLabel[data-look=\"neo\"]{{background-color:{color};"
-                        )));
                         assert_eq!(
-                            svg_without_unused_background_value(document.svg()),
-                            baseline_svg,
-                            "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}: SVG"
+                            document.svg(),
+                            baseline.svg(),
+                            "retired Class background paint must not alter even the unused CSS"
                         );
                         assert_eq!(
                             raster(&document),

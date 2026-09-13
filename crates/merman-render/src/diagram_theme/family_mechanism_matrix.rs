@@ -1353,7 +1353,11 @@ fn legacy_paint_route_without_writer_consumer(
         }
         DiagramFamilyId::CLASS => {
             (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
-                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
+                || (matches!(
+                    target,
+                    ThemeTarget::ClusterLabel | ThemeTarget::EdgeLabelBackground
+                ) && unqualified_or_default
+                    && fill)
                 || (target == ThemeTarget::Table
                     && fill
                     && matches!(variant, None | Some(ThemeVariant::Odd | ThemeVariant::Even)))
@@ -7831,7 +7835,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 36), (DiagramFamilyId::CLASS, 26)]
+            [(DiagramFamilyId::BLOCK, 36), (DiagramFamilyId::CLASS, 22)]
                 .into_iter()
                 .collect(),
             "bridge retirement must update the exact route ledger"

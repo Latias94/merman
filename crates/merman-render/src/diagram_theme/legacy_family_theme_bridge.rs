@@ -656,13 +656,16 @@ fn compile_node_family(
         marker_paint.contribution_id,
         [("arrowheadColor", marker_paint.value)],
     );
-    contributions.add_theme_variables(
-        "edge-label-background.fill",
-        [(
-            "edgeLabelBackground",
-            reader.fill(ThemeTarget::EdgeLabelBackground),
-        )],
-    );
+    // Class's former projection only colored selectors without matching terminals.
+    if family == DiagramFamilyId::BLOCK {
+        contributions.add_theme_variables(
+            "edge-label-background.fill",
+            [(
+                "edgeLabelBackground",
+                reader.fill(ThemeTarget::EdgeLabelBackground),
+            )],
+        );
+    }
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
         [
@@ -2059,14 +2062,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 62);
+        assert_eq!(status.matrix_route_count(), 58);
         assert_eq!(status.matrix_family_count(), 2);
         assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                1, 89, 64, 47, 193, 211, 87, 242, 37, 10, 16, 167, 122, 214, 17, 42, 100, 239, 51,
-                251, 57, 254, 46, 228, 133, 48, 93, 177, 212, 203, 187, 244
+                163, 37, 209, 89, 198, 180, 98, 246, 128, 109, 142, 29, 21, 157, 122, 107, 82, 82,
+                219, 196, 129, 60, 20, 171, 73, 40, 150, 145, 148, 95, 165, 112,
             ]
         );
         assert_eq!(

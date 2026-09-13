@@ -374,6 +374,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         out,
         content_bounds,
         detail,
+        theme_receipt,
         typography_receipt,
         edge_ctx,
         0.0,

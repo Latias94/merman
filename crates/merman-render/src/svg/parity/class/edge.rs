@@ -461,6 +461,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     edge_label_centers: &ClassEdgeLabelCenters,
@@ -499,7 +500,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
                 lbl.height.max(0.0),
             );
         }
-        let typography = render_class_edge_label_group(
+        let (typography, background_visible) = render_class_edge_label_group(
             out,
             edge_dom_id_buf.as_str(),
             label_text,
@@ -509,6 +510,12 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             ctx,
         );
         out.checkpoint()?;
+        if let Some(&index) = ctx.relation_index_by_id.get(e.id.as_str()) {
+            theme_receipt.record_edge_label_background(
+                index.checked_sub(1).unwrap_or(usize::MAX),
+                background_visible,
+            );
+        }
         if relation.is_some()
             && let Some(receipt) = typography_receipt.as_mut()
         {
@@ -642,9 +649,11 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::class::ClassTypographyTerminalFacts {
+) -> (crate::class::ClassTypographyTerminalFacts, bool) {
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
+    let background_visible =
+        !trimmed.is_empty() && label.is_some_and(|label| label.width > 0.0 && label.height > 0.0);
     let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
     if use_html_labels {
         let empty_div_style =
@@ -695,7 +704,7 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         }
-        return if trimmed.is_empty() || label.is_none() {
+        let typography = if trimmed.is_empty() || label.is_none() {
             crate::class::ClassTypographyTerminalFacts::default()
         } else if crate::math::contains_delimited_math(trimmed) {
             crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
@@ -703,6 +712,7 @@ fn render_class_edge_label_group(
             let facts = crate::class::class_html_label_visible_style_facts(trimmed);
             crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
         };
+        return (typography, background_visible);
     }
 
     if trimmed.is_empty() {
@@ -738,12 +748,13 @@ fn render_class_edge_label_group(
         write_class_svg_edge_text(out, trimmed, false);
         out.push_str("</g></g>");
     }
-    if trimmed.is_empty() {
+    let typography = if trimmed.is_empty() {
         crate::class::ClassTypographyTerminalFacts::default()
     } else {
         let facts = crate::class::class_svg_label_visible_style_facts(trimmed);
         crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
-    }
+    };
+    (typography, background_visible)
 }
 
 pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {

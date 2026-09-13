@@ -4,7 +4,7 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-12
+## Snapshot: 2026-09-13
 
 The last full verification at commit `ca257394a` passed the private theme acceptance harness
 138/138, the Node contract suite 104/104, the cross-transport support and resource golden
@@ -26,12 +26,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 2/33; 62 routes | Block 36, Class 26. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 2/33; 58 routes | Block 36, Class 22. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 81 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 82 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v80; 448 routes / 654 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v8; 78 routes / 156 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
 (four solid/transparent matrix routes). Composite labels use NodeLabel styling;
@@ -43,11 +43,16 @@ legacy because its arrowMarkerPath consumer is real. Class edge-label background
 historical and runtime witness: the legacy `.edgeLabel[data-look="neo"]` selector is present in
 reference CSS but no emitted edge-label group carries that attribute, while actual label backgrounds
 use `.labelBkg`/`.edgeLabel .label` selectors across Classic, Neo, HandDrawn, HTML-label, and SVG-label
-runs. The [native pre-retirement baseline](../knowledge/engineering/verification/2026-09-13-class-background-baseline.md)
-now covers five schemes, three looks, both HTML-label settings, and solid/transparent static
-selectors with exact SVG differences and decoded PNG comparisons. This does not retire the 26
-Class routes: the assignment removal, unsupported-domain reconciliation, post-removal comparison,
-and KTD23 authorization remain required.
+runs. KTD23 v9 now retires Class's unqualified/Default EdgeLabelBackground.fill identities
+(two historical identities, four solid/transparent matrix routes). The
+[native pre-retirement baseline](../knowledge/engineering/verification/2026-09-13-class-background-baseline.md)
+is fixed at `9babbfa248ea505053d24d8314b09d8e25a529b6`. After removal, all SVG bytes and decoded
+PNG pixels match the unthemed scenes across five schemes, three looks, and both input label modes.
+Unsupported background requests reconcile against completed visible label backgrounds; absent,
+shadowed, and source-owned fills are NotApplicable. Missing label checkpoints stay incomplete.
+This adds no typed background support. Class retains 22 other legacy routes. The
+[retirement record](../knowledge/engineering/verification/2026-09-13-class-background-retirement.md)
+separates current checks from the independent pre-removal baseline.
 
 KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
 (four solid/transparent matrix routes). The pinned renderer has no diagram-title
@@ -370,13 +375,14 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
-Support discovery now has an independent nine-case golden in
+Support discovery now has an independent ten-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 81 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+revision 82 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
-are not renderer-qualified. The same responses are exercised through the native C ABI, reusable and
+are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
-surfaces. This is a cross-transport discovery contract check; it does not qualify a document,
+surfaces. Revision 82 adds the retired Class background query; installed artifacts must be rebuilt
+before their previous revision-81 results can cover this revision. This is a cross-transport discovery contract check; it does not qualify a document,
 preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,

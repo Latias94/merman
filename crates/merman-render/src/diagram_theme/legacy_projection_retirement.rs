@@ -344,7 +344,7 @@ struct LegacyProjectionRetirementPattern {
     former_projections: &'static [ThemeLegacyProjectionKey],
 }
 
-const EXPECTED_RETIREMENT_COUNT: usize = 78;
+const EXPECTED_RETIREMENT_COUNT: usize = 80;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -431,6 +431,13 @@ const MINDMAP_TEXT_FILL: &[ThemeLegacyProjectionKey] = &[
 ];
 
 const CLASS_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
+    pattern(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeLegacyRouteFacet::Fill,
+        UNQUALIFIED_AND_DEFAULT,
+        EDGE_LABEL_BACKGROUND_FILL,
+    ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Marker,

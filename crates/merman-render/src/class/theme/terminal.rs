@@ -218,6 +218,7 @@ pub(crate) struct ClassRelationThemeReceipt {
     relation_events: Vec<ClassRelationTerminalEvent>,
     marker_events: Vec<ClassMarkerTerminalEvent>,
     checkpointed_typed_width_paths: usize,
+    edge_label_background_events: Option<Vec<(usize, bool)>>,
 }
 
 impl ClassRelationThemeReceipt {
@@ -239,7 +240,30 @@ impl ClassRelationThemeReceipt {
             relation_events: Vec::new(),
             marker_events: Vec::new(),
             checkpointed_typed_width_paths: 0,
+            edge_label_background_events: None,
         }
+    }
+
+    pub(super) fn with_edge_label_backgrounds(mut self, enabled: bool) -> Self {
+        self.edge_label_background_events = enabled.then(Vec::new);
+        self
+    }
+
+    pub(crate) fn record_edge_label_background(&mut self, relation_index: usize, visible: bool) {
+        if let Some(events) = &mut self.edge_label_background_events {
+            events.push((relation_index, visible));
+        }
+    }
+
+    pub(super) fn edge_label_background_count(&self) -> Option<usize> {
+        let events = self.edge_label_background_events.as_ref()?;
+        (self.proves_complete()
+            && events.len() == self.expected_relations.len()
+            && events
+                .iter()
+                .zip(&self.expected_relations)
+                .all(|((index, _), expected)| *index == expected.relation_index))
+        .then(|| events.iter().filter(|(_, visible)| *visible).count())
     }
 
     pub(super) fn with_nodes(mut self, expected_nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
@@ -445,6 +469,11 @@ impl ClassRelationThemeReceipt {
                 .saturating_add(self.relation_events.len())
                 .saturating_add(self.expected_markers.len())
                 .saturating_add(self.marker_events.len())
+                .saturating_add(
+                    self.edge_label_background_events
+                        .as_ref()
+                        .map_or(0, Vec::len),
+                )
                 .max(1),
         }
     }
@@ -928,6 +957,44 @@ mod tests {
             false,
         );
         assert!(!wrong_marker_fill.proves_complete());
+    }
+
+    #[test]
+    fn background_domain_requires_every_ordered_label_checkpoint() {
+        let mut receipt = ClassRelationThemeReceipt::new(
+            vec![
+                ClassRelationTerminalExpectation::new(0, None, None),
+                ClassRelationTerminalExpectation::new(1, None, None),
+            ],
+            Vec::new(),
+            None,
+            false,
+        )
+        .with_edge_label_backgrounds(true);
+        for index in 0..2 {
+            receipt.record_relation(index, None, None, None, "", None, false);
+        }
+        assert_eq!(receipt.edge_label_background_count(), None);
+        receipt.record_edge_label_background(0, false);
+        assert_eq!(receipt.edge_label_background_count(), None);
+        let mut duplicate = receipt.clone();
+        duplicate.record_edge_label_background(0, true);
+        assert_eq!(duplicate.edge_label_background_count(), None);
+        receipt.record_edge_label_background(1, true);
+        assert_eq!(receipt.edge_label_background_count(), Some(1));
+        receipt.record_edge_label_background(2, true);
+        assert_eq!(receipt.edge_label_background_count(), None);
+
+        let mut untracked = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false);
+        untracked.record_edge_label_background(0, true);
+        assert!(untracked.edge_label_background_events.is_none());
+        assert_eq!(untracked.edge_label_background_count(), None);
+        assert_eq!(
+            untracked
+                .with_edge_label_backgrounds(true)
+                .edge_label_background_count(),
+            Some(0)
+        );
     }
 
     #[test]
