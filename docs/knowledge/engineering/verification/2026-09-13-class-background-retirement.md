@@ -79,6 +79,26 @@ Logs are `/tmp/class-background-render-final.log`, `/tmp/class-background-accept
 `/tmp/class-background-structure.log`, `/tmp/class-background-transports.log`, and
 `/tmp/class-background-workflows-final.log`.
 
+# Clean-checkout confirmation
+
+A detached checkout of `f1046a9cfa5fa505ac4082c92f3277ecf0fcde97` at
+`/tmp/merman-class-retired-f1046a9cf` passed 21/21 focused Release acceptance tests and 33/33
+workflow guards. `git status --short` was empty before and after both checks. The 21 tests include
+KTD23 authorization and its negative cases, Block title/cluster-label retirement, Class background
+SVG/PNG comparison, and Flowchart qualification mutation/pixel checks. This targeted replay does
+not repeat or replace the full 144-test run recorded above.
+
+Cargo reused the primary worktree's target directory with two build jobs. Both this checkout and
+the independent pre-removal checkout remain available for comparison.
+
+```text
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/Users/frankorz/Documents/projects/rust/merman/.worktrees/presentation-theme-model/target python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --lib --test legacy_projection_retirement --test class_edge_label_background_legacy_projection --test block_title_legacy_projection -E 'test(route_retirement_manifest) | test(preset_qualification::flowchart_proof) | binary(legacy_projection_retirement) | binary(class_edge_label_background_legacy_projection) | binary(block_title_legacy_projection)'
+python3 scripts/test_release_workflow_security.py
+```
+
+Logs: `/tmp/class-background-clean-final.log` and
+`/tmp/class-background-clean-workflows-final.log`.
+
 # Delivery limits
 
 These checks concern the retired Class projection and its public support response. They do not

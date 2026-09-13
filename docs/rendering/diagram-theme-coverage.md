@@ -6,19 +6,25 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
-The last full verification at commit `ca257394a` passed the private theme acceptance harness
+The Class retirement source at `f1046a9cf` passed 144/144 private Release theme acceptance tests,
+276/276 focused renderer/support tests, 15/15 compiled Rust transport/authoring tests, and the full
+SVG structure gate. These results do not replace installed-package or final artifact-profile
+verification. See the [retirement record](../knowledge/engineering/verification/2026-09-13-class-background-retirement.md)
+for exact scope and clean-checkout evidence.
+
+The earlier cross-platform verification at commit `ca257394a` passed the private theme acceptance harness
 138/138, the Node contract suite 104/104, the cross-transport support and resource golden
 checks, and the acceptance-boundary and representative artifact-closure checks. Since that
 verification, the current branch has also passed the Flutter Native Assets authoring witness,
 the preset qualification feature-recipe guard, the legacy projection/route-cutover check
-(3/3), and the complete repository script gate (582/582), and the current Release theme acceptance
+(3/3), and the complete repository script gate (582/582), and a scoped Release theme acceptance
 harness (117/117 with PNG and Cytoscape layout features). These incremental checks keep the
 ledger aligned but do not promote the remaining legacy routes or close C7a/C7b. A clean detached checkout at
 `8e3831d11` regenerated the schema-3 qualification record and passed its replay check.
 That record covers the qualification executable; its `cli` field is null, so it does not
 attest a packaged CLI. The commit identifies the tested source, not a moving HEAD.
-The current C6 runtime and preset qualification sub-gates also pass 4/4.
-The optimized renderer regression for the remaining family/bridge evidence paths passes 213/213.
+Earlier C6 runtime and preset qualification sub-gates also passed 4/4.
+The earlier optimized renderer regression for family/bridge evidence paths passed 213/213.
 
 The source inventories, not this summary, authorize rendering and retirement:
 
@@ -382,8 +388,8 @@ Unsupported, NotApplicable, and Unverified states, including unknown identifiers
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
 surfaces. Revision 82 adds the retired Class background query; installed artifacts must be rebuilt
-before their previous revision-81 results can cover this revision. This is a cross-transport discovery contract check; it does not qualify a document,
-preset, artifact profile, or C7a candidate.
+before their previous revision-81 results can cover this revision. This is a cross-transport discovery
+contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
