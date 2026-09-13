@@ -43,8 +43,11 @@ legacy because its arrowMarkerPath consumer is real. Class edge-label background
 historical and runtime witness: the legacy `.edgeLabel[data-look="neo"]` selector is present in
 reference CSS but no emitted edge-label group carries that attribute, while actual label backgrounds
 use `.labelBkg`/`.edgeLabel .label` selectors across Classic, Neo, HandDrawn, HTML-label, and SVG-label
-runs. This evidence is recorded for the next KTD23 review; it does not retire the 26 Class routes
-until a complete before/after rendering comparison is available.
+runs. The [native pre-retirement baseline](../knowledge/engineering/verification/2026-09-13-class-background-baseline.md)
+now covers five schemes, three looks, both HTML-label settings, and solid/transparent static
+selectors with exact SVG differences and decoded PNG comparisons. This does not retire the 26
+Class routes: the assignment removal, unsupported-domain reconciliation, post-removal comparison,
+and KTD23 authorization remain required.
 
 KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
 (four solid/transparent matrix routes). The pinned renderer has no diagram-title

@@ -216,7 +216,7 @@ jobs:
         run: |
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --features png,layout-cytoscape \
-            --test route_cutover_runtime --test preset_qualification --test block_title_legacy_projection
+            --test route_cutover_runtime --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check

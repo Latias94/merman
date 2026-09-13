@@ -309,19 +309,20 @@ jobs:
                     "--lib preset_qualification::", command,
                 )
 
-    def test_block_retirement_runs_with_png_and_internal_cfg(self) -> None:
+    def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):
-            with self.subTest(workflow=name):
-                text = read(WORKFLOW_ROOT / name)
-                commands = text.replace("\\\n", " ").splitlines()
-                selected = [command for command in commands
-                            if "--test block_title_legacy_projection" in command]
-                self.assertTrue(selected, "Block retirement must be selected explicitly")
-                for command in selected:
-                    self.assertIn("python3 scripts/run_theme_acceptance.py", command)
-                    self.assertIn("-p merman-theme-acceptance", command)
-                    features = command.split("--features ", 1)[1].split()[0].split(",")
-                    self.assertIn("png", features)
+            commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()
+            for test in ("block_title_legacy_projection",
+                         "class_edge_label_background_legacy_projection"):
+                with self.subTest(workflow=name, test=test):
+                    selected = [command for command in commands
+                                if f"--test {test}" in command]
+                    self.assertTrue(selected, f"{test} must be selected explicitly")
+                    for command in selected:
+                        self.assertIn("python3 scripts/run_theme_acceptance.py", command)
+                        self.assertIn("-p merman-theme-acceptance", command)
+                        features = command.split("--features ", 1)[1].split()[0].split(",")
+                        self.assertIn("png", features)
 
     def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
