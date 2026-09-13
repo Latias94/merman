@@ -6,6 +6,13 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+The final Typst publish artifact at clean source `f151192c9` passed all 15 revision-86 support
+vectors, two materializations, three authoring/resource errors and the shared preset catalog
+through its actual WASM ABI. The pinned Typst CLI passed 22 compilations and nine expected failures;
+55 scoped Rust tests also passed. All four Typst size budgets still fail. See the
+[Typst artifact record](../knowledge/engineering/verification/2026-09-13-typst-theme-artifact-revision86.md)
+for the exact payload identity and limits. This does not promote public qualification cells.
+
 All five Web packages were rebuilt from clean source `4e4f3acc3`, packed, installed offline and
 checked through Chromium public entries. Full/render each passed the 15 revision-86 support
 vectors and the shared authoring/catalog task. All twenty size-budget checks still fail; this

@@ -1077,6 +1077,11 @@ observations; full/render each passed all 15 revision-86 support vectors. The
 [Web consumer record](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md)
 records the fresh artifacts and all twenty still-failing size checks. Web size gates, other hosts,
 qualification publication and formal rollout remain open.
+The clean Typst publish artifact at `f151192c9` now passes the same 15 support vectors, both
+materializations, three diagnostic/resource errors and complete preset catalog through its WASM ABI.
+The pinned Typst CLI passed 22 compilations and nine expected failures. Its four size checks still
+fail; see the [Typst artifact record](../knowledge/engineering/verification/2026-09-13-typst-theme-artifact-revision86.md).
+This adds an executed artifact observation without promoting cells or closing C7a.
 
 The clean macOS ARM64 CLI archive at `5c0d1a3a5` passed all 18 exact runner/CLI qualification
 comparisons and complete record/companion replay; see
