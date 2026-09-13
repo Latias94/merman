@@ -39,3 +39,11 @@ oracle at test time from production descriptors. Non-SVG artifacts still require
 custom resource ceilings may change availability and need a separate expectation. Output IDs and
 resource limits belong to each artifact profile and are outside this preset-only vector. It does
 not qualify final artifacts. Typst additionally checks its own constrained resource ceiling.
+
+`qualified-cells.json` contains nonempty qualification metadata boundary vectors shared by the
+Rust wire/projection tests and Web/Node consumers. It varies the profile and admission independently:
+an unknown profile paired with `portable` must remain unknown, and a known profile paired with an
+unknown admission must retain that admission. Compare every field without rewriting or dropping IDs.
+These are synthetic transport inputs, not issued qualification, known-profile registrations, or
+production catalog entries. Preserving `portable` in the wire value does not grant usable support
+for an unknown profile. These tests establish lossless consumption, not release qualification.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import * as coreRuntime from "../dist/runtime-core.js";
@@ -264,20 +265,31 @@ test("theme catalog validates sorted resource limits and their values", async ()
   assert.throws(() => negativeValue.themeCatalog(), /invalid theme resource limit .* effective value/);
 });
 
-test("qualified cells retain scoped admissions without inferring portability", async () => {
+test("qualified cells round-trip the shared open-ID golden with defensive copies", async () => {
+  const vectors = JSON.parse(readFileSync(new URL(
+    "../../../crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json",
+    import.meta.url,
+  ), "utf8"));
+  for (const { id, cell } of vectors) {
+    const presets = themeCatalogFixture().presets;
+    presets[0].qualified_cells = [cell];
+    const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+    assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, [cell], id);
+    const copy = runtime.themeCatalog();
+    copy.presets[0].qualified_cells[0].profile_id = "changed";
+    copy.presets[0].qualified_cells[0].admission_status = "changed";
+    assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, [cell], id);
+  }
+  const cells = ["future-profile-portable", "host-dependent"]
+    .map((id) => vectors.find((vector) => vector.id === id).cell);
   const presets = themeCatalogFixture().presets;
-  presets[0].qualified_cells = [
-    qualifiedCell({ profile_id: "embedded-profile", admission_status: "portable" }),
-    qualifiedCell({ profile_id: "future-profile", admission_status: "future-admission" }),
-    qualifiedCell(),
-  ];
+  presets[0].qualified_cells = cells;
   const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
-  assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, presets[0].qualified_cells);
+  assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, cells);
   const copy = runtime.themeCatalog();
-  copy.presets[0].qualified_cells[2].profile_id = "changed";
-  copy.presets[0].qualified_cells[2].admission_status = "portable";
-  assert.equal(runtime.themeCatalog().presets[0].qualified_cells[2].profile_id, "host-fonts-v1");
-  assert.equal(runtime.themeCatalog().presets[0].qualified_cells[2].admission_status, "host_dependent");
+  copy.presets[0].qualified_cells[1].profile_id = "changed";
+  copy.presets[0].qualified_cells[1].admission_status = "changed";
+  assert.deepEqual(runtime.themeCatalog().presets[0].qualified_cells, cells);
 });
 
 test("qualified cells reject missing conditions and conflicting admissions in the same profile", async () => {

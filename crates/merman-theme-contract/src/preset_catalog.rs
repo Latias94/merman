@@ -52,21 +52,27 @@ mod tests {
 
     #[test]
     fn preset_metadata_round_trips_open_identifiers_and_host_conditions() {
-        let json = serde_json::json!({
-            "id": "future-preset", "display_name": "Future preset",
-            "appearance": "future-appearance", "maturity": "future-maturity",
-            "available": false, "availability_reason_ids": ["future-reason"],
-            "qualified_cells": [
-                {"family_id": "state", "output_id": "png",
-                 "profile_id": "native-state-system-fonts-v1",
-                 "admission_status": "host_dependent"},
-                {"family_id": "future-family", "output_id": "future-output",
-                 "profile_id": "future-profile", "admission_status": "future-admission"}
-            ],
-            "license_expression": "MIT OR Apache-2.0",
-            "required_attribution": "Future attribution", "export_kind": "future-export"
-        });
-        let metadata: ThemePresetMetadataV1 = serde_json::from_value(json.clone()).unwrap();
-        assert_eq!(serde_json::to_value(metadata).unwrap(), json);
+        let vectors: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json"
+        ))
+        .unwrap();
+        let distinct_profiles = ["future-profile-portable", "host-dependent"]
+            .map(|id| &vectors.iter().find(|vector| vector["id"] == id).unwrap()["cell"]);
+        let groups = vectors
+            .iter()
+            .map(|vector| serde_json::json!([vector["cell"]]))
+            .chain([serde_json::json!(distinct_profiles)]);
+        for cells in groups {
+            let json = serde_json::json!({
+                "id": "future-preset", "display_name": "Future preset",
+                "appearance": "future-appearance", "maturity": "future-maturity",
+                "available": false, "availability_reason_ids": ["future-reason"],
+                "qualified_cells": cells,
+                "license_expression": "MIT OR Apache-2.0",
+                "required_attribution": "Future attribution", "export_kind": "future-export"
+            });
+            let metadata: ThemePresetMetadataV1 = serde_json::from_value(json.clone()).unwrap();
+            assert_eq!(serde_json::to_value(metadata).unwrap(), json);
+        }
     }
 }

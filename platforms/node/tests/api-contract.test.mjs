@@ -939,6 +939,38 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
   );
 });
 
+test("theme catalog metadata preserves the shared open qualification IDs verbatim", async () => {
+  const vectors = JSON.parse(readFileSync(path.join(
+    repositoryRoot,
+    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json",
+  ), "utf8"));
+  const presets = JSON.parse(readFileSync(path.join(
+    repositoryRoot,
+    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
+  ), "utf8"));
+  for (const { id, cell } of vectors) {
+    const entries = structuredClone(presets);
+    entries[0].qualified_cells = [cell];
+    const payload = JSON.stringify({ schema_version: 3, presets: entries });
+    const calls = [];
+    const factory = transportFactory({
+      metadataJson(metadataId) {
+        calls.push(metadataId);
+        return payload;
+      },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      const result = engine.metadataJson("theme-catalog");
+      assert.equal(result, payload, id);
+      assert.deepEqual(JSON.parse(result).presets[0].qualified_cells, [cell], id);
+      assert.deepEqual(calls, ["theme-catalog"], id);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
 test("metadata helper rejects non-text, oversized, unadvertised, and typed-error responses", async () => {
   const directObjectFactory = transportFactory({
     metadataJson(id) {

@@ -1705,21 +1705,34 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn preset_qualification_projection_preserves_host_conditions_and_future_ids() {
-        for (profile, admission) in [
-            ("native-state-system-fonts-v1", "host_dependent"),
-            ("future-profile", "future-admission"),
-        ] {
-            let cell =
-                merman::svg::ThemePresetQualifiedCell::new("state", "png", profile, admission);
+        #[derive(serde::Deserialize)]
+        struct Cell<'a> {
+            family_id: &'a str,
+            output_id: &'a str,
+            profile_id: &'a str,
+            admission_status: &'a str,
+        }
+        #[derive(serde::Deserialize)]
+        struct Vector<'a> {
+            id: &'a str,
+            #[serde(borrow)]
+            cell: Cell<'a>,
+        }
+        const VECTORS: &str = include_str!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json"
+        );
+        let vectors: Vec<Vector<'static>> = serde_json::from_str(VECTORS).unwrap();
+        let expected: Vec<Value> = serde_json::from_str(VECTORS).unwrap();
+        for (vector, expected) in vectors.into_iter().zip(expected) {
+            let cell = merman::svg::ThemePresetQualifiedCell::new(
+                vector.cell.family_id,
+                vector.cell.output_id,
+                vector.cell.profile_id,
+                vector.cell.admission_status,
+            );
             let json =
                 serde_json::to_value(merman::svg::ThemePresetQualifiedCellV1::from(&cell)).unwrap();
-            assert_eq!(
-                json,
-                serde_json::json!({
-                    "family_id": "state", "output_id": "png", "profile_id": profile,
-                    "admission_status": admission,
-                })
-            );
+            assert_eq!(json, expected["cell"], "{}", vector.id);
         }
     }
 
