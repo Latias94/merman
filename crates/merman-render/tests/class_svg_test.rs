@@ -4188,6 +4188,10 @@ fn class_cluster_scalar_reaches_namespace_rectangles() {
             "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\n",
             true,
         ),
+        (
+            "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nclass Y\nX --> Y\n",
+            true,
+        ),
     ] {
         for fill in [false, true] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -4269,6 +4273,8 @@ fn class_cluster_scalar_preserves_independent_and_derived_source_ownership() {
         ("base", "tertiaryBorderColor", false, true),
         ("base", "primaryColor", true, true),
         ("base", "secondaryColor", false, false),
+        ("base", "mainBkg", false, false),
+        ("base", "primaryBorderColor", false, false),
         ("dark", "secondBkg", false, false),
         ("dark", "mainBkg", true, false),
         ("dark", "border2", false, true),
@@ -4408,4 +4414,63 @@ fn class_cluster_source_selected_theme_and_mixed_facets_keep_their_own_outcomes(
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
     assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
+}
+
+#[test]
+fn class_extracted_namespace_receipts_follow_source_relations() {
+    let source = "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA *-- B : inside\nclass X\nclass Y\nX <|-- Y : outside\n";
+    for look in ["classic", "handDrawn"] {
+        let engine =
+            || Engine::new().with_site_config(MermaidConfig::from_value(json!({"look": look})));
+        let theme = class_edge_rules_theme([ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+        )]);
+        let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine())
+            .expect("both namespace roots must complete relation receipts");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let relations = document
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .collect::<Vec<_>>();
+        assert_eq!(relations.len(), 2);
+        assert!(relations[0].attribute("data-id").unwrap().contains("X"));
+        assert!(relations[1].attribute("data-id").unwrap().contains("A"));
+        for relation in &relations {
+            assert!(
+                relation
+                    .attribute("style")
+                    .unwrap()
+                    .contains("stroke:#123456 !important")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+
+        // Retired label backgrounds still reconcile against all visible source relations.
+        for (ordinal, residual) in [(1, 1), (2, 1), (3, 0)] {
+            let background = class_edge_rules_theme([ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::Exact(ordinal))]);
+            let rendered = try_render_class_svg_with_theme_requirement(
+                source,
+                &background,
+                engine(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .expect("background checkpoints must permit namespace traversal order");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.theme_residual_count(), residual);
+            assert_eq!(evidence.not_applicable_count(), 1 - residual);
+            assert_eq!(
+                try_render_class_svg_with_theme_and_engine(source, &background, engine()).is_err(),
+                residual != 0
+            );
+        }
+    }
 }

@@ -223,12 +223,14 @@ pub(crate) struct ClassRelationThemeReceipt {
     hand_drawn: bool,
     node_events: BTreeMap<String, ClassNodeTerminalEmission>,
     duplicate_node_event: bool,
-    relation_events: Vec<ClassRelationTerminalEvent>,
+    relation_events: BTreeMap<usize, ClassRelationTerminalEvent>,
+    duplicate_relation_event: bool,
     note_attachment_events: BTreeMap<usize, ClassNoteAttachmentTerminalEvent>,
     duplicate_note_attachment_event: bool,
     marker_events: Vec<ClassMarkerTerminalEvent>,
     checkpointed_typed_width_paths: usize,
-    edge_label_background_events: Option<Vec<(usize, bool)>>,
+    edge_label_background_events: Option<BTreeMap<usize, bool>>,
+    duplicate_edge_label_background_event: bool,
 }
 
 impl ClassRelationThemeReceipt {
@@ -254,12 +256,14 @@ impl ClassRelationThemeReceipt {
             hand_drawn,
             node_events: BTreeMap::new(),
             duplicate_node_event: false,
-            relation_events: Vec::new(),
+            relation_events: BTreeMap::new(),
+            duplicate_relation_event: false,
             note_attachment_events: BTreeMap::new(),
             duplicate_note_attachment_event: false,
             marker_events: Vec::new(),
             checkpointed_typed_width_paths: 0,
             edge_label_background_events: None,
+            duplicate_edge_label_background_event: false,
         }
     }
 
@@ -367,25 +371,28 @@ impl ClassRelationThemeReceipt {
     }
 
     pub(super) fn with_edge_label_backgrounds(mut self, enabled: bool) -> Self {
-        self.edge_label_background_events = enabled.then(Vec::new);
+        self.edge_label_background_events = enabled.then(BTreeMap::new);
         self
     }
 
     pub(crate) fn record_edge_label_background(&mut self, relation_index: usize, visible: bool) {
-        if let Some(events) = &mut self.edge_label_background_events {
-            events.push((relation_index, visible));
+        if let Some(events) = &mut self.edge_label_background_events
+            && events.insert(relation_index, visible).is_some()
+        {
+            self.duplicate_edge_label_background_event = true;
         }
     }
 
     pub(super) fn edge_label_background_count(&self) -> Option<usize> {
         let events = self.edge_label_background_events.as_ref()?;
         (self.proves_complete()
+            && !self.duplicate_edge_label_background_event
             && events.len() == self.expected_relations.len()
-            && events
+            && self
+                .expected_relations
                 .iter()
-                .zip(&self.expected_relations)
-                .all(|((index, _), expected)| *index == expected.relation_index))
-        .then(|| events.iter().filter(|(_, visible)| *visible).count())
+                .all(|expected| events.contains_key(&expected.relation_index)))
+        .then(|| events.values().filter(|visible| **visible).count())
     }
 
     pub(super) fn with_nodes(mut self, expected_nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
@@ -447,14 +454,16 @@ impl ClassRelationThemeReceipt {
         hand_drawn_stroke: Option<&str>,
         typed_width_emitted: bool,
     ) {
-        self.relation_events.push(ClassRelationTerminalEvent {
-            relation_index,
+        let event = ClassRelationTerminalEvent {
             start_marker,
             end_marker,
             emitted_stroke: emitted_stroke.map(|(rule_index, css)| (rule_index, css.to_string())),
             terminal_style: terminal_style.to_string(),
             hand_drawn_stroke: hand_drawn_stroke.map(str::to_string),
-        });
+        };
+        if self.relation_events.insert(relation_index, event).is_some() {
+            self.duplicate_relation_event = true;
+        }
         if typed_width_emitted {
             self.checkpointed_typed_width_paths =
                 self.checkpointed_typed_width_paths.saturating_add(1);
@@ -462,26 +471,32 @@ impl ClassRelationThemeReceipt {
     }
 
     fn proves_complete_relation_emission(&self) -> bool {
-        self.relation_events.len() == self.expected_relations.len()
+        // Extracted namespace roots can emit relations before earlier source declarations.
+        // Bind each checkpoint to its source identity, independently of SVG traversal order.
+        !self.duplicate_relation_event
             && self
-                .relation_events
-                .iter()
-                .zip(&self.expected_relations)
-                .all(|(event, expected)| {
-                    event.relation_index == expected.relation_index
-                        && event.start_marker == expected.start_marker
-                        && event.end_marker == expected.end_marker
-                        && stroke_event_matches(
-                            self.expected_stroke.as_ref(),
-                            event.emitted_stroke.as_ref(),
-                            &event.terminal_style,
-                        )
-                        && hand_drawn_stroke_matches(
-                            self.expected_stroke.as_ref(),
-                            self.hand_drawn,
-                            event.hand_drawn_stroke.as_deref(),
-                        )
-                })
+                .expected_relations
+                .windows(2)
+                .all(|pair| pair[0].relation_index < pair[1].relation_index)
+            && self.relation_events.len() == self.expected_relations.len()
+            && self.expected_relations.iter().all(|expected| {
+                self.relation_events
+                    .get(&expected.relation_index)
+                    .is_some_and(|event| {
+                        event.start_marker == expected.start_marker
+                            && event.end_marker == expected.end_marker
+                            && stroke_event_matches(
+                                self.expected_stroke.as_ref(),
+                                event.emitted_stroke.as_ref(),
+                                &event.terminal_style,
+                            )
+                            && hand_drawn_stroke_matches(
+                                self.expected_stroke.as_ref(),
+                                self.hand_drawn,
+                                event.hand_drawn_stroke.as_deref(),
+                            )
+                    })
+            })
     }
 
     fn proves_complete_note_attachment_emission(&self) -> bool {
@@ -566,7 +581,7 @@ impl ClassRelationThemeReceipt {
             && complete_markers;
         let visible_marker_occurrence_count = complete.then(|| {
             self.relation_events
-                .iter()
+                .values()
                 .map(|event| {
                     usize::from(event.start_marker.is_some())
                         .saturating_add(usize::from(event.end_marker.is_some()))
@@ -627,7 +642,7 @@ impl ClassRelationThemeReceipt {
                 .saturating_add(
                     self.edge_label_background_events
                         .as_ref()
-                        .map_or(0, Vec::len),
+                        .map_or(0, BTreeMap::len),
                 )
                 .max(1),
         }
@@ -655,7 +670,7 @@ impl ClassRelationThemeReceipt {
     ) -> bool {
         self.proves_complete()
             && self.has_effective_stroke_rule(rule_index, property)
-            && self.relation_events.iter().all(|event| {
+            && self.relation_events.values().all(|event| {
                 event
                     .emitted_stroke
                     .as_ref()
@@ -747,7 +762,6 @@ fn cluster_paint_event_matches(
 
 #[derive(Debug, Clone)]
 struct ClassRelationTerminalEvent {
-    relation_index: usize,
     start_marker: Option<&'static str>,
     end_marker: Option<&'static str>,
     emitted_stroke: Option<(usize, String)>,
@@ -1349,6 +1363,69 @@ mod tests {
     }
 
     #[test]
+    fn reordered_relations_preserve_identity_marker_and_paint_checks() {
+        for case in [
+            "valid",
+            "missing",
+            "duplicate",
+            "foreign",
+            "marker",
+            "rule",
+            "paint",
+            "duplicate-expected",
+        ] {
+            let mut relations = vec![
+                ClassRelationTerminalExpectation::new(0, Some("compositionStart"), None),
+                ClassRelationTerminalExpectation::new(1, None, Some("extensionEnd")),
+            ];
+            if case == "duplicate-expected" {
+                relations[1] = relations[0].clone();
+            }
+            let mut receipt = ClassRelationThemeReceipt::new(
+                relations,
+                vec![
+                    ClassMarkerTerminalExpectation::new("extensionEnd", false),
+                    ClassMarkerTerminalExpectation::new("compositionStart", true),
+                ],
+                expected_stroke(),
+                false,
+            );
+            record_valid_markers(&mut receipt);
+            record_relation(&mut receipt, 1, None, Some("extensionEnd"));
+            if case != "missing" {
+                let index = match case {
+                    "duplicate" => 1,
+                    "foreign" => 2,
+                    _ => 0,
+                };
+                receipt.record_relation(
+                    index,
+                    Some(if case == "marker" {
+                        "extensionEnd"
+                    } else {
+                        "compositionStart"
+                    }),
+                    None,
+                    Some((if case == "rule" { 4 } else { 3 }, "#123456")),
+                    if case == "paint" {
+                        "stroke:#abcdef !important;"
+                    } else {
+                        "stroke:#123456 !important;"
+                    },
+                    None,
+                    false,
+                );
+            }
+            assert_eq!(receipt.proves_complete(), case == "valid", "{case}");
+            assert_eq!(
+                receipt.proves_typed_stroke(3, ResolvedStyleProperty::Stroke),
+                case == "valid",
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
     fn hand_drawn_path_and_filled_marker_must_match_the_typed_stroke() {
         let mut missing_hand_drawn_stroke = single_hand_drawn_receipt();
         missing_hand_drawn_stroke.record_marker(
@@ -1388,7 +1465,7 @@ mod tests {
     }
 
     #[test]
-    fn background_domain_requires_every_ordered_label_checkpoint() {
+    fn background_domain_requires_every_source_label_checkpoint() {
         let mut receipt = ClassRelationThemeReceipt::new(
             vec![
                 ClassRelationTerminalExpectation::new(0, None, None),
@@ -1403,13 +1480,13 @@ mod tests {
             receipt.record_relation(index, None, None, None, "", None, false);
         }
         assert_eq!(receipt.edge_label_background_count(), None);
-        receipt.record_edge_label_background(0, false);
+        receipt.record_edge_label_background(1, true);
         assert_eq!(receipt.edge_label_background_count(), None);
+        receipt.record_edge_label_background(0, false);
+        assert_eq!(receipt.edge_label_background_count(), Some(1));
         let mut duplicate = receipt.clone();
         duplicate.record_edge_label_background(0, true);
         assert_eq!(duplicate.edge_label_background_count(), None);
-        receipt.record_edge_label_background(1, true);
-        assert_eq!(receipt.edge_label_background_count(), Some(1));
         receipt.record_edge_label_background(2, true);
         assert_eq!(receipt.edge_label_background_count(), None);
 

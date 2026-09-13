@@ -32,22 +32,14 @@ impl ClassClusterThemePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
-            mermaid_owns_fill: [
+            mermaid_owns_fill: merman_core::__private::config_path_overrides_typed_default(
+                config,
                 "themeVariables.clusterBkg",
-                "themeVariables.tertiaryColor",
-                "themeVariables.primaryColor",
-                "themeVariables.mainBkg",
-            ]
-            .into_iter()
-            .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path)),
-            mermaid_owns_stroke: [
+            ),
+            mermaid_owns_stroke: merman_core::__private::config_path_overrides_typed_default(
+                config,
                 "themeVariables.clusterBorder",
-                "themeVariables.tertiaryBorderColor",
-                "themeVariables.primaryBorderColor",
-                "themeVariables.border2",
-            ]
-            .into_iter()
-            .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path)),
+            ),
             ..Self::default()
         };
         let Some(theme) = theme else { return Ok(plan) };
