@@ -470,7 +470,7 @@ fn validate_wrapped_fragment(
             }
             Event::Text(text) => {
                 ensure_inside_wrapper(depth, root_closed, pack_index)?;
-                if text.as_ref().windows(3).any(|window| window == b"]]>") {
+                if text.windows(3).any(|window| window == b"]]>") {
                     return Err(invalid_xml_error(
                         pack_index,
                         "icon body contains a forbidden XML text terminator",

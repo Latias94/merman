@@ -144,7 +144,7 @@ pub(crate) fn validate_well_formed_svg_with_controls(
             }
             Event::Text(text) => {
                 document_started = true;
-                let contains_cdata_close = text.as_ref().windows(3).any(|window| window == b"]]>");
+                let contains_cdata_close = text.windows(3).any(|window| window == b"]]>");
                 checkpoint()?;
                 if contains_cdata_close {
                     return Err(xml_validation_error(
