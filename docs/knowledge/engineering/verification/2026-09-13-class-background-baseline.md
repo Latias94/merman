@@ -48,6 +48,13 @@ The native tests pass 5/5, including the existing KTD23/inventory assertions; wo
 33/33. Logs: `/tmp/class-background-final.log` and `/tmp/class-background-workflows.log`.
 CI and release-preflight explicitly select the new test through the internal-cfg runner with PNG.
 
+Clean-checkout confirmation used commit `9babbfa248ea505053d24d8314b09d8e25a529b6` at
+`/tmp/merman-class-background-9babbfa24`. The same five native tests and 33 workflow tests passed;
+`git status --short` was empty before and after verification. Cargo reused the primary worktree's
+target directory with two build jobs. Logs are `/tmp/class-background-clean-checkout.log` and
+`/tmp/class-background-clean-workflows.log`. The detached checkout is retained as the removal
+baseline; this confirms this slice only, not the full workspace or C7a.
+
 The next slice must remove the exact legacy assignment, reconcile unsupported rules against the
 Class label-background domain, compare output again, and authorize the two retired identities
 through KTD23 before reducing the live route count. This record alone does not authorize deletion.
