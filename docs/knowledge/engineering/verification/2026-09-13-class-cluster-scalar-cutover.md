@@ -92,4 +92,25 @@ CARGO_BUILD_JOBS=2 cargo run --locked --release -p xtask -- compare-all-svgs \
 ```
 
 Log: `/tmp/class-terminal-full-structure.log`. Formatting and `git diff --check` also passed.
-Clean-checkout results are recorded separately after execution.
+
+## Clean-checkout confirmation
+
+Source commit: `fa8b195aedd286e14dac1538b4cab458d511c5e5`.
+The detached checkout `/tmp/merman-class-terminal-fa8b195ae` ran the same private Release command
+above and passed 469/469 tests, including all 694 native route-profile witnesses. `git status
+--porcelain` was empty before and after the run.
+
+Because local free disk space was approximately 7 GiB, this same-revision check reused the main
+target directory. The newly checked-out workspace sources were rebuilt: the log identifies core,
+renderer, layout, export, and acceptance crates under the detached checkout. No historical
+checkout was built into that target during this verification.
+
+The tested Class executable `class_svg_test-19dc4d96b7e07ef7` has SHA-256
+`9b645a3f0bb7ac2bc2debd5ee5fe604210d096e1bb5f5d6dd20db4ec85f9d37c`.
+It contains eight clean-checkout core path references and zero references to the old baseline core.
+Its features include `layout-cytoscape` and `layout-elk`, with the private acceptance cfg.
+
+Logs: `/tmp/class-terminal-fa8b195ae-clean.log` and `/tmp/class-terminal-clean-linkage.json`.
+The full SVG structure gate was run on the same source contents before committing; it was not
+rerun in the detached checkout. These checks do not replace full-workspace, browser, installed
+transport/profile, or release-candidate qualification.

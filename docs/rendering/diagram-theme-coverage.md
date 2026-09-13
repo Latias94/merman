@@ -39,7 +39,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | KTD17 scalar cutover | v83; 466 routes / 694 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v83 replaces Class's eight remaining scalar Cluster routes after the Edge cutover, covering unqualified/Default fill and stroke, solid/transparent. Namespace rectangles in ordinary, extracted, and ELK writers receive typed terminal paint with facet-independent receipts. Source ownership for clusterBkg/clusterBorder and derived base/dark variables remains explicit.
+KTD17 v83 replaces Class's eight scalar Cluster routes after the Edge cutover: unqualified/Default
+fill and stroke, each solid/transparent. Ordinary, extracted, and ELK namespace rectangles receive
+typed paint with independent facet receipts. The core theme program retains the source ownership
+of `clusterBkg` and `clusterBorder`. The
+[Class Cluster verification record](../knowledge/engineering/verification/2026-09-13-class-cluster-scalar-cutover.md)
+also records the corrected build provenance and source-indexed relation receipts.
 
 KTD17 v82 replaces Class's six remaining scalar Edge routes: unqualified/Default
 fill and Default stroke, each solid/transparent. Fill supplies relation, attached-note connector,
@@ -60,7 +65,7 @@ removed; explicit source configuration retains ownership. Classic, Neo, and Hand
 route witnesses cover solid and transparent fills. Public support revision 83 reports a partial
 typed surface; unsupported ordinal and sibling facets remain residuals. This is a typed replacement,
 so KTD23 v9 is unchanged. Revision-82 installed artifacts remain historical evidence and need
-rebuilding before they can attest the current revision 84. See the
+rebuilding before they can attest the current revision 85. See the
 [Block background record](../knowledge/engineering/verification/2026-09-13-block-edge-label-background-legacy.md).
 
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
@@ -405,21 +410,21 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
-Support discovery now has an independent eleven-case golden in
+Support discovery now has an independent fourteen-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 83 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+revision 85 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
-background query. Installed N-API darwin-arm64 and
-Node-WASM packages rebuilt from `840560118` pass all ten shared support vectors through two
+background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
+Installed N-API darwin-arm64 and Node-WASM packages rebuilt from `840560118` pass all ten shared support vectors through two
 engines; see the [installed Node record](../knowledge/engineering/verification/2026-09-13-node-installed-authoring.md).
 The native Python wheel rebuilt from `983708e33` also passes those vectors through one-shot and
 reusable APIs, plus catalog/diagnostic/authoring smoke; see the
 [installed Python record](../knowledge/engineering/verification/2026-09-13-python-installed-authoring.md).
-All installed artifacts require fresh revision-83 runs after this Block cutover. This is a cross-transport discovery
-contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
+All installed artifacts require fresh revision-85 runs after the Class Cluster cutover. This is a
+cross-transport discovery contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
