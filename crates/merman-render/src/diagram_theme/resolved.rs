@@ -206,181 +206,187 @@ impl ResolvedTypography {
     }
 
     fn apply(&mut self, patch: &TextStylePatch, origin: ThemeRuleOrigin) {
-        apply_typography_property(
+        let mut changed = false;
+        changed |= apply_typography_property(
             &patch.font_stack,
             &mut self.patch.font_stack,
             ThemeTypographyProperty::FontStack,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.font_size_px,
             &mut self.patch.font_size_px,
             ThemeTypographyProperty::FontSize,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.font_weight,
             &mut self.patch.font_weight,
             ThemeTypographyProperty::FontWeight,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.font_style,
             &mut self.patch.font_style,
             ThemeTypographyProperty::FontStyle,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.line_height,
             &mut self.patch.line_height,
             ThemeTypographyProperty::LineHeight,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.letter_spacing_px,
             &mut self.patch.letter_spacing_px,
             ThemeTypographyProperty::LetterSpacing,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.word_spacing_px,
             &mut self.patch.word_spacing_px,
             ThemeTypographyProperty::WordSpacing,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.transform,
             &mut self.patch.transform,
             ThemeTypographyProperty::Transform,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.decoration,
             &mut self.patch.decoration,
             ThemeTypographyProperty::Decoration,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.text_align,
             &mut self.patch.text_align,
             ThemeTypographyProperty::TextAlign,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.white_space,
             &mut self.patch.white_space,
             ThemeTypographyProperty::WhiteSpace,
             origin,
             &mut self.winners,
         );
-        apply_typography_property(
+        changed |= apply_typography_property(
             &patch.wrap,
             &mut self.patch.wrap,
             ThemeTypographyProperty::Wrap,
             origin,
             &mut self.winners,
         );
-        self.computed = self.base.clone();
-        self.patch.apply_to(&mut self.computed, &self.base);
+        if changed {
+            self.computed = self.base.clone();
+            self.patch.apply_to(&mut self.computed, &self.base);
+        }
     }
 
     fn merge_from(&mut self, other: &Self) {
-        merge_typography_property(
+        let mut changed = false;
+        changed |= merge_typography_property(
             &other.patch.font_stack,
             ThemeTypographyProperty::FontStack,
             other,
             &mut self.patch.font_stack,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.font_size_px,
             ThemeTypographyProperty::FontSize,
             other,
             &mut self.patch.font_size_px,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.font_weight,
             ThemeTypographyProperty::FontWeight,
             other,
             &mut self.patch.font_weight,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.font_style,
             ThemeTypographyProperty::FontStyle,
             other,
             &mut self.patch.font_style,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.line_height,
             ThemeTypographyProperty::LineHeight,
             other,
             &mut self.patch.line_height,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.letter_spacing_px,
             ThemeTypographyProperty::LetterSpacing,
             other,
             &mut self.patch.letter_spacing_px,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.word_spacing_px,
             ThemeTypographyProperty::WordSpacing,
             other,
             &mut self.patch.word_spacing_px,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.transform,
             ThemeTypographyProperty::Transform,
             other,
             &mut self.patch.transform,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.decoration,
             ThemeTypographyProperty::Decoration,
             other,
             &mut self.patch.decoration,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.text_align,
             ThemeTypographyProperty::TextAlign,
             other,
             &mut self.patch.text_align,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.white_space,
             ThemeTypographyProperty::WhiteSpace,
             other,
             &mut self.patch.white_space,
             &mut self.winners,
         );
-        merge_typography_property(
+        changed |= merge_typography_property(
             &other.patch.wrap,
             ThemeTypographyProperty::Wrap,
             other,
             &mut self.patch.wrap,
             &mut self.winners,
         );
-        self.computed = self.base.clone();
-        self.patch.apply_to(&mut self.computed, &self.base);
+        if changed {
+            self.computed = self.base.clone();
+            self.patch.apply_to(&mut self.computed, &self.base);
+        }
     }
 
     pub const fn base(&self) -> &TextStyle {
@@ -406,12 +412,13 @@ fn apply_typography_property<T: Clone>(
     property: ThemeTypographyProperty,
     origin: ThemeRuleOrigin,
     winners: &mut BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
-) {
+) -> bool {
     if incoming.is_unspecified() || !origin.supersedes(winners.get(&property).copied()) {
-        return;
+        return false;
     }
     *resolved = incoming.clone();
     winners.insert(property, origin);
+    true
 }
 
 fn merge_typography_property<T: Clone>(
@@ -420,9 +427,11 @@ fn merge_typography_property<T: Clone>(
     incoming_style: &ResolvedTypography,
     resolved: &mut Specified<T>,
     winners: &mut BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
-) {
+) -> bool {
     if let Some(origin) = incoming_style.winner(property) {
-        apply_typography_property(incoming, resolved, property, origin, winners);
+        apply_typography_property(incoming, resolved, property, origin, winners)
+    } else {
+        false
     }
 }
 
@@ -1084,6 +1093,147 @@ mod tests {
         ThemeRuleSet,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn typography_recomputation_preserves_every_property_and_winner() {
+        use crate::diagram_theme::{
+            FontStack, FontStyle, LineHeight, TextAlign, TextDecoration, TextTransform,
+            ThemeWrapMode as WrapMode, WhiteSpace,
+        };
+        let values = TextStylePatch {
+            font_stack: Specified::Value(FontStack::new(["Example", "serif"]).unwrap()),
+            font_size_px: Specified::Value(23.0),
+            font_weight: Specified::Value(700),
+            font_style: Specified::Value(FontStyle::Italic),
+            line_height: Specified::Value(LineHeight::Multiplier(1.5)),
+            letter_spacing_px: Specified::Value(2.0),
+            word_spacing_px: Specified::Value(3.0),
+            transform: Specified::Value(TextTransform::Uppercase),
+            decoration: Specified::Value(TextDecoration::Underline),
+            text_align: Specified::Value(TextAlign::Center),
+            white_space: Specified::Value(WhiteSpace::PreWrap),
+            wrap: Specified::Value(WrapMode::Anywhere),
+        };
+        let clears = TextStylePatch {
+            font_stack: Specified::Clear,
+            font_size_px: Specified::Clear,
+            font_weight: Specified::Clear,
+            font_style: Specified::Clear,
+            line_height: Specified::Clear,
+            letter_spacing_px: Specified::Clear,
+            word_spacing_px: Specified::Clear,
+            transform: Specified::Clear,
+            decoration: Specified::Clear,
+            text_align: Specified::Clear,
+            white_space: Specified::Clear,
+            wrap: Specified::Clear,
+        };
+        let base = TextStyle::default()
+            .with_font_stack(FontStack::new(["Base Font", "sans-serif"]).unwrap())
+            .with_font_size_px(16.0)
+            .unwrap();
+        let rule = ThemeRule::new(ThemeTarget::Text, ThemeStylePatch::default());
+        let origin = |index| ThemeRuleOrigin::new(index, &rule);
+        // Each property must independently trigger both apply and merge recomputation.
+        macro_rules! check_property {
+            ($field:ident, $property:ident) => {{
+                let value = TextStylePatch {
+                    $field: values.$field.clone(),
+                    ..Default::default()
+                };
+                let clear = TextStylePatch {
+                    $field: Specified::Clear,
+                    ..Default::default()
+                };
+                let mut expected = base.clone();
+                value.apply_to(&mut expected, &base);
+                let mut direct = ResolvedTypography::new(base.clone());
+                direct.apply(&value, origin(1));
+                assert_eq!(direct.computed(), &expected, stringify!($field));
+                assert_eq!(
+                    direct.winner(ThemeTypographyProperty::$property),
+                    Some(origin(1))
+                );
+                let mut merged = ResolvedTypography::new(base.clone());
+                merged.merge_from(&direct);
+                assert_eq!(merged.computed(), &expected, stringify!($field));
+                direct.apply(&clear, origin(1));
+                assert_eq!(direct.computed(), &base, stringify!($field));
+                assert_eq!(direct.patch().$field, Specified::Clear);
+                merged.merge_from(&direct);
+                assert_eq!(merged.computed(), &base, stringify!($field));
+                assert_eq!(merged.patch().$field, Specified::Clear);
+            }};
+        }
+        check_property!(font_stack, FontStack);
+        check_property!(font_size_px, FontSize);
+        check_property!(font_weight, FontWeight);
+        check_property!(font_style, FontStyle);
+        check_property!(line_height, LineHeight);
+        check_property!(letter_spacing_px, LetterSpacing);
+        check_property!(word_spacing_px, WordSpacing);
+        check_property!(transform, Transform);
+        check_property!(decoration, Decoration);
+        check_property!(text_align, TextAlign);
+        check_property!(white_space, WhiteSpace);
+        check_property!(wrap, Wrap);
+        let mut expected = base.clone();
+        values.apply_to(&mut expected, &base);
+        let mut resolved = ResolvedTypography::new(base.clone());
+        resolved.apply(&values, origin(10));
+        assert_eq!(resolved.computed(), &expected);
+        assert_eq!(resolved.patch(), &values);
+        for property in ThemeTypographyProperty::ALL {
+            assert_eq!(resolved.winner(*property), Some(origin(10)));
+        }
+
+        // Unspecified inputs and losing clears cannot invalidate any cached value or winner.
+        resolved.apply(&clears, origin(9));
+        resolved.apply(&TextStylePatch::default(), origin(100));
+        let mut older = ResolvedTypography::new(base.clone());
+        older.apply(&clears, origin(9));
+        resolved.merge_from(&older);
+        resolved.merge_from(&ResolvedTypography::new(base.clone()));
+        assert_eq!(resolved.computed(), &expected);
+        assert_eq!(resolved.patch(), &values);
+        for property in ThemeTypographyProperty::ALL {
+            assert_eq!(resolved.winner(*property), Some(origin(10)));
+        }
+
+        // Equal-index writes still supersede, and Clear restores the family's base value.
+        resolved.apply(&clears, origin(10));
+        assert_eq!(resolved.computed(), &base);
+        assert_eq!(resolved.patch(), &clears);
+        let mut newer = ResolvedTypography::new(base.clone());
+        newer.apply(&values, origin(11));
+        resolved.merge_from(&newer);
+        assert_eq!(resolved.computed(), &expected);
+        assert_eq!(resolved.patch(), &values);
+        for property in ThemeTypographyProperty::ALL {
+            assert_eq!(resolved.winner(*property), Some(origin(11)));
+        }
+    }
+
+    #[test]
+    fn typography_merge_recomputes_only_with_the_receivers_base() {
+        let base = TextStyle::default().with_font_size_px(19.0).unwrap();
+        let foreign_base = TextStyle::default().with_font_size_px(31.0).unwrap();
+        let rule = ThemeRule::new(ThemeTarget::Text, ThemeStylePatch::default());
+        let mut resolved = ResolvedTypography::new(base.clone());
+        resolved.merge_from(&ResolvedTypography::new(foreign_base.clone()));
+        assert_eq!(resolved.computed(), &base);
+        let mut incoming = ResolvedTypography::new(foreign_base);
+        incoming.apply(
+            &TextStylePatch {
+                font_size_px: Specified::Clear,
+                ..TextStylePatch::default()
+            },
+            ThemeRuleOrigin::new(0, &rule),
+        );
+        resolved.merge_from(&incoming);
+        assert_eq!(resolved.computed(), &base);
+        assert_eq!(resolved.patch().font_size_px, Specified::Clear);
+    }
 
     #[test]
     fn family_resolution_indexes_only_applicable_rules_and_palettes() {
