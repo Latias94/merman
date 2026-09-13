@@ -1465,6 +1465,26 @@ classDiagram
 }
 
 #[test]
+fn class_svg_keeps_class_text_and_generic_text_color_owners_distinct() {
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"themeVariables": {"classText": "#123456", "textColor": "#654321"}}}%%
+classDiagram
+    class Animal
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#123456;}"#),
+        "Class node and edge labels must retain classText ownership"
+    );
+    assert!(
+        svg.contains(r#"#merman .classTitleText{text-anchor:middle;font-size:18px;fill:#654321;}"#),
+        "the Class title must retain generic textColor ownership"
+    );
+}
+
+#[test]
 fn class_svg_uses_configured_look_in_dom_attributes() {
     let svg = render_class_svg_from_text(
         r#"%%{init: {"look": "neo"}}%%
