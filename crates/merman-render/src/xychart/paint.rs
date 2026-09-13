@@ -92,8 +92,7 @@ impl XyChartPaintPlan {
             None,
             work_meter,
         )?;
-        let mut terminals = BTreeMap::new();
-        for (drawable, shape) in layout.drawables.iter_mut().enumerate() {
+        for shape in &mut layout.drawables {
             match shape {
                 XyChartDrawableElem::Text { group_texts, data } => {
                     let Some((target, channel)) =
@@ -114,18 +113,10 @@ impl XyChartPaintPlan {
                         })
                         .flatten();
                     work_meter.charge(data.len())?;
-                    for (item, label) in data.iter_mut().enumerate() {
+                    for label in data {
                         if let Some(paint) = &paint {
                             label.fill = paint.css().to_owned();
                         }
-                        terminals.insert(
-                            XyChartPaintTerminalId::Text { drawable, item },
-                            PaintTerminal {
-                                content: label.text.clone().into_boxed_str(),
-                                paint: label.fill.clone().into_boxed_str(),
-                                dimension: label.font_size,
-                            },
-                        );
                         if visible_dimension(label.font_size) && !label.text.trim().is_empty() {
                             accounting.observe(
                                 target,
@@ -166,18 +157,10 @@ impl XyChartPaintPlan {
                         })
                         .flatten();
                     work_meter.charge(data.len())?;
-                    for (item, path) in data.iter_mut().enumerate() {
+                    for path in data {
                         if let Some(paint) = &paint {
                             path.stroke_fill = paint.css().to_owned();
                         }
-                        terminals.insert(
-                            XyChartPaintTerminalId::Path { drawable, item },
-                            PaintTerminal {
-                                content: path.path.clone().into_boxed_str(),
-                                paint: path.stroke_fill.clone().into_boxed_str(),
-                                dimension: path.stroke_width,
-                            },
-                        );
                         if visible_dimension(path.stroke_width) && visible_axis_segment(&path.path)
                         {
                             accounting.observe(
@@ -218,17 +201,6 @@ impl XyChartPaintPlan {
                         &layout.chart_orientation,
                     );
                     for label in labels.items {
-                        terminals.insert(
-                            XyChartPaintTerminalId::DataLabel {
-                                drawable,
-                                item: label.item,
-                            },
-                            PaintTerminal {
-                                content: label.label.into(),
-                                paint: plan.data_label_color.clone().into_boxed_str(),
-                                dimension: labels.font_size,
-                            },
-                        );
                         if visible_dimension(labels.font_size) && !label.label.trim().is_empty() {
                             accounting.observe(
                                 ThemeTarget::Text,
@@ -244,8 +216,69 @@ impl XyChartPaintPlan {
             }
         }
         accounting.finish(&mut plan);
-        plan.terminals = Arc::new(terminals);
+        if !plan.pending.is_empty() {
+            plan.capture_terminals(layout);
+        }
         Ok(plan)
+    }
+
+    fn capture_terminals(&mut self, layout: &XyChartDiagramLayout) {
+        // Source-owned, absent, and unsupported requests need no writer receipt payload.
+        let mut terminals = BTreeMap::new();
+        for (drawable, shape) in layout.drawables.iter().enumerate() {
+            match shape {
+                XyChartDrawableElem::Text { group_texts, data }
+                    if text_channel(group_texts, &layout.chart_orientation).is_some() =>
+                {
+                    for (item, label) in data.iter().enumerate() {
+                        terminals.insert(
+                            XyChartPaintTerminalId::Text { drawable, item },
+                            PaintTerminal {
+                                content: label.text.clone().into_boxed_str(),
+                                paint: label.fill.clone().into_boxed_str(),
+                                dimension: label.font_size,
+                            },
+                        );
+                    }
+                }
+                XyChartDrawableElem::Path { group_texts, data }
+                    if line_channel(group_texts, &layout.chart_orientation).is_some() =>
+                {
+                    for (item, path) in data.iter().enumerate() {
+                        terminals.insert(
+                            XyChartPaintTerminalId::Path { drawable, item },
+                            PaintTerminal {
+                                content: path.path.clone().into_boxed_str(),
+                                paint: path.stroke_fill.clone().into_boxed_str(),
+                                dimension: path.stroke_width,
+                            },
+                        );
+                    }
+                }
+                XyChartDrawableElem::Rect { data, .. } if layout.show_data_label => {
+                    let labels = super::rect_data_labels(
+                        data,
+                        &layout.label_data,
+                        &layout.chart_orientation,
+                    );
+                    for label in labels.items {
+                        terminals.insert(
+                            XyChartPaintTerminalId::DataLabel {
+                                drawable,
+                                item: label.item,
+                            },
+                            PaintTerminal {
+                                content: label.label.into(),
+                                paint: self.data_label_color.clone().into_boxed_str(),
+                                dimension: labels.font_size,
+                            },
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.terminals = Arc::new(terminals);
     }
 
     pub(crate) fn data_label_color(&self) -> &str {
@@ -682,6 +715,92 @@ mod tests {
     };
 
     #[test]
+    fn source_owned_text_retains_no_receipt_payload_at_any_scale() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::XY_CHART);
+        let source_config = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {"xyChart": {"titleColor": "black"}}
+            })))
+            .parse_metadata_sync("xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\n")
+            .unwrap()
+            .effective_config;
+        for count in [1, 64, 1024] {
+            let mut layout: XyChartDiagramLayout = serde_json::from_value(serde_json::json!({
+                "width": 700.0, "height": 500.0, "chartOrientation": "vertical",
+                "showDataLabel": false, "showDataLabelOutsideBar": false,
+                "labelData": [], "backgroundColor": "white", "drawables": []
+            }))
+            .unwrap();
+            let label = crate::model::XyChartTextData {
+                text: "A & B ".repeat(1024),
+                x: 0.0,
+                y: 0.0,
+                fill: "black".into(),
+                font_size: 20.0,
+                rotation: 0.0,
+                vertical_pos: "middle".into(),
+                horizontal_pos: "center".into(),
+            };
+            layout.drawables.push(XyChartDrawableElem::Text {
+                group_texts: vec!["chart-title".into()],
+                data: vec![label; count],
+            });
+            let plan = XyChartPaintPlan::resolve(
+                Some(&theme),
+                &source_config,
+                &mut layout,
+                &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
+            )
+            .unwrap();
+            assert!(plan.terminals.is_empty(), "source-owned count={count}");
+            assert!(
+                plan.begin_terminal_receipt(|_| panic!("no payload to escape"))
+                    .is_none()
+            );
+            assert!(plan.finish_evidence().applied().is_empty());
+            assert_eq!(
+                plan.finish_evidence().not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Text
+                }]
+            );
+            let XyChartDrawableElem::Text { data, .. } = &layout.drawables[0] else {
+                panic!()
+            };
+            assert!(data.iter().all(|label| label.fill == "black"));
+
+            let pending = XyChartPaintPlan::resolve(
+                Some(&theme),
+                &MermaidConfig::default(),
+                &mut layout,
+                &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
+            )
+            .unwrap();
+            assert_eq!(pending.terminals.len(), count);
+            let receipt = pending.begin_terminal_receipt(str::to_owned).unwrap();
+            assert_eq!(receipt.expected.len(), count);
+            assert!(
+                pending
+                    .terminals
+                    .values()
+                    .all(|terminal| terminal.paint.as_ref() == "#123456")
+            );
+        }
+    }
+
+    #[test]
     fn zero_sized_rectangle_labels_are_checked_but_cannot_certify_text_paint() {
         let theme = DiagramThemeCompiler::new()
             .compile(
@@ -725,7 +844,7 @@ mod tests {
                 drawable: 0,
                 item: 0
             })
-            .is_some()
+            .is_none()
         );
         assert_eq!(plan.data_label_color(), "#123456");
         assert!(plan.begin_terminal_receipt(str::to_owned).is_none());
