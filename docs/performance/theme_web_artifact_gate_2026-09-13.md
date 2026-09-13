@@ -138,3 +138,38 @@ against the budget anchors and test measured ownership/code-sharing candidates. 
 flag substitution and treating aggregate family dispatch as duplicated code do not close this gate.
 Native/Typst/Node artifact qualification, the Linux publication run, full browser regression and
 formal C7a rollout/freeze remain separate. C7b bridge retirement also remains open.
+
+## Revision-86 canonical sorting experiment
+
+The [fresh installed Web baseline](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md)
+at `4e4f3acc336ac1beaad046cb335b9bfccb752f85` still fails all twenty size checks. A separate
+same-checkout experiment replaced five stable sorts in font catalog admission and canonical theme
+encoding with unstable sorts. Accepted keys are unique; duplicate asset IDs fail before decoding.
+This hypothesis targeted redundant stable-sort specializations while retaining canonical order,
+error precedence, capabilities and the production build recipe.
+
+The preregistered gate required at least 4096 fewer stripped bytes for `web-render`, decreases in
+both compressed metrics, and no metric growth on the other four profiles. Both complete five-profile
+builds and package/DOM safety smokes passed. Baseline theme tests passed 324/324; candidate tests
+passed 327/327, including collection-face ordering, duplicate-ID error precedence and 32-graph
+canonical identity. The last test initially hit the correct Interactive 16-graph limit; its final
+version explicitly requests the allowed 32-graph limit without changing production defaults.
+
+| Profile | Raw / stripped delta | gzip delta | Brotli delta |
+| --- | ---: | ---: | ---: |
+| web-analysis | 0 | 0 | 0 |
+| web-ascii | 0 | 0 | 0 |
+| web-editor | 0 | 0 | 0 |
+| web-full | -2563 | -211 | -1071 |
+| web-render | -2552 | +683 | +2034 |
+
+The candidate is **rejected**: the primary reduction is below the registered threshold and both
+render compression controls regress. None of the twenty release size checks passes. No candidate
+production change is merged. Its patch, exact artifact/tool/corpus identities, baseline package
+copies, complete logs and final measurements remain in
+`target/bench/experiments/theme-canonical-sort-4e4f3acc3/`; the isolated checkout retains the rejected
+code. Final candidate installed-browser differential testing, Clippy and broad SVG checks were not
+run after the primary/control gate failed. No timing or memory improvement is claimed.
+
+This closes the five-sort hypothesis. Stable-sort symbol totals alone are insufficient evidence
+for another size change; a new candidate needs a distinct causal owner and final artifact controls.

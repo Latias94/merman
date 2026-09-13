@@ -109,6 +109,10 @@ At `eda8c3846`, all five final Web profiles exceed raw, stripped, Gzip and Brotl
 although production smoke and a real installed Chromium consumer pass. The explicit Binaryen
 `-Oz` candidate was rejected because compressed sizes grew. Preserve the budgets and capabilities;
 continue source/ownership attribution from the [current artifact checkpoint](theme_web_artifact_gate_2026-09-13.md).
+The clean revision-86 baseline at `4e4f3acc3` confirms all twenty failures. Its five-sort canonical
+encoding/font-catalog candidate is also rejected: render shrinks only 2552 bytes while gzip grows
+683 bytes and Brotli grows 2034 bytes. Keep that rejected result closed and require a distinct
+causal hypothesis for further size work; raw stable-sort symbol totals are not admission evidence.
 
 The [typography winner guard](theme_typography_recomputation_2026-09-13.md) removes repeated font-stack
 copying for paint-only rules. Its bounded public SVG probe reduces cumulative allocated bytes by
