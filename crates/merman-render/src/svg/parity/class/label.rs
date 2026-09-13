@@ -457,12 +457,11 @@ pub(super) fn class_apply_inline_styles<'a>(
 }
 
 pub(super) fn class_node_label_terminal_truth(
-    prepared_facts: crate::class::ClassNodeLabelStyleFacts,
+    terminal_facts: crate::class::ClassTextTerminalFacts,
 ) -> ClassNodeLabelTerminalTruth {
     ClassNodeLabelTerminalTruth {
-        source_owns_paint: prepared_facts.source_owns_every_visible_run(),
-        typed_fill_verified: !prepared_facts.has_mixed_color_ownership()
-            && !prepared_facts.color_ownership_is_unverified(),
+        source_owns_paint: terminal_facts.source_owns_every_visible_run(),
+        typed_fill_verified: terminal_facts.paint_ownership_is_unambiguous(),
     }
 }
 

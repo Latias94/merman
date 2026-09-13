@@ -39,7 +39,7 @@ struct ClassNodeRootOffsets {
 #[derive(Default)]
 struct ClassNodeRenderOutcome {
     theme_emission: Option<crate::class::ClassNodeTerminalEmission>,
-    typography: crate::class::ClassTypographyTerminalFacts,
+    typography: crate::class::ClassTextTerminalFacts,
 }
 
 pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
@@ -60,7 +60,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_theme_expectations:
         &'a FxHashMap<&'a str, &'a crate::class::ClassNodeTerminalExpectation>,
-    pub(super) typography_theme: &'a crate::class::ClassTypographyThemePlan,
+    pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
@@ -72,7 +72,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -299,7 +299,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -617,7 +617,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
@@ -784,7 +784,9 @@ fn render_class_node_id<O: SvgOutput>(
     let node_style_attr = node_inline_styles.style_attr.as_str();
     let source_owns_fill = node_inline_styles.fill.is_some();
     let source_owns_stroke = node_inline_styles.stroke.is_some();
-    let label_terminal_truth = class_node_label_terminal_truth(node_style_facts);
+    let terminal_facts =
+        crate::class::ClassTextTerminalFacts::from_node_style_facts(node_style_facts);
+    let label_terminal_truth = class_node_label_terminal_truth(terminal_facts);
     let source_owns_label_fill = label_terminal_truth.source_owns_paint();
     let emitted_fill = expectation.typed_fill(source_owns_fill);
     let emitted_stroke = expectation.typed_stroke(source_owns_stroke);
@@ -950,8 +952,6 @@ fn render_class_node_id<O: SvgOutput>(
             .with_source_value(node_inline_styles.color)
             .with_terminal_verified(label_terminal_truth.typed_fill_verified()),
         )),
-        typography: crate::class::ClassTypographyTerminalFacts::from_node_style_facts(
-            node_style_facts,
-        ),
+        typography: terminal_facts,
     })
 }

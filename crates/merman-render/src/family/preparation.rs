@@ -1079,7 +1079,7 @@ fn prepare_class_family(
         execution.work_meter_ref(),
     )?
     .with_note_attachments(note_attachment_indices);
-    let typography_theme = crate::class::ClassTypographyThemePlan::resolve(
+    let typography_theme = crate::class::ClassTextThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
     );

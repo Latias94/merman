@@ -15,7 +15,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
     pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
-    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTypographyThemeReceipt>,
+    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextThemeReceipt>,
 }
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
@@ -92,7 +92,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,

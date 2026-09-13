@@ -15,7 +15,7 @@ mod evidence;
 mod namespace_title;
 mod node;
 mod terminal;
-mod typography;
+mod text;
 
 use cluster::ClassClusterThemePlan;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
@@ -27,9 +27,9 @@ pub(crate) use terminal::{
     ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
     ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
 };
-pub(crate) use typography::{
-    ClassNodeLabelStyleFacts, ClassTypographyCssEmission, ClassTypographyTerminalFacts,
-    ClassTypographyThemePlan, ClassTypographyThemeReceipt,
+pub(crate) use text::{
+    ClassNodeLabelStyleFacts, ClassTextTerminalFacts, ClassTextThemePlan, ClassTextThemeReceipt,
+    ClassTypographyCssEmission,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

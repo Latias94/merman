@@ -480,7 +480,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     edge_label_centers: &ClassEdgeLabelCenters,
 ) -> crate::Result<()> {
@@ -550,7 +550,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             .into_iter()
             .enumerate()
         {
-            let mut typography = crate::class::ClassTypographyTerminalFacts::default();
+            let mut typography = crate::class::ClassTextTerminalFacts::default();
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(start_text);
                 if terminal_w > 0.0 && terminal_h > 0.0 {
@@ -603,7 +603,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             .into_iter()
             .enumerate()
         {
-            let mut typography = crate::class::ClassTypographyTerminalFacts::default();
+            let mut typography = crate::class::ClassTextTerminalFacts::default();
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(end_text);
                 if terminal_w > 0.0 && terminal_h > 0.0 {
@@ -667,7 +667,7 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> (crate::class::ClassTypographyTerminalFacts, bool) {
+) -> (crate::class::ClassTextTerminalFacts, bool) {
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
     let background_visible =
@@ -723,12 +723,12 @@ fn render_class_edge_label_group(
             );
         }
         let typography = if trimmed.is_empty() || label.is_none() {
-            crate::class::ClassTypographyTerminalFacts::default()
+            crate::class::ClassTextTerminalFacts::default()
         } else if crate::math::contains_delimited_math(trimmed) {
-            crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
+            crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
         } else {
             let facts = crate::class::class_html_label_visible_style_facts(trimmed);
-            crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
+            crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts)
         };
         return (typography, background_visible);
     }
@@ -767,10 +767,10 @@ fn render_class_edge_label_group(
         out.push_str("</g></g>");
     }
     let typography = if trimmed.is_empty() {
-        crate::class::ClassTypographyTerminalFacts::default()
+        crate::class::ClassTextTerminalFacts::default()
     } else {
         let facts = crate::class::class_svg_label_visible_style_facts(trimmed);
-        crate::class::ClassTypographyTerminalFacts::from_visible_style_facts(&facts)
+        crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts)
     };
     (typography, background_visible)
 }
@@ -791,11 +791,11 @@ fn render_class_edge_terminal_group(
     text: &str,
     is_start_terminal: bool,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::class::ClassTypographyTerminalFacts {
+) -> crate::class::ClassTextTerminalFacts {
     let decoded = decode_entities_minimal_cow(text);
     let trimmed = decoded.trim();
     if trimmed.is_empty() {
-        return crate::class::ClassTypographyTerminalFacts::default();
+        return crate::class::ClassTextTerminalFacts::default();
     }
     let (style_width, style_height) = class_terminal_box_size(trimmed);
     let measured = match (ctx.mermaid_config, ctx.math_renderer) {
@@ -862,9 +862,9 @@ fn render_class_edge_terminal_group(
         out.push_str("</span></div></foreignObject></g>");
     }
     if crate::math::contains_delimited_math(trimmed) {
-        crate::class::ClassTypographyTerminalFacts::unverified_text(trimmed)
+        crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
     } else {
-        crate::class::ClassTypographyTerminalFacts::fixed_font_size_text(trimmed)
+        crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed)
     }
 }
 

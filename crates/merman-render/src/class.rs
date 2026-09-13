@@ -31,9 +31,8 @@ use merman_layout_elk as elk;
 pub(crate) use theme::{
     ClassMarkerTerminalExpectation, ClassNodeLabelStyleFacts, ClassNodePaintTerminalEmission,
     ClassNodeTerminalEmission, ClassNodeTerminalExpectation, ClassRelationTerminalExpectation,
-    ClassRelationThemePlan, ClassRelationThemeReceipt, ClassThemeEvidenceRecorder,
-    ClassTypographyCssEmission, ClassTypographyTerminalFacts, ClassTypographyThemePlan,
-    ClassTypographyThemeReceipt,
+    ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTextTerminalFacts, ClassTextThemePlan,
+    ClassTextThemeReceipt, ClassThemeEvidenceRecorder, ClassTypographyCssEmission,
 };
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
@@ -2250,7 +2249,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography_theme: &ClassTypographyThemePlan,
+    typography_theme: &ClassTextThemePlan,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
@@ -2278,7 +2277,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
-    typography_theme: &ClassTypographyThemePlan,
+    typography_theme: &ClassTextThemePlan,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
@@ -2301,7 +2300,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
-    typography_theme: &ClassTypographyThemePlan,
+    typography_theme: &ClassTextThemePlan,
     work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<ClassLayoutResult> {
     validate_class_namespace_hierarchy(model)?;
@@ -2825,7 +2824,7 @@ pub fn debug_build_class_diagram_dagre_graph(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
-    let typography_theme = ClassTypographyThemePlan::resolve(None, effective_config);
+    let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
     match layout_class_diagram_typed_inner(
         model,
         effective_config,

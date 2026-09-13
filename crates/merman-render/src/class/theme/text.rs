@@ -18,7 +18,7 @@ const CARDINALITY_SLOT_COUNT: usize = 4;
 /// `themeVariables.fontFamily` first. A directly owned FontStack intentionally replaces both;
 /// inactive, config-owned, and unsupported routes preserve the upstream split.
 #[derive(Debug)]
-pub(crate) struct ClassTypographyThemePlan {
+pub(crate) struct ClassTextThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     layout_font_family_css: Box<str>,
     stylesheet_font_family_css: Box<str>,
@@ -29,7 +29,7 @@ pub(crate) struct ClassTypographyThemePlan {
     node_style_facts: OnceLock<BTreeMap<Box<str>, ClassNodeLabelStyleFacts>>,
     layout_font_size_px: OnceLock<f64>,
     evidence: FamilyThemeEvidence,
-    terminal_receipt: OnceLock<ClassTypographyThemeReceipt>,
+    terminal_receipt: OnceLock<ClassTextThemeReceipt>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -47,8 +47,10 @@ pub(crate) struct ClassNodeLabelStyleFacts {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ClassTypographyTerminalFacts {
+pub(crate) struct ClassTextTerminalFacts {
     visible_runs: usize,
+    inherited_color_runs: usize,
+    color_ownership_unverified: bool,
     layout_inherited_runs: usize,
     writer_inherited_runs: usize,
     unverified_runs: usize,
@@ -67,37 +69,37 @@ pub(crate) struct ClassTypographyCssEmission {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct ClassTypographyEdgeCheckpoint {
-    label: ClassTypographyTerminalCheckpoint,
-    cardinalities: [ClassTypographyTerminalCheckpoint; CARDINALITY_SLOT_COUNT],
+struct ClassTextEdgeCheckpoint {
+    label: ClassTextTerminalCheckpoint,
+    cardinalities: [ClassTextTerminalCheckpoint; CARDINALITY_SLOT_COUNT],
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct ClassTypographyTerminalCheckpoint {
+struct ClassTextTerminalCheckpoint {
     expected_visible: bool,
-    observed: Option<ClassTypographyTerminalFacts>,
+    observed: Option<ClassTextTerminalFacts>,
 }
 
-/// Renderer-owned proof for the Class font-stack stylesheet and every text-bearing object.
+/// Renderer-owned text receipt for the Class stylesheet and every text-bearing object.
 ///
 /// The receipt records semantic writer checkpoints. It does not parse the finalized stylesheet or
 /// SVG, and it does not reconstruct browser cascade semantics.
 #[derive(Debug, Clone)]
-pub(crate) struct ClassTypographyThemeReceipt {
+pub(crate) struct ClassTextThemeReceipt {
     expected_font_family_css: Box<str>,
     expected_font_size_css: Box<str>,
     expected_font_size_px: f64,
     layout_font_size_px: Option<f64>,
     css_emission: Option<ClassTypographyCssEmission>,
     css_emission_unique: bool,
-    nodes: BTreeMap<Box<str>, ClassTypographyTerminalCheckpoint>,
-    namespaces: BTreeMap<Box<str>, ClassTypographyTerminalCheckpoint>,
-    edges: BTreeMap<Box<str>, ClassTypographyEdgeCheckpoint>,
-    diagram_title: ClassTypographyTerminalCheckpoint,
+    nodes: BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
+    namespaces: BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
+    edges: BTreeMap<Box<str>, ClassTextEdgeCheckpoint>,
+    diagram_title: ClassTextTerminalCheckpoint,
     terminals_match: bool,
 }
 
-impl ClassTypographyThemePlan {
+impl ClassTextThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
@@ -247,7 +249,7 @@ impl ClassTypographyThemePlan {
         diagram_use_html_labels: bool,
         edge_use_html_labels: bool,
         sanitize_config: Option<&merman_core::MermaidConfig>,
-    ) -> Option<ClassTypographyThemeReceipt> {
+    ) -> Option<ClassTextThemeReceipt> {
         self.requires_terminal_receipt().then(|| {
             let mut terminals_match = true;
             let mut nodes = BTreeMap::new();
@@ -315,13 +317,13 @@ impl ClassTypographyThemePlan {
                 if edges
                     .insert(
                         relation.id.as_str().into(),
-                        ClassTypographyEdgeCheckpoint {
-                            label: ClassTypographyTerminalCheckpoint::new(label),
+                        ClassTextEdgeCheckpoint {
+                            label: ClassTextTerminalCheckpoint::new(label),
                             cardinalities: [
-                                ClassTypographyTerminalCheckpoint::new(false),
-                                ClassTypographyTerminalCheckpoint::new(start),
-                                ClassTypographyTerminalCheckpoint::new(end),
-                                ClassTypographyTerminalCheckpoint::new(false),
+                                ClassTextTerminalCheckpoint::new(false),
+                                ClassTextTerminalCheckpoint::new(start),
+                                ClassTextTerminalCheckpoint::new(end),
+                                ClassTextTerminalCheckpoint::new(false),
                             ],
                         },
                     )
@@ -331,7 +333,7 @@ impl ClassTypographyThemePlan {
                 }
             }
 
-            ClassTypographyThemeReceipt {
+            ClassTextThemeReceipt {
                 expected_font_family_css: self.stylesheet_font_family_css().into(),
                 expected_font_size_css: self.font_size_css().into(),
                 expected_font_size_px: self.font_size_px(),
@@ -341,7 +343,7 @@ impl ClassTypographyThemePlan {
                 nodes,
                 namespaces,
                 edges,
-                diagram_title: ClassTypographyTerminalCheckpoint::new(
+                diagram_title: ClassTextTerminalCheckpoint::new(
                     diagram_title.is_some_and(|title| !title.trim().is_empty()),
                 ),
                 terminals_match,
@@ -349,7 +351,7 @@ impl ClassTypographyThemePlan {
         })
     }
 
-    pub(crate) fn record_terminal(&self, receipt: Option<ClassTypographyThemeReceipt>) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: Option<ClassTextThemeReceipt>) -> bool {
         if self.requires_terminal_receipt() {
             receipt.is_some_and(|receipt| {
                 receipt.structurally_complete() && self.terminal_receipt.set(receipt).is_ok()
@@ -366,7 +368,7 @@ impl ClassTypographyThemePlan {
                 &mut evidence,
                 self.terminal_receipt
                     .get()
-                    .is_none_or(ClassTypographyThemeReceipt::has_visible_font_run),
+                    .is_none_or(ClassTextThemeReceipt::has_visible_font_run),
             );
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         match self.inherited_font_stack.outcome() {
@@ -523,18 +525,6 @@ impl ClassNodeLabelStyleFacts {
             .saturating_add(other.unverified_font_size_runs);
     }
 
-    pub(crate) const fn source_owns_every_visible_run(self) -> bool {
-        self.visible_runs != 0 && self.inherited_color_runs == 0 && !self.color_ownership_unverified
-    }
-
-    pub(crate) const fn has_mixed_color_ownership(self) -> bool {
-        self.inherited_color_runs != 0 && self.inherited_color_runs < self.visible_runs
-    }
-
-    pub(crate) const fn color_ownership_is_unverified(self) -> bool {
-        self.color_ownership_unverified
-    }
-
     pub(crate) const fn visible_run_count(self) -> usize {
         self.visible_runs
     }
@@ -568,7 +558,29 @@ impl ClassNodeLabelStyleFacts {
     }
 }
 
-impl ClassTypographyTerminalFacts {
+impl ClassTextTerminalFacts {
+    pub(crate) const fn source_owns_every_visible_run(self) -> bool {
+        self.visible_runs != 0 && self.inherited_color_runs == 0 && !self.color_ownership_unverified
+    }
+
+    pub(crate) const fn has_mixed_color_ownership(self) -> bool {
+        self.inherited_color_runs != 0 && self.inherited_color_runs < self.visible_runs
+    }
+
+    pub(crate) const fn color_ownership_is_unverified(self) -> bool {
+        self.color_ownership_unverified
+    }
+
+    pub(crate) const fn paint_ownership_is_unambiguous(self) -> bool {
+        !self.has_mixed_color_ownership() && !self.color_ownership_is_unverified()
+    }
+
+    pub(crate) const fn has_verified_inherited_paint(self) -> bool {
+        self.visible_runs != 0
+            && self.inherited_color_runs == self.visible_runs
+            && !self.color_ownership_unverified
+    }
+
     #[cfg(test)]
     pub(crate) const fn new(
         visible_runs: usize,
@@ -578,6 +590,8 @@ impl ClassTypographyTerminalFacts {
     ) -> Self {
         Self {
             visible_runs,
+            inherited_color_runs: visible_runs,
+            color_ownership_unverified: false,
             layout_inherited_runs,
             writer_inherited_runs,
             unverified_runs,
@@ -595,6 +609,8 @@ impl ClassTypographyTerminalFacts {
     pub(crate) fn from_node_style_facts(facts: ClassNodeLabelStyleFacts) -> Self {
         Self {
             visible_runs: facts.visible_run_count(),
+            inherited_color_runs: facts.inherited_color_runs,
+            color_ownership_unverified: facts.color_ownership_unverified,
             layout_inherited_runs: facts.layout_inherited_font_run_count(),
             writer_inherited_runs: facts.writer_inherited_font_run_count(),
             unverified_runs: facts.unverified_font_run_count(),
@@ -609,6 +625,8 @@ impl ClassTypographyTerminalFacts {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
             visible_runs,
+            inherited_color_runs: visible_runs,
+            color_ownership_unverified: false,
             layout_inherited_runs: visible_runs,
             writer_inherited_runs: visible_runs,
             unverified_runs: 0,
@@ -623,6 +641,8 @@ impl ClassTypographyTerminalFacts {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
             visible_runs,
+            inherited_color_runs: 0,
+            color_ownership_unverified: visible_runs != 0,
             layout_inherited_runs: 0,
             writer_inherited_runs: 0,
             unverified_runs: visible_runs,
@@ -637,6 +657,8 @@ impl ClassTypographyTerminalFacts {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
             visible_runs,
+            inherited_color_runs: visible_runs,
+            color_ownership_unverified: false,
             layout_inherited_runs: visible_runs,
             writer_inherited_runs: visible_runs,
             unverified_runs: 0,
@@ -651,6 +673,8 @@ impl ClassTypographyTerminalFacts {
         if !facts.parse_valid() {
             return Self {
                 visible_runs: 1,
+                inherited_color_runs: 0,
+                color_ownership_unverified: true,
                 layout_inherited_runs: 0,
                 writer_inherited_runs: 0,
                 unverified_runs: 1,
@@ -664,6 +688,8 @@ impl ClassTypographyTerminalFacts {
         let inherited_runs = facts.inherited_font_family_run_count();
         Self {
             visible_runs,
+            inherited_color_runs: facts.inherited_color_run_count(),
+            color_ownership_unverified: facts.unverified_portable_color_run_count() != 0,
             layout_inherited_runs: inherited_runs,
             writer_inherited_runs: inherited_runs,
             unverified_runs: facts.unverified_font_family_run_count(),
@@ -676,6 +702,10 @@ impl ClassTypographyTerminalFacts {
 
     fn merge(&mut self, other: Self) {
         self.visible_runs = self.visible_runs.saturating_add(other.visible_runs);
+        self.inherited_color_runs = self
+            .inherited_color_runs
+            .saturating_add(other.inherited_color_runs);
+        self.color_ownership_unverified |= other.color_ownership_unverified;
         self.layout_inherited_runs = self
             .layout_inherited_runs
             .saturating_add(other.layout_inherited_runs);
@@ -722,7 +752,7 @@ impl ClassTypographyCssEmission {
     }
 }
 
-impl ClassTypographyThemeReceipt {
+impl ClassTextThemeReceipt {
     pub(crate) fn record_css_emission(&mut self, emission: ClassTypographyCssEmission) {
         if self.css_emission.is_some() {
             self.css_emission_unique = false;
@@ -731,11 +761,11 @@ impl ClassTypographyThemeReceipt {
         self.css_emission = Some(emission);
     }
 
-    pub(crate) fn record_node(&mut self, id: &str, facts: ClassTypographyTerminalFacts) {
+    pub(crate) fn record_node(&mut self, id: &str, facts: ClassTextTerminalFacts) {
         record_terminal_slot(self.nodes.get_mut(id), facts, &mut self.terminals_match);
     }
 
-    pub(crate) fn record_namespace(&mut self, id: &str, facts: ClassTypographyTerminalFacts) {
+    pub(crate) fn record_namespace(&mut self, id: &str, facts: ClassTextTerminalFacts) {
         record_terminal_slot(
             self.namespaces.get_mut(id),
             facts,
@@ -743,7 +773,7 @@ impl ClassTypographyThemeReceipt {
         );
     }
 
-    pub(crate) fn record_edge_label(&mut self, id: &str, facts: ClassTypographyTerminalFacts) {
+    pub(crate) fn record_edge_label(&mut self, id: &str, facts: ClassTextTerminalFacts) {
         let Some(edge) = self.edges.get_mut(id) else {
             self.terminals_match = false;
             return;
@@ -755,7 +785,7 @@ impl ClassTypographyThemeReceipt {
         &mut self,
         id: &str,
         slot: usize,
-        facts: ClassTypographyTerminalFacts,
+        facts: ClassTextTerminalFacts,
     ) {
         let Some(edge) = self.edges.get_mut(id) else {
             self.terminals_match = false;
@@ -768,7 +798,7 @@ impl ClassTypographyThemeReceipt {
         record_terminal_slot(Some(checkpoint), facts, &mut self.terminals_match);
     }
 
-    pub(crate) fn record_diagram_title(&mut self, facts: ClassTypographyTerminalFacts) {
+    pub(crate) fn record_diagram_title(&mut self, facts: ClassTextTerminalFacts) {
         record_terminal_slot(
             Some(&mut self.diagram_title),
             facts,
@@ -780,20 +810,17 @@ impl ClassTypographyThemeReceipt {
         self.css_emission_unique
             && self.css_emission.is_some()
             && self.terminals_match
-            && self
-                .nodes
-                .values()
-                .all(ClassTypographyTerminalCheckpoint::proves)
+            && self.nodes.values().all(ClassTextTerminalCheckpoint::proves)
             && self
                 .namespaces
                 .values()
-                .all(ClassTypographyTerminalCheckpoint::proves)
+                .all(ClassTextTerminalCheckpoint::proves)
             && self.edges.values().all(|edge| {
                 edge.label.proves()
                     && edge
                         .cardinalities
                         .iter()
-                        .all(ClassTypographyTerminalCheckpoint::proves)
+                        .all(ClassTextTerminalCheckpoint::proves)
             })
             && self.diagram_title.proves()
     }
@@ -846,13 +873,13 @@ impl ClassTypographyThemeReceipt {
         self.terminal_facts().unverified_size_runs != 0
     }
 
-    fn terminal_facts(&self) -> ClassTypographyTerminalFacts {
-        let mut facts = ClassTypographyTerminalFacts::default();
+    fn terminal_facts(&self) -> ClassTextTerminalFacts {
+        let mut facts = ClassTextTerminalFacts::default();
         for terminal in self
             .nodes
             .values()
             .chain(self.namespaces.values())
-            .filter_map(ClassTypographyTerminalCheckpoint::observed)
+            .filter_map(ClassTextTerminalCheckpoint::observed)
         {
             facts.merge(*terminal);
         }
@@ -863,7 +890,7 @@ impl ClassTypographyThemeReceipt {
             for terminal in edge
                 .cardinalities
                 .iter()
-                .filter_map(ClassTypographyTerminalCheckpoint::observed)
+                .filter_map(ClassTextTerminalCheckpoint::observed)
             {
                 facts.merge(*terminal);
             }
@@ -875,7 +902,7 @@ impl ClassTypographyThemeReceipt {
     }
 }
 
-impl ClassTypographyTerminalCheckpoint {
+impl ClassTextTerminalCheckpoint {
     const fn new(expected_visible: bool) -> Self {
         Self {
             expected_visible,
@@ -883,7 +910,7 @@ impl ClassTypographyTerminalCheckpoint {
         }
     }
 
-    fn observed(&self) -> Option<&ClassTypographyTerminalFacts> {
+    fn observed(&self) -> Option<&ClassTextTerminalFacts> {
         self.observed.as_ref()
     }
 
@@ -894,8 +921,8 @@ impl ClassTypographyTerminalCheckpoint {
 }
 
 fn record_terminal_slot(
-    slot: Option<&mut ClassTypographyTerminalCheckpoint>,
-    facts: ClassTypographyTerminalFacts,
+    slot: Option<&mut ClassTextTerminalCheckpoint>,
+    facts: ClassTextTerminalFacts,
     terminals_match: &mut bool,
 ) {
     let Some(slot) = slot else {
@@ -908,7 +935,7 @@ fn record_terminal_slot(
 }
 
 fn insert_terminal_expectation(
-    terminals: &mut BTreeMap<Box<str>, ClassTypographyTerminalCheckpoint>,
+    terminals: &mut BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
     id: &str,
     expected_visible: bool,
     terminals_match: &mut bool,
@@ -916,7 +943,7 @@ fn insert_terminal_expectation(
     if terminals
         .insert(
             id.into(),
-            ClassTypographyTerminalCheckpoint::new(expected_visible),
+            ClassTextTerminalCheckpoint::new(expected_visible),
         )
         .is_some()
     {
@@ -969,7 +996,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn node_style_fact_projection_preserves_independent_typography_counts() {
+    fn node_style_fact_projection_preserves_independent_color_and_typography_counts() {
         let source = ClassNodeLabelStyleFacts {
             visible_runs: 11,
             inherited_color_runs: 9,
@@ -983,9 +1010,11 @@ mod tests {
             unverified_font_size_runs: 3,
         };
         assert_eq!(
-            ClassTypographyTerminalFacts::from_node_style_facts(source),
-            ClassTypographyTerminalFacts {
+            ClassTextTerminalFacts::from_node_style_facts(source),
+            ClassTextTerminalFacts {
                 visible_runs: 11,
+                inherited_color_runs: 9,
+                color_ownership_unverified: true,
                 layout_inherited_runs: 8,
                 writer_inherited_runs: 7,
                 unverified_runs: 2,
@@ -996,9 +1025,11 @@ mod tests {
             }
         );
         assert_eq!(
-            ClassTypographyTerminalFacts::fixed_font_size_text("cardinality"),
-            ClassTypographyTerminalFacts {
+            ClassTextTerminalFacts::fixed_font_size_text("cardinality"),
+            ClassTextTerminalFacts {
                 visible_runs: 1,
+                inherited_color_runs: 1,
+                color_ownership_unverified: false,
                 layout_inherited_runs: 1,
                 writer_inherited_runs: 1,
                 unverified_runs: 0,
@@ -1010,8 +1041,119 @@ mod tests {
         );
     }
 
-    fn empty_receipt() -> ClassTypographyThemeReceipt {
-        ClassTypographyThemeReceipt {
+    #[test]
+    fn text_terminals_preserve_color_ownership_independently_of_fonts() {
+        for (markup, inherited, source_owned, verified) in [
+            ("<span>Label</span>", 1, false, true),
+            (
+                r##"<span style="color:#123456">Label</span>"##,
+                0,
+                true,
+                true,
+            ),
+            (
+                r#"<span style="font-family:serif">Label</span>"#,
+                1,
+                false,
+                true,
+            ),
+            (
+                r#"<span style="color:var(--ink)">Label</span>"#,
+                0,
+                false,
+                false,
+            ),
+            (r#"<span class="custom">Label</span>"#, 0, false, false),
+            (
+                r##"<span>Before <b style="color:#123456">After</b></span>"##,
+                1,
+                false,
+                false,
+            ),
+            ("<span>", 0, false, false),
+        ] {
+            let source = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(markup);
+            let terminal = ClassTextTerminalFacts::from_visible_style_facts(&source);
+            assert_eq!(terminal.inherited_color_runs, inherited, "{markup}");
+            assert_eq!(
+                terminal.source_owns_every_visible_run(),
+                source_owned,
+                "{markup}"
+            );
+            assert_eq!(
+                terminal.paint_ownership_is_unambiguous(),
+                verified,
+                "{markup}"
+            );
+        }
+    }
+
+    #[test]
+    fn inherited_paint_requires_visible_unowned_text() {
+        for empty in [
+            ClassTextTerminalFacts::default(),
+            ClassTextTerminalFacts::inherited_text("  "),
+            ClassTextTerminalFacts::unverified_text(""),
+        ] {
+            assert_eq!(empty.visible_runs, 0);
+            assert!(empty.paint_ownership_is_unambiguous());
+            assert!(!empty.source_owns_every_visible_run());
+            assert!(!empty.has_verified_inherited_paint());
+        }
+        let inherited = ClassTextTerminalFacts::inherited_text("Label");
+        assert!(inherited.has_verified_inherited_paint());
+        let math = ClassTextTerminalFacts::unverified_text("Math");
+        assert!(!math.paint_ownership_is_unambiguous());
+        assert!(!math.has_verified_inherited_paint());
+        let owned = ClassTextTerminalFacts::from_visible_style_facts(
+            &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
+                r##"<span style="color:#123456">Owned</span>"##,
+            ),
+        );
+        assert!(owned.paint_ownership_is_unambiguous());
+        assert!(owned.source_owns_every_visible_run());
+        assert!(!owned.has_verified_inherited_paint());
+    }
+
+    #[test]
+    fn text_receipt_merges_every_terminal_color_domain() {
+        let mut receipt = empty_receipt();
+        let inherited = ClassTextTerminalFacts::inherited_text("Label");
+        let owned = ClassTextTerminalFacts::from_visible_style_facts(
+            &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
+                r##"<span style="color:#123456">Owned</span>"##,
+            ),
+        );
+        let unknown = ClassTextTerminalFacts::unverified_text("Math");
+        let checkpoint = |facts| ClassTextTerminalCheckpoint {
+            expected_visible: true,
+            observed: Some(facts),
+        };
+        receipt.nodes.insert("node".into(), checkpoint(owned));
+        receipt.nodes.insert("note".into(), checkpoint(inherited));
+        receipt
+            .namespaces
+            .insert("namespace".into(), checkpoint(inherited));
+        receipt.edges.insert(
+            "edge".into(),
+            ClassTextEdgeCheckpoint {
+                label: checkpoint(unknown),
+                cardinalities: [checkpoint(inherited); CARDINALITY_SLOT_COUNT],
+            },
+        );
+        receipt.diagram_title = checkpoint(inherited);
+        let facts = receipt.terminal_facts();
+        assert_eq!(facts.visible_runs, 9);
+        assert_eq!(facts.inherited_color_runs, 7);
+        assert!(facts.color_ownership_is_unverified());
+        assert!(!facts.source_owns_every_visible_run());
+        assert!(!facts.paint_ownership_is_unambiguous());
+        assert_eq!(facts.layout_inherited_runs, 8);
+        assert_eq!(facts.unverified_runs, 1);
+    }
+
+    fn empty_receipt() -> ClassTextThemeReceipt {
+        ClassTextThemeReceipt {
             expected_font_family_css: "Inter,sans-serif".into(),
             expected_font_size_css: "16px".into(),
             expected_font_size_px: 16.0,
@@ -1021,7 +1163,7 @@ mod tests {
             nodes: BTreeMap::new(),
             namespaces: BTreeMap::new(),
             edges: BTreeMap::new(),
-            diagram_title: ClassTypographyTerminalCheckpoint::new(false),
+            diagram_title: ClassTextTerminalCheckpoint::new(false),
             terminals_match: true,
         }
     }
@@ -1038,7 +1180,7 @@ mod tests {
             "Inter,sans-serif",
         ));
         assert!(!receipt.structurally_complete());
-        receipt.record_diagram_title(ClassTypographyTerminalFacts::default());
+        receipt.record_diagram_title(ClassTextTerminalFacts::default());
         assert!(receipt.structurally_complete());
         assert!(!receipt.has_applied_font_run());
     }
@@ -1054,19 +1196,19 @@ mod tests {
             "Inter,sans-serif",
             "Inter,sans-serif",
         ));
-        receipt.diagram_title.observed = Some(ClassTypographyTerminalFacts::default());
+        receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
         receipt
             .nodes
-            .insert("A".into(), ClassTypographyTerminalCheckpoint::new(true));
-        receipt.record_node("A", ClassTypographyTerminalFacts::new(1, 1, 1, 0));
+            .insert("A".into(), ClassTextTerminalCheckpoint::new(true));
+        receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
         assert!(receipt.structurally_complete());
-        receipt.record_node("A", ClassTypographyTerminalFacts::new(1, 1, 1, 0));
+        receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
         assert!(!receipt.structurally_complete());
     }
 
     #[test]
     fn font_size_proof_binds_css_layout_and_a_fully_inherited_terminal() {
-        fn complete_receipt() -> ClassTypographyThemeReceipt {
+        fn complete_receipt() -> ClassTextThemeReceipt {
             let mut receipt = empty_receipt();
             receipt.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
                 "Inter,sans-serif",
@@ -1076,11 +1218,11 @@ mod tests {
                 "Inter,sans-serif",
                 "Inter,sans-serif",
             ));
-            receipt.diagram_title.observed = Some(ClassTypographyTerminalFacts::default());
+            receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
             receipt
                 .nodes
-                .insert("A".into(), ClassTypographyTerminalCheckpoint::new(true));
-            receipt.record_node("A", ClassTypographyTerminalFacts::new(1, 1, 1, 0));
+                .insert("A".into(), ClassTextTerminalCheckpoint::new(true));
+            receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
             receipt
         }
 
@@ -1117,12 +1259,12 @@ mod tests {
             "Inter,sans-serif",
             "Inter,sans-serif",
         ));
-        unverified.diagram_title.observed = Some(ClassTypographyTerminalFacts::default());
+        unverified.diagram_title.observed = Some(ClassTextTerminalFacts::default());
         unverified.nodes.insert(
             "A".into(),
-            ClassTypographyTerminalCheckpoint {
+            ClassTextTerminalCheckpoint {
                 expected_visible: true,
-                observed: Some(ClassTypographyTerminalFacts::new(1, 0, 0, 1)),
+                observed: Some(ClassTextTerminalFacts::new(1, 0, 0, 1)),
             },
         );
         assert!(unverified.structurally_complete());
@@ -1140,17 +1282,17 @@ mod tests {
             "Inter,sans-serif",
             "Inter,sans-serif",
         ));
-        receipt.diagram_title.observed = Some(ClassTypographyTerminalFacts::default());
+        receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
         receipt.edges.insert(
             "rel".into(),
-            ClassTypographyEdgeCheckpoint {
-                label: ClassTypographyTerminalCheckpoint::new(true),
-                cardinalities: [ClassTypographyTerminalCheckpoint::new(false); 4],
+            ClassTextEdgeCheckpoint {
+                label: ClassTextTerminalCheckpoint::new(true),
+                cardinalities: [ClassTextTerminalCheckpoint::new(false); 4],
             },
         );
-        receipt.record_edge_label("rel", ClassTypographyTerminalFacts::default());
+        receipt.record_edge_label("rel", ClassTextTerminalFacts::default());
         for slot in 0..4 {
-            receipt.record_cardinality("rel", slot, ClassTypographyTerminalFacts::default());
+            receipt.record_cardinality("rel", slot, ClassTextTerminalFacts::default());
         }
 
         assert!(!receipt.structurally_complete());
@@ -1165,7 +1307,7 @@ mod tests {
             }
         }));
 
-        let plan = ClassTypographyThemePlan::resolve(None, &config);
+        let plan = ClassTextThemePlan::resolve(None, &config);
 
         assert_eq!(plan.layout_font_family_css(), "Class Root,monospace");
         assert_eq!(plan.stylesheet_font_family_css(), "Class Theme,sans-serif");
@@ -1175,7 +1317,7 @@ mod tests {
     #[test]
     fn node_style_facts_are_sealed_once_and_missing_ids_fail_closed() {
         let config = merman_core::MermaidConfig::default();
-        let plan = ClassTypographyThemePlan::resolve(None, &config);
+        let plan = ClassTextThemePlan::resolve(None, &config);
 
         assert!(matches!(
             plan.require_node_style_facts("A"),
@@ -1203,16 +1345,18 @@ mod tests {
 
         let mut owned = ClassNodeLabelStyleFacts::default();
         owned.observe(&invalid, true, false, true, true, false, true, true, false);
-        assert!(owned.source_owns_every_visible_run());
-        assert!(!owned.color_ownership_is_unverified());
+        let owned_terminal = ClassTextTerminalFacts::from_node_style_facts(owned);
+        assert!(owned_terminal.source_owns_every_visible_run());
+        assert!(!owned_terminal.color_ownership_is_unverified());
         assert_eq!(owned.unverified_font_run_count(), 0);
 
         let mut inherited = ClassNodeLabelStyleFacts::default();
         inherited.observe(
             &invalid, false, false, false, false, false, false, false, false,
         );
-        assert!(!inherited.source_owns_every_visible_run());
-        assert!(inherited.color_ownership_is_unverified());
+        let inherited_terminal = ClassTextTerminalFacts::from_node_style_facts(inherited);
+        assert!(!inherited_terminal.source_owns_every_visible_run());
+        assert!(inherited_terminal.color_ownership_is_unverified());
         assert_eq!(inherited.unverified_font_run_count(), 1);
     }
 }

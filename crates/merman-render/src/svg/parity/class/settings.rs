@@ -21,7 +21,7 @@ impl ClassRenderSettings {
     pub(super) fn from_config(
         effective_config: &serde_json::Value,
         hand_drawn_seed: roughr::core::RoughRandomness,
-        typography_theme: &crate::class::ClassTypographyThemePlan,
+        typography_theme: &crate::class::ClassTextThemePlan,
     ) -> Self {
         let config = crate::class::config::ClassConfigView::new(effective_config);
 

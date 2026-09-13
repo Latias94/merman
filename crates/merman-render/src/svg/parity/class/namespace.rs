@@ -31,7 +31,7 @@ pub(super) fn render_class_namespace_cluster_group(
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
@@ -56,7 +56,7 @@ fn render_class_namespace_cluster(
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-) -> Result<crate::class::ClassTypographyTerminalFacts> {
+) -> Result<crate::class::ClassTextTerminalFacts> {
     render_class_namespace_cluster_at(
         out,
         content_bounds,
@@ -77,7 +77,7 @@ fn render_class_namespace_cluster_at(
     (left, top): (f64, f64),
     ctx: ClassNamespaceClusterGroupContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-) -> Result<crate::class::ClassTypographyTerminalFacts> {
+) -> Result<crate::class::ClassTextTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
     include_xywh(
@@ -100,7 +100,7 @@ fn render_class_namespace_cluster_at(
         label_h,
     );
 
-    let (title_html, typography, inherits_paint) = class_namespace_title_html(&cluster.title, ctx);
+    let (title_html, typography) = class_namespace_title_html(&cluster.title, ctx);
     let terminal_style = ctx.relation_theme.cluster_terminal_style();
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
@@ -134,7 +134,7 @@ fn render_class_namespace_cluster_at(
             rule,
             style,
             label_w > 0.0 && !cluster.title.trim().is_empty(),
-            inherits_paint,
+            typography.has_verified_inherited_paint(),
         );
     }
     Ok(typography)
@@ -143,18 +143,16 @@ fn render_class_namespace_cluster_at(
 fn class_namespace_title_html(
     title: &str,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> (String, crate::class::ClassTypographyTerminalFacts, bool) {
+) -> (String, crate::class::ClassTextTerminalFacts) {
     if let Some(math_html) = class_math_html_label(title, ctx.mermaid_config, ctx.math_renderer) {
         return (
             math_html,
-            crate::class::ClassTypographyTerminalFacts::unverified_text(title),
-            false,
+            crate::class::ClassTextTerminalFacts::unverified_text(title),
         );
     }
     (
         format!("<p>{}</p>", escape_xml_display(title)),
-        crate::class::ClassTypographyTerminalFacts::inherited_text(title),
-        true,
+        crate::class::ClassTextTerminalFacts::inherited_text(title),
     )
 }
 
@@ -175,7 +173,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_dx: f64,
     root_dy: f64,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;

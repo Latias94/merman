@@ -954,7 +954,7 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-    typography_theme: &crate::class::ClassTypographyThemePlan,
+    typography_theme: &crate::class::ClassTextThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     if uses_elk_layout(effective_config) {
         return layout_class_elk_typed_by_feature(
@@ -988,7 +988,7 @@ fn layout_class_elk_typed_by_feature(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-    typography_theme: &crate::class::ClassTypographyThemePlan,
+    typography_theme: &crate::class::ClassTextThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     options
         .work_meter_ref()
@@ -1013,7 +1013,7 @@ fn layout_class_elk_typed_by_feature(
     _model: &ClassDiagram,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
-    _typography_theme: &crate::class::ClassTypographyThemePlan,
+    _typography_theme: &crate::class::ClassTextThemePlan,
 ) -> Result<model::ClassDiagramLayout> {
     Err(Error::MissingCapability {
         capability: RenderCapability::LayoutElk,
@@ -1201,10 +1201,8 @@ mod tests {
         let RenderSemanticModel::Class(model) = parsed.model() else {
             panic!("expected class render model");
         };
-        let typography_theme = crate::class::ClassTypographyThemePlan::resolve(
-            None,
-            &parsed.metadata().effective_config,
-        );
+        let typography_theme =
+            crate::class::ClassTextThemePlan::resolve(None, &parsed.metadata().effective_config);
         layout_class_typed_by_engine(
             &parsed.metadata().diagram_type,
             model,

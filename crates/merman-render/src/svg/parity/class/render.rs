@@ -15,7 +15,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
-    typography_theme: &crate::class::ClassTypographyThemePlan,
+    typography_theme: &crate::class::ClassTextThemePlan,
     theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
@@ -294,10 +294,12 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         out.checkpoint()?;
     }
     if let Some(receipt) = typography_receipt.as_mut() {
-        let facts = view_box.title.as_ref().map_or_else(
-            crate::class::ClassTypographyTerminalFacts::default,
-            |title| crate::class::ClassTypographyTerminalFacts::inherited_text(title.text),
-        );
+        let facts = view_box
+            .title
+            .as_ref()
+            .map_or_else(crate::class::ClassTextTerminalFacts::default, |title| {
+                crate::class::ClassTextTerminalFacts::inherited_text(title.text)
+            });
         receipt.record_diagram_title(facts);
     }
 

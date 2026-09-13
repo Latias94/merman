@@ -1498,7 +1498,7 @@ fn flowchart_artifact_theme_evidence<L>(
 pub(crate) struct ClassFamilyArtifact {
     pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
     relation_theme: crate::class::ClassRelationThemePlan,
-    typography_theme: crate::class::ClassTypographyThemePlan,
+    typography_theme: crate::class::ClassTextThemePlan,
     theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
 
@@ -1538,7 +1538,7 @@ impl ClassFamilyArtifact {
         &self.relation_theme
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::class::ClassTypographyThemePlan {
+    pub(crate) const fn typography_theme(&self) -> &crate::class::ClassTextThemePlan {
         &self.typography_theme
     }
 

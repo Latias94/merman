@@ -28,7 +28,7 @@ pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
 
 pub(super) struct ClassInterfaceRenderResult {
     pub theme_emission: crate::class::ClassNodeTerminalEmission,
-    pub typography: crate::class::ClassTypographyTerminalFacts,
+    pub typography: crate::class::ClassTextTerminalFacts,
 }
 
 pub(super) fn render_class_interface_node<O: SvgOutput>(
@@ -135,9 +135,9 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             .with_terminal_verified(label_fill_verified),
         ),
         typography: if math_html.is_some() {
-            crate::class::ClassTypographyTerminalFacts::unverified_text(label_text.as_ref())
+            crate::class::ClassTextTerminalFacts::unverified_text(label_text.as_ref())
         } else {
-            crate::class::ClassTypographyTerminalFacts::inherited_text(label_text.as_ref())
+            crate::class::ClassTextTerminalFacts::inherited_text(label_text.as_ref())
         },
     })
 }
