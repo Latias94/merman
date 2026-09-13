@@ -849,6 +849,20 @@ impl ThemeRouteCutoverDescriptor {
         }
     }
 
+    /// Whether this route can write both SVG fill and stroke channels.
+    ///
+    /// XY Chart Axis.fill colors axis text and falls back into axis lines and ticks.
+    /// Explicit config can own either group independently, leaving only the other
+    /// channel visible. The semantic route identity remains Axis.fill in both cases.
+    pub fn raster_paint_allows_fill_or_stroke(self) -> bool {
+        self.family_id() == DiagramFamilyId::XY_CHART
+            && self.target() == ThemeTarget::Axis
+            && self.facet() == ThemeRouteCutoverFacet::Fill
+            && self
+                .projections()
+                .contains(ThemeRouteCutoverProjection::ChartTextPaint)
+    }
+
     /// Returns the route-local solid paint used by the private raster cutover witness.
     ///
     /// The value is renderer-owned so the acceptance harness cannot silently choose a different
@@ -1191,6 +1205,40 @@ mod tests {
             descriptor.raster_paint_facet(),
             ThemeRouteCutoverFacet::Stroke
         );
+    }
+
+    #[test]
+    fn only_xychart_axis_fill_allows_both_native_paint_channels() {
+        for family in [
+            DiagramFamilyId::XY_CHART,
+            DiagramFamilyId::QUADRANT_CHART,
+            DiagramFamilyId::RADAR,
+        ] {
+            for target in [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis] {
+                for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                    for selector in [
+                        ThemeRouteCutoverSelector::StaticUnqualified,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                    ] {
+                        for value in [
+                            ThemeRouteCutoverValue::Solid,
+                            ThemeRouteCutoverValue::Transparent,
+                        ] {
+                            let descriptor = ThemeRouteCutoverDescriptor::new(
+                                ThemeRouteCutoverId::new(family, target, selector, facet, value),
+                                ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT,
+                            );
+                            assert_eq!(
+                                descriptor.raster_paint_allows_fill_or_stroke(),
+                                family == DiagramFamilyId::XY_CHART
+                                    && target == ThemeTarget::Axis
+                                    && facet == ThemeRouteCutoverFacet::Fill,
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

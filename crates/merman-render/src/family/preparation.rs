@@ -870,7 +870,7 @@ fn prepare_xy_chart_family(
         &typography_theme,
         execution.text_measurer(),
     )?;
-    let title_theme = crate::xychart::XyChartTitleThemePlan::resolve(
+    let paint_theme = crate::xychart::XyChartPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &mut layout,
@@ -881,7 +881,7 @@ fn prepare_xy_chart_family(
             pair: FamilyPair::new(model, layout),
             series_paint,
             typography_theme,
-            title_theme,
+            paint_theme,
         },
     )))
 }

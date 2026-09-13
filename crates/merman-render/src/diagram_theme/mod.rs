@@ -90,8 +90,8 @@ pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, Eff
 #[cfg(merman_internal_theme_acceptance)]
 pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape,
 };
 #[cfg(merman_internal_theme_acceptance)]
 pub use legacy_family_theme_bridge::{

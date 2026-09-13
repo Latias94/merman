@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 79;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 80;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    88, 62, 40, 205, 125, 59, 47, 173, 50, 208, 91, 96, 0, 126, 55, 179, 49, 180, 118, 162, 252,
-    248, 158, 3, 141, 163, 41, 217, 69, 196, 60, 247,
+    216, 26, 49, 226, 198, 202, 222, 41, 252, 168, 9, 21, 5, 169, 239, 41, 248, 166, 239, 163, 67,
+    133, 247, 253, 146, 160, 120, 78, 165, 209, 172, 232,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,97 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 436] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 448] = [
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::ChartTextPaint],
+    ),
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Title,
@@ -5018,15 +5108,21 @@ mod tests {
         }
     }
     #[test]
-    fn xychart_title_authority_covers_four_static_scalar_routes() {
+    fn xychart_authority_covers_sixteen_static_scalar_routes() {
         let routes = ACTIVE_ROUTES
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::XY_CHART)
             .collect::<Vec<_>>();
-        assert_eq!(routes.len(), 4);
+        assert_eq!(routes.len(), 16);
         for route in routes {
-            assert_eq!(route.id.target(), ThemeTarget::Title);
-            assert_eq!(route.id.facet(), ThemeRouteCutoverFacet::Fill);
+            assert!(matches!(
+                route.id.target(),
+                ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis
+            ));
+            assert!(
+                route.id.facet() == ThemeRouteCutoverFacet::Fill
+                    || route.id.target() == ThemeTarget::Axis
+            );
             assert!(matches!(
                 route.id.selector(),
                 ThemeRouteCutoverSelector::StaticUnqualified

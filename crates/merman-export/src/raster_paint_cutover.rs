@@ -29,6 +29,34 @@ impl RasterPaintCutoverFacet {
     }
 }
 
+/// SVG channels admitted by a renderer-owned route's raster contract.
+///
+/// A semantic route can control text fill and line stroke in the same diagram. A
+/// partial config override may leave either channel as its only visible consumer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RasterPaintCutoverChannels {
+    Only(RasterPaintCutoverFacet),
+    FillOrStroke,
+}
+
+impl RasterPaintCutoverChannels {
+    const fn id(self) -> &'static [u8] {
+        match self {
+            Self::Only(facet) => facet.id(),
+            Self::FillOrStroke => b"fill-or-stroke",
+        }
+    }
+
+    fn terminal_facet(self) -> Result<RasterPaintCutoverFacet> {
+        match self {
+            Self::Only(facet) => Ok(facet),
+            Self::FillOrStroke => Err(ExportError::RasterPaintCutover(
+                "renderer terminal bindings require one semantic facet",
+            )),
+        }
+    }
+}
+
 /// Renderer-owned mapping from a semantic theme facet to its emitted SVG paint channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RasterPaintSemanticBinding {
@@ -221,7 +249,7 @@ fn normalize_terminal_coordinate(value: f64) -> Option<f64> {
 /// deliberately family-neutral; the Merman facade binds it to renderer-owned route receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RasterPaintCutoverReceipt {
-    facet: RasterPaintCutoverFacet,
+    channels: RasterPaintCutoverChannels,
     control_rgb: [u8; 3],
     solid_source_digest: [u8; 32],
     transparent_source_digest: [u8; 32],
@@ -248,7 +276,7 @@ pub struct RasterPaintCutoverReceipt {
 impl RasterPaintCutoverReceipt {
     fn seal(facts: RasterPaintCutoverFacts) -> Option<Self> {
         let mut receipt = Self {
-            facet: facts.facet,
+            channels: facts.channels,
             control_rgb: facts.control_rgb,
             solid_source_digest: facts.solid_source_digest,
             transparent_source_digest: facts.transparent_source_digest,
@@ -306,7 +334,7 @@ impl RasterPaintCutoverReceipt {
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v9");
-        update_len_prefixed(&mut hasher, self.facet.id());
+        update_len_prefixed(&mut hasher, self.channels.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
         hasher.update(self.transparent_source_digest);
@@ -367,7 +395,7 @@ pub fn encode_png_paint_cutover_pair_controlled(
     transparent_svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
     control: OperationControl,
-    facet: RasterPaintCutoverFacet,
+    channels: RasterPaintCutoverChannels,
     control_css: &str,
     terminal_bindings: &[RasterPaintTerminalBinding],
 ) -> Result<EncodedRasterPaintCutoverPair> {
@@ -391,7 +419,7 @@ pub fn encode_png_paint_cutover_pair_controlled(
             &transparent_svg,
             &options,
             backend_control,
-            facet,
+            channels,
             &control_css,
             &terminal_bindings,
             [
@@ -408,7 +436,7 @@ fn encode_pair_on_backend_stack(
     transparent_svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
     control: &OperationControl,
-    facet: RasterPaintCutoverFacet,
+    channels: RasterPaintCutoverChannels,
     control_css: &str,
     terminal_bindings: &[RasterPaintTerminalBinding],
     control_rgb: [u8; 3],
@@ -418,15 +446,19 @@ fn encode_pair_on_backend_stack(
     let underlay_source = if terminal_bindings.is_empty() {
         replace_control_paint(solid_source, control_css, control_rgb)?
     } else {
-        suppress_renderer_terminals(solid_source, facet, terminal_bindings)?
+        suppress_renderer_terminals(solid_source, channels.terminal_facet()?, terminal_bindings)?
     };
     if !terminal_bindings.is_empty() {
-        validate_renderer_terminals(transparent_source, facet, terminal_bindings)?;
+        validate_renderer_terminals(
+            transparent_source,
+            channels.terminal_facet()?,
+            terminal_bindings,
+        )?;
     }
 
     let solid = prepare_raster_source_on_backend_stack(solid_svg, solid_source, options, control)?;
     let solid_placement = RasterPlacement::from_prepared(&solid);
-    let solid_tree = observe_paint_tree(&solid.tree, control_rgb, facet, terminal_bindings)?;
+    let solid_tree = observe_paint_tree(&solid.tree, control_rgb, channels, terminal_bindings)?;
     if solid_tree.targets.is_empty() {
         return Err(ExportError::RasterPaintCutover(
             "solid SVG contains no renderable control-painted path",
@@ -450,7 +482,8 @@ fn encode_pair_on_backend_stack(
     let underlay =
         prepare_raster_source_on_backend_stack(solid_svg, &underlay_source, options, control)?;
     require_same_placement(solid_placement, RasterPlacement::from_prepared(&underlay))?;
-    let underlay_tree = observe_paint_tree(&underlay.tree, control_rgb, facet, terminal_bindings)?;
+    let underlay_tree =
+        observe_paint_tree(&underlay.tree, control_rgb, channels, terminal_bindings)?;
     require_no_opaque_control_targets(&underlay_tree)?;
     require_solid_underlay_path_compatibility(&solid_tree, &underlay_tree)?;
     let underlay_pixmap = underlay.render_pixmap(underlay.matte, control)?;
@@ -477,7 +510,7 @@ fn encode_pair_on_backend_stack(
         RasterPlacement::from_prepared(&transparent),
     )?;
     let transparent_tree =
-        observe_paint_tree(&transparent.tree, control_rgb, facet, terminal_bindings)?;
+        observe_paint_tree(&transparent.tree, control_rgb, channels, terminal_bindings)?;
     require_no_opaque_control_targets(&transparent_tree)?;
     if transparent_tree.effect_tree_digest != underlay_tree.effect_tree_digest {
         return Err(ExportError::RasterPaintCutover(
@@ -506,7 +539,7 @@ fn encode_pair_on_backend_stack(
     export_checkpoint(control)?;
 
     let receipt = RasterPaintCutoverReceipt::seal(RasterPaintCutoverFacts {
-        facet,
+        channels,
         control_rgb,
         solid_source_digest: Sha256::digest(solid_source.as_bytes()).into(),
         transparent_source_digest: Sha256::digest(transparent_source.as_bytes()).into(),
@@ -1071,7 +1104,7 @@ impl PathObservation {
 fn observe_paint_tree(
     tree: &usvg::Tree,
     control_rgb: [u8; 3],
-    requested_facet: RasterPaintCutoverFacet,
+    requested_channels: RasterPaintCutoverChannels,
     terminal_bindings: &[RasterPaintTerminalBinding],
 ) -> Result<PaintTreeObservation> {
     let mut paths = Vec::new();
@@ -1146,14 +1179,15 @@ fn observe_paint_tree(
         });
         target_facets_by_path[path_index] = [fill_control, stroke_control];
 
-        let requested_region_bits = match requested_facet {
-            RasterPaintCutoverFacet::Fill if fill_control => {
+        let requested_region_bits = match requested_channels {
+            RasterPaintCutoverChannels::FillOrStroke => Some(region_bits),
+            RasterPaintCutoverChannels::Only(RasterPaintCutoverFacet::Fill) if fill_control => {
                 Some(path.region(RasterPaintCutoverFacet::Fill))
             }
-            RasterPaintCutoverFacet::Stroke if stroke_control => {
+            RasterPaintCutoverChannels::Only(RasterPaintCutoverFacet::Stroke) if stroke_control => {
                 Some(path.region(RasterPaintCutoverFacet::Stroke))
             }
-            RasterPaintCutoverFacet::Fill | RasterPaintCutoverFacet::Stroke => None,
+            RasterPaintCutoverChannels::Only(_) => None,
         };
         if let Some(requested_region_bits) = requested_region_bits {
             requested_targets.push(TargetPath {
@@ -2384,7 +2418,7 @@ fn pixel_near_rgb(pixel: tiny_skia::PremultipliedColorU8, rgb: [u8; 3], toleranc
 }
 
 struct RasterPaintCutoverFacts {
-    facet: RasterPaintCutoverFacet,
+    channels: RasterPaintCutoverChannels,
     control_rgb: [u8; 3],
     solid_source_digest: [u8; 32],
     transparent_source_digest: [u8; 32],
@@ -2469,7 +2503,7 @@ mod tests {
             &compatible_svg(transparent),
             &RasterOptions::default().with_scale(2.0),
             OperationControl::new(),
-            facet,
+            RasterPaintCutoverChannels::Only(facet),
             control_css,
             terminal_bindings,
         )
@@ -2549,6 +2583,109 @@ mod tests {
         assert_ne!(solid_png, transparent_png);
         assert!(receipt.proves_semantics());
         assert_ne!(receipt.digest(), [0; 32]);
+    }
+
+    fn encode_pair_with_channels(
+        solid: &str,
+        transparent: &str,
+        channels: RasterPaintCutoverChannels,
+    ) -> Result<EncodedRasterPaintCutoverPair> {
+        encode_png_paint_cutover_pair_controlled(
+            &compatible_svg(solid),
+            &compatible_svg(transparent),
+            &RasterOptions::default().with_scale(2.0),
+            OperationControl::new(),
+            channels,
+            "#dc2626",
+            &[],
+        )
+    }
+
+    #[test]
+    fn mixed_channel_contract_observes_either_or_both_visible_channels() {
+        for (paint, single_facet) in [
+            (r##"fill="#dc2626""##, Some(RasterPaintCutoverFacet::Fill)),
+            (
+                r##"fill="none" stroke="#dc2626" stroke-width="2""##,
+                Some(RasterPaintCutoverFacet::Stroke),
+            ),
+            (
+                r##"fill="#dc2626" stroke="#dc2626" stroke-width="2""##,
+                None,
+            ),
+        ] {
+            let solid = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" {paint}/></svg>"#
+            );
+            let transparent = solid.replace("#dc2626", "transparent");
+            let pair = encode_pair_with_channels(
+                &solid,
+                &transparent,
+                RasterPaintCutoverChannels::FillOrStroke,
+            )
+            .expect("mixed contract retains either native channel");
+            assert!(pair.receipt.proves_semantics());
+            if let Some(facet) = single_facet {
+                let single = encode_pair_with_channels(
+                    &solid,
+                    &transparent,
+                    RasterPaintCutoverChannels::Only(facet),
+                )
+                .expect("matching single channel");
+                assert_ne!(
+                    single.receipt.digest(),
+                    pair.receipt.digest(),
+                    "receipt binds the admitted channel contract"
+                );
+                let wrong = match facet {
+                    RasterPaintCutoverFacet::Fill => RasterPaintCutoverFacet::Stroke,
+                    RasterPaintCutoverFacet::Stroke => RasterPaintCutoverFacet::Fill,
+                };
+                assert_cutover_error(encode_pair_with_channels(
+                    &solid,
+                    &transparent,
+                    RasterPaintCutoverChannels::Only(wrong),
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_channel_contract_rejects_invisible_or_incomplete_transparent_outputs() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" fill="#dc2626" stroke="#dc2626" stroke-width="2"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let unchanged_stroke = solid.replacen("#dc2626", "transparent", 1);
+        let shifted = transparent.replace(r#"x="4""#, r#"x="5""#);
+        for invalid in [solid, unchanged_stroke.as_str(), shifted.as_str()] {
+            assert_cutover_error(encode_pair_with_channels(
+                solid,
+                invalid,
+                RasterPaintCutoverChannels::FillOrStroke,
+            ));
+        }
+        let invisible = solid.replace("<rect ", r#"<rect opacity="0" "#);
+        let invisible_transparent = invisible.replace("#dc2626", "transparent");
+        assert_cutover_error(encode_pair_with_channels(
+            &invisible,
+            &invisible_transparent,
+            RasterPaintCutoverChannels::FillOrStroke,
+        ));
+    }
+
+    #[test]
+    fn mixed_channel_contract_cannot_replace_renderer_terminal_semantics() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><line id="actor0" x1="10" y1="2" x2="10" y2="18" data-et="life-line" stroke="#dc2626" stroke-width="3"/></svg>"##;
+        let transparent = solid.replace("#dc2626", "transparent");
+        let result = encode_png_paint_cutover_pair_controlled(
+            &compatible_svg(solid),
+            &compatible_svg(&transparent),
+            &RasterOptions::default().with_scale(2.0),
+            OperationControl::new(),
+            RasterPaintCutoverChannels::FillOrStroke,
+            "#dc2626",
+            &[lifeline_binding("actor0", 10.0)],
+        );
+        assert_cutover_error(result);
     }
 
     #[test]

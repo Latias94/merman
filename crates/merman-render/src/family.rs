@@ -1624,7 +1624,7 @@ pub(crate) struct XyChartFamilyArtifact {
     pair: FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
     series_paint: crate::xychart::XyChartSeriesPaintPlan,
     typography_theme: crate::xychart::XyChartTypographyThemePlan,
-    title_theme: crate::xychart::XyChartTitleThemePlan,
+    paint_theme: crate::xychart::XyChartPaintPlan,
 }
 
 #[derive(Debug)]
@@ -2025,8 +2025,8 @@ impl XyChartFamilyArtifact {
         &self.series_paint
     }
 
-    pub(crate) const fn title_theme(&self) -> &crate::xychart::XyChartTitleThemePlan {
-        &self.title_theme
+    pub(crate) const fn paint_theme(&self) -> &crate::xychart::XyChartPaintPlan {
+        &self.paint_theme
     }
 
     pub(crate) const fn typography_theme(&self) -> &crate::xychart::XyChartTypographyThemePlan {
@@ -2491,7 +2491,7 @@ impl BuiltinFamilyArtifact {
             Self::XyChart(artifact) => {
                 let mut evidence = artifact.series_paint().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
-                evidence.merge_accounted_from(artifact.title_theme().finish_evidence());
+                evidence.merge_accounted_from(artifact.paint_theme().finish_evidence());
                 (DiagramFamilyId::XY_CHART, evidence)
             }
             Self::Radar(artifact) => (DiagramFamilyId::RADAR, artifact.finish_theme_evidence()),

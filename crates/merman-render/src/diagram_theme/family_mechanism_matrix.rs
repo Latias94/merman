@@ -387,16 +387,13 @@ fn legacy_bridge_projections(
     selector: ThemeRouteCutoverSelector,
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
-        (DiagramFamilyId::XY_CHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT)
-        }
         (
-            DiagramFamilyId::QUADRANT_CHART,
+            DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::XY_CHART,
             ThemeTarget::Text | ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT),
         (
-            DiagramFamilyId::QUADRANT_CHART,
+            DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::XY_CHART,
             ThemeTarget::Axis,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CHART_TEXT_PAINT),
@@ -2051,6 +2048,7 @@ pub(super) fn classify_rule_facet(
             | DiagramFamilyId::KANBAN
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::QUADRANT_CHART
+            | DiagramFamilyId::XY_CHART
     ) && target == ThemeTarget::Text
         && matches!(
             selector,
@@ -2093,8 +2091,10 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::QUADRANT_CHART
-        && target == ThemeTarget::Axis
+    if matches!(
+        family,
+        DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::XY_CHART
+    ) && target == ThemeTarget::Axis
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -4257,12 +4257,7 @@ mod tests {
                     FamilyThemeDisposition::TypedAdapter
                 );
                 assert_eq!(
-                    classify_rule_facet(
-                        DiagramFamilyId::XY_CHART,
-                        ThemeTarget::Text,
-                        selector,
-                        facet
-                    ),
+                    classify_rule_facet(DiagramFamilyId::CLASS, ThemeTarget::Text, selector, facet),
                     FamilyThemeDisposition::LegacyCompatibility
                 );
                 assert_eq!(
@@ -7119,6 +7114,48 @@ mod tests {
                 vec!["chart.text-axis"],
             ),
             (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Axis,
+                Fill,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Axis,
+                Fill,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Axis,
+                Stroke,
+                Transparent,
+                vec!["chart.text-axis"],
+            ),
+            (
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Axis,
+                Stroke,
+                Solid,
+                vec!["chart.text-axis"],
+            ),
+            (
                 DiagramFamilyId::ZENUML,
                 ThemeTarget::Title,
                 Fill,
@@ -7157,7 +7194,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 218);
+        assert_eq!(qualified.len(), 224);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7794,24 +7831,16 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [
-                (DiagramFamilyId::BLOCK, 36),
-                (DiagramFamilyId::CLASS, 26),
-                (DiagramFamilyId::XY_CHART, 12),
-            ]
-            .into_iter()
-            .collect(),
+            [(DiagramFamilyId::BLOCK, 36), (DiagramFamilyId::CLASS, 26)]
+                .into_iter()
+                .collect(),
             "bridge retirement must update the exact route ledger"
         );
         assert_eq!(
             families,
-            [
-                DiagramFamilyId::BLOCK,
-                DiagramFamilyId::CLASS,
-                DiagramFamilyId::XY_CHART,
-            ]
-            .into_iter()
-            .collect(),
+            [DiagramFamilyId::BLOCK, DiagramFamilyId::CLASS]
+                .into_iter()
+                .collect(),
             "bridge retirement must update the explicit family ledger"
         );
     }

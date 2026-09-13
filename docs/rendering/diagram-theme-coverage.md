@@ -25,12 +25,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 30/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 3/33; 74 routes | Block 36, Class 26, XY Chart 12. Exact family and route counts are guarded by a renderer test. |
+| Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 2/33; 62 routes | Block 36, Class 26. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 80 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v79; 436 routes / 642 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 81 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v80; 448 routes / 654 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v8; 78 routes / 156 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
@@ -61,7 +61,7 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block, Class, and XY Chart.
+The global provider remains necessary for Block and Class.
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
@@ -70,12 +70,25 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 79 adds the four XY Chart Title.fill static scalar routes
+output files. Version 80 adds twelve XY Chart Text.fill and Axis.fill/stroke static scalar
+routes (solid/transparent, unqualified/Default), removing its final family bridge dispatch.
+A shared paint plan preserves logical axis ownership in vertical and horizontal charts,
+generic Text author order, and per-channel source/config precedence. Axis.fill supplies line
+and tick paint only when Axis.stroke is unspecified. Final SVG receipts check title/axis
+text, axis paths, and renderer-created rectangle labels; zero-size labels retain their
+serialized appearance but cannot independently certify visible Text paint. Unsupported
+winning sibling facets remain residual, while absent, source-owned, or shadowed requests
+are NotApplicable. Independent native PNG comparisons isolate each text/axis channel in
+both orientations. This cutover does not qualify ordinal Text or Axis paint.
+
+Version 79 adds the four XY Chart Title.fill static scalar routes
 (solid/transparent, unqualified/Default). The direct title plan preserves generic Text author
 order and explicit `themeVariables.xyChart.titleColor` ownership. Evidence requires exactly one
 matching title text and fill in the successfully finalized SVG; absent or hidden titles are
 NotApplicable, and unsupported winning sibling facets retain residuals. XY Chart Text and Axis
-remain legacy. Version 78 adds the eight Quadrant Chart Axis.fill/stroke static scalar routes
+remained legacy until version 80.
+
+Version 78 adds the eight Quadrant Chart Axis.fill/stroke static scalar routes
 (solid/transparent, unqualified/Default) and removes the final Quadrant family bridge dispatch.
 A single paint plan owns text and border receipts so mixed rules require every winning facet.
 Axis.fill retains its border fallback when Axis.stroke is unspecified; explicit stroke, transparent,

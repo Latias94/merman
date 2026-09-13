@@ -182,6 +182,31 @@ const XYCHART_TITLE_SOURCE: &str = r#"xychart-beta
  y-axis 0 --> 10
  bar [3, 7]
 "#;
+const XYCHART_PAINT_SOURCE: &str = r#"---
+config:
+  xyChart:
+    showDataLabel: true
+    showDataLabelOutsideBar: true
+---
+xychart-beta
+ title Cutover xychart paint
+ x-axis Categories [A, B]
+ y-axis Values 0 --> 10
+ bar [3, 7]
+"#;
+#[cfg(test)]
+const XYCHART_HORIZONTAL_PAINT_SOURCE: &str = r#"---
+config:
+  xyChart:
+    showDataLabel: true
+    showDataLabelOutsideBar: true
+---
+xychart-beta horizontal
+ title Cutover xychart paint
+ x-axis Categories [A, B]
+ y-axis Values 0 --> 10
+ bar [3, 7]
+"#;
 const TREEMAP_TITLE_SOURCE: &str = r#"treemap
 title Cutover treemap title
 "Section"
@@ -630,6 +655,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop | ThemeTarget::LoopLabel, _) => {
             Ok(SEQUENCE_LOOP_SOURCE)
         }
+        (
+            DiagramFamilyId::XY_CHART,
+            ThemeTarget::Text | ThemeTarget::Axis,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(XYCHART_PAINT_SOURCE),
         (DiagramFamilyId::XY_CHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(XYCHART_TITLE_SOURCE)
         }
@@ -1388,7 +1418,7 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             "edgeLabelBackground": "#ECECFF"
         }),
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text)
-        | (DiagramFamilyId::XY_CHART, ThemeTarget::Title)
+        | (DiagramFamilyId::XY_CHART, ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis)
         | (
             DiagramFamilyId::QUADRANT_CHART,
             ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
@@ -1940,6 +1970,122 @@ mod tests {
     }
 
     #[test]
+    fn xychart_text_and_axis_channels_have_independent_native_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        let all_channels = [
+            "titleColor",
+            "dataLabelColor",
+            "xAxisTitleColor",
+            "xAxisLabelColor",
+            "yAxisTitleColor",
+            "yAxisLabelColor",
+            "xAxisLineColor",
+            "xAxisTickColor",
+            "yAxisLineColor",
+            "yAxisTickColor",
+        ];
+        // Pin every sibling channel so each raster pair must observe the one remaining
+        // consumer. The source has a title, both logical axis titles/labels/lines/ticks,
+        // and outside-bar data labels, which remain visible in either orientation.
+        for (target, facet, channels) in [
+            (
+                ThemeTarget::Text,
+                ThemeRouteCutoverFacet::Fill,
+                &all_channels[..6],
+            ),
+            (
+                ThemeTarget::Axis,
+                ThemeRouteCutoverFacet::Fill,
+                &all_channels[2..],
+            ),
+            (
+                ThemeTarget::Axis,
+                ThemeRouteCutoverFacet::Stroke,
+                &all_channels[6..],
+            ),
+        ] {
+            for source in [
+                super::XYCHART_PAINT_SOURCE,
+                super::XYCHART_HORIZONTAL_PAINT_SOURCE,
+            ] {
+                for selector in [
+                    ThemeRouteCutoverSelector::StaticUnqualified,
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                ] {
+                    for &channel in channels {
+                        let render = |value| {
+                            let route = inventory
+                                .iter()
+                                .copied()
+                                .find(|route| {
+                                    route.family_id() == DiagramFamilyId::XY_CHART
+                                        && route.target() == target
+                                        && route.facet() == facet
+                                        && route.selector() == selector
+                                        && route.value() == value
+                                })
+                                .expect("XY Chart scalar paint route");
+                            let id =
+                                CutoverWitnessId::new(route, CutoverWitnessProfile::ClassicStatic);
+                            let case = super::CutoverCase { id, source };
+                            let theme =
+                                super::compile_cutover_theme(case).expect("typed chart theme");
+                            let pinned = all_channels
+                                .iter()
+                                .filter(|&&key| key != channel)
+                                .map(|&key| (key.to_owned(), serde_json::json!("#112233")))
+                                .collect::<serde_json::Map<_, _>>();
+                            let renderer = super::cutover_renderer(id).with_engine(
+                                super::Engine::new().with_site_config(
+                                    super::MermaidConfig::from_value(serde_json::json!({
+                                        "htmlLabels": false,
+                                        "themeVariables": {
+                                            "fontFamily": "Excalifont",
+                                            "xyChart": pinned
+                                        }
+                                    })),
+                                ),
+                            );
+                            let document = super::render_cutover_document(&renderer, case, theme)
+                                .unwrap_or_else(|error| {
+                                    panic!("{target:?}/{facet:?}/{selector:?}/{channel}: {error}")
+                                });
+                            super::validate_cutover_target_receipt(
+                                CutoverTargetAdmissionContract::PaintStandaloneSvgV1,
+                                document.standalone_svg_admission(),
+                            )
+                            .expect("isolated chart channel SVG admission");
+                            (route, document)
+                        };
+                        let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                        let (transparent_route, transparent) =
+                            render(ThemeRouteCutoverValue::Transparent);
+                        let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                            &solid,
+                            &transparent,
+                            solid_route,
+                            transparent_route,
+                            &merman_export::RasterOptions::default().with_scale(2.0),
+                            merman::OperationControl::new(),
+                        )
+                        .unwrap_or_else(|error| {
+                            panic!("{target:?}/{facet:?}/{selector:?}/{channel}: {error}")
+                        });
+                        for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                            super::validate_cutover_target_receipt(
+                                CutoverTargetAdmissionContract::PortableNativePngV1,
+                                receipt,
+                            )
+                            .expect("isolated chart channel PNG admission");
+                        }
+                        assert_ne!(pair.receipt_digest(), [0; 32]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn radar_text_base_and_title_fallback_have_independent_native_png_evidence() {
         let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
         // Base derives textColor from primaryTextColor and titleColor from tertiaryTextColor,
@@ -2252,11 +2398,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_436_routes_and_642_artifact_witnesses() {
+    fn route_inventory_retains_448_routes_and_654_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 436);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 642);
+        assert_eq!(inventory.len(), 448);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 654);
     }
 
     #[test]

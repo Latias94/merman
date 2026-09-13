@@ -474,11 +474,11 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
     let compiler: LegacyFamilyCompiler = match family {
         DiagramFamilyId::CLASS | DiagramFamilyId::BLOCK => compile_node_family,
-        DiagramFamilyId::XY_CHART => compile_xy_chart_family,
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::RADAR
         | DiagramFamilyId::QUADRANT_CHART
+        | DiagramFamilyId::XY_CHART
         | DiagramFamilyId::SEQUENCE
         | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::TIMELINE
@@ -695,35 +695,6 @@ fn compile_node_family(
     contributions.finish_into(builder)
 }
 
-fn compile_xy_chart_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-    let title = reader.text_fill(ThemeTarget::Title);
-    let axis_text = reader.text_fill(ThemeTarget::Axis);
-    let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
-    let mut xy = Map::new();
-    for (key, value) in [
-        ("titleColor", title),
-        ("dataLabelColor", reader.text_fill(ThemeTarget::Text)),
-        ("xAxisTitleColor", axis_text.clone()),
-        ("xAxisLabelColor", axis_text.clone()),
-        ("xAxisTickColor", axis_line.clone()),
-        ("xAxisLineColor", axis_line.clone()),
-        ("yAxisTitleColor", axis_text.clone()),
-        ("yAxisLabelColor", axis_text),
-        ("yAxisTickColor", axis_line.clone()),
-        ("yAxisLineColor", axis_line),
-    ] {
-        if let Some(value) = value {
-            xy.insert(key.to_string(), Value::String(value));
-        }
-    }
-    contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
-    contributions.finish_into(builder)
-}
-
 struct FamilyStyleReader {
     family: DiagramFamilyId,
     program: Arc<FamilyThemeProgram>,
@@ -907,22 +878,6 @@ impl FamilyContributions {
         if variables.is_empty() {
             return;
         }
-        let mut root = Map::new();
-        root.insert("themeVariables".to_string(), Value::Object(variables));
-        self.add_patch(mapping, root);
-    }
-
-    fn add_theme_variable_object(
-        &mut self,
-        mapping: &'static str,
-        key: &'static str,
-        object: Map<String, Value>,
-    ) {
-        if object.is_empty() {
-            return;
-        }
-        let mut variables = Map::new();
-        variables.insert(key.to_string(), Value::Object(object));
         let mut root = Map::new();
         root.insert("themeVariables".to_string(), Value::Object(variables));
         self.add_patch(mapping, root);
@@ -2017,6 +1972,7 @@ gitGraph
                 DiagramFamilyId::SWIMLANE,
                 DiagramFamilyId::RADAR,
                 DiagramFamilyId::QUADRANT_CHART,
+                DiagramFamilyId::XY_CHART,
                 DiagramFamilyId::SEQUENCE,
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::REQUIREMENT,
@@ -2097,27 +2053,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            62, 68, 98, 5, 18, 230, 53, 76, 136, 186, 133, 229, 87, 66, 10, 227, 102, 33, 158, 202,
-            160, 206, 15, 146, 217, 179, 180, 252, 103, 210, 54, 110,
+            81, 162, 184, 249, 77, 209, 178, 116, 222, 216, 250, 166, 117, 53, 21, 69, 23, 216,
+            137, 255, 80, 120, 159, 44, 247, 104, 114, 115, 232, 43, 242, 88,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 74);
-        assert_eq!(status.matrix_family_count(), 3);
-        assert_eq!(status.dispatched_family_count(), 3);
+        assert_eq!(status.matrix_route_count(), 62);
+        assert_eq!(status.matrix_family_count(), 2);
+        assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                73, 76, 30, 23, 203, 191, 101, 36, 47, 127, 186, 169, 17, 148, 160, 246, 255, 153,
-                156, 58, 17, 85, 116, 229, 225, 251, 229, 202, 125, 242, 20, 95
+                1, 89, 64, 47, 193, 211, 87, 242, 37, 10, 16, 167, 122, 214, 17, 42, 100, 239, 51,
+                251, 57, 254, 46, 228, 133, 48, 93, 177, 212, 203, 187, 244
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                146, 200, 181, 98, 112, 145, 75, 209, 100, 155, 39, 129, 5, 59, 17, 202, 11, 6,
-                158, 64, 88, 122, 141, 237, 132, 255, 208, 139, 208, 85, 148, 9
+                202, 91, 224, 228, 19, 201, 254, 185, 200, 178, 75, 195, 88, 54, 84, 162, 33, 28,
+                83, 211, 146, 12, 62, 28, 208, 197, 220, 148, 119, 9, 164, 46
             ]
         );
         assert_eq!(
@@ -2643,11 +2599,8 @@ gitGraph
                     !bridge.owns_contribution_id("merman.legacy-family-theme.v1.kanban.text.fill")
                 );
                 let chart = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
-                assert!(
-                    chart
-                        .contribution_ids
-                        .contains("merman.legacy-family-theme.v1.xychart.chart.text-axis")
-                );
+                assert!(chart.contribution_ids.is_empty());
+                assert!(chart.overlay.is_empty());
 
                 let baseline = parse(&DiagramThemeSpec::new(), SOURCE);
                 let parsed = parse(&spec, SOURCE);
@@ -5083,11 +5036,8 @@ gitGraph
                     assert!(quadrant.overlay.is_empty());
                     assert!(quadrant.contribution_ids.is_empty());
                     let xy = bridge.compile_for_family(DiagramFamilyId::XY_CHART);
-                    assert_eq!(
-                        xy.overlay.is_empty(),
-                        target == ThemeTarget::Title,
-                        "XY retains only Text and Axis projections in this tranche"
-                    );
+                    assert!(xy.overlay.is_empty());
+                    assert!(xy.contribution_ids.is_empty());
                 }
             }
         }

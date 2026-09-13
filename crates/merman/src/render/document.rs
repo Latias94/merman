@@ -589,13 +589,18 @@ impl RenderedDocument {
             ThemeRouteCutoverFacet::Fill => merman_export::RasterPaintCutoverFacet::Fill,
             ThemeRouteCutoverFacet::Stroke => merman_export::RasterPaintCutoverFacet::Stroke,
         };
+        let channels = if solid_route.raster_paint_allows_fill_or_stroke() {
+            merman_export::RasterPaintCutoverChannels::FillOrStroke
+        } else {
+            merman_export::RasterPaintCutoverChannels::Only(facet)
+        };
         let control_css = solid_route.raster_control_css();
         let pair = merman_export::encode_png_paint_cutover_pair_controlled(
             solid_document.sealed_svg(),
             transparent_document.sealed_svg(),
             options,
             control,
-            facet,
+            channels,
             &control_css,
             &solid_bindings,
         )

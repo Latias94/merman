@@ -3,66 +3,6 @@ use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
-/// Mermaid uses JavaScript's `String#length` for XYChart bar labels, which counts UTF-16 code
-/// units rather than Unicode scalar values.
-fn javascript_string_length(text: &str) -> f64 {
-    text.encode_utf16().count() as f64
-}
-
-/// Computes the result of Mermaid's one-pixel decrement loop without iterating once per pixel.
-///
-/// The upstream renderer decrements a candidate font size until it fits. That is observable for
-/// ordinary dimensions, but a finite value such as `1e308` cannot make numerical progress when
-/// subtracting one, so the browser algorithm never terminates. The fit predicates are monotonic;
-/// solving their upper bound directly preserves the same discrete candidate for normal values and
-/// makes extreme finite dimensions terminate in constant time.
-fn font_size_after_unit_decrements(initial: f64, maximum_that_fits: f64) -> f64 {
-    if !(initial.is_finite() && initial > 0.0) || maximum_that_fits.is_nan() {
-        return 0.0;
-    }
-    if maximum_that_fits >= initial {
-        return initial;
-    }
-    if maximum_that_fits <= 0.0 {
-        return 0.0;
-    }
-
-    let decrements = (initial - maximum_that_fits).ceil();
-    let candidate = initial - decrements;
-    if candidate.is_finite() && candidate > 0.0 {
-        candidate
-    } else {
-        0.0
-    }
-}
-
-fn horizontal_label_font_size(item_width: f64, label: &str, initial: f64, inset_px: f64) -> f64 {
-    let denominator = javascript_string_length(label) * 0.7;
-    let maximum_that_fits = if denominator > 0.0 {
-        (item_width - inset_px) / denominator
-    } else {
-        f64::INFINITY
-    };
-    font_size_after_unit_decrements(initial, maximum_that_fits)
-}
-
-fn vertical_label_font_size(
-    item_width: f64,
-    item_height: f64,
-    label: &str,
-    initial: f64,
-    y_offset: f64,
-) -> f64 {
-    let denominator = javascript_string_length(label) * 0.7;
-    let horizontal_maximum = if denominator > 0.0 {
-        item_width / denominator
-    } else {
-        f64::INFINITY
-    };
-    let maximum_that_fits = horizontal_maximum.min(item_height - y_offset);
-    font_size_after_unit_decrements(initial, maximum_that_fits)
-}
-
 fn write_xychart_temporary_group(out: &mut impl SvgOutput) -> Result<()> {
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.checkpoint()
@@ -84,12 +24,39 @@ struct Node {
     text: Option<String>,
     children: Vec<usize>,
     series_terminal: Option<SeriesTerminal>,
-    title_terminal: bool,
+    paint_terminal: Option<crate::xychart::XyChartPaintTerminalId>,
 }
 
 impl Node {
     fn attr(&mut self, name: &'static str, value: impl Into<String>) {
         self.attrs.push((name, value.into()));
+    }
+
+    fn observe_paint(&self, receipt: &mut crate::xychart::XyChartPaintReceipt) {
+        let Some(id) = self.paint_terminal else {
+            return;
+        };
+        let attribute = |name| {
+            self.attrs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.as_str())
+        };
+        let (content, paint, dimension) =
+            if matches!(id, crate::xychart::XyChartPaintTerminalId::Path { .. }) {
+                (
+                    attribute("d"),
+                    attribute("stroke"),
+                    attribute("stroke-width"),
+                )
+            } else {
+                (
+                    self.text.as_deref(),
+                    attribute("fill"),
+                    attribute("font-size"),
+                )
+            };
+        receipt.record(id, self.tag, content, paint, dimension);
     }
 
     fn observe_series_paint(
@@ -125,7 +92,7 @@ fn node(tag: &'static str) -> Node {
         text: None,
         children: Vec::with_capacity(2),
         series_terminal: None,
-        title_terminal: false,
+        paint_terminal: None,
     }
 }
 
@@ -181,9 +148,8 @@ pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
     series_paint: &crate::xychart::XyChartSeriesPaintPlan,
-    title_theme: &crate::xychart::XyChartTitleThemePlan,
+    paint_theme: &crate::xychart::XyChartPaintPlan,
     typography_theme: &crate::xychart::XyChartTypographyThemePlan,
-    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     use rustc_hash::FxHashMap;
@@ -238,16 +204,6 @@ pub(crate) fn render_xychart_diagram_svg(
         fmt_string(v)
     }
 
-    fn data_label_color(effective_config: &serde_json::Value) -> String {
-        let configured = config_string(
-            effective_config,
-            &["themeVariables", "xyChart", "dataLabelColor"],
-        );
-        configured
-            .or_else(|| config_string(effective_config, &["themeVariables", "primaryTextColor"]))
-            .unwrap_or_else(|| "black".to_string())
-    }
-
     if series_paint.plot_count() != model.plots.len() {
         return Err(crate::Error::InvalidModel {
             message: "XY Chart series paint plan does not match the terminal model".to_string(),
@@ -270,13 +226,13 @@ pub(crate) fn render_xychart_diagram_svg(
     let data_label_config = if layout.show_data_label {
         Some((
             layout.show_data_label_outside_bar,
-            data_label_color(effective_config),
+            paint_theme.data_label_color(),
         ))
     } else {
         None
     };
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
-    let mut title_receipt = title_theme.begin_terminal_receipt(escape_xml);
+    let mut paint_receipt = paint_theme.begin_terminal_receipt(escape_xml);
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
@@ -348,7 +304,7 @@ pub(crate) fn render_xychart_diagram_svg(
         Default::default(),
     );
 
-    for shape in &layout.drawables {
+    for (drawable, shape) in layout.drawables.iter().enumerate() {
         match shape {
             crate::model::XyChartDrawableElem::Rect { group_texts, data } => {
                 if data.is_empty() {
@@ -376,42 +332,19 @@ pub(crate) fn render_xychart_diagram_svg(
                     push_child(&mut arena, parent, n);
                 }
 
-                // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
+                // Mermaid emits data labels for every rectangle group, including legend markers.
                 if let Some((show_data_label_outside_bar, data_label_color)) = &data_label_config {
-                    let bar_data_label_scale_factor = 0.7;
-                    let bar_data_label_inset_px = 10.0;
-
-                    #[derive(Clone)]
-                    struct BarItem<'a> {
-                        rect: &'a crate::model::XyChartRectData,
-                        label: &'a str,
-                    }
-
-                    let mut valid_items: Vec<BarItem<'_>> = Vec::with_capacity(data.len());
-                    for (idx, r) in data.iter().enumerate() {
-                        let Some(label) = layout.label_data.get(idx) else {
-                            continue;
-                        };
-                        if r.width > 0.0 && r.height > 0.0 {
-                            valid_items.push(BarItem { rect: r, label });
-                        }
-                    }
+                    let bar_data_label_inset_px = crate::xychart::XY_CHART_DATA_LABEL_INSET_PX;
+                    let labels = crate::xychart::rect_data_labels(
+                        data,
+                        &layout.label_data,
+                        &layout.chart_orientation,
+                    );
+                    let valid_items = labels.items;
+                    let uniform = labels.font_size;
 
                     if !valid_items.is_empty() {
                         if layout.chart_orientation == "horizontal" {
-                            let mut min_font = f64::INFINITY;
-                            for item in &valid_items {
-                                let fs = horizontal_label_font_size(
-                                    item.rect.width,
-                                    item.label,
-                                    item.rect.height * bar_data_label_scale_factor,
-                                    bar_data_label_inset_px,
-                                );
-                                min_font = min_font.min(fs);
-                            }
-                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
-                                .floor()
-                                .max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
                                 let x = if *show_data_label_outside_bar {
@@ -433,31 +366,16 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
+                                t.paint_terminal = paint_theme.terminal_id(
+                                    crate::xychart::XyChartPaintTerminalId::DataLabel {
+                                        drawable,
+                                        item: item.item,
+                                    },
+                                );
                                 push_child(&mut arena, parent, t);
                             }
                         } else {
                             let y_offset = bar_data_label_inset_px;
-                            let mut min_font = f64::INFINITY;
-                            for item in &valid_items {
-                                let denominator = javascript_string_length(item.label)
-                                    * bar_data_label_scale_factor;
-                                let initial = if denominator <= 0.0 {
-                                    0.0
-                                } else {
-                                    item.rect.width / denominator
-                                };
-                                let fs = vertical_label_font_size(
-                                    item.rect.width,
-                                    item.rect.height,
-                                    item.label,
-                                    initial,
-                                    y_offset,
-                                );
-                                min_font = min_font.min(fs);
-                            }
-                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
-                                .floor()
-                                .max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
                                 t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
@@ -479,6 +397,12 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
+                                t.paint_terminal = paint_theme.terminal_id(
+                                    crate::xychart::XyChartPaintTerminalId::DataLabel {
+                                        drawable,
+                                        item: item.item,
+                                    },
+                                );
                                 push_child(&mut arena, parent, t);
                             }
                         }
@@ -514,7 +438,11 @@ pub(crate) fn render_xychart_diagram_svg(
                         ),
                     );
                     n.text = Some(escape_xml(&t.text));
-                    n.title_terminal = group_texts.len() == 1 && group_texts[0] == "chart-title";
+                    n.paint_terminal =
+                        paint_theme.terminal_id(crate::xychart::XyChartPaintTerminalId::Text {
+                            drawable,
+                            item: label_index,
+                        });
                     n.series_terminal =
                         line_label_plot_index.map(|plot| SeriesTerminal::LineLabel {
                             plot,
@@ -536,6 +464,11 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
                     n.attr("stroke", escape_xml(&p.stroke_fill));
                     n.attr("stroke-width", fmt_xy(p.stroke_width));
+                    n.paint_terminal =
+                        paint_theme.terminal_id(crate::xychart::XyChartPaintTerminalId::Path {
+                            drawable,
+                            item: mark_index,
+                        });
                     n.series_terminal = line_plot_index.map(|plot| SeriesTerminal::Line {
                         plot,
                         mark: mark_index,
@@ -547,17 +480,8 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     render_node(&mut out, &arena, 0, &mut |emitted| {
-        if emitted.title_terminal
-            && let Some(receipt) = title_receipt.as_mut()
-        {
-            receipt.record_text(
-                emitted.text.as_deref(),
-                emitted
-                    .attrs
-                    .iter()
-                    .find(|(key, _)| *key == "fill")
-                    .map(|(_, value)| value.as_str()),
-            );
+        if let Some(receipt) = paint_receipt.as_mut() {
+            emitted.observe_paint(receipt);
         }
         if emitted.tag == "text"
             && emitted.text.as_deref().is_some_and(|text| !text.is_empty())
@@ -577,9 +501,9 @@ pub(crate) fn render_xychart_diagram_svg(
             message: "XY Chart series paint receipt did not match the terminal SVG".to_string(),
         });
     }
-    if title_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+    if paint_receipt.is_some_and(|receipt| !paint_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "XY Chart title paint receipt did not match the terminal SVG".to_string(),
+            message: "XY Chart paint receipt did not match the terminal SVG".to_string(),
         });
     }
     if let Some(receipt) = typography_receipt {
@@ -698,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn xychart_title_receipt_binds_owner_and_exactly_one_written_title() {
+    fn xychart_paint_receipt_binds_owner_and_exactly_one_written_title() {
         use crate::diagram_theme::{
             CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
             ThemeStylePatch, ThemeTarget,
@@ -738,7 +662,7 @@ mod tests {
                         horizontal_pos: "center".into(),
                     }],
                 });
-            crate::xychart::XyChartTitleThemePlan::resolve(
+            crate::xychart::XyChartPaintPlan::resolve(
                 Some(&theme),
                 &merman_core::MermaidConfig::default(),
                 &mut layout,
@@ -752,6 +676,8 @@ mod tests {
             "none",
             "detached",
             "missing-fill",
+            "missing-font-size",
+            "wrong-font-size",
             "wrong-text",
             "repeated",
             "wrong-role",
@@ -770,29 +696,33 @@ mod tests {
             let mut arena = vec![node("g")];
             let mut title = node("text");
             title.attr("fill", "#123456");
+            title.attr("font-size", "20");
             title.text = Some(escape_xml("A & B"));
-            title.title_terminal = true;
+            title.paint_terminal = Some(crate::xychart::XyChartPaintTerminalId::Text {
+                drawable: 0,
+                item: 0,
+            });
             let id = push_child(&mut arena, 0, title);
             match mutation {
                 "detached" => arena[0].children.clear(),
                 "missing-fill" => arena[id].attrs.clear(),
+                "missing-font-size" => arena[id].attrs.retain(|(key, _)| *key != "font-size"),
+                "wrong-font-size" => {
+                    arena[id]
+                        .attrs
+                        .iter_mut()
+                        .find(|(key, _)| *key == "font-size")
+                        .unwrap()
+                        .1 = "0".into()
+                }
                 "wrong-text" => arena[id].text = Some("Other".into()),
                 "repeated" => arena[0].children.push(id),
-                "wrong-role" => arena[id].title_terminal = false,
+                "wrong-role" => arena[id].paint_terminal = None,
                 _ => {}
             }
             if mutation != "unwritten" {
                 render_node(&mut String::new(), &arena, 0, &mut |emitted| {
-                    if emitted.title_terminal {
-                        receipt.record_text(
-                            emitted.text.as_deref(),
-                            emitted
-                                .attrs
-                                .iter()
-                                .find(|(key, _)| *key == "fill")
-                                .map(|(_, value)| value.as_str()),
-                        );
-                    }
+                    emitted.observe_paint(&mut receipt);
                 })
                 .unwrap();
             }
@@ -805,6 +735,244 @@ mod tests {
                 plan.finish_evidence().applied().len(),
                 usize::from(mutation == "none")
             );
+        }
+    }
+
+    #[test]
+    fn xychart_paint_receipt_requires_every_axis_text_path_and_rectangle_label() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch, ThemeTarget,
+        };
+        use crate::xychart::XyChartPaintTerminalId;
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                [ThemeTarget::Text, ThemeTarget::Axis].into_iter().fold(
+                    ThemeRuleSet::default(),
+                    |rules, target| {
+                        rules.with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                    },
+                ),
+            ))
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::XY_CHART);
+        let prepare = || {
+            let mut layout: crate::model::XyChartDiagramLayout =
+                serde_json::from_value(serde_json::json!({
+                    "width": 700.0, "height": 500.0, "chartOrientation": "vertical",
+                    "showDataLabel": true, "showDataLabelOutsideBar": false,
+                    "labelData": ["4"], "backgroundColor": "white", "drawables": []
+                }))
+                .unwrap();
+            layout.drawables = vec![
+                crate::model::XyChartDrawableElem::Text {
+                    group_texts: vec!["bottom-axis".into(), "label".into()],
+                    data: vec![crate::model::XyChartTextData {
+                        text: "A & B".into(),
+                        x: 0.0,
+                        y: 0.0,
+                        fill: "black".into(),
+                        font_size: f64::from(f32::from_bits(0x417f_ffff)),
+                        rotation: 0.0,
+                        vertical_pos: "middle".into(),
+                        horizontal_pos: "center".into(),
+                    }],
+                },
+                crate::model::XyChartDrawableElem::Path {
+                    group_texts: vec!["bottom-axis".into(), "axis-line".into()],
+                    data: vec![crate::model::XyChartPathData {
+                        path: "M 0,0 L 10,0".into(),
+                        fill: None,
+                        stroke_fill: "black".into(),
+                        stroke_width: 2.000_000_1,
+                    }],
+                },
+                crate::model::XyChartDrawableElem::Rect {
+                    group_texts: vec!["plot".into(), "bar-plot-0".into()],
+                    data: vec![crate::model::XyChartRectData {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 40.0,
+                        height: 80.0,
+                        fill: "red".into(),
+                        stroke_fill: "red".into(),
+                        stroke_width: 0.0,
+                    }],
+                },
+                crate::model::XyChartDrawableElem::Rect {
+                    group_texts: vec!["legend".into(), "markers".into()],
+                    data: vec![crate::model::XyChartRectData {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 4.0,
+                        height: 4.0,
+                        fill: "red".into(),
+                        stroke_fill: "red".into(),
+                        stroke_width: 0.0,
+                    }],
+                },
+            ];
+            crate::xychart::XyChartPaintPlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::default(),
+                &mut layout,
+                &crate::resources::OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::interactive(),
+                ),
+            )
+            .unwrap()
+        };
+        for terminal in 0..4 {
+            for mutation in [
+                "none",
+                "detached",
+                "missing-paint",
+                "wrong-content",
+                "repeated",
+                "wrong-role",
+                "foreign",
+                "partial-write",
+                "wrong-font-size",
+                "wrong-axis-font-size",
+                "missing-axis-font-size",
+                "wrong-stroke-width",
+                "missing-stroke-width",
+            ] {
+                let plan = prepare();
+                let foreign = prepare();
+                let mut receipt = if mutation == "foreign" {
+                    &foreign
+                } else {
+                    &plan
+                }
+                .begin_terminal_receipt(escape_xml)
+                .unwrap();
+                let mut arena = vec![node("g")];
+                for (id, tag, content) in [
+                    (
+                        XyChartPaintTerminalId::Text {
+                            drawable: 0,
+                            item: 0,
+                        },
+                        "text",
+                        "A & B",
+                    ),
+                    (
+                        XyChartPaintTerminalId::Path {
+                            drawable: 1,
+                            item: 0,
+                        },
+                        "path",
+                        "M 0,0 L 10,0",
+                    ),
+                    (
+                        XyChartPaintTerminalId::DataLabel {
+                            drawable: 2,
+                            item: 0,
+                        },
+                        "text",
+                        "4",
+                    ),
+                    (
+                        XyChartPaintTerminalId::DataLabel {
+                            drawable: 3,
+                            item: 0,
+                        },
+                        "text",
+                        "4",
+                    ),
+                ] {
+                    let mut n = node(tag);
+                    if tag == "path" {
+                        n.attr("d", content);
+                        n.attr("stroke", "#123456");
+                        n.attr("stroke-width", "2");
+                    } else {
+                        n.text = Some(escape_xml(content));
+                        n.attr("fill", "#123456");
+                    }
+                    if matches!(id, XyChartPaintTerminalId::Text { .. }) {
+                        n.attr("font-size", "16");
+                    }
+                    if let XyChartPaintTerminalId::DataLabel { drawable, .. } = id {
+                        n.attr("font-size", if drawable == 2 { "57px" } else { "0px" });
+                    }
+                    n.paint_terminal = plan.terminal_id(id);
+                    push_child(&mut arena, 0, n);
+                }
+                let id = terminal + 1;
+                match mutation {
+                    "detached" => {
+                        arena[0].children.remove(terminal);
+                    }
+                    "missing-paint" => arena[id]
+                        .attrs
+                        .retain(|(key, _)| *key != "fill" && *key != "stroke"),
+                    "wrong-content" if terminal == 1 => {
+                        arena[id].attrs[0].1 = "M 0,0 L 20,0".into()
+                    }
+                    "wrong-content" => arena[id].text = Some("Other".into()),
+                    "repeated" => arena[0].children.push(id),
+                    "wrong-role" => arena[id].paint_terminal = None,
+                    "wrong-axis-font-size" => {
+                        arena[1]
+                            .attrs
+                            .iter_mut()
+                            .find(|(key, _)| *key == "font-size")
+                            .unwrap()
+                            .1 = "0".into()
+                    }
+                    "missing-axis-font-size" => {
+                        arena[1].attrs.retain(|(key, _)| *key != "font-size")
+                    }
+                    "wrong-stroke-width" => {
+                        arena[2]
+                            .attrs
+                            .iter_mut()
+                            .find(|(key, _)| *key == "stroke-width")
+                            .unwrap()
+                            .1 = "0".into()
+                    }
+                    "missing-stroke-width" => {
+                        arena[2].attrs.retain(|(key, _)| *key != "stroke-width")
+                    }
+                    "wrong-font-size" => {
+                        // Mutate the positive-area data label regardless of the selected terminal.
+                        let value = arena[3]
+                            .attrs
+                            .iter_mut()
+                            .find(|(key, _)| *key == "font-size")
+                            .unwrap();
+                        value.1 = "0px".into();
+                    }
+                    _ => {}
+                }
+                if mutation == "partial-write" {
+                    let mut sink = RejectAfterWrites::default();
+                    assert!(
+                        render_node(&mut sink, &arena, 0, &mut |n| n.observe_paint(&mut receipt))
+                            .is_err()
+                    );
+                } else {
+                    render_node(&mut String::new(), &arena, 0, &mut |n| {
+                        n.observe_paint(&mut receipt)
+                    })
+                    .unwrap();
+                }
+                assert_eq!(
+                    plan.record_terminal(receipt),
+                    mutation == "none",
+                    "{terminal}: {mutation}"
+                );
+                assert_eq!(
+                    plan.finish_evidence().applied().len(),
+                    if mutation == "none" { 2 } else { 0 }
+                );
+            }
         }
     }
 
@@ -864,41 +1032,5 @@ mod tests {
                 "{mutation}"
             );
         }
-    }
-
-    fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
-        let mut font_size = initial;
-        while font_size > maximum_that_fits && font_size > 0.0 {
-            font_size -= 1.0;
-        }
-        font_size
-    }
-
-    #[test]
-    fn closed_form_font_sizing_matches_mermaid_for_normal_dimensions() {
-        for (initial, maximum_that_fits) in [(10.2, 8.0), (10.0, 8.8), (8.0, 8.0), (0.5, 0.0)] {
-            assert_eq!(
-                font_size_after_unit_decrements(initial, maximum_that_fits)
-                    .floor()
-                    .max(0.0),
-                upstream_decrement(initial, maximum_that_fits)
-                    .floor()
-                    .max(0.0),
-            );
-        }
-    }
-
-    #[test]
-    fn huge_finite_bar_dimensions_complete_without_a_decrement_loop() {
-        let font_size = horizontal_label_font_size(1e308, "123", 7e307, 10.0);
-
-        assert!(font_size.is_finite());
-        assert!(font_size > 0.0);
-    }
-
-    #[test]
-    fn bar_label_length_uses_javascript_utf16_code_units() {
-        assert_eq!(javascript_string_length("A"), 1.0);
-        assert_eq!(javascript_string_length("\u{1F469}\u{200D}\u{1F4BB}"), 5.0);
     }
 }

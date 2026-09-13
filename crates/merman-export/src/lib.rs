@@ -18,8 +18,8 @@ pub use font_environment::{ExportFontMode, ExportFontPlan};
 #[cfg(all(feature = "png", merman_internal_theme_acceptance))]
 #[doc(hidden)]
 pub use raster_paint_cutover::{
-    EncodedRasterPaintCutoverPair, RasterPaintCutoverFacet, RasterPaintCutoverReceipt,
-    RasterPaintSemanticBinding, RasterPaintTerminalBinding,
+    EncodedRasterPaintCutoverPair, RasterPaintCutoverChannels, RasterPaintCutoverFacet,
+    RasterPaintCutoverReceipt, RasterPaintSemanticBinding, RasterPaintTerminalBinding,
     encode_png_paint_cutover_pair_controlled,
 };
 
