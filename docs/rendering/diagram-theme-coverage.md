@@ -66,7 +66,11 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block and Class.
+The global provider remains necessary for Block and Class. Block `NodeLabel.fill` remains a
+separate migration boundary: its current writer consumes `nodeTextColor` through `.label text`,
+`span`, and `p` for both HTML and SVG labels, while `BlockNodePaintThemePlan` currently owns only
+node-shell paint. A future cutover must add a label-specific terminal plan, source/config ownership
+checks, and independent SVG/PNG evidence before changing the four static routes or bridge output.
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
