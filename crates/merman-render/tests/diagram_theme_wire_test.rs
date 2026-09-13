@@ -196,3 +196,117 @@ fn font_spec(id: &str, format: &str, data_base64: &str) -> DiagramThemeSpecWireV
         ..Default::default()
     }
 }
+
+#[test]
+fn every_core_family_id_round_trips_distinct_rule_and_typography_scopes() {
+    use merman_core::DiagramFamilyId;
+    use merman_render::diagram_theme::{ThemeTextStyle, TypographySpec};
+    use merman_theme_contract::{ThemeTextStyleWireV1, ThemeTypographySpecWireV1};
+
+    let compiler = DiagramThemeCompiler::new();
+    let paint = CanvasPaint::solid("#2563eb").unwrap();
+    for rule_scope in [true, false] {
+        let mut fingerprints = Vec::new();
+        for &family in DiagramFamilyId::all() {
+            let spec = DiagramThemeSpecWireV1 {
+                styles: rule_scope.then(|| {
+                    vec![ThemeRuleSetWireV1::Rule {
+                        target: "text".to_owned(),
+                        family: Some(family.as_str().to_owned()),
+                        variant: None,
+                        ordinal: None,
+                        style: ThemeStylePatchWireV1 {
+                            fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+                                "#2563eb".to_owned(),
+                            )),
+                            ..Default::default()
+                        },
+                    }]
+                }),
+                typography: (!rule_scope).then(|| ThemeTypographySpecWireV1 {
+                    families: Some(
+                        [(
+                            family.as_str().to_owned(),
+                            ThemeTextStyleWireV1 {
+                                font_size_px: Some(23.0),
+                                ..Default::default()
+                            },
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let wire = compiler
+                .compile_spec_wire(
+                    serde_json::from_slice(&serde_json::to_vec(&spec).unwrap()).unwrap(),
+                )
+                .unwrap_or_else(|error| panic!("{} wire scope: {error}", family.as_str()));
+            let typed_spec = if rule_scope {
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(paint.clone()),
+                        )
+                        .for_family(family),
+                    ),
+                )
+            } else {
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_family_style(
+                        family,
+                        ThemeTextStyle::default().with_font_size_px(23.0).unwrap(),
+                    ),
+                )
+            };
+            let typed = compiler.compile(typed_spec).unwrap();
+            assert_eq!(
+                wire.recipe_fingerprint(),
+                typed.recipe_fingerprint(),
+                "{} scope",
+                family.as_str()
+            );
+            for fingerprint in &fingerprints {
+                assert_ne!(
+                    wire.recipe_fingerprint(),
+                    *fingerprint,
+                    "logical family scopes must stay distinct"
+                );
+            }
+            fingerprints.push(wire.recipe_fingerprint());
+        }
+    }
+}
+
+#[test]
+fn parser_aliases_and_unknown_ids_cannot_be_used_as_logical_theme_scopes() {
+    use merman_core::{DiagramFamilyId, diagram_family_capabilities};
+    for id in diagram_family_capabilities()
+        .iter()
+        .map(|fact| fact.diagram_type)
+        .filter(|id| DiagramFamilyId::from_id(id).is_none())
+        .chain(["future-family"])
+    {
+        for (spec, field) in [
+            (
+                serde_json::json!({"styles":[{"kind":"rule","target":"text","family":id,"style":{}}]}),
+                "styles.rule.family",
+            ),
+            (
+                serde_json::json!({"typography":{"families":{(id):{"font_size_px":23}}}}),
+                "typography.families",
+            ),
+        ] {
+            let error = DiagramThemeCompiler::new()
+                .compile_spec_wire(serde_json::from_value(spec).unwrap())
+                .unwrap_err();
+            assert!(
+                matches!(error, ThemeCompileError::Validation(ThemeCompileValidationError::UnknownId {field: actual}) if actual == field),
+                "{id} must not become a logical scope at {field}: {error:?}"
+            );
+        }
+    }
+}

@@ -1,3 +1,8 @@
+// Parser/editor-only fields remain in the shared core characterization cases.
+#[allow(dead_code)]
+#[path = "../../merman-core/src/tests/registry_cases.rs"]
+mod catalog_cases;
+
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
@@ -256,5 +261,101 @@ fn completion_receipts_bind_both_finalized_outputs_and_reject_other_renders() {
         assert!(receipt.proves_artifacts(public_digest, native_digest));
         assert!(!receipt.proves_artifacts(other_public, native_digest));
         assert!(!receipt.proves_artifacts(public_digest, other_native));
+    }
+}
+
+#[test]
+fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capability() {
+    use merman_core::{DiagramFamilyId, diagram_family_capabilities, diagram_type_family_id};
+    use merman_render::{Error, RenderCapability};
+    use std::collections::BTreeSet;
+
+    let catalog = diagram_family_capabilities();
+    let cases = catalog_cases::FAMILY_CHARACTERIZATION_MATRIX;
+    assert_eq!(
+        cases
+            .iter()
+            .map(|case| case.variant_id)
+            .collect::<BTreeSet<_>>(),
+        catalog
+            .iter()
+            .map(|fact| fact.diagram_type)
+            .collect::<BTreeSet<_>>()
+    );
+    let engine = Engine::new();
+    let mut prepared_families = BTreeSet::new();
+    let mut missing_families = BTreeSet::new();
+    for case in cases {
+        let expected = DiagramFamilyId::from_id(case.logical_family).unwrap();
+        assert_eq!(diagram_type_family_id(case.variant_id), Some(expected));
+        let parsed = engine
+            .parse_diagram_for_render_model_with_type_sync(
+                case.variant_id,
+                case.representative_source,
+                ParseOptions::strict(),
+            )
+            .unwrap_or_else(|error| panic!("{}: {error}", case.variant_id))
+            .unwrap();
+        assert_eq!(
+            parsed.family_id(),
+            Some(expected),
+            "{} parsed family",
+            case.variant_id
+        );
+        let expected_missing = match case.variant_id {
+            "flowchart-elk" if !cfg!(feature = "layout-elk") => Some(RenderCapability::LayoutElk),
+            "architecture" | "mindmap" if !cfg!(feature = "layout-cytoscape") => {
+                Some(RenderCapability::LayoutCytoscape)
+            }
+            _ => None,
+        };
+        match (
+            family::prepare(
+                parsed,
+                &LayoutOptions::headless_svg_defaults(),
+                render_session(),
+            ),
+            expected_missing,
+        ) {
+            (Err(Error::MissingCapability { capability, .. }), Some(expected_capability)) => {
+                assert_eq!(
+                    capability, expected_capability,
+                    "{} capability",
+                    case.variant_id
+                );
+                missing_families.insert(expected);
+            }
+            (Ok(artifact), None) => {
+                assert_eq!(
+                    artifact.family_id(),
+                    expected,
+                    "{} artifact family",
+                    case.variant_id
+                );
+                let svg = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap_or_else(|error| panic!("{} writer: {error}", case.variant_id));
+                assert!(
+                    svg.svg().contains("<svg"),
+                    "{} writer returned no SVG",
+                    case.variant_id
+                );
+                prepared_families.insert(expected);
+            }
+            (Err(error), _) => panic!("{} preparation: {error}", case.variant_id),
+            (Ok(_), Some(capability)) => {
+                panic!("{} unexpectedly has {capability:?}", case.variant_id)
+            }
+        }
+    }
+    assert_eq!(
+        prepared_families
+            .union(&missing_families)
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        DiagramFamilyId::all().iter().copied().collect()
+    );
+    if cfg!(all(feature = "layout-elk", feature = "layout-cytoscape")) {
+        assert!(missing_families.is_empty());
     }
 }
