@@ -9,6 +9,7 @@ const TYPST_ABI_FUNCTIONS: &[FunctionContract] = &[
     FunctionContract::export("abi_version", 0),
     FunctionContract::export("package_version", 0),
     FunctionContract::export("capabilities_json", 0),
+    FunctionContract::export("theme_catalog_json", 0),
     FunctionContract::export("render_svg_json", 2),
     FunctionContract::export("analyze_json", 2),
     FunctionContract::export("theme_operation_json", 3),
@@ -408,6 +409,9 @@ mod tests {
     fn typst_profile_rejects_missing_extra_and_mistyped_items() {
         let mut surface = valid_typst_surface();
         surface.imports.remove(0);
+        surface
+            .exports
+            .retain(|export| export.name != "theme_catalog_json");
         surface.imports.push(WasmImport {
             module: "wasi_snapshot_preview1".to_string(),
             name: "fd_write".to_string(),
@@ -452,6 +456,9 @@ mod tests {
                 .iter()
                 .any(|failure| failure.contains("browser_render"))
         );
+        assert!(export_failures.iter().any(|failure| {
+            failure.contains("missing Typst ABI function export `theme_catalog_json`")
+        }));
         assert!(
             export_failures
                 .iter()
@@ -488,6 +495,10 @@ mod tests {
                 },
                 WasmExport {
                     name: "capabilities_json".to_string(),
+                    ty: function_type(0, 1),
+                },
+                WasmExport {
+                    name: "theme_catalog_json".to_string(),
                     ty: function_type(0, 1),
                 },
                 WasmExport {

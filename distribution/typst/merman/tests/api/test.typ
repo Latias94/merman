@@ -3,6 +3,7 @@
   describe-theme-support,
   export-theme-preset,
   materialize-theme,
+  theme-catalog,
   mermaid,
   mermaid-theme-definition,
   mermaid-figure,
@@ -236,7 +237,7 @@
 
 #let capabilities = merman-capabilities()
 #assert.eq(capabilities.schema_version, 1)
-#assert.eq(capabilities.transport_api_version, 3)
+#assert.eq(capabilities.transport_api_version, 4)
 #assert(
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",
@@ -426,3 +427,15 @@ flowchart LR
 ```
 
 API fixture passed.
+
+#let catalog = theme-catalog()
+#assert.eq(catalog.schema_version, 3)
+#assert(catalog.structured_spec_available)
+#assert.eq(catalog.supported_output_ids, ("svg",))
+#assert.eq(catalog.presets.len(), 10)
+#assert.eq(catalog.presets.at(0).id, "editor-light")
+#assert.eq(catalog.presets.at(0).qualified_cells, ())
+#assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))
+#let catalog-preset = export-theme-preset(catalog.presets.at(0).id)
+#assert.eq(catalog-preset.kind, catalog.presets.at(0).export_kind)
+#assert(type(catalog-preset.complete_spec) == dictionary)

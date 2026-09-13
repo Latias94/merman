@@ -32,10 +32,10 @@ Stale installed artifacts must be rebuilt; do not drop the revision assertion to
 These static upper bounds do not certify actual document admission or qualify output artifacts.
 
 `preset-catalog.json` freezes the complete ordered preset metadata array under the default
-binding compiler policy on SVG-capable artifacts. Shared-core, Native C ABI, and UniFFI tests,
-installed Node and Python consumers, and real Web/WASM smoke compare every field, including availability, appearance,
+binding compiler policy on SVG-capable artifacts and Typst's constrained policy. Shared-core, Native C ABI, and UniFFI tests,
+installed Node and Python consumers, Typst plugin smoke, and real Web/WASM smoke compare every field, including availability, appearance,
 maturity, empty qualification cells, export kind, license, and attribution. Do not derive this
 oracle at test time from production descriptors. Non-SVG artifacts still require an empty array;
 custom resource ceilings may change availability and need a separate expectation. Output IDs and
 resource limits belong to each artifact profile and are outside this preset-only vector. It does
-not qualify final artifacts or cover Typst catalog discovery, which has no public catalog export.
+not qualify final artifacts. Typst additionally checks its own constrained resource ceiling.

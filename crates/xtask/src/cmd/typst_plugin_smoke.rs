@@ -81,6 +81,27 @@ pub(crate) fn validate_typst_plugin_with_input(
     let capabilities = call_json(&mut instance, "capabilities_json", Vec::new())?;
     assert_capability_catalog(&capabilities, &artifact_profile)?;
 
+    let catalog_payload = call_json(&mut instance, "theme_catalog_json", Vec::new())?;
+    let theme_catalog = assert_theme_operation_payload(&catalog_payload, "theme-catalog")?;
+    let expected_presets: JsonValue = serde_json::from_str(include_str!(
+        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+    ))
+    .map_err(|error| smoke_error(format!("invalid preset catalog fixture: {error}")))?;
+    if theme_catalog
+        .get("schema_version")
+        .and_then(JsonValue::as_u64)
+        != Some(3)
+        || theme_catalog
+            .get("structured_spec_available")
+            .and_then(JsonValue::as_bool)
+            != Some(true)
+        || theme_catalog.get("presets") != Some(&expected_presets)
+    {
+        return Err(smoke_error(
+            "Typst theme catalog differs from the shared preset catalog",
+        ));
+    }
+
     let render_output = instance.call(
         "render_svg_json",
         vec![source.to_vec(), options_json.to_vec()],
@@ -443,12 +464,9 @@ fn assert_capability_catalog(
             .expect("validated Typst capability catalog"),
         "Typst runtime metadata IDs",
     )?;
-    if metadata_ids
-        .iter()
-        .any(|id| MetadataKey::from_id(id).is_some())
-    {
+    if metadata_ids != [MetadataKey::ThemeCatalog.id()] {
         return Err(smoke_error(
-            "Typst runtime catalog must not advertise known metadata dispatchers",
+            "Typst runtime catalog must advertise exactly the theme catalog dispatcher",
         ));
     }
 
@@ -1480,7 +1498,7 @@ mod tests {
                 .expect("UTF-8 package version"),
             "options_schema_versions": [merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION],
             "payload_schemas": [],
-            "metadata_ids": [],
+            "metadata_ids": ["theme-catalog"],
             "capabilities": {
                 "capability_ids": artifact.capabilities,
                 "output_ids": artifact.outputs,

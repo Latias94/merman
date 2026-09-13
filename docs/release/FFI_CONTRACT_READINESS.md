@@ -10,7 +10,7 @@ sets and release evidence differ.
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
 | `public-native` | green | C ABI 3, Android JNI transport API 2, UniFFI API 8, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
-| `public-typst` | alpha scaffold; C7a blocked | Typst plugin ABI 3 with SVG, canonical analysis, three explicitly Alpha theme-authoring operations, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix; no C7a contract-candidate claim |
+| `public-typst` | alpha scaffold; C7a blocked | Typst plugin ABI 4 with SVG, canonical analysis, Alpha theme catalog discovery, three explicitly Alpha theme-authoring operations, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix; no C7a contract-candidate claim |
 | `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI

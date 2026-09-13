@@ -54,3 +54,11 @@
     options,
   )
 }
+
+#let theme-catalog() = {
+  let envelope = json(merman-plugin.theme_catalog_json())
+  if envelope.operation != "theme-catalog" {
+    panic("merman Typst plugin returned an unexpected theme catalog operation")
+  }
+  if envelope.ok { envelope.data.result } else { envelope }
+}

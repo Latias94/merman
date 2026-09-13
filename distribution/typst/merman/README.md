@@ -2,7 +2,7 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the published `0.3.0` package, released to Typst Universe on September 1, 2026, and requires Typst `0.15.0` or newer.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README covers the source tree, which requires Typst `0.15.0` or newer. Theme catalog discovery is an unreleased ABI 4 addition and requires a local package build; the published `0.3.0` package uses ABI 3.
 
 ## Quick Start
 
@@ -29,13 +29,14 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.3.0` (source tree, unreleased) | `0.8.0-alpha.6` | `3` | Requires a local package build and Typst `--package-path`. |
+| Development snapshot (package version pending) | `0.8.0-alpha.6` | `4` | Includes theme catalog discovery; requires a local build and Typst `--package-path`. |
+| `0.3.0` (Typst Universe) | `0.8.0-alpha.6` | `3` | Published package; does not expose theme catalog discovery. |
 | `0.2.0` | `0.8.0-alpha.6` | `3` | Previous development package API. |
 | `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Previous package API. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 4 and native ABI 3.
 
-The API and example sections below describe the `0.3.0` package.
+The API and example sections below describe the source tree. Local builds retain the `0.3.0` import path until the next candidate version is assigned.
 
 Version `0.3.0` rebuilds the plugin after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. Layout uses Merman's deterministic Unicode-aware measurement provider, while host text-measurement callbacks remain available to transports that can provide them. The Typst transport itself is deterministic-only; this keeps the package reproducible and reduces the downloaded WASM without changing the typed theme API.
 
@@ -332,7 +333,7 @@ Like `mermaid`, it accepts `document-context: true` when the rendered diagram sh
 current Typst text style and available width.
 
 These functions remain Alpha while the C7a authoring qualification gate is open. Their presence in
-Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the
+Typst plugin ABI 4 makes the callable transport explicit; it is not a stability commitment for the
 theme authoring payloads.
 
 ```typst
@@ -363,6 +364,21 @@ and an optional `capability_id`. The plugin always applies its constrained resou
 options may tighten that policy but cannot loosen it.
 
 Invalid Mermaid source remains a schema-1 analysis payload with `valid: false`; transport, options, and missing-capability failures use the structured operation envelope instead.
+
+### `theme-catalog()` (development snapshot)
+
+Returns the shared theme catalog for the installed plugin, including available presets, semantic
+selectors, supported outputs, and effective constrained theme resource limits. The catalog remains
+Alpha; an available preset with empty `qualified_cells` has no qualified artifact scope.
+
+```typst
+#let catalog = theme-catalog()
+#let preset = export-theme-preset(catalog.presets.at(0).id)
+```
+
+Success returns catalog schema 3. Failure returns the structured operation envelope with operation
+`theme-catalog`. Discovery takes no options and describes the plugin's fixed default ceiling;
+individual authoring calls may tighten that ceiling.
 
 ### `merman-capabilities()`
 

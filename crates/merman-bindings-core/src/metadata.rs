@@ -366,6 +366,17 @@ impl ValidatedArtifactContract {
         collect_metadata(self, key)
     }
 
+    /// Projects theme discovery through an explicit host-owned resource policy.
+    #[cfg(feature = "svg")]
+    pub fn theme_catalog_json_with_resource_policy(
+        &self,
+        policy: &merman::svg::ThemeResourcePolicy,
+    ) -> Result<Vec<u8>, BindingError> {
+        let compiler =
+            merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy.clone());
+        self.metadata_json_with_theme_compiler(MetadataKey::ThemeCatalog.id(), &compiler)
+    }
+
     #[cfg(feature = "svg")]
     pub(crate) fn metadata_json_with_theme_compiler(
         &self,
@@ -1825,19 +1836,33 @@ mod tests {
         let restrictive_policy = merman::svg::ThemeResourcePolicy::interactive()
             .with_limit(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
             .expect("valid restrictive theme policy");
-        let compiler =
-            merman::svg::DiagramThemeCompiler::new().with_resource_policy(restrictive_policy);
-
         let svg_contract =
             ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
                 .with_operations(&[OperationKey::Svg])
                 .materialize();
-        let presets = theme_catalog_for_with_compiler(&svg_contract, Some(&compiler)).presets;
+        assert!(
+            svg_contract
+                .theme_catalog_json_with_resource_policy(&restrictive_policy)
+                .is_err()
+        );
+        let svg_contract =
+            ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                .with_operations(&[OperationKey::Svg])
+                .with_metadata(&[MetadataKey::ThemeCatalog])
+                .materialize();
+        let catalog: Value = serde_json::from_slice(
+            &svg_contract
+                .theme_catalog_json_with_resource_policy(&restrictive_policy)
+                .unwrap(),
+        )
+        .unwrap();
+        let presets = catalog["presets"].as_array().unwrap();
 
         assert_eq!(presets.len(), 10);
-        assert!(presets.iter().all(|preset| !preset.available));
+        assert!(presets.iter().all(|preset| preset["available"] == false));
         assert!(presets.iter().all(|preset| {
-            preset.availability_reason_ids == ["theme-preset.resource-policy-rejected"]
+            preset["availability_reason_ids"]
+                == serde_json::json!(["theme-preset.resource-policy-rejected"])
         }));
     }
 

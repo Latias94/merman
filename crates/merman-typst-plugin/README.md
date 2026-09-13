@@ -4,20 +4,21 @@
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
-## Typst Plugin ABI 3
+## Typst Plugin ABI 4
 
-The current Typst plugin ABI version is `3`. It is independent from native ABI 3 and from the shared binding options schema. ABI 3 adds the shared theme-authoring operation dispatcher to the otherwise unchanged closed host surface. These authoring operations remain Alpha until the C7a qualification gate closes; adding them to the transport does not freeze their payload contract. The WebAssembly module distinguishes callable ABI operations from linker metadata.
+The current Typst plugin ABI version is `4`. It is independent from native ABI 3 and from the shared binding options schema. ABI 4 adds theme catalog discovery to the closed host surface introduced by ABI 3. These authoring operations remain Alpha until the C7a qualification gate closes; adding them to the transport does not freeze their payload contract. The WebAssembly module distinguishes callable ABI operations from linker metadata.
 
 It imports exactly these two protocol functions:
 
 - `typst_env::wasm_minimal_protocol_write_args_to_buffer`
 - `typst_env::wasm_minimal_protocol_send_result_to_host`
 
-Its callable ABI consists of exactly these six protocol functions:
+Its callable ABI consists of exactly these seven protocol functions:
 
 - `abi_version() -> bytes`
 - `package_version() -> bytes`
 - `capabilities_json() -> bytes`
+- `theme_catalog_json() -> bytes`
 - `render_svg_json(source: bytes, options_json: bytes) -> bytes`
 - `analyze_json(source: bytes, options_json: bytes) -> bytes`
 - `theme_operation_json(operation_id: bytes, input: bytes, options_json: bytes) -> bytes`
@@ -32,7 +33,7 @@ The linker globals are transport metadata, not plugin operations. No other funct
 
 `wasm-profiles.json` owns the ABI number. Run `cargo run -p xtask -- gen-typst-profile-constants` after changing it; the generated Rust projection contains both the numeric `TYPST_PLUGIN_ABI_VERSION` constant and the ASCII bytes returned by `abi_version`. `verify-typst-profile-constants` and the aggregate `verify-generated` gate reject drift. `package_version` returns the Rust workspace package version.
 
-`capabilities_json` reports the flat runtime catalog schema `1` compiled from the canonical `typst-wasm` artifact recipe. It contains only current artifact facts: transport and package identity, capability/output/operation IDs, registry size, text measurement, and resource descriptors. It does not copy the global capability vocabulary or independently versioned options and result schemas. `render_svg_json`, `analyze_json`, and `theme_operation_json` return result envelope schema 1 with `version`, `operation`, `ok`, `code`, `code_name`, `kind`, `capability_id`, `message`, and `data`. A successful render stores the SVG in `data.svg`; successful analysis stores canonical analysis schema 1 in `data.analysis`; successful theme operations store the shared canonical wire result in `data.result`. The theme dispatcher accepts only `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json`. A failed operation keeps its machine-readable error kind and optional capability ID. ABI 1's legacy `validate_json` projection is not exported.
+`capabilities_json` reports the flat runtime catalog schema `1` compiled from the canonical `typst-wasm` artifact recipe. It contains only current artifact facts: transport and package identity, capability/output/operation IDs, registry size, text measurement, and resource descriptors. It does not copy the global capability vocabulary or independently versioned options and result schemas. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` return result envelope schema 1 with `version`, `operation`, `ok`, `code`, `code_name`, `kind`, `capability_id`, `message`, and `data`. A successful render stores the SVG in `data.svg`; successful analysis stores canonical analysis schema 1 in `data.analysis`; successful theme operations store the shared canonical wire result in `data.result`. The theme dispatcher accepts only `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json`. The theme catalog export uses operation `theme-catalog` and stores catalog schema 3 in `data.result`, including preset metadata and the actual constrained theme resource limits. Runtime discovery advertises `theme-catalog` in `metadata_ids`. A failed operation keeps its machine-readable error kind and optional capability ID. ABI 1's legacy `validate_json` projection is not exported.
 
 The closed Typst import surface has no synchronous font-measurement service. Its runtime catalog
 therefore advertises only the built-in `deterministic` text-measurement provider; Typst font assets
@@ -50,7 +51,7 @@ Changing an imported or exported function, its WebAssembly signature, or one of 
 
 There are no bridge-only or render-only package profiles. Maintainers can build direct Cargo feature leaves for local closure experiments, but those combinations are not named product identities, publication choices, or release evidence. Mermaid configuration, sanitization, detection, and semantic parsing are invariant core behavior; a missing layout backend produces a typed capability error only when a diagram requires it.
 
-ASCII, PNG, JPEG, and PDF are not compiled into the publish artifact because Typst ABI 3 has no
+ASCII, PNG, JPEG, and PDF are not compiled into the publish artifact because Typst ABI 4 has no
 callable operation for those outputs. Adding an unreachable capability would only enlarge the
 plugin and its dependency closure.
 
@@ -80,7 +81,7 @@ Check the canonical artifact's compressed size budget without referring to its p
 cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-`build-typst-package` verifies the artifact manifest, closed import/export and function-signature surface, runtime capability catalog, and all six ABI operations through a Typst-compatible `wasmi` host before staging the package. Raw Cargo output and `target/typst-wasm-artifacts/` are private implementation details and must not be referenced by CI, release automation, or package users.
+`build-typst-package` verifies the artifact manifest, closed import/export and function-signature surface, runtime capability catalog, and all seven ABI operations through a Typst-compatible `wasmi` host before staging the package. Raw Cargo output and `target/typst-wasm-artifacts/` are private implementation details and must not be referenced by CI, release automation, or package users.
 
 Compile the wrapper examples and tests against the exact staged bundle with:
 

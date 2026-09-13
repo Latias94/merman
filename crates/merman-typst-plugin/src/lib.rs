@@ -5,7 +5,7 @@
 //! same closed transport envelope so hosts can handle failures without depending on trap behavior.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey,
+    ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey, MetadataKey,
     OperationKey, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde_json::{json, Value};
@@ -55,6 +55,7 @@ const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
     ArtifactContractSpec::new(TargetKey::Typst, BindingTransportKey::Typst)
         .with_operations(TYPST_OPERATIONS)
+        .with_metadata(&[MetadataKey::ThemeCatalog])
         .with_supplemental_capabilities(TYPST_SUPPLEMENTAL_CAPABILITIES)
         .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
         .materialize();
@@ -85,6 +86,28 @@ pub fn package_version() -> Vec<u8> {
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn capabilities_json() -> Vec<u8> {
     typst_capabilities_json()
+}
+
+/// Returns the shared theme catalog under the plugin's fixed resource ceiling.
+#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
+pub fn theme_catalog_json() -> Vec<u8> {
+    let operation = MetadataKey::ThemeCatalog.id();
+    #[cfg(feature = "svg")]
+    let result = typst_artifact_contract().theme_catalog_json_with_resource_policy(
+        &merman_bindings_core::ThemeResourcePolicy::constrained(),
+    );
+    #[cfg(not(feature = "svg"))]
+    let result = typst_artifact_contract().metadata_json(operation);
+    match result {
+        Ok(output) => match serde_json::from_slice::<Value>(&output) {
+            Ok(catalog) => typst_success_payload(operation, json!({ "result": catalog })),
+            Err(error) => typst_internal_error_payload(
+                operation,
+                format!("theme catalog returned invalid canonical JSON: {error}"),
+            ),
+        },
+        Err(error) => typst_binding_error_payload(operation, &error),
+    }
 }
 
 fn typst_artifact_contract() -> &'static ValidatedArtifactContract {
@@ -436,9 +459,44 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 3);
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"3");
-        assert_eq!(abi_version(), b"3");
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 4);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"4");
+        assert_eq!(abi_version(), b"4");
+    }
+
+    #[test]
+    fn theme_catalog_matches_shared_presets_and_transport_resource_policy() {
+        let payload: Value = serde_json::from_slice(&theme_catalog_json()).unwrap();
+        assert_eq!(payload["version"], 1);
+        assert_eq!(payload["operation"], "theme-catalog");
+        assert_eq!(payload["ok"], true, "{payload}");
+        let catalog = &payload["data"]["result"];
+        assert_eq!(catalog["schema_version"], 3);
+        assert_eq!(catalog["structured_spec_available"], cfg!(feature = "svg"));
+        let runtime: Value = serde_json::from_slice(&capabilities_json()).unwrap();
+        assert_eq!(runtime["metadata_ids"], json!(["theme-catalog"]));
+        #[cfg(feature = "svg")]
+        {
+            let expected: Value = serde_json::from_str(include_str!(
+                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+            ))
+            .unwrap();
+            assert_eq!(catalog["presets"], expected);
+            assert_eq!(catalog["supported_output_ids"], json!(["svg"]));
+            let encoded_limit = catalog["resource_limits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|limit| limit["id"] == "max_theme_encoded_bytes")
+                .unwrap();
+            assert_eq!(encoded_limit["effective_value"], 512 * 1024);
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            assert_eq!(catalog["presets"], json!([]));
+            assert_eq!(catalog["supported_output_ids"], json!([]));
+            assert_eq!(catalog["resource_limits"], json!([]));
+        }
     }
 
     #[test]
