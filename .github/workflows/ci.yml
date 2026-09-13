@@ -502,6 +502,7 @@ jobs:
             --lib --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png --test c6_runtime --test preset_qualification \
+            --test block_title_legacy_projection \
             --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,layout-cytoscape --test route_cutover_runtime \
