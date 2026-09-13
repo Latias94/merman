@@ -8,7 +8,7 @@ use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::defs::{class_marker_name, class_marker_paint_spec};
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
-    write_class_svg_edge_text, write_class_svg_edge_text_markdown,
+    write_class_svg_edge_text,
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
@@ -46,6 +46,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
     pub edge_paths_class: &'static str,
+    pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub emit: ClassEmitCheckpoint<'a>,
 }
@@ -707,7 +708,7 @@ fn render_class_edge_label_group(
                     text: trimmed,
                     include_p: true,
                     extra_span_class: None,
-                    span_style: None,
+                    span_style: ctx.text_paint.map(|paint| paint.style()),
                     prepared_xhtml: None,
                     mermaid_config: ctx.mermaid_config,
                     math_renderer: ctx.math_renderer,
@@ -730,6 +731,9 @@ fn render_class_edge_label_group(
             let facts = crate::class::class_html_label_visible_style_facts(trimmed);
             crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts)
         };
+        let typography = ctx
+            .text_paint
+            .map_or(typography, |paint| paint.observe(typography, paint.style()));
         return (typography, background_visible);
     }
 
@@ -754,7 +758,11 @@ fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        write_class_svg_edge_text_markdown(out, trimmed, true);
+        super::label::write_class_svg_edge_text_markdown_with_style(
+            out,
+            trimmed,
+            ctx.text_paint.map(|paint| paint.style()),
+        );
         out.push_str("</g></g></g>");
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -763,7 +771,11 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        write_class_svg_edge_text(out, trimmed, false);
+        super::label::write_class_svg_edge_text_markdown_with_style(
+            out,
+            trimmed,
+            ctx.text_paint.map(|paint| paint.style()),
+        );
         out.push_str("</g></g>");
     }
     let typography = if trimmed.is_empty() {
@@ -772,6 +784,9 @@ fn render_class_edge_label_group(
         let facts = crate::class::class_svg_label_visible_style_facts(trimmed);
         crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts)
     };
+    let typography = ctx
+        .text_paint
+        .map_or(typography, |paint| paint.observe(typography, paint.style()));
     (typography, background_visible)
 }
 
@@ -833,7 +848,7 @@ fn render_class_edge_terminal_group(
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"{}>"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -842,13 +857,17 @@ fn render_class_edge_terminal_group(
             fmt(foreign_height),
             fmt(style_width),
             fmt(style_height),
+            ctx.text_paint.map_or_else(String::new, |paint| format!(
+                r#" style="{}""#,
+                escape_attr_display(paint.style())
+            )),
         );
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"{}>"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -857,15 +876,21 @@ fn render_class_edge_terminal_group(
             fmt(foreign_height),
             fmt(style_width),
             fmt(style_height),
+            ctx.text_paint.map_or_else(String::new, |paint| format!(
+                r#" style="{}""#,
+                escape_attr_display(paint.style())
+            )),
         );
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g>");
     }
-    if crate::math::contains_delimited_math(trimmed) {
+    let facts = if crate::math::contains_delimited_math(trimmed) {
         crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
     } else {
         crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed)
-    }
+    };
+    ctx.text_paint
+        .map_or(facts, |paint| paint.observe(facts, paint.style()))
 }
 
 fn render_class_terminal_label(

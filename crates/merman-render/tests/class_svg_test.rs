@@ -4332,7 +4332,6 @@ fn class_cluster_unsupported_winners_require_real_namespace_occurrences() {
         .with_ordinal(OrdinalSelector::exact(1).unwrap()),
     ] {
         let theme = class_edge_rules_theme([rule]);
-        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
         let rendered = try_render_class_svg_with_theme_and_engine(
             "classDiagram\nclass A\n",
             &theme,
@@ -4628,18 +4627,10 @@ fn class_namespace_title_keeps_generic_text_author_order() {
                 .contains("color:#123456 !important;fill:#123456 !important;"),
             title_last
         );
-        if !title_last {
-            assert!(
-                rendered
-                    .svg()
-                    .contains(".cluster-label span{color:#456789;}")
-            );
-        }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), usize::from(title_last));
+        assert_eq!(evidence.applied_count(), usize::from(title_last) + 1);
         assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
-        assert!(evidence.compatibility_residual_count() > 0);
     }
 }
 
@@ -4715,10 +4706,13 @@ fn class_namespace_title_clear_retains_only_winning_residuals() {
         .unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.theme_residual_count(), usize::from(title_last));
         assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
-        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
+        assert_eq!(
+            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err(),
+            title_last,
+        );
     }
 }
 
@@ -4816,14 +4810,10 @@ fn class_node_label_keeps_generic_text_author_order() {
                     label_last,
                     "NodeLabel and Text must share author order: html={html_labels}, variant={variant:?}, label_last={label_last}"
                 );
-                if !label_last {
-                    assert!(rendered.svg().contains(".edgeLabel{color:#456789;}"));
-                }
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
-                assert_eq!(evidence.applied_count(), usize::from(label_last));
-                assert_eq!(evidence.not_applicable_count(), usize::from(!label_last));
-                assert!(evidence.compatibility_residual_count() > 0);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 1);
             }
         }
     }
@@ -4933,7 +4923,10 @@ fn class_node_label_generic_text_clear_and_transparent_mask_older_fill() {
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(matches!(fill, Specified::Value(CanvasPaint::Transparent))),
+            );
             assert_eq!(evidence.not_applicable_count(), 1);
         }
     }
@@ -4983,7 +4976,95 @@ fn class_node_label_generic_text_precedence_preserves_source_paint() {
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 2);
         }
+    }
+}
+
+#[test]
+fn class_generic_text_fill_has_a_terminal_in_every_text_channel() {
+    let source = r#"---
+title: Account registry
+---
+classDiagram
+namespace Internal {
+  class Account {
+    +String owner
+    +close()
+  }
+  class Ledger
+}
+Account "1" --> "many" Ledger : owns
+note for Account "Audit note"
+"#;
+    for html_labels in [false, true] {
+        let theme = class_edge_rules_theme([ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )]);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "htmlLabels": html_labels,
+            }))),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("generic Class Text must bind every actual text writer");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let has_paint = |node: roxmltree::Node<'_, '_>| {
+            let has_visible_text = node
+                .descendants()
+                .any(|terminal| terminal.text().is_some_and(|text| !text.trim().is_empty()));
+            !has_visible_text
+                || node.descendants().any(|terminal| {
+                    terminal.attribute("style").is_some_and(|style| {
+                        style.contains("color")
+                            && style.contains("fill")
+                            && style.contains("#123456")
+                    })
+                })
+        };
+        for id in ["Account", "Ledger"] {
+            let prefix = format!("merman-classId-{id}-");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with(&prefix))
+                })
+                .unwrap();
+            assert!(
+                has_paint(node),
+                "missing Text paint for {id}, html={html_labels}"
+            );
+        }
+        for class in [
+            "cluster-label",
+            "edgeLabel",
+            "edgeTerminals",
+            "noteLabel",
+            "classDiagramTitleText",
+        ] {
+            let terminals = document
+                .descendants()
+                .filter(|node| {
+                    node.is_element()
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|value| value == class)
+                        })
+                })
+                .collect::<Vec<_>>();
+            assert!(!terminals.is_empty(), "missing {class} terminal");
+            assert!(
+                terminals.iter().copied().all(has_paint),
+                "Text paint must reach each {class} terminal, html={html_labels}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
+        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }

@@ -648,6 +648,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         timing: edge_ctx.timing,
         edge_paths_class: edge_ctx.edge_paths_class,
         relation_theme: edge_ctx.relation_theme,
+        text_paint: edge_ctx.text_paint,
         emit: edge_ctx.emit,
     };
     render_class_split_edge_groups(
@@ -721,6 +722,7 @@ fn render_class_node_id<O: SvgOutput>(
                 use_html_labels: settings.diagram_use_html_labels
                     || crate::math::contains_delimited_math(&note.text),
                 mermaid_config: ctx.mermaid_config,
+                text_paint: ctx.typography_theme.note_paint(),
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
                 hand_drawn_seed: settings.hand_drawn_seed.clone(),
@@ -952,6 +954,13 @@ fn render_class_node_id<O: SvgOutput>(
             .with_source_value(node_inline_styles.color)
             .with_terminal_verified(label_terminal_truth.typed_fill_verified()),
         )),
-        typography: terminal_facts,
+        typography: terminal_facts.with_paint(
+            emitted_label_fill,
+            if use_html_labels {
+                &html_node_label_style_attr
+            } else {
+                &svg_node_label_style_attr
+            },
+        ),
     })
 }

@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use crate::diagram_theme::{
-    FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability, ThemeTypographyProperty,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
@@ -20,6 +22,10 @@ const CARDINALITY_SLOT_COUNT: usize = 4;
 #[derive(Debug)]
 pub(crate) struct ClassTextThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
+    text_rules: BTreeMap<usize, Option<ThemeCapability>>,
+    edge_paint: Option<ClassTextPaint>,
+    note_paint: Option<ClassTextPaint>,
+    title_paint: Option<ClassTextPaint>,
     layout_font_family_css: Box<str>,
     stylesheet_font_family_css: Box<str>,
     font_size_css: Box<str>,
@@ -48,6 +54,7 @@ pub(crate) struct ClassNodeLabelStyleFacts {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ClassTextTerminalFacts {
+    paint_observation: Option<(usize, bool)>,
     visible_runs: usize,
     inherited_color_runs: usize,
     color_ownership_unverified: bool,
@@ -76,6 +83,7 @@ struct ClassTextEdgeCheckpoint {
 
 #[derive(Debug, Clone, Copy, Default)]
 struct ClassTextTerminalCheckpoint {
+    expected_paint: Option<usize>,
     expected_visible: bool,
     observed: Option<ClassTextTerminalFacts>,
 }
@@ -99,11 +107,99 @@ pub(crate) struct ClassTextThemeReceipt {
     terminals_match: bool,
 }
 
+/// A selected generic Text fill shared by a writer and its existing text checkpoint.
+#[derive(Debug, Clone)]
+pub(crate) struct ClassTextPaint {
+    rule_index: usize,
+    css: String,
+    style: String,
+}
+
+impl ClassTextPaint {
+    pub(crate) fn style(&self) -> &str {
+        &self.style
+    }
+
+    pub(crate) fn observe(
+        &self,
+        facts: ClassTextTerminalFacts,
+        style: &str,
+    ) -> ClassTextTerminalFacts {
+        facts.with_paint(Some((self.rule_index, self.css.as_str())), style)
+    }
+}
+
 impl ClassTextThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
     ) -> Self {
+        let mut text_rules = BTreeMap::new();
+        if let Some(theme) = theme {
+            for route in theme.family_mechanism_routes() {
+                if let FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Text,
+                    facet,
+                    ..
+                } = route.mechanism()
+                {
+                    let capability = if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    {
+                        match facet {
+                            FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid) => {
+                                Some(ThemeCapability::SolidPaint)
+                            }
+                            FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent) => {
+                                Some(ThemeCapability::TransparentPaint)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let entry = text_rules.entry(rule_index).or_insert(capability);
+                    if capability.is_none() {
+                        *entry = None;
+                    }
+                }
+            }
+        }
+        let selected = theme.and_then(|theme| {
+            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+            crate::family::resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Text],
+                crate::family::DirectStaticSelectorDomain::Default,
+            )
+            .map(|paint| {
+                let (css, rule_index, _) = paint.into_parts();
+                ClassTextPaint {
+                    rule_index,
+                    style: format!("color:{css} !important;fill:{css} !important;"),
+                    css: css.into_string(),
+                }
+            })
+        });
+        let owned = |paths: &[&str]| {
+            paths.iter().any(|path| {
+                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+            })
+        };
+        let edge_paint = (!owned(&[
+            "themeVariables.classText",
+            "themeVariables.primaryTextColor",
+            "themeVariables.textColor",
+        ]))
+        .then(|| selected.clone())
+        .flatten();
+        let note_paint = (!owned(&["themeVariables.noteTextColor"]))
+            .then(|| selected.clone())
+            .flatten();
+        let title_paint = (!owned(&["themeVariables.textColor"]))
+            .then(|| selected.clone())
+            .flatten();
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let configured_font_size_css = crate::config::config_css_number_or_string(
@@ -161,6 +257,10 @@ impl ClassTextThemePlan {
             configured_layout_font
         };
         Self {
+            text_rules,
+            edge_paint,
+            note_paint,
+            title_paint,
             inherited_font_stack,
             layout_font_family_css: layout_font_family_css.into_boxed_str(),
             stylesheet_font_family_css: stylesheet_font_family_css.into_boxed_str(),
@@ -173,6 +273,50 @@ impl ClassTextThemePlan {
             evidence: FamilyThemeEvidence::from_theme(theme),
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn edge_paint(&self) -> Option<&ClassTextPaint> {
+        self.edge_paint.as_ref()
+    }
+    pub(crate) fn note_paint(&self) -> Option<&ClassTextPaint> {
+        self.note_paint.as_ref()
+    }
+    pub(crate) fn title_paint(&self) -> Option<&ClassTextPaint> {
+        self.title_paint.as_ref()
+    }
+
+    pub(crate) fn bind_paint_expectations(
+        &self,
+        receipt: &mut ClassTextThemeReceipt,
+        nodes: &[super::ClassNodeTerminalExpectation],
+        namespace: Option<(usize, &str)>,
+        note_ids: impl IntoIterator<Item = impl AsRef<str>>,
+    ) {
+        let generic = |rule| self.text_rules.contains_key(&rule).then_some(rule);
+        for node in nodes {
+            if let Some(slot) = receipt.nodes.get_mut(node.id()) {
+                slot.expected_paint = (node.label_fill_target() == Some(ThemeTarget::Text))
+                    .then(|| node.typed_label_fill(false))
+                    .flatten()
+                    .and_then(|(rule, _)| generic(rule));
+            }
+        }
+        for id in note_ids {
+            if let Some(slot) = receipt.nodes.get_mut(id.as_ref()) {
+                slot.expected_paint = self.note_paint.as_ref().map(|paint| paint.rule_index);
+            }
+        }
+        for slot in receipt.namespaces.values_mut() {
+            slot.expected_paint = namespace.and_then(|(rule, _)| generic(rule));
+        }
+        for edge in receipt.edges.values_mut() {
+            edge.label.expected_paint = self.edge_paint.as_ref().map(|paint| paint.rule_index);
+            for slot in &mut edge.cardinalities {
+                slot.expected_paint = edge.label.expected_paint;
+            }
+        }
+        receipt.diagram_title.expected_paint =
+            self.title_paint.as_ref().map(|paint| paint.rule_index);
     }
 
     pub(crate) fn layout_font_family_css(&self) -> &str {
@@ -196,7 +340,8 @@ impl ClassTextThemePlan {
     }
 
     fn requires_terminal_receipt(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_active()
+        !self.text_rules.is_empty()
+            || self.inherited_font_stack.typed_font_stack_active()
             || self.typed_font_size_active
             || self
                 .inherited_font_stack
@@ -413,6 +558,47 @@ impl ClassTextThemePlan {
                 }
             }
         }
+        if let Some(receipt) = self.terminal_receipt.get() {
+            let mut outcomes = BTreeMap::<usize, (bool, bool)>::new();
+            receipt.for_each_checkpoint(|slot| {
+                let Some(index) = slot.expected_paint else {
+                    return;
+                };
+                let (applied, incomplete) = outcomes.entry(index).or_default();
+                let Some(facts) = slot.observed else {
+                    *incomplete = true;
+                    return;
+                };
+                if facts.visible_runs == 0 || facts.source_owns_every_visible_run() {
+                    return;
+                }
+                if facts.has_verified_inherited_paint()
+                    && facts.paint_observation == Some((index, true))
+                {
+                    *applied = true;
+                } else {
+                    *incomplete = true;
+                }
+            });
+            for (&index, &capability) in &self.text_rules {
+                let Some(capability) = capability else {
+                    continue;
+                };
+                let (applied, incomplete) = outcomes.get(&index).copied().unwrap_or_default();
+                if incomplete {
+                    continue;
+                }
+                let key = FamilyThemeMechanismKey::Rule {
+                    index,
+                    target: ThemeTarget::Text,
+                };
+                if applied {
+                    evidence.mark_applied_with_capabilities(key, [capability]);
+                } else {
+                    evidence.mark_not_applicable(key);
+                }
+            }
+        }
         evidence
     }
 }
@@ -559,6 +745,17 @@ impl ClassNodeLabelStyleFacts {
 }
 
 impl ClassTextTerminalFacts {
+    pub(crate) fn with_paint(mut self, emitted: Option<(usize, &str)>, style: &str) -> Self {
+        self.paint_observation = emitted.map(|(rule, css)| {
+            (
+                rule,
+                super::terminal::terminal_paint(style, "color") == Some(css)
+                    && super::terminal::terminal_paint(style, "fill") == Some(css),
+            )
+        });
+        self
+    }
+
     pub(crate) const fn source_owns_every_visible_run(self) -> bool {
         self.visible_runs != 0 && self.inherited_color_runs == 0 && !self.color_ownership_unverified
     }
@@ -589,6 +786,7 @@ impl ClassTextTerminalFacts {
         unverified_runs: usize,
     ) -> Self {
         Self {
+            paint_observation: None,
             visible_runs,
             inherited_color_runs: visible_runs,
             color_ownership_unverified: false,
@@ -608,6 +806,7 @@ impl ClassTextTerminalFacts {
 
     pub(crate) fn from_node_style_facts(facts: ClassNodeLabelStyleFacts) -> Self {
         Self {
+            paint_observation: None,
             visible_runs: facts.visible_run_count(),
             inherited_color_runs: facts.inherited_color_runs,
             color_ownership_unverified: facts.color_ownership_unverified,
@@ -624,6 +823,7 @@ impl ClassTextTerminalFacts {
     pub(crate) fn inherited_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
+            paint_observation: None,
             visible_runs,
             inherited_color_runs: visible_runs,
             color_ownership_unverified: false,
@@ -640,6 +840,7 @@ impl ClassTextTerminalFacts {
     pub(crate) fn unverified_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
+            paint_observation: None,
             visible_runs,
             inherited_color_runs: 0,
             color_ownership_unverified: visible_runs != 0,
@@ -656,6 +857,7 @@ impl ClassTextTerminalFacts {
     pub(crate) fn fixed_font_size_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
         Self {
+            paint_observation: None,
             visible_runs,
             inherited_color_runs: visible_runs,
             color_ownership_unverified: false,
@@ -672,6 +874,7 @@ impl ClassTextTerminalFacts {
     pub(crate) fn from_visible_style_facts(facts: &crate::text::VisibleTextStyleFacts) -> Self {
         if !facts.parse_valid() {
             return Self {
+                paint_observation: None,
                 visible_runs: 1,
                 inherited_color_runs: 0,
                 color_ownership_unverified: true,
@@ -687,6 +890,7 @@ impl ClassTextTerminalFacts {
         let visible_runs = facts.visible_run_count();
         let inherited_runs = facts.inherited_font_family_run_count();
         Self {
+            paint_observation: None,
             visible_runs,
             inherited_color_runs: facts.inherited_color_run_count(),
             color_ownership_unverified: facts.unverified_portable_color_run_count() != 0,
@@ -753,6 +957,19 @@ impl ClassTypographyCssEmission {
 }
 
 impl ClassTextThemeReceipt {
+    fn for_each_checkpoint(&self, mut visit: impl FnMut(&ClassTextTerminalCheckpoint)) {
+        for slot in self.nodes.values().chain(self.namespaces.values()) {
+            visit(slot);
+        }
+        for edge in self.edges.values() {
+            visit(&edge.label);
+            for slot in &edge.cardinalities {
+                visit(slot);
+            }
+        }
+        visit(&self.diagram_title);
+    }
+
     pub(crate) fn record_css_emission(&mut self, emission: ClassTypographyCssEmission) {
         if self.css_emission.is_some() {
             self.css_emission_unique = false;
@@ -905,6 +1122,7 @@ impl ClassTextThemeReceipt {
 impl ClassTextTerminalCheckpoint {
     const fn new(expected_visible: bool) -> Self {
         Self {
+            expected_paint: None,
             expected_visible,
             observed: None,
         }
@@ -1012,6 +1230,7 @@ mod tests {
         assert_eq!(
             ClassTextTerminalFacts::from_node_style_facts(source),
             ClassTextTerminalFacts {
+                paint_observation: None,
                 visible_runs: 11,
                 inherited_color_runs: 9,
                 color_ownership_unverified: true,
@@ -1027,6 +1246,7 @@ mod tests {
         assert_eq!(
             ClassTextTerminalFacts::fixed_font_size_text("cardinality"),
             ClassTextTerminalFacts {
+                paint_observation: None,
                 visible_runs: 1,
                 inherited_color_runs: 1,
                 color_ownership_unverified: false,
@@ -1126,6 +1346,7 @@ mod tests {
         );
         let unknown = ClassTextTerminalFacts::unverified_text("Math");
         let checkpoint = |facts| ClassTextTerminalCheckpoint {
+            expected_paint: None,
             expected_visible: true,
             observed: Some(facts),
         };
@@ -1263,6 +1484,7 @@ mod tests {
         unverified.nodes.insert(
             "A".into(),
             ClassTextTerminalCheckpoint {
+                expected_paint: None,
                 expected_visible: true,
                 observed: Some(ClassTextTerminalFacts::new(1, 0, 0, 1)),
             },

@@ -28,8 +28,8 @@ pub(crate) use terminal::{
     ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
 };
 pub(crate) use text::{
-    ClassNodeLabelStyleFacts, ClassTextTerminalFacts, ClassTextThemePlan, ClassTextThemeReceipt,
-    ClassTypographyCssEmission,
+    ClassNodeLabelStyleFacts, ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan,
+    ClassTextThemeReceipt, ClassTypographyCssEmission,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -233,6 +233,13 @@ impl ClassRelationThemePlan {
         self.namespace_title_plan =
             ClassNamespaceTitleThemePlan::resolve(theme, config, cluster_count, work_meter)?;
         Ok(self)
+    }
+
+    pub(crate) fn namespace_title_fill(&self) -> Option<(usize, &str)> {
+        self.namespace_title_plan
+            .fill
+            .as_ref()
+            .map(|paint| (paint.rule_index, paint.css.as_str()))
     }
 
     pub(crate) fn namespace_title_terminal(&self) -> Option<(usize, &str)> {

@@ -19,6 +19,7 @@ use super::rough::{
 };
 
 pub(super) struct ClassNoteRenderContext<'a> {
+    pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
@@ -56,6 +57,13 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     let content_bounds = &mut *state.content_bounds;
     let mut stats = ClassNoteRenderStats::default();
 
+    let note_label_style = super::label::class_node_label_style(
+        "text-align:left !important;white-space:nowrap !important",
+        None,
+    );
+    let note_label_style = ctx.text_paint.map_or(note_label_style.clone(), |paint| {
+        format!("{note_label_style};{}", paint.style())
+    });
     let note_src = note.text.trim();
     let note_text = decode_entities_minimal_cow(note_src);
     let (label_w_raw, label_h_raw) = if ctx.use_html_labels {
@@ -205,7 +213,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="{}" class="{}">"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -217,6 +225,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_w),
             fmt(label_h),
             escape_attr_display(&note_div_style),
+            escape_attr_display(&note_label_style),
             note_span_class,
         );
         let sanitize_start = ctx.timing.start();
@@ -239,7 +248,6 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         out.push_str(&note_html);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
-        let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(out, r#"<g class="{}" id=""#, note_node_class);
         let _ = write!(out, "{}", ctx.diagram_id);
         ctx.emit.checkpoint()?;
@@ -252,15 +260,18 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(position.node_ty),
             note_shape,
             note_label_class,
-            escape_attr_display(note_label_style),
+            escape_attr_display(&note_label_style),
             fmt(label_x),
             fmt(label_y),
         );
-        write_class_svg_text_markdown_with_style(out, note_text.as_ref(), note_label_style);
+        write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
         out.push_str("</g></g></g>");
         let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
         stats.typography = crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
     }
 
+    if let Some(paint) = ctx.text_paint {
+        stats.typography = paint.observe(stats.typography, &note_label_style);
+    }
     Ok(stats)
 }

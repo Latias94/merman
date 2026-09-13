@@ -60,6 +60,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         ),
         options.work_meter(),
     )?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        typography_theme.bind_paint_expectations(
+            receipt,
+            &node_expectations,
+            relation_theme.namespace_title_terminal(),
+            model.notes.iter().map(|note| note.id.as_str()),
+        );
+    }
     let node_expectations_by_id = node_expectations
         .iter()
         .map(|expectation| (expectation.id(), expectation))
@@ -189,6 +197,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             "edgePaths"
         },
         relation_theme,
+        text_paint: typography_theme.edge_paint(),
         emit,
     };
 
@@ -286,9 +295,15 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     if let Some(title) = view_box.title.as_ref() {
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText">{}</text>"#,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText"{}>{}</text>"#,
             fmt(title.x),
             fmt(title.y),
+            typography_theme
+                .title_paint()
+                .map_or_else(String::new, |paint| format!(
+                    r#" style="{}""#,
+                    escape_attr_display(paint.style())
+                )),
             escape_xml_display(title.text)
         );
         out.checkpoint()?;
@@ -300,6 +315,9 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             .map_or_else(crate::class::ClassTextTerminalFacts::default, |title| {
                 crate::class::ClassTextTerminalFacts::inherited_text(title.text)
             });
+        let facts = typography_theme
+            .title_paint()
+            .map_or(facts, |paint| paint.observe(facts, paint.style()));
         receipt.record_diagram_title(facts);
     }
 

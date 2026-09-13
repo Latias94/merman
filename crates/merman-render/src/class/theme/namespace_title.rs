@@ -51,12 +51,13 @@ impl ClassNamespaceTitleThemePlan {
             plan.fill = resolve_direct_static_fill(
                 theme,
                 &style,
-                &[ThemeTarget::Title],
+                &[ThemeTarget::Title, ThemeTarget::Text],
                 DirectStaticSelectorDomain::Default,
             )
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
                 ExpectedPaint {
+                    target: ThemeTarget::Title,
                     rule_index,
                     css: css.into_string(),
                 }

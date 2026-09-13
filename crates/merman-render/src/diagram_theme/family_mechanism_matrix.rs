@@ -1830,7 +1830,7 @@ pub(super) fn classify_rule_facet(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
             ) | (
-                ThemeTarget::NodeLabel | ThemeTarget::Title,
+                ThemeTarget::NodeLabel | ThemeTarget::Title | ThemeTarget::Text,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )

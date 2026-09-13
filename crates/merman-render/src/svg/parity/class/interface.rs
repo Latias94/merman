@@ -134,10 +134,11 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
             )
             .with_terminal_verified(label_fill_verified),
         ),
-        typography: if math_html.is_some() {
+        typography: (if math_html.is_some() {
             crate::class::ClassTextTerminalFacts::unverified_text(label_text.as_ref())
         } else {
             crate::class::ClassTextTerminalFacts::inherited_text(label_text.as_ref())
-        },
+        })
+        .with_paint(emitted_label_fill, &label_style),
     })
 }

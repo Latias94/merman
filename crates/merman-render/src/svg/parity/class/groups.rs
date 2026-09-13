@@ -35,6 +35,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
     pub(super) edge_paths_class: &'static str,
+    pub(super) text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -135,6 +136,7 @@ fn local_edge_context<'a>(
         timing: ctx.timing,
         edge_paths_class: ctx.edge_paths_class,
         relation_theme: ctx.relation_theme,
+        text_paint: ctx.text_paint,
         emit: ctx.emit,
     }
 }

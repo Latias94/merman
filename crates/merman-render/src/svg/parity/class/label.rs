@@ -181,6 +181,18 @@ pub(super) fn write_class_svg_edge_text_markdown(
     crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
 }
 
+pub(super) fn write_class_svg_edge_text_markdown_with_style(
+    out: &mut impl SvgOutput,
+    markdown: &str,
+    style: Option<&str>,
+) {
+    crate::svg::parity::label::write_svg_text_markdown_centered_with_style(
+        out,
+        markdown,
+        Some(style.unwrap_or("")),
+    );
+}
+
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
     let max_width_px = max_width_px.max(0);
     if width >= max_width_px as f64 - 0.01 {

@@ -11,6 +11,7 @@ pub(super) struct ExpectedStroke {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ExpectedPaint {
+    pub(super) target: ThemeTarget,
     pub(super) rule_index: usize,
     pub(super) css: String,
 }
@@ -71,6 +72,10 @@ impl ClassNodeTerminalExpectation {
 
     pub(crate) fn typed_label_fill(&self, source_owns: bool) -> Option<(usize, &str)> {
         typed_paint(&self.label_fill, source_owns)
+    }
+
+    pub(crate) fn label_fill_target(&self) -> Option<ThemeTarget> {
+        self.label_fill.as_ref().map(|paint| paint.target)
     }
 
     fn expected_paint(
@@ -952,7 +957,7 @@ fn hand_drawn_stroke_matches(
     }
 }
 
-fn terminal_paint<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+pub(super) fn terminal_paint<'a>(style: &'a str, property: &str) -> Option<&'a str> {
     style
         .split(';')
         .filter_map(crate::mermaid_style::parse_style_declaration)
@@ -975,6 +980,7 @@ mod tests {
 
     fn expected_paint(rule_index: usize, css: &str) -> Option<ExpectedPaint> {
         Some(ExpectedPaint {
+            target: ThemeTarget::Node,
             rule_index,
             css: css.to_string(),
         })

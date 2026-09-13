@@ -63,6 +63,7 @@ impl ClassClusterThemePlan {
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
                 ExpectedPaint {
+                    target: ThemeTarget::Cluster,
                     rule_index,
                     css: css.into_string(),
                 }
@@ -78,6 +79,7 @@ impl ClassClusterThemePlan {
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
                 ExpectedPaint {
+                    target: ThemeTarget::Cluster,
                     rule_index,
                     css: css.into_string(),
                 }

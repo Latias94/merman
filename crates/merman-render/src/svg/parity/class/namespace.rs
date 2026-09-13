@@ -137,7 +137,10 @@ fn render_class_namespace_cluster_at(
             typography.has_verified_inherited_paint(),
         );
     }
-    Ok(typography)
+    Ok(typography.with_paint(
+        ctx.relation_theme.namespace_title_fill(),
+        title_paint.map_or("", |(_, style)| style),
+    ))
 }
 
 fn class_namespace_title_html(
