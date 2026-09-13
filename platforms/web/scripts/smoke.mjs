@@ -374,7 +374,9 @@ assert.equal(themeCatalog.schema_version, 3);
 if (hasCapability("svg")) {
   assert.equal(themeCatalog.structured_spec_available, true);
   assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);
-  assert.ok(themeCatalog.presets.length > 0);
+  assert.deepEqual(themeCatalog.presets, JSON.parse(await readFile(path.join(
+    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
+  ), "utf8")));
   assert.ok(themeCatalog.presets.every(({ maturity }) => maturity === "alpha"));
   assert.ok(themeCatalog.known_capability_ids.includes("semantic-rules"));
   assert.ok(themeCatalog.known_text_capability_ids.includes("opentype-shaping"));

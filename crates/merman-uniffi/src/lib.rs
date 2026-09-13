@@ -3276,13 +3276,11 @@ mod tests {
         assert_eq!(theme_catalog["schema_version"], 3);
         if has_svg {
             assert_eq!(theme_catalog["structured_spec_available"], true);
-            assert!(
-                theme_catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|preset| preset["id"] == "one-dark")
-            );
+            let presets: serde_json::Value = serde_json::from_str(include_str!(
+                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+            ))
+            .unwrap();
+            assert_eq!(theme_catalog["presets"], presets);
             assert!(
                 theme_catalog["known_semantic_target_ids"]
                     .as_array()

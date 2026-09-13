@@ -1754,76 +1754,11 @@ mod tests {
                 catalog["presets"],
                 serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap()
             );
-            assert_eq!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|preset| preset["id"].as_str().unwrap())
-                    .collect::<Vec<_>>(),
-                vec![
-                    "editor-light",
-                    "editor-dark",
-                    "one-dark",
-                    "gruvbox-light",
-                    "gruvbox-dark",
-                    "ayu-light",
-                    "ayu-dark",
-                    "brutalist",
-                    "spotless",
-                    "cyberpunk",
-                ]
-            );
-            assert_eq!(catalog["presets"][1]["appearance"], "dark");
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["maturity"] == "alpha")
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["available"] == true)
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["availability_reason_ids"] == serde_json::json!([]))
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["qualified_cells"] == serde_json::json!([]))
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["license_expression"] == "MIT OR Apache-2.0")
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["required_attribution"].is_null())
-            );
-            assert!(
-                catalog["presets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|preset| preset["export_kind"] == "complete_spec")
-            );
+            let expected_presets: Value = serde_json::from_str(include_str!(
+                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+            ))
+            .unwrap();
+            assert_eq!(catalog["presets"], expected_presets);
             assert!(
                 catalog["known_capability_ids"]
                     .as_array()

@@ -4849,6 +4849,13 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                         )
                     };
                     assert_eq!(actual, expected, "{metadata_id}");
+                    if metadata_id == "theme-catalog" && cfg!(feature = "svg") {
+                        let catalog: serde_json::Value = serde_json::from_slice(actual).unwrap();
+                        let presets: serde_json::Value = serde_json::from_str(include_str!(
+                            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
+                        )).unwrap();
+                        assert_eq!(catalog["presets"], presets);
+                    }
                 }
                 Err(expected) => {
                     let expected_status = native_failure_from_binding(expected.clone()).status;

@@ -107,6 +107,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
   const counts = {
     schema_version: 1,
     shared_vectors: 0,
+    catalog_checks: 0,
     family_isolation_checks: 0,
     rule_override_checks: 0,
     cold_spec_checks: 0,
@@ -148,6 +149,14 @@ export async function runThemeAuthoringSmoke(module, engine) {
 
   const fresh = await module.createNodeEngine();
   try {
+    const expectedPresets = JSON.parse(await readFile(new URL("preset-catalog.json", FIXTURES), "utf8"));
+    for (const client of [engine, fresh]) {
+      const catalog = JSON.parse(client.metadataJson("theme-catalog"));
+      assert.equal(catalog.schema_version, 3);
+      assert.equal(catalog.structured_spec_available, true);
+      assert.deepEqual(catalog.presets, expectedPresets);
+      counts.catalog_checks += 1;
+    }
     const definitions = {};
     for (const name of ["light", "dark"]) {
       const readable = await readFile(new URL(`${name}.definition.json`, FIXTURES), "utf8");

@@ -92,6 +92,13 @@ def run_theme_authoring_smoke() -> None:
     engine = merman.MermanEngine(None, None)
     fresh = merman.MermanEngine(None, None)
     try:
+        expected_presets = json.loads((FIXTURES / "preset-catalog.json").read_text(encoding="utf-8"))
+        for client in (api, engine, fresh):
+            catalog = json.loads(client.theme_catalog_json())
+            require(catalog["schema_version"] == 3, "unexpected theme catalog schema")
+            require(catalog["structured_spec_available"] is True, "theme spec unavailable")
+            require(fixture_canonical_bytes(catalog["presets"]) == fixture_canonical_bytes(expected_presets),
+                    "preset catalog differs from shared golden")
         error_vectors = json.loads((FIXTURES / "errors.json").read_text(encoding="utf-8"))
         for vector in error_vectors:
             for client in (api, engine):
@@ -197,7 +204,7 @@ def run_theme_authoring_smoke() -> None:
                 require(support == vector["expected"],
                         f"{vector['id']} support descriptor differs from shared golden")
         print("Python theme authoring passed: shared vectors, three families, isolation, "
-              "rule, cold start, preset export, discovery")
+              "rule, cold start, preset export, catalog, discovery")
     finally:
         fresh.close()
         engine.close()
