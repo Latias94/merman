@@ -12,12 +12,14 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod cluster;
 mod evidence;
+mod namespace_title;
 mod node;
 mod terminal;
 mod typography;
 
 use cluster::ClassClusterThemePlan;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
+use namespace_title::ClassNamespaceTitleThemePlan;
 use node::ClassNodeThemePlan;
 pub(crate) use terminal::ClassTerminalReceiptSummary;
 use terminal::ExpectedStroke;
@@ -60,6 +62,7 @@ pub(crate) struct ClassRelationThemePlan {
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
     cluster_plan: ClassClusterThemePlan,
+    namespace_title_plan: ClassNamespaceTitleThemePlan,
     track_edge_label_backgrounds: bool,
     mermaid_owns_edge_label_background: bool,
 }
@@ -211,6 +214,7 @@ impl ClassRelationThemePlan {
             ordinal_winner_rules,
             node_plan,
             cluster_plan: ClassClusterThemePlan::default(),
+            namespace_title_plan: ClassNamespaceTitleThemePlan::default(),
             track_edge_label_backgrounds,
             mermaid_owns_edge_label_background,
         })
@@ -225,7 +229,16 @@ impl ClassRelationThemePlan {
     ) -> Result<Self, OperationWorkError> {
         self.cluster_plan =
             ClassClusterThemePlan::resolve(theme, config, cluster_count, work_meter)?;
+        self.namespace_title_plan =
+            ClassNamespaceTitleThemePlan::resolve(theme, config, cluster_count, work_meter)?;
         Ok(self)
+    }
+
+    pub(crate) fn namespace_title_terminal(&self) -> Option<(usize, &str)> {
+        self.namespace_title_plan
+            .fill
+            .as_ref()
+            .map(|paint| (paint.rule_index, self.namespace_title_plan.terminal_style()))
     }
 
     pub(crate) fn cluster_terminal_style(&self) -> &str {
@@ -310,6 +323,7 @@ impl ClassRelationThemePlan {
                 self.cluster_plan.fill.clone(),
                 self.cluster_plan.stroke.clone(),
             )
+            .with_namespace_title(self.namespace_title_plan.fill.clone())
     }
 
     pub(crate) fn resolve_node_expectations(

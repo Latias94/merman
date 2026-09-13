@@ -57,10 +57,29 @@ fn render_class_namespace_cluster(
     ctx: ClassNamespaceClusterGroupContext<'_>,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
 ) -> Result<crate::class::ClassTypographyTerminalFacts> {
+    render_class_namespace_cluster_at(
+        out,
+        content_bounds,
+        cluster,
+        (
+            cluster.x - cluster.width.max(1.0) / 2.0 + ctx.content_tx,
+            cluster.y - cluster.height.max(1.0) / 2.0 + ctx.content_ty,
+        ),
+        ctx,
+        theme_receipt,
+    )
+}
+
+fn render_class_namespace_cluster_at(
+    out: &mut impl SvgOutput,
+    content_bounds: &mut Option<Bounds>,
+    cluster: &LayoutCluster,
+    (left, top): (f64, f64),
+    ctx: ClassNamespaceClusterGroupContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+) -> Result<crate::class::ClassTypographyTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
-    let left = cluster.x - w / 2.0 + ctx.content_tx;
-    let top = cluster.y - h / 2.0 + ctx.content_ty;
     include_xywh(
         content_bounds,
         left + ctx.bounds_dx,
@@ -81,14 +100,14 @@ fn render_class_namespace_cluster(
         label_h,
     );
 
-    let (title_html, typography) = class_namespace_title_html(&cluster.title, ctx);
+    let (title_html, typography, inherits_paint) = class_namespace_title_html(&cluster.title, ctx);
     let terminal_style = ctx.relation_theme.cluster_terminal_style();
     out.push_str(r#"<g class="cluster undefined" id=""#);
     let _ = write!(out, "{}", ctx.diagram_id);
     ctx.emit.checkpoint()?;
     let _ = write!(
         out,
-        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+        r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel""#,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
@@ -100,27 +119,42 @@ fn render_class_namespace_cluster(
         fmt(label_y),
         fmt(label_w),
         MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
-        title_html
     );
+    let title_paint = ctx.relation_theme.namespace_title_terminal();
+    if let Some((_, style)) = title_paint {
+        let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
+    }
+    let _ = write!(out, ">{title_html}</span></div></foreignObject></g></g>");
     out.checkpoint()?;
     let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
     theme_receipt.record_cluster(&cluster.id, fill_rule, stroke_rule, terminal_style);
+    if let Some((rule, style)) = title_paint {
+        theme_receipt.record_namespace_title(
+            &cluster.id,
+            rule,
+            style,
+            label_w > 0.0 && !cluster.title.trim().is_empty(),
+            inherits_paint,
+        );
+    }
     Ok(typography)
 }
 
 fn class_namespace_title_html(
     title: &str,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> (String, crate::class::ClassTypographyTerminalFacts) {
+) -> (String, crate::class::ClassTypographyTerminalFacts, bool) {
     if let Some(math_html) = class_math_html_label(title, ctx.mermaid_config, ctx.math_renderer) {
         return (
             math_html,
             crate::class::ClassTypographyTerminalFacts::unverified_text(title),
+            false,
         );
     }
     (
         format!("<p>{}</p>", escape_xml_display(title)),
         crate::class::ClassTypographyTerminalFacts::inherited_text(title),
+        true,
     )
 }
 
@@ -161,50 +195,18 @@ pub(super) fn render_class_namespace_clusters_in_root(
                 c.y - h / 2.0 + ctx.content_ty - root_dy,
             )
         };
-        include_xywh(
-            content_bounds,
-            left + root_dx + ctx.bounds_dx,
-            top + root_dy + ctx.bounds_dy,
-            w,
-            h,
-        );
-
-        let label_w = c.title_label.width.max(0.0);
-        let label_h = 24.0;
-        let label_x = left + (w - label_w) / 2.0;
-        let label_y = top + c.title_margin_top;
-        include_xywh(
-            content_bounds,
-            label_x + root_dx + ctx.bounds_dx,
-            label_y + root_dy + ctx.bounds_dy,
-            label_w,
-            label_h,
-        );
-
-        let (title_html, typography) = class_namespace_title_html(&c.title, ctx);
-        let terminal_style = ctx.relation_theme.cluster_terminal_style();
-        out.push_str(r#"<g class="cluster undefined" id=""#);
-        let _ = write!(out, "{}", ctx.diagram_id);
-        ctx.emit.checkpoint()?;
-        let _ = write!(
+        let typography = render_class_namespace_cluster_at(
             out,
-            r#"-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-            escape_attr_display(&c.id),
-            escape_attr_display(ctx.look),
-            fmt(left),
-            fmt(top),
-            fmt(w),
-            fmt(h),
-            escape_attr_display(terminal_style),
-            fmt(label_x),
-            fmt(label_y),
-            fmt(label_w),
-            MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
-            title_html
-        );
-        out.checkpoint()?;
-        let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
-        theme_receipt.record_cluster(&c.id, fill_rule, stroke_rule, terminal_style);
+            content_bounds,
+            c,
+            (left, top),
+            ClassNamespaceClusterGroupContext {
+                bounds_dx: root_dx + ctx.bounds_dx,
+                bounds_dy: root_dy + ctx.bounds_dy,
+                ..ctx
+            },
+            theme_receipt,
+        )?;
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_namespace(&c.id, typography);
         }

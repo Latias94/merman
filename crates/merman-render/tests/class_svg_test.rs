@@ -4474,3 +4474,298 @@ fn class_extracted_namespace_receipts_follow_source_relations() {
         }
     }
 }
+
+#[test]
+fn class_namespace_title_scalar_has_a_direct_terminal() {
+    for source in [
+        "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nX --> A\n",
+        "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nclass Y\nX --> Y\n",
+    ] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = class_edge_rules_theme([rule]);
+                for look in ["classic", "neo", "handDrawn"] {
+                    let rendered = try_render_class_svg_with_theme_and_engine(
+                        source,
+                        &theme,
+                        Engine::new()
+                            .with_site_config(MermaidConfig::from_value(json!({"look":look}))),
+                    )
+                    .expect("typed Class namespace title scalar paint");
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let labels = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("span")
+                                && node.attribute("class") == Some("nodeLabel")
+                                && node.ancestors().any(|parent| {
+                                    parent.attribute("class") == Some("cluster-label")
+                                })
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(labels.len(), 1);
+                    assert_eq!(
+                        labels[0].attribute("style"),
+                        Some(format!("color:{css} !important;fill:{css} !important;").as_str())
+                    );
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                    assert_eq!(evidence.compatibility_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_namespace_title_reconciles_absence_ownership_and_unsupported_siblings() {
+    let rule = || {
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    let source = "classDiagram\nnamespace Internal {\nclass A\n}\n";
+    let theme = class_edge_rules_theme([rule()]);
+    for (source, engine) in [
+        (
+            "---\ntitle: Diagram title\n---\nclassDiagram\nclass A\n",
+            Engine::new(),
+        ),
+        (
+            source,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"themeVariables":{"titleColor":"#abcdef"}}),
+            )),
+        ),
+    ] {
+        let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine).unwrap();
+        assert!(!rendered.svg().contains("color:#123456 !important;"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    for ordinal in [1, 2] {
+        let theme = class_edge_rules_theme([
+            rule(),
+            ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+            )
+            .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+        ]);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), usize::from(ordinal == 1));
+        assert_eq!(evidence.not_applicable_count(), usize::from(ordinal == 2));
+    }
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#456789").unwrap()),
+    )]);
+    let rendered = try_render_class_svg_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn class_namespace_title_keeps_generic_text_author_order() {
+    for title_last in [false, true] {
+        let title = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+        );
+        let theme = class_edge_rules_theme(if title_last {
+            [text, title]
+        } else {
+            [title, text]
+        });
+        let rendered = try_render_class_svg_with_theme_requirement(
+            "classDiagram\nnamespace Internal {\nclass A\n}\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert_eq!(
+            rendered
+                .svg()
+                .contains("color:#123456 !important;fill:#123456 !important;"),
+            title_last
+        );
+        if !title_last {
+            assert!(
+                rendered
+                    .svg()
+                    .contains(".cluster-label span{color:#456789;}")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(title_last));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
+        assert!(evidence.compatibility_residual_count() > 0);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_namespace_title_uses_the_same_terminal_under_elk() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "---\nconfig:\n  layout: elk\n---\nclassDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\n", &theme, Engine::new()).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(document.descendants().any(|node| node.has_tag_name("span")
+        && node.attribute("class") == Some("nodeLabel")
+        && node.attribute("style") == Some("color:#123456 !important;fill:#123456 !important;")));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_namespace_title_preserves_derived_source_ownership() {
+    let source = "classDiagram\nnamespace Internal {\nclass A\n}\n";
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for (selected, variable, owned) in [
+        ("default", "textColor", true),
+        ("base", "tertiaryTextColor", true),
+        ("base", "primaryBorderColor", false),
+    ] {
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "theme": selected, "themeVariables": {variable: "#456789"}
+            }))),
+        )
+        .unwrap();
+        assert_eq!(rendered.svg().contains("color:#123456 !important;"), !owned);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(!owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_namespace_title_clear_retains_only_winning_residuals() {
+    let source = "classDiagram\nnamespace Internal {\nclass A\n}\n";
+    for title_last in [false, true] {
+        let mut clear = ThemeStylePatch::default();
+        clear.paint.fill = Specified::Clear;
+        let title = ThemeRule::new(ThemeTarget::Title, clear);
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+        );
+        let theme = class_edge_rules_theme(if title_last {
+            [text, title]
+        } else {
+            [title, text]
+        });
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), usize::from(title_last));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
+        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn class_namespace_math_title_cannot_prove_inherited_paint() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let source = "classDiagram\nnamespace Formula[\"value: $$x^2$$\"] {\nclass A\n}\n";
+    let engine =
+        || Engine::new().with_site_config(MermaidConfig::from_value(json!({"htmlLabels":true})));
+    let environment = || RenderEnvironment::deterministic().with_compiled_math_renderer();
+    let rendered = try_render_class_svg_with_theme_environment(
+        source,
+        &theme,
+        engine(),
+        ThemePortabilityRequirement::BestEffort,
+        environment(),
+    )
+    .expect("valid mathematical namespace title");
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"data-merman-math-native="unavailable""#)
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 0);
+    assert_eq!(
+        evidence.status(),
+        merman_render::__private::FamilyEvidenceStatus::Incomplete
+    );
+    let error = match try_render_class_svg_with_theme_environment(
+        source,
+        &theme,
+        engine(),
+        ThemePortabilityRequirement::RequirePortable,
+        environment(),
+    ) {
+        Ok(_) => panic!("formula glyph paint is not proven by inherited namespace shell color"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.incomplete_family_theme(),
+        Some((merman_render::DiagramFamilyId::CLASS, 1, 0))
+    );
+}

@@ -406,7 +406,7 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_RADAR_AXIS_PAINT),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
@@ -1830,7 +1830,7 @@ pub(super) fn classify_rule_facet(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
             ) | (
-                ThemeTarget::NodeLabel,
+                ThemeTarget::NodeLabel | ThemeTarget::Title,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
@@ -3982,8 +3982,8 @@ mod tests {
                         FamilyThemeSelectorShape::Static { variant },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility,
-                    "Class Title.fill still owns visible namespace labels",
+                    FamilyThemeDisposition::TypedAdapter,
+                    "Class Title.fill directly owns visible namespace labels",
                 );
             }
 
@@ -5893,6 +5893,20 @@ mod tests {
                 vec!["cluster.stroke"],
             ),
             (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
+            (
                 DiagramFamilyId::CYNEFIN,
                 ThemeTarget::Text,
                 Fill,
@@ -7393,7 +7407,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 234);
+        assert_eq!(qualified.len(), 236);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7500,7 +7514,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
-            14
+            16
         );
         assert_eq!(
             qualified
@@ -7720,6 +7734,9 @@ mod tests {
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::CLASS {
                 let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::TitleFill]
+                    }
                     (
                         ThemeTarget::Edge,
                         ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
@@ -8048,7 +8065,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 8)]
+            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 4)]
                 .into_iter()
                 .collect(),
             "bridge retirement must update the exact route ledger"

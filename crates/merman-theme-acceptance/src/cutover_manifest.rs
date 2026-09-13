@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 83;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 84;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    163, 244, 21, 246, 61, 81, 178, 207, 155, 110, 130, 78, 62, 12, 166, 89, 87, 108, 32, 81, 188,
-    17, 163, 5, 84, 176, 150, 75, 124, 210, 74, 61,
+    226, 141, 110, 56, 88, 70, 217, 138, 178, 145, 175, 94, 21, 144, 43, 48, 179, 4, 79, 235, 201,
+    229, 101, 1, 32, 85, 33, 227, 235, 138, 21, 81,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,7 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 466] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 470] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2595,6 +2595,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 466] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Title,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Title,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::CLASS,

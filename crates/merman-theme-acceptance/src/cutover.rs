@@ -473,6 +473,9 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
+        if route.family_id() == DiagramFamilyId::CLASS && route.target() == ThemeTarget::Title {
+            return &Self::TEXT_LOOKS;
+        }
         if route.family_id() == DiagramFamilyId::BLOCK
             && route.target() == ThemeTarget::EdgeLabelBackground
         {
@@ -760,6 +763,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::CYNEFIN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(CYNEFIN_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::CLASS, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(CLASS_CLUSTER_SOURCE)
         }
         (
             DiagramFamilyId::CLASS,
@@ -2435,11 +2441,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_466_routes_and_694_artifact_witnesses() {
+    fn route_inventory_retains_470_routes_and_706_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 466);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 694);
+        assert_eq!(inventory.len(), 470);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 706);
     }
 
     #[test]

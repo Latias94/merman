@@ -212,6 +212,7 @@ pub(crate) struct ClassRelationThemeReceipt {
     duplicate_expected_cluster: bool,
     expected_cluster_fill: Option<ExpectedPaint>,
     expected_cluster_stroke: Option<ExpectedPaint>,
+    expected_namespace_title: Option<ExpectedPaint>,
     cluster_events: BTreeMap<String, ClassClusterTerminalEvent>,
     duplicate_cluster_event: bool,
     expected_nodes: BTreeMap<String, ClassNodeTerminalExpectation>,
@@ -245,6 +246,7 @@ impl ClassRelationThemeReceipt {
             duplicate_expected_cluster: false,
             expected_cluster_fill: None,
             expected_cluster_stroke: None,
+            expected_namespace_title: None,
             cluster_events: BTreeMap::new(),
             duplicate_cluster_event: false,
             expected_nodes: BTreeMap::new(),
@@ -298,10 +300,54 @@ impl ClassRelationThemeReceipt {
             fill_rule,
             stroke_rule,
             terminal_style: terminal_style.to_string(),
+            title: None,
         };
         if self.cluster_events.insert(id.to_string(), event).is_some() {
             self.duplicate_cluster_event = true;
         }
+    }
+
+    pub(super) fn with_namespace_title(mut self, paint: Option<ExpectedPaint>) -> Self {
+        self.expected_namespace_title = paint;
+        self
+    }
+
+    pub(crate) fn record_namespace_title(
+        &mut self,
+        id: &str,
+        rule: usize,
+        style: &str,
+        visible: bool,
+        inherits_paint: bool,
+    ) {
+        let Some(cluster) = self.cluster_events.get_mut(id) else {
+            self.duplicate_cluster_event = true;
+            return;
+        };
+        if cluster.title.is_some() {
+            self.duplicate_cluster_event = true;
+        }
+        cluster.title = Some(ClassNamespaceTitleTerminalEvent {
+            rule,
+            style: style.to_string(),
+            visible,
+            inherits_paint,
+        });
+    }
+
+    pub(super) fn proves_typed_namespace_title(&self, rule: usize) -> bool {
+        !self.expected_clusters.is_empty()
+            && self
+                .expected_namespace_title
+                .as_ref()
+                .is_some_and(|paint| paint.rule_index == rule)
+            && self.proves_complete_cluster_emission()
+            && self.cluster_events.values().all(|event| {
+                event
+                    .title
+                    .as_ref()
+                    .is_some_and(|title| title.visible && title.inherits_paint)
+            })
     }
 
     fn proves_complete_cluster_emission(&self) -> bool {
@@ -320,7 +366,17 @@ impl ClassRelationThemeReceipt {
                         event.stroke_rule,
                         &event.terminal_style,
                         "stroke",
-                    )
+                    ) && match (&self.expected_namespace_title, &event.title) {
+                        (None, None) => true,
+                        (Some(expected), Some(title)) => {
+                            title.rule == expected.rule_index
+                                && terminal_paint(&title.style, "color")
+                                    == Some(expected.css.as_str())
+                                && terminal_paint(&title.style, "fill")
+                                    == Some(expected.css.as_str())
+                        }
+                        _ => false,
+                    }
                 })
             })
     }
@@ -633,6 +689,11 @@ impl ClassRelationThemeReceipt {
                 .saturating_mul(NODE_PAINT_TARGETS.len())
                 .saturating_add(self.expected_clusters.len().saturating_mul(2))
                 .saturating_add(self.cluster_events.len().saturating_mul(2))
+                .saturating_add(if self.expected_namespace_title.is_some() {
+                    self.expected_clusters.len().saturating_mul(2)
+                } else {
+                    0
+                })
                 .saturating_add(self.expected_relations.len())
                 .saturating_add(self.relation_events.len())
                 .saturating_add(self.expected_note_attachments.len())
@@ -739,7 +800,16 @@ const NODE_PAINT_TARGETS: [(ThemeTarget, ResolvedStyleProperty); 3] = [
 ];
 
 #[derive(Debug, Clone)]
+struct ClassNamespaceTitleTerminalEvent {
+    rule: usize,
+    style: String,
+    visible: bool,
+    inherits_paint: bool,
+}
+
+#[derive(Debug, Clone)]
 struct ClassClusterTerminalEvent {
+    title: Option<ClassNamespaceTitleTerminalEvent>,
     fill_rule: Option<usize>,
     stroke_rule: Option<usize>,
     terminal_style: String,
@@ -1584,5 +1654,58 @@ mod tests {
             None,
             false,
         );
+    }
+    #[test]
+    fn namespace_title_receipt_requires_the_complete_visible_color_terminal() {
+        let expected = || {
+            let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+                .with_clusters(vec!["Outer".into()], None, None)
+                .with_namespace_title(expected_paint(3, "#123456"));
+            receipt.record_cluster("Outer", None, None, "");
+            receipt
+        };
+        let mut complete = expected();
+        assert!(!complete.proves_complete());
+        complete.record_namespace_title(
+            "Outer",
+            3,
+            "color:#123456 !important;fill:#123456 !important;",
+            true,
+            true,
+        );
+        assert!(complete.proves_complete());
+        assert!(complete.proves_typed_namespace_title(3));
+        assert!(!complete.proves_typed_namespace_title(4));
+        for (id, rule, style, visible, inherits) in [
+            ("Foreign", 3, "color:#123456;fill:#123456;", true, true),
+            ("Outer", 4, "color:#123456;fill:#123456;", true, true),
+            ("Outer", 3, "fill:#123456;", true, true),
+            ("Outer", 3, "color:#123456;", true, true),
+            ("Outer", 3, "color:#123456;fill:#654321;", true, true),
+        ] {
+            let mut receipt = expected();
+            receipt.record_namespace_title(id, rule, style, visible, inherits);
+            assert!(
+                !receipt.proves_complete(),
+                "accepted {id} {rule} {style} {visible} {inherits}"
+            );
+        }
+        for (visible, inherits) in [(false, true), (true, false)] {
+            let mut receipt = expected();
+            receipt.record_namespace_title(
+                "Outer",
+                3,
+                "color:#123456;fill:#123456;",
+                visible,
+                inherits,
+            );
+            assert!(
+                receipt.proves_complete(),
+                "a valid terminal can lack paint evidence"
+            );
+            assert!(!receipt.proves_typed_namespace_title(3));
+        }
+        complete.record_namespace_title("Outer", 3, "color:#123456;fill:#123456;", true, true);
+        assert!(!complete.proves_complete());
     }
 }

@@ -639,6 +639,7 @@ fn compile_node_family(
             ],
         );
     }
+    // Class generic Text still projects to namespace titleColor; typed Title no longer does.
     // Block has no diagram-title terminal, including for the generic Text fallback.
     if family == DiagramFamilyId::CLASS {
         contributions.add_theme_variables(
@@ -2056,14 +2057,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 40);
+        assert_eq!(status.matrix_route_count(), 36);
         assert_eq!(status.matrix_family_count(), 2);
         assert_eq!(status.dispatched_family_count(), 2);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                78, 231, 114, 5, 82, 75, 181, 188, 219, 97, 104, 194, 58, 131, 110, 109, 65, 92,
-                41, 86, 57, 10, 231, 78, 108, 164, 54, 22, 162, 66, 76, 101
+                75, 56, 125, 23, 99, 215, 193, 58, 26, 81, 213, 103, 248, 165, 22, 93, 229, 218,
+                36, 250, 53, 95, 108, 46, 162, 213, 1, 234, 227, 224, 150, 133
             ]
         );
         assert_eq!(
@@ -4021,12 +4022,12 @@ gitGraph
     }
 
     #[test]
-    fn class_default_node_surfaces_stay_typed_when_title_keeps_the_bridge_active() {
+    fn class_default_node_surfaces_stay_typed_when_text_keeps_the_bridge_active() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
                     ThemeRule::new(
-                        ThemeTarget::Title,
+                        ThemeTarget::Text,
                         ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
                     )
                     .for_family(DiagramFamilyId::CLASS),
@@ -4096,13 +4097,17 @@ gitGraph
         }
 
         let evidence = theme_parse_evidence(&parsed);
-        assert_eq!(evidence.fallback_contribution_count(), 1);
+        assert_eq!(evidence.fallback_contribution_count(), 2);
         assert_eq!(
             evidence
                 .fallback_contributions()
                 .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.titleColor"])
+            BTreeSet::from([
+                "themeVariables.titleColor",
+                "themeVariables.secondaryTextColor",
+                "themeVariables.tertiaryTextColor"
+            ])
         );
     }
 
@@ -4267,7 +4272,7 @@ gitGraph
                         artifact
                             .contribution_ids
                             .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.title.fill")),
-                        family == DiagramFamilyId::CLASS,
+                        family == DiagramFamilyId::CLASS && target == ThemeTarget::Text,
                         "family={family}, target={target:?}, variant={variant:?}"
                     );
                 }
@@ -4276,7 +4281,7 @@ gitGraph
     }
 
     #[test]
-    fn class_title_fill_projects_to_the_visible_namespace_label_token() {
+    fn class_title_fill_leaves_namespace_label_config_to_the_typed_writer() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
@@ -4293,9 +4298,14 @@ gitGraph
 
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.titleColor"),
-            Some("#e2e8f0"),
+            parse(
+                &DiagramThemeSpec::default(),
+                "classDiagram\nnamespace Platform {\nclass Runtime\n}\n"
+            )
+            .effective_config
+            .get_str("themeVariables.titleColor"),
         );
-        assert_eq!(fallback_contribution_count(&parsed), 1);
+        assert_eq!(fallback_contribution_count(&parsed), 0);
     }
 
     #[test]

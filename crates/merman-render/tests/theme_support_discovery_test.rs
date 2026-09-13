@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 85);
+    assert_eq!(support.claim_revision(), 86);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -305,7 +305,7 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 85);
+        assert_eq!(support.claim_revision(), 86);
     }
 }
 
@@ -465,7 +465,7 @@ fn class_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
-fn class_namespace_title_remains_a_conditional_compatibility_surface() {
+fn class_namespace_title_reports_a_conditional_typed_surface() {
     let query = ThemeSupportQueryV1::known(
         DiagramFamilyId::CLASS.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
@@ -479,7 +479,7 @@ fn class_namespace_title_remains_a_conditional_compatibility_surface() {
     assert_eq!(
         support.reason_ids(),
         [
-            "theme-support.legacy-compatibility-only",
+            "theme-support.family-owned-consumer-present",
             "theme-support.public-value-domain-partial",
         ]
     );
@@ -1788,7 +1788,7 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.claim_revision(), 85);
+    assert_eq!(support.claim_revision(), 86);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),
