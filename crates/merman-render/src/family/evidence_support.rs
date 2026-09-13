@@ -481,6 +481,11 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
         if outcomes.is_empty() {
             continue;
         }
+        // Palette membership is invariant across this domain's terminal occurrences.
+        let palette_keys = observations
+            .keys()
+            .filter(|key| matches!(key, FamilyThemeMechanismKey::OrdinalPalette { .. }))
+            .collect::<Vec<_>>();
         domain.variants.for_each(|ordinal, variant| {
             work_meter.charge(1)?;
             let terminal_target = domain.resolution.terminal_target();
@@ -531,10 +536,7 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             if !domain.fill_is_overridden(ordinal)
                 && matches!(style.fill_resolution().specified(), Specified::Unspecified)
             {
-                for key in observations
-                    .keys()
-                    .filter(|key| matches!(key, FamilyThemeMechanismKey::OrdinalPalette { .. }))
-                {
+                for &key in &palette_keys {
                     let FamilyThemeMechanismKey::OrdinalPalette { target } = key else {
                         unreachable!("filtered palette key")
                     };
@@ -660,6 +662,141 @@ mod tests {
 
     fn work_meter() -> OperationWorkMeter {
         OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
+
+    fn static_label_stroke_workload(
+        rule_count: usize,
+        palettes: bool,
+        clear_fill: bool,
+    ) -> ResolvedDiagramTheme {
+        let mut styles = (0..rule_count).fold(ThemeRuleSet::default(), |styles, _| {
+            styles.with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+            ))
+        });
+        if palettes {
+            let palette =
+                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+            for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+                styles = styles.with_ordinal_palette(target, palette.clone());
+            }
+        }
+        if clear_fill {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = Specified::Clear;
+            styles = styles.with_rule(ThemeRule::new(ThemeTarget::NodeLabel, patch));
+        }
+        resolved_spec(
+            DiagramFamilyId::MINDMAP,
+            DiagramThemeSpec::new().with_styles(styles),
+        )
+    }
+
+    #[test]
+    fn large_static_label_domains_preserve_palette_fallback_and_exact_work_limits() {
+        const RULES: usize = 511;
+        const OCCURRENCES: usize = 1_000;
+        for (palettes, clear_fill, source_owned) in [
+            (false, false, false),
+            (true, false, false),
+            (true, false, true),
+            (true, true, false),
+        ] {
+            let theme = static_label_stroke_workload(RULES, palettes, clear_fill);
+            let source_owned_fill = vec![source_owned; OCCURRENCES];
+            let domains = [UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                TerminalVariantDomain::uniform(OCCURRENCES, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned_fill)];
+            let required_work = theme.family_mechanism_routes().len() + OCCURRENCES;
+            let meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
+                    .unwrap(),
+            );
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
+                .unwrap();
+            assert_eq!(meter.used(), required_work);
+            let expected_rule_residuals = 1 + usize::from(clear_fill);
+            let palette_applies = palettes && !clear_fill && !source_owned;
+            assert_eq!(
+                evidence.residuals().len(),
+                expected_rule_residuals + 2 * usize::from(palette_applies)
+            );
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                RULES - 1 + 2 * usize::from(palettes && !palette_applies)
+            );
+            for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+                let key = FamilyThemeMechanismKey::OrdinalPalette { target };
+                assert_eq!(
+                    evidence
+                        .residuals()
+                        .iter()
+                        .any(|residual| residual.key() == &key),
+                    palette_applies
+                );
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().contains(&key),
+                    palettes && !palette_applies
+                );
+            }
+            let limited = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
+                    .unwrap(),
+            );
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            let error =
+                reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &limited)
+                    .unwrap_err();
+            assert!(matches!(
+                error,
+                OperationWorkError::ResourceLimitExceeded(_)
+            ));
+            assert_eq!(limited.used(), required_work - 1);
+        }
+    }
+
+    #[test]
+    #[ignore = "manual unsupported palette discovery benchmark"]
+    fn unsupported_palette_discovery_workload_benchmark() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        for rules in [1, 128, 512] {
+            let theme = static_label_stroke_workload(rules, false, false);
+            let domains = [UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                TerminalVariantDomain::uniform(1_000, ThemeVariant::Default),
+            )];
+            let mut samples = Vec::new();
+            for iteration in 0..9 {
+                let meter = work_meter();
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                let start = Instant::now();
+                reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &meter)
+                    .unwrap();
+                let elapsed = start.elapsed();
+                assert_eq!(evidence.residuals().len(), 1);
+                assert_eq!(evidence.not_applicable_mechanisms().len(), rules - 1);
+                assert_eq!(meter.used(), rules + 1_000);
+                black_box(evidence);
+                if iteration >= 2 {
+                    samples.push(elapsed);
+                }
+            }
+            samples.sort();
+            eprintln!(
+                "unsupported palette discovery: rules={rules}, terminals=1000, median={:?}",
+                samples[samples.len() / 2]
+            );
+        }
     }
 
     #[test]

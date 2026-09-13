@@ -1395,6 +1395,12 @@ unchanged. See the [State classification record](../knowledge/engineering/verifi
 for the 882-test owner scope, default-output gate, and exact boundaries. The full C5 closure audit
 and C7a delivery gates remain open.
 
+The same audit found repeated full mechanism-key scans while reconciling fallback palettes on
+Unsupported terminals. Palette membership is now prepared once per domain, removing that
+terminal-by-rule scan while retaining source ownership, Clear behavior, and resource thresholds.
+See the [bounded discovery record](../knowledge/engineering/verification/2026-09-13-unsupported-palette-domain-scan.md)
+for the exact complexity boundary and validation scope. This local repair does not close C5.
+
 ### C6a. Complete The Native Contract-Eligibility Slices
 
 - **Covers:** The native portions of R16a, R17-R24, R29-R32, R38-R41, and R44-R49.
