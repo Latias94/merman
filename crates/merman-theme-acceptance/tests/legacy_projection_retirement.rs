@@ -51,3 +51,39 @@ fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     assert_eq!(status.dispatch_only_family_count(), 0);
     assert!(!status.route_dispatch_is_empty());
 }
+
+#[test]
+fn class_edge_label_background_selector_has_no_historical_group_consumer() {
+    // Independent upstream SVG witnesses cover classic/Dagre, handDrawn/Dagre, and ELK.
+    // The fixture set does not expose a separate HTML/SVG switch for every look; this test
+    // records only dimensions represented by checked-in historical artifacts.
+    let fixtures = [
+        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"),
+        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.svg"),
+        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.svg"),
+    ];
+
+    for svg in fixtures {
+        assert!(svg.contains(".edgeLabel[data-look=\"neo\"]"));
+        let mut cursor = 0usize;
+        while let Some(relative) = svg[cursor..].find("<g class=\"edgeLabel\"") {
+            let start = cursor + relative;
+            let end = svg[start..]
+                .find("</g>")
+                .map(|offset| start + offset)
+                .unwrap_or(svg.len());
+            let group = &svg[start..end];
+            assert!(
+                !group.contains("data-look="),
+                "historical Class edgeLabel group unexpectedly carries data-look: {group}"
+            );
+            cursor = end.saturating_add(4);
+            if cursor >= svg.len() {
+                break;
+            }
+        }
+        assert!(svg.contains(".edgeLabel .label rect{fill:"));
+        assert!(svg.contains(".labelBkg{background:"));
+        assert!(svg.contains(".edgeLabel .label span{background:"));
+    }
+}
