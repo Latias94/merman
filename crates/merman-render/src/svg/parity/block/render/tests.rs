@@ -96,6 +96,12 @@ fn render_block_direct_with_layout(
         &layout,
         model,
         node_paint_theme,
+        &BlockLabelBackgroundPlan::resolve(
+            None,
+            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            execution.work_meter(),
+        )
+        .expect("background theme"),
         &typography_theme,
         effective_config,
         &execution,

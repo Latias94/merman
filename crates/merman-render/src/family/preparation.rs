@@ -132,6 +132,11 @@ fn prepare_block_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let label_background_theme = crate::block::BlockLabelBackgroundPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        execution.work_meter_ref(),
+    )?;
     let typography_theme = crate::block::BlockTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -169,6 +174,7 @@ fn prepare_block_family(
         BlockFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             node_paint_theme,
+            label_background_theme,
             typography_theme,
         },
     )))

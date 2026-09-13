@@ -875,6 +875,19 @@ impl FamilyThemeEvidence {
             self.mark_residual(residual.key, residual.reason);
         }
     }
+    /// Merge evidence from a plan that intentionally owns only a target subset.
+    pub(crate) fn merge_accounted_subset_from(&mut self, mut other: Self) {
+        for key in other.applied {
+            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
+            self.mark_applied_with_capabilities(key, capabilities);
+        }
+        for key in other.not_applicable {
+            self.mark_not_applicable(key);
+        }
+        for residual in other.residuals {
+            self.mark_residual(residual.key, residual.reason);
+        }
+    }
 
     #[cfg(test)]
     pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
@@ -1739,6 +1752,7 @@ impl VennFamilyArtifact {
 pub(crate) struct BlockFamilyArtifact {
     pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
+    label_background_theme: crate::block::BlockLabelBackgroundPlan,
     typography_theme: crate::block::BlockTypographyThemePlan,
 }
 
@@ -1753,12 +1767,17 @@ impl BlockFamilyArtifact {
         &self.node_paint_theme
     }
 
+    pub(crate) const fn label_background_theme(&self) -> &crate::block::BlockLabelBackgroundPlan {
+        &self.label_background_theme
+    }
+
     pub(crate) const fn typography_theme(&self) -> &crate::block::BlockTypographyThemePlan {
         &self.typography_theme
     }
 
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.node_paint_theme.finish_evidence();
+        evidence.merge_accounted_subset_from(self.label_background_theme.finish_evidence());
         evidence.merge_accounted_from(self.typography_theme.finish_evidence());
         evidence
     }

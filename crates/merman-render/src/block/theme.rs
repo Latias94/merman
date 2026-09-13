@@ -21,6 +21,44 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::BlockNodeShellKind;
 
+/// Block edge-label background owner; it shares the proven receipt implementation
+/// with Flowchart while remaining a family-local plan.
+#[derive(Debug)]
+pub(crate) struct BlockLabelBackgroundPlan(crate::flowchart::FlowchartLabelBackgroundPlan);
+
+impl BlockLabelBackgroundPlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        work: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        Ok(Self(
+            crate::flowchart::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?,
+        ))
+    }
+
+    pub(crate) fn color<'a>(&'a self, configured: &'a str) -> &'a str {
+        self.0.color(configured)
+    }
+
+    pub(crate) fn record_stylesheet(&self) {
+        self.0.record_stylesheet();
+    }
+
+    pub(crate) fn record_terminal(
+        &self,
+        has_area: bool,
+        background_emitted: bool,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        self.0.record_terminal(has_area, background_emitted, work)
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        self.0.finish_evidence()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockTypographyOutcome {
     Inactive,

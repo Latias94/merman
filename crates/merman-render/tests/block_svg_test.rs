@@ -1808,7 +1808,7 @@ fn absent_block_text_siblings_do_not_suppress_typed_node_paint() {
 }
 
 #[test]
-fn block_edge_label_background_legacy_route_has_a_real_css_consumer() {
+fn block_edge_label_background_typed_route_has_a_real_css_consumer() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -1835,7 +1835,8 @@ fn block_edge_label_background_legacy_route_has_a_real_css_consumer() {
             .contains("#block-theme .edgeLabel{background-color:#b316cd;")
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }

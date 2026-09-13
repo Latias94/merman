@@ -1479,7 +1479,7 @@ pub(super) fn classify_rule_facet(
     }
     if matches!(
         family,
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+        DiagramFamilyId::BLOCK | DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::EdgeLabelBackground
         && matches!(
             selector,

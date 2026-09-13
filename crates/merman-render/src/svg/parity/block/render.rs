@@ -1,8 +1,8 @@
 use super::super::*;
 use crate::block::{
-    BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind, BlockRectangleKind,
-    BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
-    block_label_is_effectively_empty,
+    BlockLabelBackgroundPlan, BlockNodePaintSourceOwnership, BlockNodePaintThemePlan,
+    BlockNodeShellKind, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+    BlockTypographyThemePlan, block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::parity::roughjs_common::{
@@ -316,6 +316,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
+    label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
@@ -673,6 +674,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
         typography_theme: &'a BlockTypographyThemePlan,
+        label_background_theme: &BlockLabelBackgroundPlan,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
@@ -691,7 +693,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let line_color = theme.common.line_color.as_str();
         let arrowhead_color = theme.arrowhead_color.as_str();
         let stroke_width = theme.stroke_width.as_str();
-        let edge_label_background = theme.edge_label_background.as_str();
+        let edge_label_background =
+            label_background_theme.color(theme.edge_label_background.as_str());
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
         let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
@@ -860,9 +863,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id,
         effective_config,
         typography_theme,
+        label_background_theme,
         &model.class_defs,
         options,
     )?;
+    label_background_theme.record_stylesheet();
     let typography_css_matches = typography_theme.observe_css(
         typography_receipt.as_mut(),
         css_emission.font_family_css,
@@ -1334,6 +1339,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             out.push_str("</g></g>");
         }
         out.checkpoint()?;
+        label_background_theme.record_terminal(true, true, options.work_meter())?;
     }
 
     let bounds_scan_end = out.len();
