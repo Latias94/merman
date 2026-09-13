@@ -3700,3 +3700,48 @@ classDiagram
         );
     }
 }
+
+#[test]
+fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
+    let source = r#"classDiagram
+  namespace Alpha {
+    class A
+  }
+  namespace Beta {
+    class B
+  }
+  A --> B : relates
+"#;
+    for look in ["classic", "neo", "handDrawn"] {
+        for html_labels in [true, false] {
+            let source = format!("%%{{init: {{\"htmlLabels\": {html_labels}}}}}%%\n{source}");
+            let rendered = render_class_svg_from_text_with_engine(
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "look": look,
+                    "htmlLabels": html_labels,
+                }))),
+                &source,
+            );
+            let document = roxmltree::Document::parse(&rendered).expect("valid Class SVG");
+            let groups = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel")
+                })
+                .collect::<Vec<_>>();
+            assert!(!groups.is_empty(), "look={look}, htmlLabels={html_labels}");
+            assert!(
+                groups
+                    .iter()
+                    .all(|node| node.attribute("data-look").is_none())
+            );
+            let css = document
+                .descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert!(css.contains(".edgeLabel[data-look=\"neo\"]"));
+            assert!(css.contains(".labelBkg"));
+        }
+    }
+}

@@ -58,9 +58,15 @@ fn class_edge_label_background_selector_has_no_historical_group_consumer() {
     // The fixture set does not expose a separate HTML/SVG switch for every look; this test
     // records only dimensions represented by checked-in historical artifacts.
     let fixtures = [
-        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"),
-        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.svg"),
-        include_str!("../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.svg"),
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056.svg"
+        ),
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.svg"
+        ),
+        include_str!(
+            "../../../fixtures/upstream-svgs/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.svg"
+        ),
     ];
 
     for svg in fixtures {
