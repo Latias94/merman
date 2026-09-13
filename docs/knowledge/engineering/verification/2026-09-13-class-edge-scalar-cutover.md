@@ -103,3 +103,24 @@ incorrect identities/paints; the production SVG/native paths are exercised above
 
 All Cargo commands use `CARGO_BUILD_JOBS=2` and run serially. This is a C5/C7b route
 migration, not closure of C7a, global bridge retirement, or the outstanding WASM size gate.
+
+## Clean-checkout verification
+
+Source commit: `e696949f6a7e97665c32cff028bb391e3946f6d5`.
+The detached checkout `/tmp/merman-class-edge-e696949f6` passed the same **445/445**
+private-cfg Release gate, including all **678** native route-profile witnesses.
+The log is `/tmp/class-edge-e696949f6-clean.log`. `git status --porcelain` was empty before
+and after the run. `CARGO_TARGET_DIR` reused the original worktree's target directory;
+no parallel Cargo job or separate build cache was used.
+
+This record verifies the committed Class Edge slice. It does not close the remaining
+48 executable legacy routes, the installed revision-84 package matrix, or C7a.
+
+## Next bounded tranche
+
+Class Cluster has eight remaining static scalar routes: unqualified/Default fill/stroke,
+solid/transparent. The next tranche should bind the two namespace rectangle writer paths
+by cluster identity and preserve independent fill/stroke ownership. Before removing the
+Cluster projection, characterize explicit base-theme tertiary color/border derivation:
+`crates/merman-core/src/theme.rs` does not propagate those ownership dependencies like the staged
+theme path does. Keep the real Text and Title namespace-label consumers for later work.

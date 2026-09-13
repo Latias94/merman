@@ -46,7 +46,9 @@ The terminal receipt binds the winning rule and source property, including sourc
 connector checkpoints. Notes do not extend relation ordinals or width. Class no longer executes
 edge or marker-fallback bridge assignments; source `lineColor` keeps ownership. The added
 Classic/HandDrawn native witnesses observe Edge.fill in the SVG stroke channel. Public support
-revision 84 reports a partial typed Edge.fill surface. KTD23 v9 is unchanged. Class Title still
+revision 84 reports a partial typed Edge.fill surface. Source `e696949f6` passed 445/445
+private Release tests in a clean checkout, including all 678 native route-profile witnesses.
+KTD23 v9 is unchanged. Class Title still
 has a real namespace-label consumer and is not an unused projection. See the
 [Class edge record](../knowledge/engineering/verification/2026-09-13-class-edge-scalar-cutover.md).
 
