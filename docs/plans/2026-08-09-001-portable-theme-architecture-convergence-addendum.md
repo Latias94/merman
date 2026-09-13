@@ -138,6 +138,18 @@ record. The current source and generated contract are authoritative for these su
   against the renderer inventory but is not generated from it, so a newly introduced runtime route
   cannot self-authorize.
 
+## Distribution Boundary Amendment (2026-09-13)
+
+The core Merman library does not ship, embed, or redistribute the Inter font. Theme font
+families are declarative requests resolved by the selected host or by explicit caller-supplied
+font resources. This boundary applies equally to presets, examples, acceptance fixtures, generated
+artifacts, and release packages: none may imply that Inter is bundled or universally available.
+
+A product that requires a bundled brand font must provide it in a separate distribution layer and
+opt into the existing font-resource API. That layer owns licensing, package size, installation,
+and cross-target qualification. Merman acceptance verifies the declared resource profile only; it
+does not turn an embedded fixture font into a core-library capability.
+
 ## Execution Freeze Resolution (2026-08-25)
 
 The review pass found several places where the implementation order could be read as an open-ended
