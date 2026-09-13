@@ -179,36 +179,7 @@ pub(crate) fn validate_typst_plugin_with_input(
         )));
     }
 
-    let theme_support = instance.call(
-        "theme_operation_json",
-        vec![
-            b"describe-theme-support-json".to_vec(),
-            br#"{
-                "schema_version": 2,
-                "family": "sequence",
-                "output": "standalone-svg",
-                "subject": {"kind": "base-typography", "property": "font-stack"}
-            }"#
-            .to_vec(),
-            options_json.to_vec(),
-        ],
-    )?;
-    let theme_support = parse_json("describe-theme-support-json", &theme_support)?;
-    let theme_support =
-        assert_theme_operation_payload(&theme_support, "describe-theme-support-json")?;
-    if theme_support
-        .get("schema_version")
-        .and_then(JsonValue::as_u64)
-        != Some(2)
-        || theme_support
-            .pointer("/query/family")
-            .and_then(JsonValue::as_str)
-            != Some("sequence")
-    {
-        return Err(smoke_error(format!(
-            "describe-theme-support-json returned an invalid descriptor: {theme_support}"
-        )));
-    }
+    validate_theme_authoring_vectors(&mut instance, options_json)?;
 
     let preset_export = instance.call(
         "theme_operation_json",
@@ -1078,6 +1049,159 @@ fn assert_analysis_payload(
     Ok(())
 }
 
+fn validate_theme_authoring_vectors(
+    instance: &mut PluginInstance,
+    options_json: &[u8],
+) -> Result<(), XtaskError> {
+    let support: Vec<JsonValue> = serde_json::from_str(include_str!(
+        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
+    ))
+    .map_err(|error| smoke_error(format!("invalid support vectors: {error}")))?;
+    for vector in &support {
+        let payload = call_json(
+            instance,
+            "theme_operation_json",
+            vec![
+                b"describe-theme-support-json".to_vec(),
+                vector["query"].to_string().into_bytes(),
+                options_json.to_vec(),
+            ],
+        )?;
+        let actual = assert_theme_operation_payload(&payload, "describe-theme-support-json")?;
+        if actual != &vector["expected"] {
+            return Err(smoke_error(format!(
+                "Typst support differs from shared vector {}: {actual}",
+                vector["id"]
+            )));
+        }
+    }
+
+    for (name, definition, expected_spec) in [
+        (
+            "light",
+            include_str!(
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.definition.json"
+            ),
+            include_str!(
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.spec.canonical.json"
+            ),
+        ),
+        (
+            "dark",
+            include_str!(
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.definition.json"
+            ),
+            include_str!(
+                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.spec.canonical.json"
+            ),
+        ),
+    ] {
+        let payload = call_json(
+            instance,
+            "theme_operation_json",
+            vec![
+                b"materialize-theme-json".to_vec(),
+                definition.as_bytes().to_vec(),
+                options_json.to_vec(),
+            ],
+        )?;
+        assert_theme_materialization(&payload, name, expected_spec)?;
+    }
+
+    let errors: Vec<JsonValue> = serde_json::from_str(include_str!(
+        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
+    ))
+    .map_err(|error| smoke_error(format!("invalid authoring error vectors: {error}")))?;
+    for vector in &errors {
+        let source = vector["source"]
+            .as_str()
+            .ok_or_else(|| smoke_error("authoring error vector has no source string"))?;
+        let options = vector["options_json"].as_str().unwrap_or("");
+        let payload = call_json(
+            instance,
+            "theme_operation_json",
+            vec![
+                b"materialize-theme-json".to_vec(),
+                source.as_bytes().to_vec(),
+                options.as_bytes().to_vec(),
+            ],
+        )?;
+        assert_theme_authoring_error(&payload, vector)?;
+    }
+    println!(
+        "Typst WASM shared theme vectors passed: support={}, materialization=2, errors={}",
+        support.len(),
+        errors.len(),
+    );
+    Ok(())
+}
+
+fn assert_theme_materialization(
+    payload: &JsonValue,
+    name: &str,
+    expected_spec: &str,
+) -> Result<(), XtaskError> {
+    let actual = assert_theme_operation_payload(payload, "materialize-theme-json")?;
+    let materialized: merman::diagram_theme::MaterializedThemeWireV1 =
+        serde_json::from_value(actual.clone())
+            .map_err(|error| smoke_error(format!("invalid {name} materialized wire: {error}")))?;
+    let canonical = materialized
+        .spec()
+        .canonical_json_bytes()
+        .map_err(|error| smoke_error(format!("invalid {name} complete theme spec: {error}")))?;
+    if canonical != expected_spec.trim_ascii_end().as_bytes() {
+        return Err(smoke_error(format!(
+            "Typst materialization differs from shared {name} vector: {actual}"
+        )));
+    }
+    Ok(())
+}
+
+fn assert_theme_authoring_error(payload: &JsonValue, vector: &JsonValue) -> Result<(), XtaskError> {
+    let mut envelope = payload.clone();
+    let details = envelope
+        .as_object_mut()
+        .and_then(|object| object.remove("details"))
+        .ok_or_else(|| smoke_error("Typst authoring error has no details"))?;
+    let code_name = vector["code_name"]
+        .as_str()
+        .ok_or_else(|| smoke_error("authoring error vector has no code_name"))?;
+    assert_error_payload(&envelope, "materialize-theme-json", code_name)?;
+    if envelope["code"] != vector["typst_status_code"]
+        || envelope["kind"] != vector["typst_error_kind"]
+    {
+        return Err(smoke_error(format!(
+            "Typst authoring status differs from shared vector {}: {envelope}",
+            vector["id"]
+        )));
+    }
+    let mut authoring = details["theme_authoring"].clone();
+    let diagnostics = authoring["diagnostics"]
+        .as_array_mut()
+        .ok_or_else(|| smoke_error("Typst authoring error has no diagnostic array"))?;
+    for diagnostic in diagnostics {
+        let message = diagnostic
+            .as_object_mut()
+            .and_then(|object| object.remove("message"));
+        if message
+            .as_ref()
+            .and_then(JsonValue::as_str)
+            .is_none_or(|message| message.trim().is_empty())
+        {
+            return Err(smoke_error(
+                "Typst authoring diagnostic has no nonempty message",
+            ));
+        }
+    }
+    if authoring != vector["theme_authoring"] || details["resource"] != vector["resource"] {
+        return Err(smoke_error(format!(
+            "Typst authoring error differs from shared vector {}: {details}",
+            vector["id"]
+        )));
+    }
+    Ok(())
+}
+
 fn assert_error_payload(
     payload: &JsonValue,
     operation: &str,
@@ -1102,7 +1226,10 @@ fn assert_error_payload(
         != Some(TYPST_RESULT_PAYLOAD_SCHEMA_VERSION)
         || object.get("operation").and_then(JsonValue::as_str) != Some(operation)
         || object.get("ok").and_then(JsonValue::as_bool) != Some(false)
-        || object.get("code").and_then(JsonValue::as_i64) == Some(0)
+        || object
+            .get("code")
+            .and_then(JsonValue::as_i64)
+            .is_none_or(|code| code == 0)
         || object.get("code_name").and_then(JsonValue::as_str) != Some(code_name)
         || !object.get("kind").is_some_and(JsonValue::is_string)
         || !object.get("message").is_some_and(JsonValue::is_string)
@@ -1578,6 +1705,112 @@ mod tests {
                 .to_string()
                 .contains("missing required fields: [profiles]")
         );
+    }
+
+    #[test]
+    fn materialization_golden_uses_contract_numbers_and_rejects_wire_drift() {
+        let expected = r#"{"typography":{"default":{"font_size_px":17}}}"#;
+        let payload = json!({
+            "version": 1,
+            "operation": "materialize-theme-json",
+            "ok": true,
+            "code": 0,
+            "code_name": "MERMAN_OK",
+            "kind": null,
+            "capability_id": null,
+            "message": null,
+            "data": {"result": {
+                "schema_version": 1,
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "spec_schema_version": 1,
+                "spec": {"typography": {"default": {"font_size_px": 17.0}}},
+            }},
+        });
+        assert!(assert_theme_materialization(&payload, "number", expected).is_ok());
+        for (pointer, value) in [
+            ("/data/result/schema_version", json!(2)),
+            ("/data/result/authoring_schema_version", json!(2)),
+            ("/data/result/expansion_version", json!(2)),
+            ("/data/result/spec_schema_version", json!(2)),
+            (
+                "/data/result/spec/typography/default/font_size_px",
+                json!(18),
+            ),
+        ] {
+            let mut changed = payload.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                assert_theme_materialization(&changed, "number", expected).is_err(),
+                "{pointer}"
+            );
+        }
+        let mut changed = payload.clone();
+        changed["data"]["result"]["extra"] = json!(true);
+        assert!(assert_theme_materialization(&changed, "number", expected).is_err());
+        let mut changed = payload;
+        changed["data"]["result"]["spec"]["extra"] = json!(true);
+        assert!(assert_theme_materialization(&changed, "number", expected).is_err());
+    }
+
+    #[test]
+    fn authoring_golden_rejects_diagnostic_resource_and_status_drift() {
+        let vectors: Vec<JsonValue> = serde_json::from_str(include_str!(
+            "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
+        ))
+        .unwrap();
+        for vector in vectors {
+            let mut payload = json!({
+                "version": 1,
+                "operation": "materialize-theme-json",
+                "ok": false,
+                "code": vector["typst_status_code"],
+                "code_name": vector["code_name"],
+                "kind": vector["typst_error_kind"],
+                "capability_id": null,
+                "message": "Theme authoring failed",
+                "data": null,
+                "details": {"theme_authoring": vector["theme_authoring"]},
+            });
+            if let Some(resource) = vector.get("resource") {
+                payload["details"]["resource"] = resource.clone();
+            }
+            for diagnostic in payload["details"]["theme_authoring"]["diagnostics"]
+                .as_array_mut()
+                .unwrap()
+            {
+                diagnostic["message"] = json!("A useful diagnostic");
+            }
+            assert!(assert_theme_authoring_error(&payload, &vector).is_ok());
+            for (pointer, replacement) in [
+                ("/code", JsonValue::Null),
+                ("/code", json!(0)),
+                ("/code", json!("1")),
+                ("/code", json!(99)),
+                ("/kind", json!("wrong")),
+                ("/code_name", json!("MERMAN_OK")),
+                ("/ok", json!(true)),
+                (
+                    "/details/theme_authoring/diagnostics/0/path",
+                    json!("/wrong"),
+                ),
+                (
+                    "/details/theme_authoring/diagnostics/0/code",
+                    json!("wrong"),
+                ),
+                ("/details/theme_authoring/diagnostics/0/message", json!(" ")),
+            ] {
+                let mut changed = payload.clone();
+                *changed.pointer_mut(pointer).unwrap() = replacement;
+                assert!(
+                    assert_theme_authoring_error(&changed, &vector).is_err(),
+                    "{pointer}"
+                );
+            }
+            let mut changed = payload;
+            changed["details"]["resource"] = json!({"profile": "wrong"});
+            assert!(assert_theme_authoring_error(&changed, &vector).is_err());
+        }
     }
 
     #[test]

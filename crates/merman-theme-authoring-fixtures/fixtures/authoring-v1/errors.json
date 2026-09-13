@@ -3,6 +3,8 @@
     "id": "empty-font-stack",
     "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{},\"styles\":[{\"kind\":\"rule\",\"target\":\"node\",\"style\":{\"typography\":{\"font_stack\":[]}}}]}",
     "code_name": "MERMAN_INVALID_ARGUMENT",
+    "typst_status_code": 1,
+    "typst_error_kind": "generic",
     "theme_authoring": {
       "schema_version": 1,
       "diagnostics": [
@@ -22,6 +24,8 @@
     "id": "empty-series",
     "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{\"series\":[]}}",
     "code_name": "MERMAN_INVALID_ARGUMENT",
+    "typst_status_code": 1,
+    "typst_error_kind": "generic",
     "theme_authoring": {
       "schema_version": 1,
       "diagnostics": [
@@ -40,6 +44,8 @@
     "source": "{}",
     "options_json": "{\"resources\":{\"profile\":\"constrained\",\"limits\":{\"max_theme_encoded_bytes\":1}}}",
     "code_name": "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    "typst_status_code": 10,
+    "typst_error_kind": "generic",
     "theme_authoring": {
       "schema_version": 1,
       "diagnostics": [

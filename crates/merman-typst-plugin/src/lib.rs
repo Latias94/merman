@@ -718,6 +718,8 @@ mod tests {
                 "materialize-theme-json",
                 vector["code_name"].as_str().unwrap(),
             );
+            assert_eq!(payload["code"], vector["typst_status_code"]);
+            assert_eq!(payload["kind"], vector["typst_error_kind"]);
             assert_eq!(payload["details"]["resource"], vector["resource"]);
             let mut authoring = payload["details"]["theme_authoring"].clone();
             for diagnostic in authoring["diagnostics"]
