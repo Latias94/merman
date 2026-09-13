@@ -435,11 +435,12 @@ one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both 
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
 Revision 86 adds the typed Class namespace Title query.
-Installed N-API darwin-arm64, Node-WASM, and native Python wheel artifacts rebuilt from
-`c00de7fa1` pass all fourteen revision-85 support vectors: Node through asynchronous/synchronous
-calls and Python through one-shot/reusable APIs. All three pass the shared catalog, diagnostic,
-and authoring smoke; see the [installed consumer record](../knowledge/engineering/verification/2026-09-13-installed-theme-consumers-revision85.md).
-All installed results above remain historical; revision-86 packages, browser WASM, Typst, and
+Installed N-API darwin-arm64, Node-WASM, and Python wheel artifacts built from clean source
+`51f6308ac` pass all fifteen revision-86 support vectors: Node through asynchronous/synchronous
+calls under pinned Node 24.13.1, and Python through one-shot/reusable APIs under both 3.12.8 and
+3.9.6. Shared catalog, diagnostic, authoring, and installed Class namespace Title terminal checks
+also passed; see the [revision-86 installed consumer record](../knowledge/engineering/verification/2026-09-13-installed-theme-consumers-revision86.md).
+Revision-85 results remain historical. Browser Web packages, a new Typst WASM artifact, and
 other host artifacts still need current-source verification. This is a cross-transport discovery
 contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
