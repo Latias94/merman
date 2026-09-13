@@ -40,12 +40,20 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 2/33; 40 routes | Block 32, Class 8. Exact family and route counts are guarded by a renderer test. |
+| Families with executable Legacy routes | 2/33; 36 routes | Block 32, Class 4. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 85 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v83; 466 routes / 694 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 86 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v84; 470 routes / 706 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+
+KTD17 v84 replaces Class's four static unqualified/Default `Title.fill` solid/transparent routes.
+The existing Title channel belongs to namespace labels. Ordinary, extracted-root, and ELK paths
+share the direct writer; source `titleColor` ownership and generic Text author order remain intact.
+Mathematical labels can complete emission without proving inherited paint: BestEffort retains
+Incomplete evidence and RequirePortable rejects it. Class retains four generic Text legacy routes.
+See the [Class namespace Title verification record](../knowledge/engineering/verification/2026-09-13-class-namespace-title-cutover.md)
+for the executed scope and source identity.
 
 KTD17 v83 replaces Class's eight scalar Cluster routes after the Edge cutover: unqualified/Default
 fill and stroke, each solid/transparent. Ordinary, extracted, and ELK namespace rectangles receive
@@ -418,21 +426,22 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
-Support discovery now has an independent fourteen-case golden in
+Support discovery now has an independent fifteen-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 85 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+revision 86 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
+Revision 86 adds the typed Class namespace Title query.
 Installed N-API darwin-arm64, Node-WASM, and native Python wheel artifacts rebuilt from
 `c00de7fa1` pass all fourteen revision-85 support vectors: Node through asynchronous/synchronous
 calls and Python through one-shot/reusable APIs. All three pass the shared catalog, diagnostic,
 and authoring smoke; see the [installed consumer record](../knowledge/engineering/verification/2026-09-13-installed-theme-consumers-revision85.md).
-Revision-82 installed results remain historical. Browser WASM, Typst, and other host artifacts
-still need current-source verification. This is a cross-transport discovery contract check; it
-does not qualify a document, preset, artifact profile, or C7a candidate.
+All installed results above remain historical; revision-86 packages, browser WASM, Typst, and
+other host artifacts still need current-source verification. This is a cross-transport discovery
+contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the

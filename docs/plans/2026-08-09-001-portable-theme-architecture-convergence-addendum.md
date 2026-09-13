@@ -784,7 +784,9 @@ Public presets declare per-target admission expectations and allowed residual ID
   variants restart per member/method group, Mindmap label rules share the real node-label domain,
   Tree View node counts come from the model traversal, and GitGraph title presence is resolved by
   the same helper used by preparation and the writer. Class `Title.fill` is explicitly excluded
-  because namespace labels still consume its compatibility projection.
+  because namespace labels have a real consumer. KTD17 v84 later replaces its four static scalar
+  routes with direct namespace terminals; it remains outside unused-projection retirement.
+  See the [namespace Title verification record](../knowledge/engineering/verification/2026-09-13-class-namespace-title-cutover.md).
 
 ### Product Milestones
 
