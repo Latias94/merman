@@ -898,31 +898,22 @@ impl ResolvedDiagramTheme {
         self.program.ordinal_palette_disposition(target)
     }
 
-    /// Returns mechanisms owned by native family evidence.
+    /// Yields native-evidence keys in mechanism-route order.
     ///
-    /// Compatibility-only routes are deliberately excluded: their runtime contribution is
-    /// recorded by the compatibility ledger and must never be promoted to typed, unsupported, or
-    /// not-applicable family evidence. A key shared by multiple facets remains present whenever at
-    /// least one facet is owned by the native evidence path.
+    /// Compatibility-only routes belong to the separate compatibility ledger. A key shared by
+    /// multiple native facets is yielded once per facet; the evidence ledger owns ordered
+    /// uniqueness through its required-key index.
     pub(crate) fn family_evidence_mechanism_keys(
         &self,
-    ) -> Vec<super::application::FamilyThemeMechanismKey> {
+    ) -> impl Iterator<Item = super::application::FamilyThemeMechanismKey> + '_ {
         use super::family_mechanism_matrix::FamilyThemeDisposition;
 
-        let mut keys = Vec::new();
-        for route in self
-            .program
+        self.program
             .mechanism_routes()
             .iter()
             .copied()
             .filter(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
-        {
-            let key = self.family_mechanism_key(route);
-            if !keys.contains(&key) {
-                keys.push(key);
-            }
-        }
-        keys
+            .map(|route| self.family_mechanism_key(route))
     }
 
     pub(crate) fn family_mechanism_key(

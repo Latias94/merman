@@ -1162,7 +1162,7 @@ mod tests {
         assert!(plan.record_terminal(receipt));
 
         let evidence = plan.finish_evidence();
-        assert_eq!(resolved.family_evidence_mechanism_keys().len(), 2);
+        assert_eq!(evidence.required_mechanisms().len(), 2);
         assert_eq!(evidence.applied().len(), 1);
         assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
         assert!(evidence.residuals().is_empty());

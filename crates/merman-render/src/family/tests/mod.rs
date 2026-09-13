@@ -12705,3 +12705,149 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
         .unwrap();
     assert!(rendered.svg().contains("Syntax error in text"));
 }
+
+#[test]
+fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
+    let fill = CanvasPaint::solid("#123456").unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(fill.clone()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(fill.clone())
+                            .with_stroke(fill.clone()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(fill.clone())
+                            .with_stroke(fill),
+                    )),
+            ),
+        )
+        .unwrap()
+        .resolve(DiagramFamilyId::CLASS);
+    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+    let expected = vec![
+        FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Node,
+        },
+        FamilyThemeMechanismKey::Rule {
+            index: 2,
+            target: ThemeTarget::Text,
+        },
+    ];
+    // Class Text.fill is legacy-only. A sibling native facet still requires its shared rule key.
+    assert_eq!(evidence.required, expected);
+    assert_eq!(evidence.required_index, expected.into_iter().collect());
+    assert!(!FamilyThemeEvidence::not_applicable(Some(&theme)));
+    assert!(evidence.applied.is_empty());
+    assert!(evidence.residuals.is_empty());
+}
+
+#[test]
+fn native_evidence_requirements_cover_empty_legacy_only_and_many_rules() {
+    assert!(FamilyThemeEvidence::not_applicable(None));
+    let empty = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap()
+        .resolve(DiagramFamilyId::CLASS);
+    let fill = CanvasPaint::solid("#123456").unwrap();
+    let legacy_only = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            ))),
+        )
+        .unwrap()
+        .resolve(DiagramFamilyId::CLASS);
+    for theme in [&empty, &legacy_only] {
+        let evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        assert!(evidence.required.is_empty());
+        assert!(evidence.required_index.is_empty());
+        assert!(FamilyThemeEvidence::not_applicable(Some(theme)));
+    }
+
+    let mut rules = ThemeRuleSet::default();
+    for _ in 0..512 {
+        rules = rules.with_rule(ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(fill.clone())
+                .with_stroke(fill.clone()),
+        ));
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+        .resolve(DiagramFamilyId::CLASS);
+    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+    assert_eq!(theme.family_mechanism_routes().len(), 1024);
+    let expected = (0..512)
+        .map(|index| FamilyThemeMechanismKey::Rule {
+            index,
+            target: ThemeTarget::Node,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(evidence.required, expected);
+    assert_eq!(evidence.required_index, expected.into_iter().collect());
+}
+
+#[test]
+fn native_evidence_effect_requirements_keep_binding_order_and_full_identity() {
+    use crate::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+
+    let mut effects = DiagramEffectSet::default();
+    for id in ["z-last", "a-first"] {
+        effects = effects
+            .with_graph(
+                EffectGraph::new(
+                    id,
+                    [EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        offset_x: 1.0,
+                        offset_y: 1.0,
+                        blur_radius: 2.0,
+                        spread: 0.0,
+                        color: ThemeColorValue::parse("#00000080").unwrap(),
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+    }
+    let bindings = [
+        (ThemeTarget::Edge, "z-last"),
+        (ThemeTarget::Node, "a-first"),
+        (ThemeTarget::Cluster, "z-last"),
+    ];
+    for (target, id) in bindings {
+        effects = effects
+            .with_binding(EffectBinding::new(target, id).unwrap())
+            .unwrap();
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .unwrap()
+        .resolve(DiagramFamilyId::CLASS);
+    let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+    let expected = bindings
+        .into_iter()
+        .map(|(target, id)| FamilyThemeMechanismKey::EffectBinding {
+            target,
+            effect_id: id.to_string(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(evidence.required, expected);
+    assert_eq!(evidence.required_index, expected.into_iter().collect());
+}

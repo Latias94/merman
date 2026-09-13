@@ -731,20 +731,22 @@ impl FamilyThemeEvidence {
         let Some(theme) = theme else {
             return Self::default();
         };
-        let required = theme.family_evidence_mechanism_keys();
-        Self {
-            required_index: required.iter().cloned().collect(),
-            required,
-            accounted_index: BTreeSet::new(),
-            applied: Vec::new(),
-            applied_capabilities: BTreeMap::new(),
-            not_applicable: Vec::new(),
-            residuals: Vec::new(),
+        let mut evidence = Self::default();
+        for key in theme.family_evidence_mechanism_keys() {
+            if evidence.required_index.insert(key.clone()) {
+                evidence.required.push(key);
+            }
         }
+        evidence
     }
 
     fn not_applicable(theme: Option<&ResolvedDiagramTheme>) -> bool {
-        theme.is_none_or(|theme| theme.family_evidence_mechanism_keys().is_empty())
+        theme.is_none_or(|theme| theme.family_evidence_mechanism_keys().next().is_none())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn required_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.required
     }
 
     pub(crate) fn mark_applied_with_capabilities(
