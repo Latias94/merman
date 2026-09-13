@@ -82,8 +82,9 @@ npm run check:packages --prefix platforms/node
 ```
 
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
-benchmark contract with test transports. `check:packages` verifies the source manifests; native
-candidate assembly and installed-package smoke run in the target-specific release workflow.
+benchmark contract with test transports. `check:packages` verifies the source manifests. Pull request CI also assembles the real Node-WASM
+and Node N-API packages, installs them into a clean temporary project, and runs the installed-package
+smoke; target-specific release workflows repeat the same check for release artifacts.
 
 The package group is versioned and published in lockstep. See the [package surface
 guide](../../docs/release/PACKAGE_SURFACES.md) for the artifact, target, provenance, and release
