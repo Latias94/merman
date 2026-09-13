@@ -71,3 +71,14 @@ The ignored experiment ledger and raw logs are under
 scale logs record exact entry counts; their incidental test durations are not
 benchmark evidence. This change does not alter support revision 83, retire legacy
 routes, or close C7a/C7b and package-profile delivery gates.
+
+## Clean-checkout confirmation
+
+Source commit: `0fdbaafe11c5fe4e32a30a0a0ceb7c6bc0cace63`.
+
+The detached checkout at `/tmp/merman-font-origin-0fdbaafe1` was clean before and
+after verification. It reused the original target cache with `CARGO_BUILD_JOBS=2`,
+compiling source and fixtures from the detached checkout. The Release export
+library passed 99/99 again; private-cfg C6 runtime, native export smoke, and preset
+qualification passed 5/5 again using the commands above. Logs are
+`/tmp/font-origin-clean-export.log` and `/tmp/font-origin-clean-acceptance.log`.
