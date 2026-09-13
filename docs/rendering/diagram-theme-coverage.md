@@ -64,8 +64,8 @@ routes with typed stylesheet and visible-label consumers. The background bridge 
 removed; explicit source configuration retains ownership. Classic, Neo, and HandDrawn native
 route witnesses cover solid and transparent fills. Public support revision 83 reports a partial
 typed surface; unsupported ordinal and sibling facets remain residuals. This is a typed replacement,
-so KTD23 v9 is unchanged. Revision-82 installed artifacts remain historical evidence and need
-rebuilding before they can attest the current revision 85. See the
+so KTD23 v9 is unchanged. Revision-82 installed results remain historical; current consumer
+observations are listed below. See the
 [Block background record](../knowledge/engineering/verification/2026-09-13-block-edge-label-background-legacy.md).
 
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
@@ -418,13 +418,13 @@ are not renderer-qualified. Consumer tests share this fixture across the native 
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
-Installed N-API darwin-arm64 and Node-WASM packages rebuilt from `840560118` pass all ten shared support vectors through two
-engines; see the [installed Node record](../knowledge/engineering/verification/2026-09-13-node-installed-authoring.md).
-The native Python wheel rebuilt from `983708e33` also passes those vectors through one-shot and
-reusable APIs, plus catalog/diagnostic/authoring smoke; see the
-[installed Python record](../knowledge/engineering/verification/2026-09-13-python-installed-authoring.md).
-All installed artifacts require fresh revision-85 runs after the Class Cluster cutover. This is a
-cross-transport discovery contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
+Installed N-API darwin-arm64, Node-WASM, and native Python wheel artifacts rebuilt from
+`c00de7fa1` pass all fourteen revision-85 support vectors: Node through asynchronous/synchronous
+calls and Python through one-shot/reusable APIs. All three pass the shared catalog, diagnostic,
+and authoring smoke; see the [installed consumer record](../knowledge/engineering/verification/2026-09-13-installed-theme-consumers-revision85.md).
+Revision-82 installed results remain historical. Browser WASM, Typst, and other host artifacts
+still need current-source verification. This is a cross-transport discovery contract check; it
+does not qualify a document, preset, artifact profile, or C7a candidate.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
 State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
