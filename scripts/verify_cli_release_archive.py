@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
-    from .qualify_theme_presets import collect as collect_preset_qualification, verify_record
+    from .qualify_theme_presets import archive_catalog, collect as collect_preset_qualification, verify_record
     from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
@@ -50,7 +50,7 @@ if __package__:
         target_matches_host,
     )
 else:
-    from qualify_theme_presets import collect as collect_preset_qualification, verify_record
+    from qualify_theme_presets import archive_catalog, collect as collect_preset_qualification, verify_record
     from theme_preset_catalog_contract import validate_unqualified_catalog
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
@@ -952,25 +952,7 @@ def verify_release_archive(
             }
             # Publish a companion for these final archive bytes. Do not repack the archive
             # with its own digest, or promote this host observation into shared SDK discovery.
-            catalog = {
-                "schema_version": 1,
-                "source_commit": record["source_commit"],
-                "artifact": {**record["cli_archive"],
-                             "executable_sha256": record["cli"]["executable_sha256"]},
-                "host": record["host"],
-                "catalog": record["cli"]["catalog"],
-                "render_config": record["cli"]["render_config"],
-                "svg_pipeline": record["cli"]["svg_pipeline"],
-                "qualifications": [{
-                    **{key: preset[key] for key in (
-                        "preset", "profile", "qualification_schema_revision",
-                        "recipe_fingerprint", "resource_fingerprint",
-                    )},
-                    "scenarios": [{key: cell[key] for key in (
-                        "family", "output", "source_id", "source_digest", "png_scale", "font_source",
-                    )} for cell in preset["cells"]],
-                } for preset in record["qualification"]["presets"]],
-            }
+            catalog = archive_catalog(record)
             if preset_qualification_check is not None:
                 verify_record(expected, record)
                 catalog_path = Path(preset_qualification_check).with_suffix(".catalog.json")

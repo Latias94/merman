@@ -81,10 +81,21 @@ stay under ignored `target/` so the qualification runner can enforce a clean sou
 The job uploads `preset-qualification-<source_sha>-x86_64-unknown-linux-gnu` only after replay
 succeeds. A qualification or upload failure fails the native verification job and blocks the
 existing release gate, attestation, registry candidates, and GitHub Release creation. The record
-and its public catalog companion are workflow artifacts; neither is an additional member of the
-immutable release bundle. Other native rows retain their product smoke checks without claiming this profile.
+stays in the workflow artifact. The release verification gate then joins the public companion to
+an immutable `publication-release-assets` bundle as
+`merman-cli-x86_64-unknown-linux-gnu.preset-catalog.json`. It validates the source, target, version
+and archive digest against the already verified archive, checks the companion against the native
+record projection, and adds its digest and size to `release-verification.json`. Archive bytes and
+installer checksums remain unchanged. Other native rows retain their product smoke checks without
+claiming this profile.
 
-## Remaining publication boundary
+Registry candidates, attestation and GitHub Release publication download that final bundle and
+run `verify-bundle --require-preset-catalog`. Removing both the companion file and its manifest
+entry still fails this final-publication gate. The public companion is included in the attested
+and published asset set; the private execution record is excluded. This workflow wiring does
+not mean a candidate has already run or that any current release has published these new assets.
+
+## Remaining qualification boundary
 
 These records supply clean-build provenance and executable freshness checks for the scoped runner.
 They do not freeze C7a or promote public catalog entries. Each `qualified_cells` entry now carries
@@ -133,3 +144,22 @@ JSON file is not itself a qualification authority: consumers need its trusted re
 and matching artifact identity. These observations cover the named scenarios and host conditions,
 not arbitrary source text or every installation's font environment. Stable promotion and loading
 qualified metadata into production discovery remain separate C7a work.
+
+## Consume a released artifact catalog
+
+For releases produced by this workflow, download the CLI archive, `release-verification.json`,
+and `merman-cli-x86_64-unknown-linux-gnu.preset-catalog.json` from the same trusted release.
+Verify release provenance and the files' digests against the manifest. The companion's source
+commit, target, version and archive SHA-256 must match the selected artifact; it also records the
+executable SHA-256. Other target archives have no qualification claim from this companion.
+
+Read `catalog.presets[].qualified_cells` together with its `profile_id`, `admission_status`,
+`host`, `render_config`, `svg_pipeline`, and `qualifications` scenarios. The current cells are
+host-dependent observations of fixed Flowchart/State/Sequence SVG/PNG scenarios with system fonts.
+They do not promise equivalent results on every font installation. Unknown profiles or admission
+IDs provide no portable assurance. Empty cells leave a preset selectable as alpha without granting
+qualification; the final render/export admission remains authoritative for an actual request.
+
+The CLI's built-in `capabilities --json` and shared SDK metadata continue to describe the
+unqualified production catalog. They do not automatically trust a JSON file placed next to a
+binary. This public release companion is a separate, explicitly artifact-bound discovery surface.

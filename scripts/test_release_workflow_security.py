@@ -346,8 +346,18 @@ jobs:
         self.assertIn("- verify-release-archives-native", gate)
         self.assertIn("needs.verify-release-archives-native.result", gate)
         self.assertIn('"$NATIVE_RESULT" != success', gate)
+        self.assertIn("name: preset-qualification-${{ needs.plan.outputs.source_sha }}-x86_64-unknown-linux-gnu", gate)
+        self.assertIn('scripts/release_artifact_bundle.py" finalize', gate)
+        self.assertIn("native-qualification/preset-qualification.json", gate)
+        self.assertIn("name: publication-release-assets", gate)
+        self.assertIn("if-no-files-found: error", gate)
+        self.assertLess(gate.index('"$NATIVE_RESULT" != success'), gate.index('scripts/release_artifact_bundle.py" finalize'))
         for job in ("attest-release-assets", "generate-cli-registry-candidates", "host"):
-            self.assertIn("release-verification-gate", workflow_job(text, job))
+            consumer = workflow_job(text, job)
+            self.assertIn("release-verification-gate", consumer)
+            self.assertIn("name: publication-release-assets", consumer)
+            self.assertNotIn("name: verified-release-assets", consumer)
+            self.assertIn("--require-preset-catalog", consumer)
 
     @unittest.skipUnless(shutil.which("bash"), "workflow command requires Bash")
     def test_native_archive_command_routes_qualification_and_stops_on_failure(self) -> None:

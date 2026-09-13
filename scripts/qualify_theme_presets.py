@@ -180,6 +180,33 @@ def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
     }
 
 
+def archive_catalog(record: dict) -> dict:
+    """Project public archive metadata from the freshly replayed native execution record.
+
+    This projection does not validate or issue qualification. Release assembly only accepts its
+    input from the successful native verification job and binds it to the verified archive.
+    """
+    return {
+        "schema_version": 1,
+        "source_commit": record["source_commit"],
+        "artifact": {**record["cli_archive"],
+                     "executable_sha256": record["cli"]["executable_sha256"]},
+        "host": record["host"],
+        "catalog": record["cli"]["catalog"],
+        "render_config": record["cli"]["render_config"],
+        "svg_pipeline": record["cli"]["svg_pipeline"],
+        "qualifications": [{
+            **{key: preset[key] for key in (
+                "preset", "profile", "qualification_schema_revision",
+                "recipe_fingerprint", "resource_fingerprint",
+            )},
+            "scenarios": [{key: cell[key] for key in (
+                "family", "output", "source_id", "source_digest", "png_scale", "font_source",
+            )} for cell in preset["cells"]],
+        } for preset in record["qualification"]["presets"]],
+    }
+
+
 def verify_record(expected: dict, actual: dict) -> None:
     # Python equality aliases bool/int and int/float; JSON types are part of the record.
     if json.dumps(expected, sort_keys=True, allow_nan=False) != json.dumps(
