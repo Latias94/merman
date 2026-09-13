@@ -254,21 +254,18 @@ impl ClassNodeThemePlan {
             ),
             fill: typed_paint_expectation(
                 theme,
-                ThemeTarget::Node,
                 node_style,
                 ResolvedStyleProperty::Fill,
                 self.mermaid_owns_fill,
             ),
             stroke: typed_paint_expectation(
                 theme,
-                ThemeTarget::Node,
                 node_style,
                 ResolvedStyleProperty::Stroke,
                 self.mermaid_owns_stroke,
             ),
             label_fill: typed_paint_expectation(
                 theme,
-                ThemeTarget::NodeLabel,
                 node_label_style,
                 ResolvedStyleProperty::Fill,
                 self.mermaid_owns_label_fill,
@@ -295,7 +292,6 @@ fn paint_winner_rule(
 
 fn typed_paint_expectation(
     theme: &ResolvedDiagramTheme,
-    target: ThemeTarget,
     style: &ResolvedThemeStyle,
     property: ResolvedStyleProperty,
     mermaid_owns: bool,
@@ -329,9 +325,7 @@ fn typed_paint_expectation(
         | Specified::Value(CanvasPaint::Pattern(_)) => return None,
     };
     Some(ExpectedPaint {
-        target: theme
-            .rule_facet_target(origin.rule_index(), facet)
-            .unwrap_or(target),
+        target: origin.target(),
         rule_index: origin.rule_index(),
         css,
     })

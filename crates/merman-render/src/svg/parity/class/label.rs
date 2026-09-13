@@ -173,12 +173,17 @@ pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, in
     crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
-pub(super) fn write_class_svg_edge_text_markdown(
+pub(super) fn write_class_svg_edge_text_with_style(
     out: &mut impl SvgOutput,
-    markdown: &str,
-    include_style: bool,
+    text: &str,
+    style: Option<&str>,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
+    match style {
+        Some(style) => {
+            crate::svg::parity::label::write_svg_text_centered_with_style(out, text, style)
+        }
+        None => write_class_svg_edge_text(out, text, false),
+    }
 }
 
 pub(super) fn write_class_svg_edge_text_markdown_with_style(
@@ -555,5 +560,29 @@ mod tests {
         );
         assert!(generic.contains("<p>Generic&lt;T&gt; driver_license</p>"));
         assert!(!generic.contains("&amp;lt;"));
+    }
+}
+
+#[cfg(test)]
+mod edge_text_tests {
+    use super::*;
+
+    #[test]
+    fn fallback_edge_text_preserves_literal_markdown_with_optional_paint() {
+        let text = "**literal** & <value>";
+        let mut original = String::new();
+        write_class_svg_edge_text(&mut original, text, false);
+        let mut unstyled = String::new();
+        write_class_svg_edge_text_with_style(&mut unstyled, text, None);
+        assert_eq!(unstyled, original);
+
+        let style = "color:#123456 !important;fill:#123456 !important;";
+        let mut styled = String::new();
+        write_class_svg_edge_text_with_style(&mut styled, text, Some(style));
+        assert_eq!(
+            styled.replace(&format!(r#" style="{style}""#), ""),
+            original
+        );
+        assert!(styled.contains("**literal**"));
     }
 }

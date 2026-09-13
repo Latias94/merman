@@ -4332,6 +4332,7 @@ fn class_cluster_unsupported_winners_require_real_namespace_occurrences() {
         .with_ordinal(OrdinalSelector::exact(1).unwrap()),
     ] {
         let theme = class_edge_rules_theme([rule]);
+        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
         let rendered = try_render_class_svg_with_theme_and_engine(
             "classDiagram\nclass A\n",
             &theme,
@@ -5013,15 +5014,28 @@ note for Account "Audit note"
         .expect("generic Class Text must bind every actual text writer");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let has_paint = |node: roxmltree::Node<'_, '_>| {
-            let has_visible_text = node
-                .descendants()
-                .any(|terminal| terminal.text().is_some_and(|text| !text.trim().is_empty()));
-            !has_visible_text
-                || node.descendants().any(|terminal| {
-                    terminal.attribute("style").is_some_and(|style| {
-                        style.contains("color")
-                            && style.contains("fill")
-                            && style.contains("#123456")
+            node.descendants()
+                .filter(|terminal| {
+                    terminal.is_text() && !terminal.text().unwrap().trim().is_empty()
+                })
+                .all(|terminal| {
+                    ["color", "fill"].into_iter().all(|property| {
+                        terminal
+                            .ancestors()
+                            .take_while(|ancestor| Some(*ancestor) != node.parent())
+                            .filter_map(|ancestor| ancestor.attribute("style"))
+                            .find_map(|style| {
+                                style
+                                    .split(';')
+                                    .filter_map(|declaration| {
+                                        let (name, value) = declaration.split_once(':')?;
+                                        (name.trim() == property).then_some(
+                                            value.trim().trim_end_matches("!important").trim(),
+                                        )
+                                    })
+                                    .next_back()
+                            })
+                            == Some("#123456")
                     })
                 })
         };
@@ -5061,10 +5075,112 @@ note for Account "Audit note"
                 "Text paint must reach each {class} terminal, html={html_labels}"
             );
         }
+        let account = document
+            .descendants()
+            .find(|node| {
+                node.attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+            })
+            .unwrap();
+        let paint_owners = account
+            .descendants()
+            .filter(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("color:#123456"))
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            paint_owners.len() >= 3,
+            "title, member and method paint owners"
+        );
+        for paint_owner in paint_owners {
+            for replacement in ["", "color:#123456;fill:#000000"] {
+                let original = &rendered.svg()[paint_owner.range()];
+                let corrupted =
+                    original.replacen(paint_owner.attribute("style").unwrap(), replacement, 1);
+                let mut mutated = rendered.svg().to_string();
+                mutated.replace_range(paint_owner.range(), &corrupted);
+                let mutated = roxmltree::Document::parse(&mutated).unwrap();
+                let account = mutated
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("id")
+                            .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                    })
+                    .unwrap();
+                assert!(
+                    !has_paint(account),
+                    "a missing or wrong terminal paint must fail, html={html_labels}"
+                );
+            }
+        }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.accounted_count(), evidence.required_count());
         assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_generic_text_shadowed_clear_does_not_block_portability() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let mut clear = ThemeStylePatch::default();
+        clear.paint.fill = Specified::Clear;
+        let mut earlier = ThemeRule::new(ThemeTarget::Text, clear);
+        let mut winner = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        if let Some(variant) = variant {
+            earlier = earlier.with_variant(variant);
+            winner = winner.with_variant(variant);
+        }
+        let theme = class_edge_rules_theme([earlier, winner]);
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            "classDiagram\nclass Account\n",
+            &theme,
+            Engine::new(),
+        )
+        .expect("a fully shadowed Text Clear has no residual consumer");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
+    }
+}
+
+#[test]
+fn class_generic_text_shadowing_preserves_winning_sibling_facets() {
+    for replace_stroke in [false, true] {
+        let mut earlier = ThemeStylePatch::default();
+        earlier.paint.fill = Specified::Clear;
+        earlier.stroke.paint = Specified::Clear;
+        let mut later =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        if replace_stroke {
+            later.stroke.paint = Specified::Value(CanvasPaint::solid("#654321").unwrap());
+        }
+        let theme = class_edge_rules_theme([
+            ThemeRule::new(ThemeTarget::Text, earlier),
+            ThemeRule::new(ThemeTarget::Text, later),
+        ]);
+        let source = "classDiagram\nclass Account\n";
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        // A winning Text stroke remains unsupported, whichever rule owns it.
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), usize::from(replace_stroke));
+        assert_eq!(evidence.applied_count(), usize::from(!replace_stroke));
+        assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
     }
 }

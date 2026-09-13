@@ -1,14 +1,14 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan,
+    InheritedFontStackPlan, resolved_style_property_for_facet,
 };
 use crate::text::TextStyle;
 
@@ -23,6 +23,7 @@ const CARDINALITY_SLOT_COUNT: usize = 4;
 pub(crate) struct ClassTextThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     text_rules: BTreeMap<usize, Option<ThemeCapability>>,
+    fully_shadowed_text_rules: BTreeSet<usize>,
     edge_paint: Option<ClassTextPaint>,
     note_paint: Option<ClassTextPaint>,
     title_paint: Option<ClassTextPaint>,
@@ -135,15 +136,38 @@ impl ClassTextThemePlan {
         effective_config: &merman_core::MermaidConfig,
     ) -> Self {
         let mut text_rules = BTreeMap::new();
+        let mut shadowed = BTreeMap::new();
+        let static_style =
+            theme.map(|theme| theme.style(ThemeTarget::Text, ThemeVariant::Default, None));
         if let Some(theme) = theme {
+            let winners = static_style
+                .as_ref()
+                .expect("theme has a static style")
+                .winner_rule_properties()
+                .collect::<BTreeMap<_, _>>();
             for route in theme.family_mechanism_routes() {
                 if let FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target: ThemeTarget::Text,
                     facet,
-                    ..
+                    selector,
                 } = route.mechanism()
                 {
+                    // The later rule must cover the same selector and every property of this rule.
+                    let facet_shadowed = match selector {
+                        FamilyThemeSelectorShape::Static {
+                            variant: variant @ (None | Some(ThemeVariant::Default)),
+                        } => winners
+                            .get(&resolved_style_property_for_facet(facet))
+                            .is_some_and(|winner| {
+                                winner.rule_index() > rule_index
+                                    && winner.target() == ThemeTarget::Text
+                                    && winner.ordinal().is_none()
+                                    && winner.variant() == variant
+                            }),
+                        _ => false,
+                    };
+                    *shadowed.entry(rule_index).or_insert(true) &= facet_shadowed;
                     let capability = if route.disposition() == FamilyThemeDisposition::TypedAdapter
                     {
                         match facet {
@@ -166,10 +190,9 @@ impl ClassTextThemePlan {
             }
         }
         let selected = theme.and_then(|theme| {
-            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
             crate::family::resolve_direct_static_fill(
                 theme,
-                &style,
+                static_style.as_ref().expect("theme has a static style"),
                 &[ThemeTarget::Text],
                 crate::family::DirectStaticSelectorDomain::Default,
             )
@@ -258,6 +281,10 @@ impl ClassTextThemePlan {
         };
         Self {
             text_rules,
+            fully_shadowed_text_rules: shadowed
+                .into_iter()
+                .filter_map(|(index, shadowed)| shadowed.then_some(index))
+                .collect(),
             edge_paint,
             note_paint,
             title_paint,
@@ -581,6 +608,13 @@ impl ClassTextThemePlan {
                 }
             });
             for (&index, &capability) in &self.text_rules {
+                if self.fully_shadowed_text_rules.contains(&index) {
+                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Rule {
+                        index,
+                        target: ThemeTarget::Text,
+                    });
+                    continue;
+                }
                 let Some(capability) = capability else {
                     continue;
                 };

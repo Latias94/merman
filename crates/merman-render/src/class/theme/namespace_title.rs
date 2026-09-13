@@ -12,7 +12,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 use super::terminal::ExpectedPaint;
 
 /// Class's historical Title channel belongs to visible namespace labels.
-/// Generic Text participates in author order but retains its own compatibility route.
+/// Generic Text participates in author order and retains its own evidence key.
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClassNamespaceTitleThemePlan {
     pub(super) mermaid_owns_fill: bool,
@@ -57,7 +57,11 @@ impl ClassNamespaceTitleThemePlan {
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
                 ExpectedPaint {
-                    target: ThemeTarget::Title,
+                    target: style
+                        .fill_resolution()
+                        .winner()
+                        .expect("resolved fill has an origin")
+                        .target(),
                     rule_index,
                     css: css.into_string(),
                 }

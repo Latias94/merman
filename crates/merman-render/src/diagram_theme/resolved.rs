@@ -968,24 +968,6 @@ impl ResolvedDiagramTheme {
         self.program.rule_facet_disposition(rule_index, facet)
     }
 
-    pub(crate) fn rule_facet_target(
-        &self,
-        rule_index: usize,
-        facet: super::family_mechanism_matrix::FamilyThemeRuleFacet,
-    ) -> Option<ThemeTarget> {
-        self.family_mechanism_routes()
-            .iter()
-            .find_map(|route| match route.mechanism() {
-                super::family_mechanism_matrix::FamilyThemeMechanism::RuleFacet {
-                    rule_index: index,
-                    target,
-                    facet: route_facet,
-                    ..
-                } if index == rule_index && route_facet == facet => Some(target),
-                _ => None,
-            })
-    }
-
     pub fn style(
         &self,
         target: ThemeTarget,

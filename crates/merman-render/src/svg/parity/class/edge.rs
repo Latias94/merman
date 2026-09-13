@@ -771,7 +771,7 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        super::label::write_class_svg_edge_text_markdown_with_style(
+        super::label::write_class_svg_edge_text_with_style(
             out,
             trimmed,
             ctx.text_paint.map(|paint| paint.style()),
