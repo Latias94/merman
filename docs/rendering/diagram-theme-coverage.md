@@ -6,6 +6,13 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+Class's existing text terminal inventory now retains color ownership alongside independent
+font facts. NodeLabel and namespace Title share those facts, including explicit rejection of
+empty/source-owned/unknown text as inherited paint. Source `c16be4559` passed 3281 private
+Release owner tests in both the main worktree and a clean checkout (two existing skips), plus
+main-worktree Class structure and Clippy checks. This is a prerequisite, not Text bridge
+retirement. See the [shared terminal verification record](../knowledge/engineering/verification/2026-09-13-class-shared-text-terminal-facts.md).
+
 Class NodeLabel now shares generic Text author order in all paint resolution paths, including
 per-node ordinal caching. Source `00174dc2a` passed 3278 private Release owner tests in both
 the main worktree and a clean checkout (two existing skips), plus main-worktree SVG structure
