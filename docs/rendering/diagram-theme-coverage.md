@@ -39,7 +39,12 @@ the secondaryTextColor/tertiaryTextColor projection had no writer consumer. The
 unused Block generic Text fallback is also removed. Class retains its generic Text
 compatibility assignments until its own cutover. Native pixel comparisons preserve
 the composite label and retain an active Node paint control. Marker paint remains
-legacy because its arrowMarkerPath consumer is real.
+legacy because its arrowMarkerPath consumer is real. Class edge-label background has an independent
+historical and runtime witness: the legacy `.edgeLabel[data-look="neo"]` selector is present in
+reference CSS but no emitted edge-label group carries that attribute, while actual label backgrounds
+use `.labelBkg`/`.edgeLabel .label` selectors across Classic, Neo, HandDrawn, HTML-label, and SVG-label
+runs. This evidence is recorded for the next KTD23 review; it does not retire the 26 Class routes
+until a complete before/after rendering comparison is available.
 
 KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
 (four solid/transparent matrix routes). The pinned renderer has no diagram-title
