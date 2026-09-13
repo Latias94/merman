@@ -56,3 +56,25 @@ python3 scripts/run_theme_acceptance.py nextest run --release --locked \
 
 The internal-cfg wrapper is required. These checks do not close C7a, C7b, or the
 outstanding WASM size gate.
+
+## Clean-checkout verification
+
+Source commit: `049b346896a40b7a32134486b3c7524ed9ab1279`.
+
+A detached checkout at `/tmp/merman-block-background-049b34689` was clean before
+and after verification. Cargo reused the original worktree's target cache, with
+`CARGO_BUILD_JOBS=2`; compilation used the detached checkout's source and fixtures.
+
+- The exact Release acceptance command above passed 9/9, including full KTD17 v81
+  authorization and KTD23 v9 historical retirement checks.
+- Release Block SVG and public support discovery integration tests passed 91/91:
+
+```text
+python3 scripts/run_theme_acceptance.py nextest run --release --locked \
+  -p merman-render --test block_svg_test --test theme_support_discovery_test \
+  --no-fail-fast
+```
+
+Local logs are `/tmp/block-background-clean-acceptance.log` and
+`/tmp/block-background-clean-renderer.log`. This verifies the committed Block
+background slice; the remaining 54 live legacy routes and C7a delivery gates stay open.
