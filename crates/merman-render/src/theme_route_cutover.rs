@@ -822,7 +822,7 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill, Flowchart/Swimlane/GitGraph/Class Edge fill, Radar Axis fill,
+    /// Sequence Message fill, Block/Flowchart/Swimlane/GitGraph/Class Edge fill, Radar Axis fill,
     /// and ER/Requirement Relation fill control native stroke colors. These routes
     /// are observed in the emitted stroke channel during raster admission, while their semantic
     /// facet remains `Fill` in the route identity and evidence.
@@ -838,6 +838,7 @@ impl ThemeRouteCutoverDescriptor {
                 || (matches!(
                     self.family_id(),
                     DiagramFamilyId::GIT_GRAPH
+                        | DiagramFamilyId::BLOCK
                         | DiagramFamilyId::CLASS
                         | DiagramFamilyId::FLOWCHART
                         | DiagramFamilyId::SWIMLANE
@@ -1250,6 +1251,7 @@ mod tests {
     #[test]
     fn edge_fill_is_observed_in_the_native_stroke_channel() {
         for family in [
+            DiagramFamilyId::BLOCK,
             DiagramFamilyId::GIT_GRAPH,
             DiagramFamilyId::CLASS,
             DiagramFamilyId::FLOWCHART,

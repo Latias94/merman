@@ -242,6 +242,16 @@ struct BlockEdgePoints {
     rendered_points: Vec<LayoutPoint>,
 }
 
+/// Prepare the exact path from source endpoints and final layout geometry.
+pub(crate) fn block_edge_path_data(
+    edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
+    layout_edge: &LayoutEdge,
+    shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
+) -> String {
+    let points = block_render_edge_points(edge, layout_edge, shape_geometries_by_id);
+    super::super::curve::curve_basis_path_d_and_bounds(&points.rendered_points).0
+}
+
 fn block_render_edge_points(
     edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
     layout_edge: &LayoutEdge,
@@ -317,6 +327,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
     node_label_paint_theme: &BlockNodeLabelPaintPlan,
+    edge_paint_theme: &crate::block::BlockEdgePaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
     effective_config: &serde_json::Value,
@@ -870,6 +881,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     )?;
     label_background_theme.record_stylesheet();
     let mut node_label_receipt = node_label_paint_theme.begin_terminal_receipt();
+    let mut edge_paint_receipt = edge_paint_theme.begin_terminal_receipt();
     let typography_css_matches = typography_theme.observe_css(
         typography_receipt.as_mut(),
         css_emission.font_family_css,
@@ -1228,10 +1240,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
     }
 
-    for e in &model.edges {
+    for (edge_index, e) in model.edges.iter().enumerate() {
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
+        let edge_start = out.len();
         let edge_points = block_render_edge_points(e, le, &shape_geometries_by_id);
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(json_stringify_points(&edge_points.data_points));
@@ -1254,12 +1267,16 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
         let prefixed_edge_id = dom_id(diagram_id, &e.id);
         let path_id = dom_id(diagram_id, &prefixed_edge_id);
+        let edge_style = edge_paint_theme
+            .color(edge_index)
+            .map(|color| format!("stroke:{color};fill:none;"));
         let _ = write!(
             &mut out,
-            r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr(&d),
             escape_attr(&path_id),
             escape_attr(class_attr),
+            escape_attr(edge_style.as_deref().unwrap_or("undefined;;;undefined")),
             escape_attr(&prefixed_edge_id),
             escape_attr(&data_points)
         );
@@ -1287,6 +1304,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         options.checkpoint_emit()?;
         out.push_str("/>");
         out.checkpoint()?;
+        if let Some(receipt) = edge_paint_receipt.as_mut() {
+            edge_paint_theme.observe_path(
+                receipt,
+                edge_index,
+                diagram_id.semantic_str(),
+                &out.as_str()[edge_start..],
+            );
+        }
     }
 
     for e in &model.edges {
@@ -1444,6 +1469,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     {
         return Err(Error::InvalidModel {
             message: "Block typography terminal receipt was incomplete".to_string(),
+        });
+    }
+    if !edge_paint_theme.record_terminal(edge_paint_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Block edge paint terminal receipt was incomplete".to_string(),
         });
     }
     Ok(rooted)

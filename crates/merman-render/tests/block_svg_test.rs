@@ -2324,3 +2324,309 @@ fn block_background_unsupported_winning_facet_stays_residual() {
         );
     }
 }
+
+fn block_edge_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let rules = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), |set, rule| {
+            set.with_rule(rule.for_family(DiagramFamilyId::BLOCK))
+        });
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+}
+
+#[test]
+fn block_edge_static_paint_is_written_only_to_visible_edge_paths() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for paint in [
+            CanvasPaint::solid("#b316cd").unwrap(),
+            CanvasPaint::Transparent,
+        ] {
+            for fallback in [false, true] {
+                let css = if matches!(paint, CanvasPaint::Transparent) {
+                    "transparent"
+                } else {
+                    "#b316cd"
+                };
+                let patch = if fallback {
+                    ThemeStylePatch::default().with_fill(paint.clone())
+                } else {
+                    ThemeStylePatch::default().with_stroke(paint.clone())
+                };
+                let mut rule = ThemeRule::new(ThemeTarget::Edge, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = block_edge_theme([rule]);
+                let rendered = render_block_with_theme_and_engine(
+                    "block\n A --> B\n B --> C\n",
+                    &theme,
+                    Engine::new(),
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let edges = document
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                    .collect::<Vec<_>>();
+                assert_eq!(edges.len(), 2);
+                for edge in edges {
+                    assert_eq!(edge.tag_name().name(), "path");
+                    assert!(
+                        edge.attribute("style")
+                            .unwrap()
+                            .contains(&format!("stroke:{css};fill:none;"))
+                    );
+                    assert!(!edge.attribute("d").unwrap().is_empty());
+                }
+                for marker in document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("marker"))
+                {
+                    assert!(marker.descendants().all(|node| {
+                        node.attribute("style")
+                            .is_none_or(|style| !style.contains(css))
+                    }));
+                }
+                assert!(
+                    !document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("style"))
+                        .any(|node| node.text().unwrap_or("").contains(css))
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn block_edge_source_config_and_absent_edges_are_not_applicable() {
+    let theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+    )]);
+    for (source, engine) in [
+        (
+            "block\n A --> B\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"lineColor":"#2468ac"}}),
+            )),
+        ),
+        ("block\n A\n", Engine::new()),
+    ] {
+        let rendered = render_block_with_theme_and_engine(source, &theme, engine);
+        assert!(!rendered.svg().contains("#b316cd"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+    }
+}
+
+#[test]
+fn block_edge_ordinal_and_clear_stroke_block_fill_fallback() {
+    use merman_render::diagram_theme::Specified;
+    for ordinal in [false, true] {
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap());
+        let mut rule = if ordinal {
+            ThemeRule::new(ThemeTarget::Edge, patch)
+                .with_ordinal(OrdinalSelector::exact(1).unwrap())
+        } else {
+            patch.stroke.paint = Specified::Clear;
+            ThemeRule::new(ThemeTarget::Edge, patch)
+        };
+        rule = rule.for_family(DiagramFamilyId::BLOCK);
+        let theme = block_edge_theme([rule]);
+        let rendered = render_block_with_theme_requirement(
+            "block\n A --> B\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        assert!(!rendered.svg().contains("stroke:#b316cd"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+    }
+}
+
+#[test]
+fn block_edge_shadowed_fill_sibling_does_not_hide_winning_stroke() {
+    let theme = block_edge_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#abcdef").unwrap())
+                .with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    let rendered = render_block_with_theme_and_engine("block\n A --> B\n", &theme, Engine::new());
+    assert!(rendered.svg().contains("stroke:#b316cd;fill:none;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn block_edge_class_ownership_follows_actual_parent_selector() {
+    let theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+    )]);
+    for (class, owned) in [("block", true), ("unrelated", false)] {
+        let source = format!("block\n A --> B\n classDef {class} stroke:#2468ac\n");
+        let rendered = render_block_with_theme_and_engine(&source, &theme, Engine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let path = document
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert_eq!(
+            path.attribute("style")
+                .unwrap()
+                .contains("stroke:#b316cd;fill:none;"),
+            !owned
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(!owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+    }
+}
+
+#[test]
+fn block_edge_mixed_rule_only_certifies_consumed_winning_facets() {
+    let theme = block_edge_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#b316cd").unwrap())
+                .with_stroke_width(4.0)
+                .unwrap(),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    let rendered = render_block_with_theme_requirement(
+        "block\n A --> B\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    assert!(rendered.svg().contains("stroke:#2468ac;fill:none;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn block_edge_invisible_self_loop_keeps_rendering_without_applied_paint() {
+    for mixed in [false, true] {
+        let theme = block_edge_theme([ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+        )]);
+        let source = if mixed {
+            "block\n A --> A\n A --> B\n"
+        } else {
+            "block\n A --> A\n"
+        };
+        let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("data-edge") == Some("true"))
+                .count(),
+            if mixed { 2 } else { 1 }
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(mixed));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!mixed));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn block_edge_unsupported_gradient_stroke_blocks_solid_fill_fallback() {
+    use merman_render::diagram_theme::{GradientStop, LinearGradient};
+
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+            GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
+        ],
+    )
+    .unwrap();
+    let theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+            .with_stroke(CanvasPaint::LinearGradient(gradient)),
+    )]);
+    let rendered = render_block_with_theme_requirement(
+        "block\n A --> B\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("data-edge") == Some("true"))
+        .unwrap();
+    assert_eq!(edge.attribute("style"), Some("undefined;;;undefined"));
+    assert!(!rendered.svg().contains("#b316cd"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn block_edge_invisible_self_loop_preserves_semantic_ordinals() {
+    for ordinal in [1, 2] {
+        let theme = block_edge_theme([ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(ordinal).unwrap())]);
+        let rendered = render_block_with_theme_requirement(
+            "block\n A --> A\n A --> B\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edges = document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .collect::<Vec<_>>();
+        assert_eq!(edges.len(), 2);
+        assert!(
+            edges
+                .iter()
+                .all(|edge| { edge.attribute("style") == Some("undefined;;;undefined") })
+        );
+        assert!(!rendered.svg().contains("#b316cd"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(ordinal == 1));
+        assert_eq!(evidence.theme_residual_count(), usize::from(ordinal == 2));
+    }
+}

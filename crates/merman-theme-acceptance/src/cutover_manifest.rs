@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 86;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 87;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    121, 242, 243, 195, 170, 4, 96, 199, 175, 159, 242, 94, 208, 201, 183, 143, 66, 129, 36, 134,
-    138, 39, 95, 117, 211, 180, 142, 104, 146, 161, 237, 228,
+    180, 236, 197, 199, 184, 3, 80, 55, 245, 184, 155, 28, 141, 164, 177, 87, 138, 35, 173, 29,
+    250, 137, 114, 181, 178, 112, 168, 134, 165, 32, 234, 232,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -461,7 +461,7 @@ const CLASS_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 478] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 486] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2485,6 +2485,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 478] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,
@@ -4920,7 +4980,7 @@ mod tests {
                 if family == DiagramFamilyId::REQUIREMENT {
                     10
                 } else {
-                    8
+                    12
                 }
             );
         }

@@ -64,3 +64,5 @@ pub use pipeline::{
     finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
     validate_static_inline_svg_admission,
 };
+
+pub(crate) use parity::block_edge_path_data;

@@ -309,6 +309,8 @@ const BLOCK_NODE_SOURCE: &str = r#"block-beta
   columns 5
   rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
 "#;
+// Empty cells keep the line terminals visible outside node and marker geometry.
+const BLOCK_EDGE_SOURCE: &str = "block-beta\n columns 3\n A[\"Alpha\"] space B[\"Beta\"]\n C[\"Gamma\"] space D[\"Delta\"]\n A --> B\n C -- \"connects\" --> D\n";
 const BLOCK_EDGE_LABEL_SOURCE: &str = "block-beta\n  A[\"Alpha\"] -- \"relates\" --> B[\"Beta\"]\n";
 const ZENUML_TITLE_SOURCE: &str = "zenuml\ntitle Cutover ZenUML title\nClient->Service: request\n";
 const VENN_THEME_SOURCE: &str = r#"venn-beta
@@ -496,7 +498,7 @@ impl CutoverWitnessProfile {
         if route.family_id() == DiagramFamilyId::BLOCK
             && matches!(
                 route.target(),
-                ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel
+                ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel | ThemeTarget::Edge
             )
         {
             return &Self::TEXT_LOOKS;
@@ -762,6 +764,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_NODE_SOURCE),
+        (
+            DiagramFamilyId::BLOCK,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(BLOCK_EDGE_SOURCE),
         (DiagramFamilyId::BLOCK, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
             Ok(BLOCK_NODE_SOURCE)
         }
@@ -2483,16 +2490,24 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_edge_fill_cutover_has_native_stroke_proof() {
+    fn edge_fill_cutover_has_native_stroke_proof() {
         let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
-        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::BLOCK,
+        ] {
             for selector in [
                 ThemeRouteCutoverSelector::StaticUnqualified,
                 ThemeRouteCutoverSelector::StaticVariant(
                     merman_render::diagram_theme::ThemeVariant::Default,
                 ),
             ] {
-                for profile in CutoverWitnessProfile::EDGE {
+                for profile in if family == DiagramFamilyId::BLOCK {
+                    CutoverWitnessProfile::TEXT_LOOKS
+                } else {
+                    CutoverWitnessProfile::EDGE
+                } {
                     let render = |value| {
                         let route = inventory
                             .iter()
@@ -2553,11 +2568,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_478_routes_and_730_artifact_witnesses() {
+    fn route_inventory_retains_486_routes_and_754_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 478);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 730);
+        assert_eq!(inventory.len(), 486);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 754);
     }
 
     #[test]

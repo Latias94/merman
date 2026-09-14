@@ -24,6 +24,7 @@ pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KG
 #[cfg(feature = "layout-cytoscape")]
 mod architecture;
 mod block;
+pub(crate) use block::block_edge_path_data;
 mod c4;
 mod class;
 mod css;
@@ -1196,6 +1197,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             artifact.node_paint_theme(),
             artifact.node_label_paint_theme(),
+            artifact.edge_paint_theme(),
             artifact.label_background_theme(),
             artifact.typography_theme(),
             effective_config_value,

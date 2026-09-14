@@ -148,6 +148,13 @@ fn prepare_block_family(
         typography_theme.text_style().clone(),
         execution.text_measurer(),
     )?;
+    let edge_paint_theme = crate::block::BlockEdgePaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
     let node_label_paint_theme = crate::block::BlockNodeLabelPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -182,6 +189,7 @@ fn prepare_block_family(
             pair: FamilyPair::new(model, layout),
             node_paint_theme,
             node_label_paint_theme,
+            edge_paint_theme,
             label_background_theme,
             typography_theme,
         },

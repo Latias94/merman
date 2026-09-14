@@ -64,6 +64,16 @@ fn render_block_direct_with_layout(
     node_paint_theme: &BlockNodePaintThemePlan,
     change_layout: impl FnOnce(&mut crate::model::BlockDiagramLayout),
 ) -> crate::Result<root_svg::RootedSvg> {
+    render_block_direct_with_edge_theme(policy, node_paint_theme, None, change_layout)
+}
+
+fn render_block_direct_with_edge_theme(
+    policy: RenderResourcePolicy,
+    node_paint_theme: &BlockNodePaintThemePlan,
+    theme: Option<&crate::diagram_theme::DiagramTheme>,
+    change_layout: impl FnOnce(&mut crate::model::BlockDiagramLayout),
+) -> crate::Result<root_svg::RootedSvg> {
+    let resolved = theme.map(|theme| theme.resolve(crate::DiagramFamilyId::BLOCK));
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
         .expect("parse Block resource-bound fixture")
@@ -104,6 +114,14 @@ fn render_block_direct_with_layout(
             execution.work_meter(),
         )
         .expect("node label paint theme"),
+        &crate::block::BlockEdgePaintPlan::resolve(
+            resolved.as_ref(),
+            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            model,
+            &layout,
+            execution.work_meter(),
+        )
+        .expect("edge paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
             &merman_core::MermaidConfig::from_value(effective_config.clone()),
@@ -313,4 +331,46 @@ fn block_svg_sink_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
         resource_override.id == ResourceLimitId::MaxSvgBytes
             && resource_override.value == below_exact
     }));
+}
+
+#[test]
+fn block_typed_edge_writer_rejects_missing_duplicate_and_mismatched_layout() {
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                    )
+                    .for_family(crate::DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .unwrap();
+    for case in ["missing", "duplicate", "wrong-endpoint"] {
+        let error = render_block_direct_with_edge_theme(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            &BlockNodePaintThemePlan::baseline(),
+            Some(&theme),
+            |layout| match case {
+                "missing" => layout.edges.clear(),
+                "duplicate" => layout.edges.push(layout.edges[0].clone()),
+                "wrong-endpoint" => layout.edges[0].to = "wrong".to_string(),
+                _ => unreachable!(),
+            },
+        )
+        .expect_err("typed edge receipt must reject malformed layout");
+        assert!(
+            error
+                .to_string()
+                .contains("Block edge paint terminal receipt"),
+            "{case}: {error}"
+        );
+    }
 }

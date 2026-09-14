@@ -6,6 +6,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod edge_paint;
+pub(crate) use edge_paint::BlockEdgePaintPlan;
 mod source;
 mod theme;
 

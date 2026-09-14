@@ -626,15 +626,10 @@ fn compile_block_family(
             ("textColor", node_label_fill),
         ],
     );
-    let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
+    // Edge paint is writer-owned. Only explicit legacy Marker paint still projects here.
     contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", edge_paint)],
-    );
-    let marker_paint = reader.marker_paint_contribution();
-    contributions.add_theme_variables(
-        marker_paint.contribution_id,
-        [("arrowheadColor", marker_paint.value)],
+        EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
+        [("arrowheadColor", reader.stroke_or_fill(ThemeTarget::Marker))],
     );
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
@@ -683,21 +678,6 @@ impl FamilyStyleReader {
 
     fn stroke_or_fill(&self, target: ThemeTarget) -> Option<String> {
         self.stroke_or_fill_resolution(target).into_value()
-    }
-
-    fn marker_paint_contribution(&self) -> MarkerPaintContribution {
-        match self.stroke_or_fill_resolution(ThemeTarget::Marker) {
-            LegacyPaintResolution::Unspecified => MarkerPaintContribution {
-                contribution_id: ThemeRouteCutoverProjection::MarkerPaintFromEdge.contribution_id(),
-                value: self
-                    .stroke_or_fill_resolution(ThemeTarget::Edge)
-                    .into_value(),
-            },
-            marker => MarkerPaintContribution {
-                contribution_id: EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
-                value: marker.into_value(),
-            },
-        }
     }
 
     fn text_fill(&self, target: ThemeTarget) -> Option<String> {
@@ -754,11 +734,6 @@ impl FamilyStyleReader {
             Some(FamilyThemeDisposition::TypedAdapter) | None => LegacyPaintResolution::Suppressed,
         }
     }
-}
-
-struct MarkerPaintContribution {
-    contribution_id: &'static str,
-    value: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2018,14 +1993,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 28);
+        assert_eq!(status.matrix_route_count(), 20);
         assert_eq!(status.matrix_family_count(), 1);
         assert_eq!(status.dispatched_family_count(), 1);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                209, 222, 42, 192, 128, 167, 191, 249, 15, 99, 159, 157, 91, 92, 172, 202, 31, 84,
-                243, 156, 113, 240, 69, 230, 105, 58, 221, 28, 177, 16, 82, 221
+                184, 120, 158, 107, 18, 39, 7, 31, 139, 54, 146, 228, 14, 176, 101, 53, 207, 70,
+                89, 112, 139, 44, 250, 59, 84, 222, 226, 73, 87, 253, 59, 3
             ]
         );
         assert_eq!(
@@ -3793,9 +3768,8 @@ gitGraph
                 "merman.legacy-family-theme.v1.{}.edge.stroke",
                 family.as_str(),
             );
-            assert_eq!(
-                artifact.contribution_ids.contains(&edge_contribution),
-                family == DiagramFamilyId::BLOCK,
+            assert!(
+                !artifact.contribution_ids.contains(&edge_contribution),
                 "edge stroke bridge ownership must follow the family matrix for {family:?}",
             );
             assert!(!artifact.contribution_ids.iter().any(|id| {
@@ -3841,7 +3815,7 @@ gitGraph
     }
 
     #[test]
-    fn bridge_free_edge_fill_and_marker_paint_leave_block_unchanged() {
+    fn edge_paint_has_no_legacy_projection_and_block_keeps_explicit_markers() {
         for family in [
             DiagramFamilyId::FLOWCHART,
             DiagramFamilyId::SWIMLANE,
@@ -3866,6 +3840,7 @@ gitGraph
                         DiagramFamilyId::FLOWCHART
                             | DiagramFamilyId::SWIMLANE
                             | DiagramFamilyId::CLASS
+                            | DiagramFamilyId::BLOCK
                     );
                     for projection in ["edge.stroke", "marker.paint-from-edge"] {
                         assert_eq!(
@@ -3890,8 +3865,17 @@ gitGraph
                                 ),
                             );
                             let artifact = bridge(&spec).compile_for_family(family);
-                            assert!(artifact.contribution_ids.is_empty());
-                            assert!(artifact.overlay.is_empty());
+                            if family == DiagramFamilyId::BLOCK {
+                                assert_eq!(artifact.contribution_ids.len(), 1);
+                                assert!(
+                                    artifact.contribution_ids.contains(
+                                        "merman.legacy-family-theme.v1.block.marker.paint"
+                                    )
+                                );
+                            } else {
+                                assert!(artifact.contribution_ids.is_empty());
+                                assert!(artifact.overlay.is_empty());
+                            }
                         }
                     }
                 }
@@ -3902,6 +3886,7 @@ gitGraph
     #[test]
     fn typed_node_family_edge_stroke_retires_legacy_marker_fallback() {
         for family in [
+            DiagramFamilyId::BLOCK,
             DiagramFamilyId::FLOWCHART,
             DiagramFamilyId::SWIMLANE,
             DiagramFamilyId::CLASS,
