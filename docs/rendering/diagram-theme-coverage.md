@@ -138,8 +138,8 @@ observations are listed below. See the
 KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
 (four solid/transparent matrix routes). Composite labels use NodeLabel styling;
 the secondaryTextColor/tertiaryTextColor projection had no writer consumer. The
-unused Block generic Text fallback is also removed. Class retains its generic Text
-compatibility assignments until its own cutover. Native pixel comparisons preserve
+unused Block generic Text fallback is also removed. At that historical point, Class still
+retained generic Text compatibility assignments; the later Class Text cutover retired them. Native pixel comparisons preserve
 the composite label and retain an active Node paint control. Marker paint remains
 legacy because its arrowMarkerPath consumer is real. Class edge-label background has an independent
 historical and runtime witness: the legacy `.edgeLabel[data-look="neo"]` selector is present in
