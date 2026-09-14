@@ -111,24 +111,34 @@ def run_theme_authoring_smoke() -> None:
                     "preset catalog differs from shared golden")
         error_vectors = json.loads((FIXTURES / "errors.json").read_text(encoding="utf-8"))
         for vector in error_vectors:
-            for client in (api, engine):
-                try:
-                    execute_json(client, "materialize-theme-json", vector["source"],
-                                 vector.get("options_json"))
-                except merman.MermanError.Binding as error:
-                    require(error.code_name == vector["code_name"], "wrong outer authoring status")
-                    details = json.loads(error.details_json)
-                    require(details.get("resource") == vector.get("resource"),
-                            "resource rejection differs from shared golden")
-                    authoring = details["theme_authoring"]
-                    for diagnostic in authoring["diagnostics"]:
-                        message = diagnostic.pop("message")
-                        require(isinstance(message, str) and bool(message.strip()),
-                                "missing authoring diagnostic message")
-                    require(authoring == vector["theme_authoring"],
-                            f"{vector['id']} authoring envelope differs from shared golden")
-                else:
-                    raise RuntimeError(f"{vector['id']} invalid definition was accepted")
+            operations = ["materialize-theme-json"]
+            if vector["id"] == "encoded-byte-limit":
+                operations += ["describe-theme-support-json", "export-theme-preset-json"]
+            for operation in operations:
+                for client in (api, engine):
+                    try:
+                        execute_json(client, operation, vector["source"],
+                                     vector.get("options_json"))
+                    except merman.MermanError.Binding as error:
+                        require(error.code_name == vector["code_name"],
+                                f"{operation}: wrong outer authoring status")
+                        details = json.loads(error.details_json)
+                        require(details.get("resource") == vector.get("resource"),
+                                f"{operation}: resource rejection differs from shared golden")
+                        authoring = details.get("theme_authoring")
+                        if authoring is not None:
+                            for diagnostic in authoring["diagnostics"]:
+                                message = diagnostic.pop("message")
+                                require(isinstance(message, str) and bool(message.strip()),
+                                        "missing authoring diagnostic message")
+                        expected_authoring = (
+                            vector["theme_authoring"] if operation == "materialize-theme-json"
+                            else None
+                        )
+                        require(authoring == expected_authoring,
+                                f"{operation}/{vector['id']}: authoring envelope differs from shared golden")
+                    else:
+                        raise RuntimeError(f"{operation}/{vector['id']}: invalid request was accepted")
 
         definitions = {}
         for name in ("light", "dark"):
@@ -213,8 +223,31 @@ def run_theme_authoring_smoke() -> None:
                                        json.dumps(vector["query"]))
                 require(support == vector["expected"],
                         f"{vector['id']} support descriptor differs from shared golden")
+        budgeted_inputs = {
+            "materialize-theme-json": definitions["light"],
+            "describe-theme-support-json": json.dumps(support_vectors[0]["query"]),
+            "export-theme-preset-json": "editor-light",
+        }
+        for client in (api, engine):
+            for operation, source in budgeted_inputs.items():
+                baseline = execute_json(client, operation, source)
+                # Export also admits the expanded recipe, so cover its encoded input too.
+                encoded_budget = len((
+                    json.dumps(baseline, allow_nan=False)
+                    if operation == "export-theme-preset-json" else source
+                ).encode("utf-8"))
+                bounded = execute_json(client, operation, source, json.dumps({
+                    "resources": {
+                        "profile": "constrained",
+                        "limits": {"max_theme_encoded_bytes": encoded_budget},
+                    },
+                }))
+                require(bounded == baseline,
+                        f"{operation}: valid theme budget changed the result")
         print("Python theme authoring passed: shared vectors, three families, isolation, "
-              "rule, cold start, preset export, catalog, discovery")
+              "rule, cold start, preset export, catalog, "
+              f"{len(support_vectors)} support vectors, "
+              f"{len(budgeted_inputs)} budgeted operations per consumer")
     finally:
         fresh.close()
         engine.close()
