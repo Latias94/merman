@@ -420,6 +420,9 @@ fn legacy_bridge_projections(
             ThemeTarget::Text,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_FLOWCHART_TEXT_FILL),
+        (DiagramFamilyId::CLASS, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_CLASS_TEXT_FILL)
+        }
 
         (
             DiagramFamilyId::FLOWCHART
@@ -4306,7 +4309,7 @@ mod tests {
                 );
                 assert_eq!(
                     classify_rule_facet(DiagramFamilyId::CLASS, ThemeTarget::Text, selector, facet),
-                    FamilyThemeDisposition::LegacyCompatibility
+                    FamilyThemeDisposition::TypedAdapter
                 );
                 assert_eq!(
                     classify_rule_facet(
@@ -7407,7 +7410,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 236);
+        assert_eq!(qualified.len(), 238);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7514,7 +7517,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
-            16
+            18
         );
         assert_eq!(
             qualified
@@ -7753,6 +7756,11 @@ mod tests {
                     (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
                         vec![ThemeRouteCutoverProjection::NodeLabelFill]
                     }
+                    (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => vec![
+                        ThemeRouteCutoverProjection::NodeLabelFill,
+                        ThemeRouteCutoverProjection::TitleFill,
+                        ThemeRouteCutoverProjection::ClusterLabelFill,
+                    ],
                     (ThemeTarget::Cluster, ThemeRouteCutoverFacet::Fill) => {
                         vec![ThemeRouteCutoverProjection::ClusterFill]
                     }
@@ -8065,16 +8073,12 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 32), (DiagramFamilyId::CLASS, 4)]
-                .into_iter()
-                .collect(),
+            [(DiagramFamilyId::BLOCK, 32)].into_iter().collect(),
             "bridge retirement must update the exact route ledger"
         );
         assert_eq!(
             families,
-            [DiagramFamilyId::BLOCK, DiagramFamilyId::CLASS]
-                .into_iter()
-                .collect(),
+            [DiagramFamilyId::BLOCK].into_iter().collect(),
             "bridge retirement must update the explicit family ledger"
         );
     }

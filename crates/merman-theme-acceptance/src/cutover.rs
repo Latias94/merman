@@ -89,6 +89,18 @@ B[Beta]
 end
 "#;
 const CLASS_NODE_SOURCE: &str = "classDiagram\nclass Alpha\nclass Beta\n";
+const CLASS_TEXT_SOURCE: &str = r#"classDiagram
+class Alpha {
+  +String id
+  +render() String
+}
+class Beta
+namespace Internal {
+  class Gamma
+}
+Alpha --> Beta : relates
+note for Alpha "annotated"
+"#;
 const ER_TEXT_SOURCE: &str =
     "---\ntitle: Entity relationship title\n---\nerDiagram\n  CUSTOMER ||--o{ ORDER : places\n";
 const ER_TABLE_SOURCE: &str = "erDiagram\n  CUSTOMER {\n    string id\n    string name\n  }\n";
@@ -473,7 +485,9 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
-        if route.family_id() == DiagramFamilyId::CLASS && route.target() == ThemeTarget::Title {
+        if route.family_id() == DiagramFamilyId::CLASS
+            && matches!(route.target(), ThemeTarget::Title | ThemeTarget::Text)
+        {
             return &Self::TEXT_LOOKS;
         }
         if route.family_id() == DiagramFamilyId::BLOCK
@@ -766,6 +780,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::CLASS, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(CLASS_CLUSTER_SOURCE)
+        }
+        (DiagramFamilyId::CLASS, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(CLASS_TEXT_SOURCE)
         }
         (
             DiagramFamilyId::CLASS,

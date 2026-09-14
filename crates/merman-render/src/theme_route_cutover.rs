@@ -639,6 +639,11 @@ impl ThemeRouteCutoverProjectionSet {
             | ThemeRouteCutoverProjection::TitleFill.bit()
             | ThemeRouteCutoverProjection::ClusterLabelFill.bit(),
     );
+    pub const REPLACE_CLASS_TEXT_FILL: Self = Self(
+        ThemeRouteCutoverProjection::NodeLabelFill.bit()
+            | ThemeRouteCutoverProjection::TitleFill.bit()
+            | ThemeRouteCutoverProjection::ClusterLabelFill.bit(),
+    );
     pub const REPLACE_CHART_TEXT_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::ChartTextPaint);
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
