@@ -311,6 +311,7 @@ const BLOCK_NODE_SOURCE: &str = r#"block-beta
 "#;
 // Empty cells keep the line terminals visible outside node and marker geometry.
 const BLOCK_EDGE_SOURCE: &str = "block-beta\n columns 3\n A[\"Alpha\"] space B[\"Beta\"]\n C[\"Gamma\"] space D[\"Delta\"]\n A --> B\n C -- \"connects\" --> D\n";
+const BLOCK_MARKER_SOURCE: &str = "block-beta\n columns 3\n A[\"Alpha\"] space B[\"Beta\"]\n C[\"Gamma\"] space D[\"Delta\"]\n E[\"Epsilon\"] space F[\"Zeta\"]\n A --> B\n C --o D\n E --x F\n";
 const BLOCK_CLUSTER_SOURCE: &str =
     "block-beta\n columns 1\n block:group[\"Group\"]\n A[\"Alpha\"]\n end\n B[\"Beta\"]\n";
 const BLOCK_EDGE_LABEL_SOURCE: &str = "block-beta\n  A[\"Alpha\"] -- \"relates\" --> B[\"Beta\"]\n";
@@ -774,6 +775,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_EDGE_SOURCE),
+        (
+            DiagramFamilyId::BLOCK,
+            ThemeTarget::Marker,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(BLOCK_MARKER_SOURCE),
         (
             DiagramFamilyId::BLOCK,
             ThemeTarget::Cluster,
@@ -2558,6 +2564,73 @@ mod tests {
     }
 
     #[test]
+    fn block_marker_facets_have_native_proof_for_each_referenced_shape() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for (name, source, closed) in [
+            (
+                "point",
+                "block-beta\n columns 3\n A space B\n A <--> B\n",
+                true,
+            ),
+            (
+                "circle",
+                "block-beta\n columns 3\n A space B\n A o--o B\n",
+                true,
+            ),
+            (
+                "cross",
+                "block-beta\n columns 3\n A space B\n A x--x B\n",
+                false,
+            ),
+            ("self", "block-beta\n A --> A\n", true),
+        ] {
+            for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                if !closed && facet == ThemeRouteCutoverFacet::Fill {
+                    continue;
+                }
+                for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                    let render = |value| {
+                        let route = inventory
+                            .iter()
+                            .copied()
+                            .find(|route| {
+                                route.family_id() == DiagramFamilyId::BLOCK
+                                    && route.target() == ThemeTarget::Marker
+                                    && route.facet() == facet
+                                    && route.selector()
+                                        == ThemeRouteCutoverSelector::StaticUnqualified
+                                    && route.value() == value
+                            })
+                            .expect("Block marker route");
+                        assert_eq!(route.raster_paint_facet(), facet);
+                        let case = super::CutoverCase {
+                            id: CutoverWitnessId::new(route, profile),
+                            source,
+                        };
+                        let rendered = super::render_cutover_case(case, vec![route])
+                            .unwrap_or_else(|error| {
+                                panic!("{name}/{facet:?}/{profile:?}: {error}")
+                            });
+                        (route, rendered.document)
+                    };
+                    let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                    let (transparent_route, transparent) =
+                        render(ThemeRouteCutoverValue::Transparent);
+                    merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                        &solid,
+                        &transparent,
+                        solid_route,
+                        transparent_route,
+                        &merman_export::RasterOptions::default().with_scale(2.0),
+                        merman::OperationControl::new(),
+                    )
+                    .unwrap_or_else(|error| panic!("{name}/{facet:?}/{profile:?}: {error}"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -2578,11 +2651,16 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_494_routes_and_778_artifact_witnesses() {
+    fn route_inventory_retains_502_routes_and_786_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 494);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 778);
+        assert_eq!(
+            inventory.len(),
+            502,
+            "actual route count {}",
+            inventory.len()
+        );
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 786);
     }
 
     #[test]

@@ -46,7 +46,6 @@ use super::legacy_tombstones::{ThemeLegacyRouteFacet, ThemeLegacyRouteSelector};
 use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
-const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
 
 type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
 type BlockLegacyCompiler = fn(&mut OverlayBuilder, &FamilyStyleReader) -> BridgeResult<()>;
@@ -626,11 +625,6 @@ fn compile_block_family(
             ("textColor", node_label_fill),
         ],
     );
-    // Edge paint is writer-owned. Only explicit legacy Marker paint still projects here.
-    contributions.add_theme_variables(
-        EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
-        [("arrowheadColor", reader.stroke_or_fill(ThemeTarget::Marker))],
-    );
 
     contributions.finish_into(builder)
 }
@@ -665,10 +659,6 @@ impl FamilyStyleReader {
         self.stroke_resolution(target).into_value()
     }
 
-    fn stroke_or_fill(&self, target: ThemeTarget) -> Option<String> {
-        self.stroke_or_fill_resolution(target).into_value()
-    }
-
     fn text_fill(&self, target: ThemeTarget) -> Option<String> {
         self.paint_resolution(
             self.text_style(target).fill_resolution(),
@@ -689,16 +679,6 @@ impl FamilyStyleReader {
             self.style(target).stroke_resolution(),
             FamilyThemeRuleFacet::stroke,
         )
-    }
-
-    fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
-        let style = self.style(target);
-        match self.paint_resolution(style.stroke_resolution(), FamilyThemeRuleFacet::stroke) {
-            LegacyPaintResolution::Unspecified => {
-                self.paint_resolution(style.fill_resolution(), FamilyThemeRuleFacet::fill)
-            }
-            stroke => stroke,
-        }
     }
 
     fn paint_resolution(
@@ -3864,17 +3844,8 @@ gitGraph
                                 ),
                             );
                             let artifact = bridge(&spec).compile_for_family(family);
-                            if family == DiagramFamilyId::BLOCK {
-                                assert_eq!(artifact.contribution_ids.len(), 1);
-                                assert!(
-                                    artifact.contribution_ids.contains(
-                                        "merman.legacy-family-theme.v1.block.marker.paint"
-                                    )
-                                );
-                            } else {
-                                assert!(artifact.contribution_ids.is_empty());
-                                assert!(artifact.overlay.is_empty());
-                            }
+                            assert!(artifact.contribution_ids.is_empty());
+                            assert!(artifact.overlay.is_empty());
                         }
                     }
                 }

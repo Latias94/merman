@@ -28,6 +28,7 @@ mod css_identifier;
 mod fallback;
 mod icon_registry;
 mod parity;
+pub(crate) use parity::BaseEdgeMarkerKind;
 mod pipeline;
 pub(crate) mod scanner;
 

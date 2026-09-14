@@ -7,7 +7,9 @@ use std::collections::{BTreeMap, HashMap};
 
 mod config;
 mod edge_paint;
+mod marker_paint;
 pub(crate) use edge_paint::BlockEdgePaintPlan;
+pub(crate) use marker_paint::BlockMarkerPaintPlan;
 mod source;
 mod theme;
 

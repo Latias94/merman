@@ -712,6 +712,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::KanbanTaskStroke);
     pub const REPLACE_TREE_VIEW_MARKER_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
+    pub const REPLACE_MARKER_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
     pub const REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill);
     pub const REPLACE_GANTT_TASK_WARNING_STROKE: Self =

@@ -48,6 +48,7 @@ mod kanban;
 mod label;
 mod layout_debug;
 mod markers;
+pub(crate) use markers::BaseEdgeMarkerKind;
 mod mindmap;
 mod output;
 mod packet;
@@ -1198,6 +1199,7 @@ fn render_builtin_family_artifact_raw(
             artifact.node_paint_theme(),
             artifact.node_label_paint_theme(),
             artifact.edge_paint_theme(),
+            artifact.marker_paint_theme(),
             artifact.label_background_theme(),
             artifact.typography_theme(),
             effective_config_value,

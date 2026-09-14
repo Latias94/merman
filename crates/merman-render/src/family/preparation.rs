@@ -155,6 +155,13 @@ fn prepare_block_family(
         &layout,
         execution.work_meter_ref(),
     )?;
+    let marker_paint_theme = crate::block::BlockMarkerPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
     let node_label_paint_theme = crate::block::BlockNodeLabelPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -175,6 +182,7 @@ fn prepare_block_family(
             node_paint_theme,
             node_label_paint_theme,
             edge_paint_theme,
+            marker_paint_theme,
             label_background_theme,
             typography_theme,
         },

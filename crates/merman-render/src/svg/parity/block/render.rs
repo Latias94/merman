@@ -328,6 +328,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     node_paint_theme: &BlockNodePaintThemePlan,
     node_label_paint_theme: &BlockNodeLabelPaintPlan,
     edge_paint_theme: &crate::block::BlockEdgePaintPlan,
+    marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
     effective_config: &serde_json::Value,
@@ -879,10 +880,35 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
-    let mut base_edge_markers = String::new();
-    super::super::markers::push_base_edge_markers(&mut base_edge_markers, diagram_id, "block");
-    out.push_str(&base_edge_markers);
-    options.checkpoint_emit()?;
+    let mut marker_paint_receipt = marker_paint_theme.begin_terminal_receipt();
+    if let Some(receipt) = marker_paint_receipt.as_mut() {
+        for (index, definition) in marker_paint_theme.definitions().iter().enumerate() {
+            options.checkpoint_emit()?;
+            let start = out.len();
+            let mut marker = String::new();
+            super::super::markers::push_base_edge_marker(
+                &mut marker,
+                diagram_id,
+                "block",
+                definition.kind(),
+                definition.suffix(),
+                definition.paint_style(),
+            );
+            out.push_str(&marker);
+            out.checkpoint()?;
+            marker_paint_theme.observe_definition(
+                receipt,
+                index,
+                diagram_id.semantic_str(),
+                &out.as_str()[start..],
+            );
+        }
+    } else {
+        let mut base_edge_markers = String::new();
+        super::super::markers::push_base_edge_markers(&mut base_edge_markers, diagram_id, "block");
+        out.push_str(&base_edge_markers);
+        options.checkpoint_emit()?;
+    }
 
     out.push_str(r#"<g class="block">"#);
     out.checkpoint()?;
@@ -1264,7 +1290,12 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let _ = write!(
                 &mut out,
                 r#" marker-start="{}""#,
-                escape_attr(&marker_url(diagram_id, m))
+                escape_attr(&marker_url(
+                    diagram_id,
+                    marker_paint_theme
+                        .reference_suffix(edge_index, true)
+                        .unwrap_or(m)
+                ))
             );
         }
         if let Some(m) = edge_marker_end(e.arrow_type_end.as_deref()) {
@@ -1274,12 +1305,25 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let _ = write!(
                 &mut out,
                 r#" marker-end="{}""#,
-                escape_attr(&marker_url(diagram_id, m))
+                escape_attr(&marker_url(
+                    diagram_id,
+                    marker_paint_theme
+                        .reference_suffix(edge_index, false)
+                        .unwrap_or(m)
+                ))
             );
         }
         options.checkpoint_emit()?;
         out.push_str("/>");
         out.checkpoint()?;
+        if let Some(receipt) = marker_paint_receipt.as_mut() {
+            marker_paint_theme.observe_path(
+                receipt,
+                edge_index,
+                diagram_id.semantic_str(),
+                &out.as_str()[edge_start..],
+            );
+        }
         if let Some(receipt) = edge_paint_receipt.as_mut() {
             edge_paint_theme.observe_path(
                 receipt,
@@ -1450,6 +1494,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     if !edge_paint_theme.record_terminal(edge_paint_receipt) {
         return Err(Error::InvalidModel {
             message: "Block edge paint terminal receipt was incomplete".to_string(),
+        });
+    }
+    if !marker_paint_theme.record_terminal(marker_paint_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Block marker paint terminal receipt was incomplete".to_string(),
         });
     }
     Ok(rooted)

@@ -122,6 +122,14 @@ fn render_block_direct_with_edge_theme(
             execution.work_meter(),
         )
         .expect("edge paint theme"),
+        &crate::block::BlockMarkerPaintPlan::resolve(
+            resolved.as_ref(),
+            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            model,
+            &layout,
+            execution.work_meter(),
+        )
+        .expect("marker paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
             &merman_core::MermaidConfig::from_value(effective_config.clone()),
@@ -370,6 +378,69 @@ fn block_typed_edge_writer_rejects_missing_duplicate_and_mismatched_layout() {
             error
                 .to_string()
                 .contains("Block edge paint terminal receipt"),
+            "{case}: {error}"
+        );
+    }
+}
+
+#[test]
+fn block_base_marker_definitions_preserve_historical_bytes() {
+    use sha2::{Digest, Sha256};
+    let rendered =
+        render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .unwrap();
+    let svg: &str = &rendered;
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let markers = document
+        .descendants()
+        .filter(|node| node.has_tag_name("marker"))
+        .collect::<Vec<_>>();
+    assert_eq!(markers.len(), 12);
+    let range = markers.first().unwrap().range().start..markers.last().unwrap().range().end;
+    assert_eq!(
+        format!("{:x}", Sha256::digest(svg[range].as_bytes())),
+        "f1a0eb49e563cc64e92401557a6fe52b4a9ba12b56b2a3ca2089a2f5f63dfa62",
+        "the original twelve definitions retain their exact bytes and order"
+    );
+}
+
+#[test]
+fn block_marker_writer_rejects_missing_duplicate_and_mismatched_layout() {
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Marker,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )
+                    .for_family(crate::DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .unwrap();
+    for case in ["missing", "duplicate", "wrong-endpoint"] {
+        let error = render_block_direct_with_edge_theme(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            &BlockNodePaintThemePlan::baseline(),
+            Some(&theme),
+            |layout| match case {
+                "missing" => layout.edges.clear(),
+                "duplicate" => layout.edges.push(layout.edges[0].clone()),
+                "wrong-endpoint" => layout.edges[0].to = "wrong".to_string(),
+                _ => unreachable!(),
+            },
+        )
+        .expect_err("marker receipt must reject malformed layout");
+        assert!(
+            error
+                .to_string()
+                .contains("Block marker paint terminal receipt"),
             "{case}: {error}"
         );
     }

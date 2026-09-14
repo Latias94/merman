@@ -1742,6 +1742,7 @@ pub(crate) struct BlockFamilyArtifact {
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
     node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
     edge_paint_theme: crate::block::BlockEdgePaintPlan,
+    marker_paint_theme: crate::block::BlockMarkerPaintPlan,
     label_background_theme: crate::block::BlockLabelBackgroundPlan,
     typography_theme: crate::block::BlockTypographyThemePlan,
 }
@@ -1765,6 +1766,10 @@ impl BlockFamilyArtifact {
         &self.edge_paint_theme
     }
 
+    pub(crate) const fn marker_paint_theme(&self) -> &crate::block::BlockMarkerPaintPlan {
+        &self.marker_paint_theme
+    }
+
     pub(crate) const fn label_background_theme(&self) -> &crate::block::BlockLabelBackgroundPlan {
         &self.label_background_theme
     }
@@ -1777,6 +1782,7 @@ impl BlockFamilyArtifact {
         let mut evidence = self.node_paint_theme.finish_evidence();
         evidence.merge_accounted_from(self.node_label_paint_theme.finish_evidence());
         evidence.merge_accounted_from(self.edge_paint_theme.finish_evidence());
+        evidence.merge_accounted_from(self.marker_paint_theme.finish_evidence());
         if self.label_background_theme.requested() {
             evidence.merge_accounted_from(self.label_background_theme.finish_evidence());
         }

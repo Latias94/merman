@@ -10,7 +10,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -38,7 +38,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 2,
         "family": "er",
@@ -68,7 +68,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -98,7 +98,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -126,7 +126,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -151,7 +151,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -176,7 +176,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -201,7 +201,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "future-family",
@@ -228,7 +228,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 2,
         "family": "flowchart",
@@ -258,7 +258,7 @@
     },
     "expected": {
       "schema_version": 2,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 2,
         "family": "class",
@@ -286,7 +286,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -312,7 +312,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -338,7 +338,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -364,7 +364,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -390,7 +390,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -416,7 +416,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -442,7 +442,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -468,7 +468,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -494,12 +494,64 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 88,
+      "claim_revision": 89,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
         "target": "cluster",
+        "facet": "stroke-paint"
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-marker-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "target": "marker",
+      "facet": "fill"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 89,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "target": "marker",
+        "facet": "fill"
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "block-typed-marker-stroke-paint",
+    "query": {
+      "schema_version": 1,
+      "family": "block",
+      "output": "standalone-svg",
+      "target": "marker",
+      "facet": "stroke-paint"
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 89,
+      "query": {
+        "schema_version": 1,
+        "family": "block",
+        "output": "standalone-svg",
+        "target": "marker",
         "facet": "stroke-paint"
       },
       "state": "conditional",

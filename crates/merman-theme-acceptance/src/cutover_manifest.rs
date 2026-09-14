@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 88;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 89;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    62, 243, 13, 116, 177, 83, 159, 224, 88, 121, 51, 78, 228, 132, 89, 141, 88, 86, 100, 98, 46,
-    65, 52, 99, 134, 71, 29, 52, 74, 113, 204, 64,
+    166, 111, 233, 192, 89, 251, 124, 169, 18, 244, 70, 195, 123, 208, 88, 145, 228, 48, 189, 34,
+    23, 200, 84, 70, 197, 198, 228, 58, 155, 68, 35, 156,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -408,7 +408,7 @@ const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskStroke];
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::KanbanTaskStroke];
-const TREE_VIEW_MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+const MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
 const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
@@ -461,7 +461,7 @@ const CLASS_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 502] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2545,6 +2545,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,
@@ -3919,28 +3979,28 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeTarget::Marker,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Marker,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Marker,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Marker,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::TREE_VIEW,
@@ -3948,7 +4008,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::TREE_VIEW,
@@ -3956,7 +4016,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::TREE_VIEW,
@@ -3964,7 +4024,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::TREE_VIEW,
@@ -3972,7 +4032,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 494] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREE_VIEW,
@@ -4472,12 +4532,11 @@ mod tests {
         CLUSTER_STROKE_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
         CutoverAuthorizationManifest, EDGE_STROKE_ONLY_PROJECTIONS, EDGE_STROKE_PROJECTIONS,
         GANTT_TASK_ACTIVE_FILL_PROJECTIONS, GANTT_TASK_WARNING_STROKE_PROJECTIONS, MANIFEST,
-        NODE_FILL_PROJECTIONS, NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS,
-        PIE_SLICE_FILL_PROJECTIONS, PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS,
-        RouteAuthorization, RouteTombstone, TEXT_FILL_PROJECTIONS, TIMELINE_EVENT_FILL_PROJECTIONS,
-        TIMELINE_EVENT_STROKE_PROJECTIONS, TITLE_FILL_PROJECTIONS,
-        TREE_VIEW_MARKER_PAINT_PROJECTIONS, authorize_cutover_routes, reconcile_manifest,
-        validate_projection_actions,
+        MARKER_PAINT_PROJECTIONS, NODE_FILL_PROJECTIONS, NODE_LABEL_FILL_PROJECTIONS,
+        NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS, PIE_SLICE_STROKE_PROJECTIONS,
+        PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone, TEXT_FILL_PROJECTIONS,
+        TIMELINE_EVENT_FILL_PROJECTIONS, TIMELINE_EVENT_STROKE_PROJECTIONS, TITLE_FILL_PROJECTIONS,
+        authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -5179,7 +5238,7 @@ mod tests {
                     }
                     (ThemeTarget::Marker, ThemeRouteCutoverFacet::Fill)
                     | (ThemeTarget::Marker, ThemeRouteCutoverFacet::Stroke) => {
-                        TREE_VIEW_MARKER_PAINT_PROJECTIONS
+                        MARKER_PAINT_PROJECTIONS
                     }
                     _ => return false,
                 }

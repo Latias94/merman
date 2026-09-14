@@ -2998,3 +2998,244 @@ fn block_cluster_and_node_ignore_default_class_when_plain_is_assigned() {
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
 }
+
+const BLOCK_MARKER_SOURCE: &str = "block-beta\n columns 3\n A[\"Alpha\"] space B[\"Beta\"]\n C[\"Gamma\"] space D[\"Delta\"]\n E[\"Epsilon\"] space F[\"Zeta\"]\n A --> B\n C --o D\n E --x F\n";
+
+fn referenced_block_marker_shapes<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> Vec<roxmltree::Node<'a, 'input>> {
+    document
+        .descendants()
+        .filter(|node| node.attribute("data-edge") == Some("true"))
+        .flat_map(|edge| {
+            ["marker-start", "marker-end"]
+                .into_iter()
+                .filter_map(move |property| {
+                    let reference = edge.attribute(property)?;
+                    let id = reference.strip_prefix("url(#")?.strip_suffix(')')?;
+                    let marker = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("marker") && node.attribute("id") == Some(id)
+                        })
+                        .expect("each emitted marker reference must resolve");
+                    Some(
+                        marker
+                            .children()
+                            .find(|node| node.is_element())
+                            .expect("marker shape"),
+                    )
+                })
+        })
+        .collect()
+}
+
+fn marker_style_property(shape: roxmltree::Node<'_, '_>, property: &str) -> Option<String> {
+    shape
+        .attribute("style")
+        .unwrap_or("")
+        .split(';')
+        .filter_map(|part| part.split_once(':'))
+        .filter(|(key, _)| key.trim() == property)
+        .map(|(_, value)| value.trim().to_string())
+        .next_back()
+}
+
+#[test]
+fn block_marker_static_paint_uses_independent_real_facets() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for transparent in [false, true] {
+            for split in [false, true] {
+                let fill = if transparent {
+                    CanvasPaint::Transparent
+                } else {
+                    CanvasPaint::solid("#b316cd").unwrap()
+                };
+                let stroke = if transparent {
+                    CanvasPaint::Transparent
+                } else {
+                    CanvasPaint::solid("#167bc1").unwrap()
+                };
+                let patches = if split {
+                    vec![
+                        ThemeStylePatch::default().with_fill(fill),
+                        ThemeStylePatch::default().with_stroke(stroke),
+                    ]
+                } else {
+                    vec![
+                        ThemeStylePatch::default()
+                            .with_fill(fill)
+                            .with_stroke(stroke),
+                    ]
+                };
+                let theme = block_edge_theme(patches.into_iter().map(|patch| {
+                    let rule = ThemeRule::new(ThemeTarget::Marker, patch);
+                    if let Some(variant) = variant {
+                        rule.with_variant(variant)
+                    } else {
+                        rule
+                    }
+                }));
+                let rendered =
+                    render_block_with_theme_and_engine(BLOCK_MARKER_SOURCE, &theme, Engine::new());
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let shapes = referenced_block_marker_shapes(&document);
+                assert_eq!(shapes.len(), 3);
+                for shape in shapes {
+                    let cross = shape
+                        .parent()
+                        .unwrap()
+                        .attribute("class")
+                        .unwrap_or("")
+                        .split_whitespace()
+                        .any(|name| name == "cross");
+                    if !cross {
+                        assert_eq!(
+                            marker_style_property(shape, "fill").as_deref(),
+                            Some(if transparent {
+                                "transparent"
+                            } else {
+                                "#b316cd"
+                            })
+                        );
+                    }
+                    assert_eq!(
+                        marker_style_property(shape, "stroke").as_deref(),
+                        Some(if transparent {
+                            "transparent"
+                        } else {
+                            "#167bc1"
+                        })
+                    );
+                }
+                for edge in document
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                {
+                    assert!(!edge.attribute("style").unwrap_or("").contains("#167bc1"));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), if split { 2 } else { 1 });
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn block_marker_fill_has_no_domain_for_unused_definitions_or_open_crosses() {
+    let theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    )]);
+    for source in [
+        "block-beta\n A\n",
+        "block-beta\n A --- B\n",
+        "block-beta\n A x--x B\n",
+    ] {
+        let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+        assert!(!rendered.svg().contains("#b316cd"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn block_marker_stroke_does_not_reuse_the_legacy_fill_projection() {
+    let theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#167bc1").unwrap()),
+    )]);
+    let rendered = render_block_with_theme_and_engine(BLOCK_MARKER_SOURCE, &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for shape in referenced_block_marker_shapes(&document) {
+        assert_eq!(
+            marker_style_property(shape, "stroke").as_deref(),
+            Some("#167bc1")
+        );
+        assert_ne!(
+            marker_style_property(shape, "fill").as_deref(),
+            Some("#167bc1")
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .all(|node| !node.text().unwrap_or("").contains("#167bc1"))
+    );
+}
+
+#[test]
+fn block_marker_explicit_fill_config_leaves_typed_stroke_available() {
+    let theme = block_edge_theme([
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#167bc1").unwrap()),
+        ),
+    ]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"themeVariables":{"arrowheadColor":"#315724"}}),
+    ));
+    let rendered = render_block_with_theme_and_engine(BLOCK_MARKER_SOURCE, &theme, engine);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for shape in referenced_block_marker_shapes(&document) {
+        assert_ne!(
+            marker_style_property(shape, "fill").as_deref(),
+            Some("#b316cd")
+        );
+        assert_eq!(
+            marker_style_property(shape, "stroke").as_deref(),
+            Some("#167bc1")
+        );
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn block_marker_unsupported_ordinal_does_not_repaint_other_references() {
+    let theme = block_edge_theme([
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#167bc1").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+    ]);
+    let rendered = render_block_with_theme_requirement(
+        "block-beta\n columns 3\n A space B\n C space D\n A --> B\n C --> D\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let shapes = referenced_block_marker_shapes(&document);
+    assert_eq!(shapes.len(), 2);
+    assert_eq!(
+        marker_style_property(shapes[0], "fill").as_deref(),
+        Some("#b316cd")
+    );
+    assert_ne!(
+        marker_style_property(shapes[1], "fill").as_deref(),
+        Some("#b316cd")
+    );
+    assert_ne!(
+        marker_style_property(shapes[1], "fill").as_deref(),
+        Some("#167bc1")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert!(evidence.theme_residual_count() > 0);
+}
