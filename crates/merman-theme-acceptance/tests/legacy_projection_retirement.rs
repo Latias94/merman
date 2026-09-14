@@ -21,26 +21,26 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 }
 
 #[test]
-fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
+fn bridge_inventory_confirms_complete_legacy_route_retirement() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        82, 158, 56, 87, 221, 84, 135, 159, 221, 169, 207, 110, 18, 115, 239, 172, 222, 25, 127,
-        237, 243, 180, 242, 98, 82, 194, 254, 73, 155, 6, 183, 61,
+        6, 238, 134, 105, 100, 36, 13, 21, 48, 12, 40, 205, 143, 82, 119, 45, 68, 74, 230, 58, 73,
+        77, 134, 99, 208, 217, 210, 251, 212, 211, 230, 146,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-        113, 216, 240, 96, 78, 109, 128, 32, 228, 87, 90, 101, 180, 72, 232, 194, 206, 89, 54, 101,
-        81, 116, 213, 41, 189, 95, 142, 168, 49, 149, 248, 185,
+        181, 11, 131, 200, 17, 132, 74, 192, 155, 90, 117, 53, 155, 15, 218, 23, 127, 151, 57, 57,
+        120, 230, 55, 1, 228, 29, 81, 10, 52, 34, 128, 232,
     ];
     const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-        49, 107, 86, 220, 165, 170, 20, 220, 180, 75, 4, 252, 118, 119, 247, 37, 124, 117, 252,
-        104, 109, 215, 13, 136, 211, 108, 6, 10, 224, 81, 172, 202,
+        194, 114, 37, 66, 6, 54, 59, 42, 195, 176, 83, 45, 106, 187, 195, 12, 10, 221, 85, 93, 129,
+        85, 94, 33, 167, 210, 136, 147, 252, 54, 93, 75,
     ];
 
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert_eq!(status.matrix_route_count(), 12);
-    assert_eq!(status.matrix_family_count(), 1);
-    assert_eq!(status.dispatched_family_count(), 1);
+    assert_eq!(status.matrix_route_count(), 0);
+    assert_eq!(status.matrix_family_count(), 0);
+    assert_eq!(status.dispatched_family_count(), 0);
     assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
     assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
     assert_eq!(
@@ -49,7 +49,7 @@ fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     );
     assert_eq!(status.matrix_only_family_count(), 0);
     assert_eq!(status.dispatch_only_family_count(), 0);
-    assert!(!status.route_dispatch_is_empty());
+    assert!(status.route_dispatch_is_empty());
 }
 
 #[test]

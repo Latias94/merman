@@ -4,27 +4,30 @@ use std::sync::{Arc, OnceLock};
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use std::collections::BTreeSet;
 
-use merman_core::__private::{
-    ThemeCompatibilityOverlayError, ThemeFamilyCompatibilityOverlay,
-    ThemeFamilyCompatibilityOverlayBuilder,
-};
+#[cfg(test)]
+use merman_core::__private::ThemeFamilyCompatibilityOverlayBuilder;
+use merman_core::__private::{ThemeCompatibilityOverlayError, ThemeFamilyCompatibilityOverlay};
 use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
-use serde_json::{Map, Value};
+#[cfg(test)]
+use serde_json::Map;
+use serde_json::Value;
 
-use crate::DiagramFamilyId;
-use crate::theme_route_cutover::ThemeRouteCutoverProjection;
-
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::canvas::CanvasPaint;
+#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::family_mechanism_matrix::{FamilyThemeDisposition, FamilyThemeRuleFacet};
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use super::family_mechanism_matrix::{
     FamilyThemePaintKind, FamilyThemeSelectorShape, LegacyCompatibilityRouteKey,
     classify_rule_facet, legacy_compatibility_route_inventory,
 };
-use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
-use super::resolved::{ResolvedProperty, ResolvedThemeStyle};
-use super::semantic::{ThemeTarget, ThemeVariant};
-use super::typography::Specified;
+use super::family_program::FamilyThemeProgramCache;
+#[cfg(test)]
+use super::semantic::ThemeTarget;
+#[cfg(any(test, merman_internal_theme_acceptance))]
+#[cfg(any(test, merman_internal_theme_acceptance))]
+use super::semantic::ThemeVariant;
+use crate::DiagramFamilyId;
 
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use super::semantic::OrdinalSelector;
@@ -44,12 +47,12 @@ use super::legacy_projection_retirement::{
 use super::legacy_tombstones::{ThemeLegacyRouteFacet, ThemeLegacyRouteSelector};
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+#[cfg(test)]
+use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 
 type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
-type BlockLegacyCompiler = fn(&mut OverlayBuilder, &FamilyStyleReader) -> BridgeResult<()>;
-
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
 ///
@@ -173,22 +176,15 @@ fn compile_selected_family(
     family_programs: &FamilyThemeProgramCache,
     family: DiagramFamilyId,
 ) -> Result<LegacyFamilyThemeArtifact, ThemeCompatibilityOverlayError> {
-    let compiler = legacy_family_compiler(family)?;
     let program = family_programs.get_or_compile(family);
     if !program.has_legacy_compatibility() {
         return Ok(LegacyFamilyThemeArtifact::default());
     }
 
-    let compiler = compiler.ok_or_else(|| {
-        ThemeCompatibilityOverlayError::provider_failure(
-            family.as_str(),
-            "family matrix declares legacy compatibility but dispatch is classified as bridge-free",
-        )
-    })?;
-    let reader = FamilyStyleReader::new(program);
-    let mut builder = OverlayBuilder::new(family);
-    compiler(&mut builder, &reader)?;
-    Ok(builder.finish())
+    Err(ThemeCompatibilityOverlayError::provider_failure(
+        family.as_str(),
+        "family matrix declares a legacy route after compatibility bridge retirement",
+    ))
 }
 
 /// Matrix-derived readiness facts for retiring the compatibility bridge.
@@ -293,17 +289,8 @@ pub fn legacy_family_theme_bridge_inventory() -> LegacyFamilyThemeBridgeInventor
             | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => *family,
         })
         .collect::<BTreeSet<_>>();
-    let mut dispatched_families = BTreeSet::new();
-    let mut dispatch_error_count = 0;
-    for &family in DiagramFamilyId::all() {
-        match legacy_family_compiler(family) {
-            Ok(None) => {}
-            Ok(Some(_)) => {
-                dispatched_families.insert(family);
-            }
-            Err(_) => dispatch_error_count += 1,
-        }
-    }
+    let dispatched_families = BTreeSet::new();
+    let dispatch_error_count = 0;
     let matrix_only_family_count = matrix_families.difference(&dispatched_families).count();
     let dispatch_only_family_count = dispatched_families.difference(&matrix_families).count();
 
@@ -470,51 +457,6 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
-fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<BlockLegacyCompiler>> {
-    let compiler: BlockLegacyCompiler = match family {
-        DiagramFamilyId::BLOCK => compile_block_family,
-        DiagramFamilyId::CLASS
-        | DiagramFamilyId::FLOWCHART
-        | DiagramFamilyId::SWIMLANE
-        | DiagramFamilyId::RADAR
-        | DiagramFamilyId::QUADRANT_CHART
-        | DiagramFamilyId::XY_CHART
-        | DiagramFamilyId::SEQUENCE
-        | DiagramFamilyId::REQUIREMENT
-        | DiagramFamilyId::TIMELINE
-        | DiagramFamilyId::STATE
-        | DiagramFamilyId::ER
-        | DiagramFamilyId::GIT_GRAPH
-        | DiagramFamilyId::C4
-        | DiagramFamilyId::TREEMAP
-        | DiagramFamilyId::PACKET
-        | DiagramFamilyId::ERROR
-        | DiagramFamilyId::GANTT
-        | DiagramFamilyId::JOURNEY
-        | DiagramFamilyId::KANBAN
-        | DiagramFamilyId::EVENT_MODELING
-        | DiagramFamilyId::INFO
-        | DiagramFamilyId::ISHIKAWA
-        | DiagramFamilyId::TREE_VIEW
-        | DiagramFamilyId::MINDMAP
-        | DiagramFamilyId::PIE
-        | DiagramFamilyId::SANKEY
-        | DiagramFamilyId::WARDLEY
-        | DiagramFamilyId::ARCHITECTURE
-        | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::RAILROAD
-        | DiagramFamilyId::VENN
-        | DiagramFamilyId::ZENUML => return Ok(None),
-        _ => {
-            return Err(ThemeCompatibilityOverlayError::provider_failure(
-                family.as_str(),
-                "built-in family is missing an explicit legacy bridge dispatch classification",
-            ));
-        }
-    };
-    Ok(Some(compiler))
-}
-
 /// Observes the current matrix disposition and exact compatibility assignments for one route.
 ///
 /// Historical before/after policy deliberately lives in the independent acceptance crate. This
@@ -596,140 +538,7 @@ pub(crate) fn legacy_projection_probe(
     )
 }
 
-fn compile_block_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
-        [
-            ("primaryColor", reader.fill(ThemeTarget::Node)),
-            ("mainBkg", reader.fill(ThemeTarget::Node)),
-        ],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
-        [
-            ("primaryBorderColor", reader.stroke(ThemeTarget::Node)),
-            ("nodeBorder", reader.stroke(ThemeTarget::Node)),
-        ],
-    );
-    let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
-        [
-            ("primaryTextColor", node_label_fill.clone()),
-            ("nodeTextColor", node_label_fill.clone()),
-            ("textColor", node_label_fill),
-        ],
-    );
-
-    contributions.finish_into(builder)
-}
-
-struct FamilyStyleReader {
-    program: Arc<FamilyThemeProgram>,
-}
-
-impl FamilyStyleReader {
-    fn new(program: Arc<FamilyThemeProgram>) -> Self {
-        Self { program }
-    }
-
-    fn style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
-        self.style_variant(target, ThemeVariant::Default)
-    }
-
-    fn style_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> ResolvedThemeStyle {
-        self.program.resolve_style(target, variant, None)
-    }
-
-    fn text_style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
-        self.program
-            .resolve_text_style(target, ThemeVariant::Default, None)
-    }
-
-    fn fill(&self, target: ThemeTarget) -> Option<String> {
-        self.fill_resolution(target).into_value()
-    }
-
-    fn stroke(&self, target: ThemeTarget) -> Option<String> {
-        self.stroke_resolution(target).into_value()
-    }
-
-    fn text_fill(&self, target: ThemeTarget) -> Option<String> {
-        self.paint_resolution(
-            self.text_style(target).fill_resolution(),
-            FamilyThemeRuleFacet::fill,
-        )
-        .into_value()
-    }
-
-    fn fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
-        self.paint_resolution(
-            self.style(target).fill_resolution(),
-            FamilyThemeRuleFacet::fill,
-        )
-    }
-
-    fn stroke_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
-        self.paint_resolution(
-            self.style(target).stroke_resolution(),
-            FamilyThemeRuleFacet::stroke,
-        )
-    }
-
-    fn paint_resolution(
-        &self,
-        property: &ResolvedProperty<CanvasPaint>,
-        facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
-    ) -> LegacyPaintResolution {
-        let Some(origin) = property.winner() else {
-            return LegacyPaintResolution::Unspecified;
-        };
-        let Some(facet) = facet(property.specified()) else {
-            return LegacyPaintResolution::Unspecified;
-        };
-        match self
-            .program
-            .rule_facet_disposition(origin.rule_index(), facet)
-        {
-            Some(FamilyThemeDisposition::LegacyCompatibility) => {
-                LegacyPaintResolution::from_property(property)
-            }
-            Some(FamilyThemeDisposition::Unsupported) => LegacyPaintResolution::Unsupported,
-            Some(FamilyThemeDisposition::TypedAdapter) | None => LegacyPaintResolution::Suppressed,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum LegacyPaintResolution {
-    Unspecified,
-    Unsupported,
-    Suppressed,
-    Value(String),
-}
-
-impl LegacyPaintResolution {
-    fn from_property(property: &super::resolved::ResolvedProperty<CanvasPaint>) -> Self {
-        match property.specified() {
-            Specified::Unspecified => Self::Unspecified,
-            Specified::Clear => Self::Suppressed,
-            Specified::Value(paint) => solid_paint(paint).map_or(Self::Suppressed, Self::Value),
-        }
-    }
-
-    fn into_value(self) -> Option<String> {
-        match self {
-            Self::Value(value) => Some(value),
-            Self::Unspecified | Self::Unsupported | Self::Suppressed => None,
-        }
-    }
-}
-
+#[cfg(test)]
 fn solid_paint(paint: &CanvasPaint) -> Option<String> {
     match paint {
         CanvasPaint::Transparent => Some("transparent".to_string()),
@@ -740,15 +549,18 @@ fn solid_paint(paint: &CanvasPaint) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 struct FamilyContributions {
     entries: Vec<PendingContribution>,
 }
 
+#[cfg(test)]
 struct PendingContribution {
     mapping: &'static str,
     patch: Map<String, Value>,
 }
 
+#[cfg(test)]
 impl FamilyContributions {
     fn new() -> Self {
         Self {
@@ -785,6 +597,7 @@ impl FamilyContributions {
     }
 }
 
+#[cfg(test)]
 struct OverlayBuilder {
     overlay: ThemeFamilyCompatibilityOverlayBuilder,
     #[cfg(test)]
@@ -793,6 +606,7 @@ struct OverlayBuilder {
     accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
+#[cfg(test)]
 impl OverlayBuilder {
     fn new(family: DiagramFamilyId) -> Self {
         Self {
@@ -807,6 +621,7 @@ impl OverlayBuilder {
         }
     }
 
+    #[cfg(test)]
     fn push(&mut self, mapping: &'static str, patch: Map<String, Value>) -> BridgeResult<()> {
         let _receipt = self
             .overlay
@@ -1844,57 +1659,6 @@ gitGraph
     }
 
     #[test]
-    fn bridge_free_dispatch_is_limited_to_families_without_legacy_routes() {
-        let actual = DiagramFamilyId::all()
-            .iter()
-            .copied()
-            .filter(|family| {
-                legacy_family_compiler(*family)
-                    .expect("built-in family dispatch")
-                    .is_none()
-            })
-            .collect::<BTreeSet<_>>();
-
-        assert_eq!(
-            actual,
-            BTreeSet::from([
-                DiagramFamilyId::CLASS,
-                DiagramFamilyId::FLOWCHART,
-                DiagramFamilyId::SWIMLANE,
-                DiagramFamilyId::RADAR,
-                DiagramFamilyId::QUADRANT_CHART,
-                DiagramFamilyId::XY_CHART,
-                DiagramFamilyId::SEQUENCE,
-                DiagramFamilyId::STATE,
-                DiagramFamilyId::REQUIREMENT,
-                DiagramFamilyId::TIMELINE,
-                DiagramFamilyId::ER,
-                DiagramFamilyId::GIT_GRAPH,
-                DiagramFamilyId::C4,
-                DiagramFamilyId::PACKET,
-                DiagramFamilyId::ERROR,
-                DiagramFamilyId::GANTT,
-                DiagramFamilyId::JOURNEY,
-                DiagramFamilyId::KANBAN,
-                DiagramFamilyId::EVENT_MODELING,
-                DiagramFamilyId::INFO,
-                DiagramFamilyId::ISHIKAWA,
-                DiagramFamilyId::MINDMAP,
-                DiagramFamilyId::TREE_VIEW,
-                DiagramFamilyId::ARCHITECTURE,
-                DiagramFamilyId::CYNEFIN,
-                DiagramFamilyId::WARDLEY,
-                DiagramFamilyId::PIE,
-                DiagramFamilyId::RAILROAD,
-                DiagramFamilyId::SANKEY,
-                DiagramFamilyId::TREEMAP,
-                DiagramFamilyId::ZENUML,
-                DiagramFamilyId::VENN,
-            ])
-        );
-    }
-
-    #[test]
     fn radar_paint_rules_leave_materialized_mermaid_config_unchanged() {
         const SOURCE: &str = "radar-beta\ntitle Direct Radar\naxis A,B,C\ncurve Current{1,2,3}\n";
         let styles = [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis]
@@ -1909,11 +1673,6 @@ gitGraph
                 )
             });
         let spec = DiagramThemeSpec::new().with_styles(styles);
-        assert!(
-            legacy_family_compiler(DiagramFamilyId::RADAR)
-                .unwrap()
-                .is_none()
-        );
         let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::RADAR);
         assert!(artifact.overlay.is_empty());
         assert!(artifact.contribution_ids.is_empty());
@@ -1942,50 +1701,15 @@ gitGraph
     }
 
     #[test]
-    fn legacy_compiler_dispatch_is_block_only() {
-        for family in DiagramFamilyId::all() {
-            let compiler = legacy_family_compiler(*family).expect("dispatch lookup must succeed");
-            assert_eq!(
-                compiler.is_some(),
-                *family == DiagramFamilyId::BLOCK,
-                "legacy compiler dispatch must remain Block-only for {family:?}"
-            );
-        }
-    }
-
-    #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
-        const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            49, 107, 86, 220, 165, 170, 20, 220, 180, 75, 4, 252, 118, 119, 247, 37, 124, 117, 252,
-            104, 109, 215, 13, 136, 211, 108, 6, 10, 224, 81, 172, 202,
-        ];
-
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 12);
-        assert_eq!(status.matrix_family_count(), 1);
-        assert_eq!(status.dispatched_family_count(), 1);
-        assert_eq!(
-            status.matrix_route_digest(),
-            [
-                82, 158, 56, 87, 221, 84, 135, 159, 221, 169, 207, 110, 18, 115, 239, 172, 222, 25,
-                127, 237, 243, 180, 242, 98, 82, 194, 254, 73, 155, 6, 183, 61
-            ]
-        );
-        assert_eq!(
-            status.matrix_family_digest(),
-            [
-                113, 216, 240, 96, 78, 109, 128, 32, 228, 87, 90, 101, 180, 72, 232, 194, 206, 89,
-                54, 101, 81, 116, 213, 41, 189, 95, 142, 168, 49, 149, 248, 185
-            ]
-        );
-        assert_eq!(
-            status.dispatched_family_digest(),
-            EXPECTED_DISPATCH_FAMILY_DIGEST
-        );
+        assert_eq!(status.matrix_route_count(), 0);
+        assert_eq!(status.matrix_family_count(), 0);
+        assert_eq!(status.dispatched_family_count(), 0);
         assert_eq!(status.matrix_only_family_count(), 0);
         assert_eq!(status.dispatch_only_family_count(), 0);
-        assert!(!status.route_dispatch_is_empty());
+        assert!(status.route_dispatch_is_empty());
     }
 
     #[test]
@@ -2246,16 +1970,7 @@ gitGraph
             }
         }
 
-        let dispatched_legacy_families = DiagramFamilyId::all()
-            .iter()
-            .copied()
-            .filter(|&family| {
-                legacy_family_compiler(family)
-                    .expect("built-in family dispatch")
-                    .is_some()
-            })
-            .collect::<BTreeSet<_>>();
-        assert_eq!(matrix_legacy_families, dispatched_legacy_families);
+        assert!(matrix_legacy_families.is_empty());
     }
 
     fn assert_legacy_probe_projects(
@@ -2376,9 +2091,8 @@ gitGraph
         let first = bridge
             .overlay_for_family("block", &control)
             .expect("active control")
-            .expect("valid block compatibility bridge")
-            .expect("block compatibility overlay");
-        assert!(!first.is_empty());
+            .expect("valid retired block bridge");
+        assert!(first.is_none());
         assert_eq!(bridge.cached_family_count(), 1);
         assert_eq!(family_programs.len(), 1);
         assert!(family_programs.contains(DiagramFamilyId::BLOCK));
@@ -2387,9 +2101,8 @@ gitGraph
         let second = bridge
             .overlay_for_family("block", &control)
             .expect("active control")
-            .expect("cached valid block compatibility bridge")
-            .expect("cached block compatibility overlay");
-        assert!(!second.is_empty());
+            .expect("cached valid retired block bridge");
+        assert!(second.is_none());
         assert_eq!(bridge.cached_family_count(), 1);
         assert_eq!(family_programs.len(), 1);
 
@@ -4061,11 +3774,10 @@ gitGraph
             assert!(!artifact.contribution_ids.contains(&format!(
                 "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
             )));
-            assert_eq!(
-                artifact
+            assert!(
+                !artifact
                     .contribution_ids
-                    .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.node-label.fill")),
-                family != DiagramFamilyId::CLASS
+                    .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.node-label.fill"))
             );
         }
     }

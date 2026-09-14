@@ -20,8 +20,8 @@ in an independent clean checkout, including both Block and Class retirement inte
 The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
-KTD17 v89 covers 502 routes and 786 route-profile witnesses; the executable legacy inventory
-now contains only Block's four generic Text routes. Block Marker and Cluster add typed terminal coverage for their static fill/stroke
+KTD17 v89 covers 506 routes and 814 route-profile witnesses; the executable legacy inventory
+is now empty after Block generic Text cutover. Block Marker and Cluster add typed terminal coverage for their static fill/stroke
 routes with classic, neo, and handDrawn witnesses. Node and Cluster share one final shell plan
 and emitted-terminal receipt; existing Node paint retains property-local priority.
 Source `f2adde25e` passed 3227 scoped Release tests in the main worktree and an independent
@@ -113,12 +113,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 32/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 1/33; 4 routes | Block 4 generic Text routes remain. Block Marker, Cluster, NodeLabel and Edge are typed; exact counts are guarded by renderer and acceptance tests. |
+| Families without a family-owned Legacy route | 33/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 0/33; 0 routes | Block generic Text, Marker, Cluster, NodeLabel and Edge are typed; the compatibility bridge has no executable family dispatch. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 89 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v89; 502 routes / 786 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v89; 506 routes / 814 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD17 v89 replaces Block's static Marker and Cluster fill/stroke projections with direct Composite rectangle
