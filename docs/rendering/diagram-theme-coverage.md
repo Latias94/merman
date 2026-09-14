@@ -32,6 +32,12 @@ and Rust authoring tests (13/13) also passed. See the
 [CLI archive verification](../knowledge/engineering/verification/2026-09-14-cli-archive-theme-qualification.md).
 These host observations retain `HostDependent` admission and leave C7a gates open.
 
+At `c04a6a0dd`, the rebuilt macOS ARM64 Python wheel passed its complete installed smoke,
+including 22 revision-90 support vectors and valid/rejected budgets for all three theme
+operations through one-shot and reusable consumers. The strengthened existing CI smoke
+rejects all six dropped-options mutations; the previous smoke missed the four support/export
+cases. See the [Python budget verification](../knowledge/engineering/verification/2026-09-14-python-authoring-budget-matrix.md).
+
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
 following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
