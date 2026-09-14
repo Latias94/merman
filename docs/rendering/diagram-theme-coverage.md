@@ -182,7 +182,7 @@ KTD23 v9 is unchanged because Edge paint has a typed replacement.
 
 KTD17 v86 added Block NodeLabel's four static unqualified/Default solid/transparent routes.
 Terminal checks cover source/config ownership, empty labels, overwritten rules and unsupported
-sibling facets. This leaves generic Block Text and its compatibility provider active.
+sibling facets. At this historical checkpoint, generic Block Text and its compatibility provider were still active; the subsequent Block cutover retired them.
 
 KTD17 v85 added Class Text's four static unqualified/Default solid/transparent routes.
 The preceding v84 Title routes continue to belong to namespace labels. Source ownership,
@@ -261,8 +261,9 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block's remaining generic Text and other legacy
-routes. The earlier [Block NodeLabel cutover boundary](../knowledge/engineering/verification/2026-09-14-block-node-label-cutover-boundary.md)
+At this historical checkpoint, the global provider remained necessary for Block's remaining generic
+Text and other legacy routes. The subsequent Block cutover retired the production provider; the
+earlier [Block NodeLabel cutover boundary](../knowledge/engineering/verification/2026-09-14-block-node-label-cutover-boundary.md)
 records the shared-CSS design that preceded the typed replacement. NodeLabel now uses a
 per-node HTML/SVG terminal plan, with source/config ownership and actual emitted-fragment
 checks. The [terminal repair verification](../knowledge/engineering/verification/2026-09-14-block-node-label-terminal-repair.md)
@@ -416,8 +417,8 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Flowchart | Typed | Typed | None |
 | Swimlane | Typed | Typed | None |
 | Sequence | Typed | Typed | None |
-| Class | Typed | Typed | Required |
-| Block | Typed | Typed | Required |
+| Class | Typed | Typed | Retired |
+| Block | Typed | Typed | Retired |
 | Mindmap | Typed | Unsupported | None |
 | Tree View | Typed | Unsupported | None |
 | GitGraph | Typed | Typed | None |
