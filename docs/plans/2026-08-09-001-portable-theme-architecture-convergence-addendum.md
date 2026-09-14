@@ -1378,7 +1378,7 @@ and public theme scope from the independent renderer taxonomy before adding face
      route-approved legacy winners. This matrix assigns responsibility; it never manufactures
      runtime `Applied` evidence. The program and primary-family direct slices have landed;
      State, Flowchart, Swimlane, and Sequence now have bridge-free dispatch. Uncovered mechanisms
-     remain explicitly Unsupported. Block and Class retain the remaining legacy routes. Any scalar transition in KTD17's declared domain that replaces a
+     remain explicitly Unsupported. Block retains the remaining executable legacy routes; Class legacy dispatch has since been retired. Any scalar transition in KTD17's declared domain that replaces a
      concrete legacy projection set must land with an exact private route-cutover receipt declared
      by the independent versioned manifest and backed by finalized Standalone SVG plus PNG evidence.
      The runtime matrix must reconcile exactly with that manifest; it is not the source of its own
