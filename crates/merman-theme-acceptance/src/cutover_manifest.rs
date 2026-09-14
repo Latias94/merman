@@ -4920,7 +4920,7 @@ mod tests {
                 if family == DiagramFamilyId::REQUIREMENT {
                     10
                 } else {
-                    6
+                    8
                 }
             );
         }

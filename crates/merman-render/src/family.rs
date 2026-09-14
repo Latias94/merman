@@ -1770,6 +1770,7 @@ impl BlockFamilyArtifact {
 
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.node_paint_theme.finish_evidence();
+        evidence.merge_accounted_from(self.node_label_paint_theme.finish_evidence());
         if self.label_background_theme.requested() {
             evidence.merge_accounted_from(self.label_background_theme.finish_evidence());
         }

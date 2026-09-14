@@ -494,7 +494,10 @@ impl CutoverWitnessProfile {
             return &Self::TEXT_LOOKS;
         }
         if route.family_id() == DiagramFamilyId::BLOCK
-            && route.target() == ThemeTarget::EdgeLabelBackground
+            && matches!(
+                route.target(),
+                ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel
+            )
         {
             return &Self::TEXT_LOOKS;
         }
@@ -759,6 +762,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_NODE_SOURCE),
+        (DiagramFamilyId::BLOCK, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+            Ok(BLOCK_NODE_SOURCE)
+        }
         (
             DiagramFamilyId::BLOCK,
             ThemeTarget::EdgeLabelBackground,

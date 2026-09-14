@@ -66,7 +66,8 @@ impl BlockLabelBackgroundPlan {
 /// Block label text color resolved once for the shared HTML/SVG stylesheet.
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
-    color: Option<String>,
+    expectation: Option<DirectPaintExpectation>,
+    evidence: FamilyThemeEvidence,
     terminal: Mutex<BlockNodeLabelPaintReceipt>,
 }
 
@@ -84,7 +85,8 @@ impl BlockNodeLabelPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
             return Ok(Self {
-                color: None,
+                expectation: None,
+                evidence: FamilyThemeEvidence::default(),
                 terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
             });
         };
@@ -97,7 +99,8 @@ impl BlockNodeLabelPaintPlan {
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
         if config_owned {
             return Ok(Self {
-                color: None,
+                expectation: None,
+                evidence: FamilyThemeEvidence::default(),
                 terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
             });
         }
@@ -107,21 +110,24 @@ impl BlockNodeLabelPaintPlan {
             None,
             work,
         )?;
-        let color = resolve_direct_static_fill(
+        let expectation = resolve_direct_static_fill(
             theme,
             &style,
             &[ThemeTarget::NodeLabel],
             DirectStaticSelectorDomain::Default,
         )
-        .map(|paint| paint.css().to_owned());
+        .map(DirectPaintExpectation::from_paint);
         Ok(Self {
-            color,
+            expectation,
+            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
         })
     }
 
     pub(crate) fn color<'a>(&'a self, fallback: &'a str) -> &'a str {
-        self.color.as_deref().unwrap_or(fallback)
+        self.expectation
+            .as_ref()
+            .map_or(fallback, DirectPaintExpectation::css)
     }
 
     pub(crate) fn observe_css(&self, emitted: &str, fallback: &str) {
@@ -148,7 +154,30 @@ impl BlockNodeLabelPaintPlan {
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.color.is_none() || (receipt.css_matches && receipt.visible_labels != 0)
+        self.expectation.is_none() || (receipt.css_matches && receipt.visible_labels != 0)
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+        let mut evidence = self.evidence.clone();
+        let Some(expected) = self.expectation.as_ref() else {
+            return evidence;
+        };
+        let key = FamilyThemeMechanismKey::Rule {
+            index: expected.rule_index(),
+            target: ThemeTarget::NodeLabel,
+        };
+        let receipt = self
+            .terminal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if receipt.css_matches {
+            if receipt.visible_labels == 0 {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_applied_with_capabilities(key, [expected.capability()]);
+            }
+        }
+        evidence
     }
 }
 
