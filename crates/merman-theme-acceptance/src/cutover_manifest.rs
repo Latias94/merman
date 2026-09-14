@@ -16,8 +16,8 @@ const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 85;
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    48, 137, 72, 67, 254, 226, 9, 198, 23, 254, 233, 181, 22, 249, 6, 8, 178, 132, 167, 67, 103,
-    107, 113, 95, 154, 92, 136, 15, 149, 87, 3, 137,
+    139, 215, 8, 81, 31, 245, 252, 137, 250, 107, 229, 129, 157, 27, 140, 131, 189, 62, 8, 250,
+    112, 221, 124, 100, 125, 237, 183, 176, 12, 30, 206, 197,
 ];
 
 const PROJECTION_ACTIONS: [(
