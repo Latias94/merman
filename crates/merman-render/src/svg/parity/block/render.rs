@@ -871,6 +871,13 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         options,
     )?;
     label_background_theme.record_stylesheet();
+    let configured_node_text_color = MermaidThemeAdapter::new(effective_config)
+        .node_diagram()
+        .node_text_color;
+    node_label_paint_theme.observe_css(
+        node_label_paint_theme.color(configured_node_text_color.as_str()),
+        configured_node_text_color.as_str(),
+    );
     let typography_css_matches = typography_theme.observe_css(
         typography_receipt.as_mut(),
         css_emission.font_family_css,
@@ -1142,6 +1149,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_visible_label(&label);
         }
+        node_label_paint_theme.record_visible_label(&label);
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -1284,7 +1292,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_visible_label(&e.label);
         }
-
         union_block_bounds(
             &mut content_bounds,
             (
@@ -1426,6 +1433,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     }
     if !typography_css_matches
         || typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt))
+        || !node_label_paint_theme.record_terminal()
     {
         return Err(Error::InvalidModel {
             message: "Block typography terminal receipt was incomplete".to_string(),

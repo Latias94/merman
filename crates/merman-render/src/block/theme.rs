@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use indexmap::IndexMap;
 use merman_core::diagrams::block::BlockClassDefRenderModel;
@@ -64,9 +64,16 @@ impl BlockLabelBackgroundPlan {
 }
 
 /// Block label text color resolved once for the shared HTML/SVG stylesheet.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
     color: Option<String>,
+    terminal: Mutex<BlockNodeLabelPaintReceipt>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct BlockNodeLabelPaintReceipt {
+    css_matches: bool,
+    visible_labels: usize,
 }
 
 impl BlockNodeLabelPaintPlan {
@@ -76,7 +83,10 @@ impl BlockNodeLabelPaintPlan {
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
-            return Ok(Self::default());
+            return Ok(Self {
+                color: None,
+                terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
+            });
         };
         let config_owned = [
             "themeVariables.nodeTextColor",
@@ -86,7 +96,10 @@ impl BlockNodeLabelPaintPlan {
         .into_iter()
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
         if config_owned {
-            return Ok(Self::default());
+            return Ok(Self {
+                color: None,
+                terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
+            });
         }
         let style = theme.style_with_work_meter(
             ThemeTarget::NodeLabel,
@@ -101,11 +114,41 @@ impl BlockNodeLabelPaintPlan {
             DirectStaticSelectorDomain::Default,
         )
         .map(|paint| paint.css().to_owned());
-        Ok(Self { color })
+        Ok(Self {
+            color,
+            terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
+        })
     }
 
     pub(crate) fn color<'a>(&'a self, fallback: &'a str) -> &'a str {
         self.color.as_deref().unwrap_or(fallback)
+    }
+
+    pub(crate) fn observe_css(&self, emitted: &str, fallback: &str) {
+        let expected = self.color(fallback);
+        let mut receipt = self
+            .terminal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        receipt.css_matches = expected == emitted;
+    }
+
+    pub(crate) fn record_visible_label(&self, label: &str) {
+        if !label.trim().is_empty() {
+            let mut receipt = self
+                .terminal
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            receipt.visible_labels = receipt.visible_labels.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn record_terminal(&self) -> bool {
+        let receipt = self
+            .terminal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.color.is_none() || (receipt.css_matches && receipt.visible_labels != 0)
     }
 }
 
