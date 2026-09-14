@@ -25,7 +25,7 @@ This record does not claim current-source execution of Flutter or real Web/WASM 
 Those consumers remain owned by their platform CI and release preflight lanes and require a
 same-revision matrix run before the C7a contract can freeze.
 
-Flutter tooling is installed on this host, but the checkout has no resolved `package:test`
-dependency. Both `dart test tool/abi3_contract_test.dart` and the repository's `dart run`
-entrypoint stop before executing tests with “Could not find package `test`”. No dependency files
-were changed; Flutter remains a platform-CI-owned gate for the final same-revision matrix.
+Flutter was validated after the repository-standard `flutter pub get`; `dart run
+tool/abi3_contract_test.dart` completed with “ABI 3 Dart contract tests passed”. Dependency resolution
+produced no lockfile diff. This covers the checked-in Flutter contract consumer; packaged release
+artifacts remain owned by the platform release lane.
