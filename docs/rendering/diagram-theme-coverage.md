@@ -38,6 +38,12 @@ operations through one-shot and reusable consumers. The strengthened existing CI
 rejects all six dropped-options mutations; the previous smoke missed the four support/export
 cases. See the [Python budget verification](../knowledge/engineering/verification/2026-09-14-python-authoring-budget-matrix.md).
 
+At `0e0caebdb`, all five Web packages were rebuilt, packed, installed, and exercised from their
+public entries in Chromium. Render/full passed 22 support vectors, three errors, light/dark and
+cold-spec renders, six budget checks, non-finite-number rejection, and explicit clear preservation;
+all five WASM resources loaded from installed paths. Typst passed 22 support queries, two
+materializations, three errors, 22 positive and nine expected-failure fixtures. All 24 artifact metric checks passed without widening budgets. See the [Web/Typst consumer verification](../knowledge/engineering/verification/2026-09-14-web-typst-consumers.md).
+
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
 following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
