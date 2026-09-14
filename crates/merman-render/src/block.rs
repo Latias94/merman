@@ -14,8 +14,8 @@ pub(crate) use source::resolve_block_node_sources;
 #[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::{
-    BlockLabelBackgroundPlan, BlockNodePaintSourceOwnership, BlockNodePaintThemePlan,
-    BlockTypographyThemePlan,
+    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintSourceOwnership,
+    BlockNodePaintThemePlan, BlockTypographyThemePlan,
 };
 
 mod geometry;

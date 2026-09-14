@@ -1,8 +1,8 @@
 use super::super::*;
 use crate::block::{
-    BlockLabelBackgroundPlan, BlockNodePaintSourceOwnership, BlockNodePaintThemePlan,
-    BlockNodeShellKind, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
-    BlockTypographyThemePlan, block_label_is_effectively_empty,
+    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintSourceOwnership,
+    BlockNodePaintThemePlan, BlockNodeShellKind, BlockRectangleKind, BlockShapeBoundary,
+    BlockShapeGeometry, BlockTypographyThemePlan, block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::parity::roughjs_common::{
@@ -316,6 +316,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
+    node_label_paint_theme: &BlockNodeLabelPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
     typography_theme: &BlockTypographyThemePlan,
     effective_config: &serde_json::Value,
@@ -674,6 +675,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
         typography_theme: &'a BlockTypographyThemePlan,
+        node_label_paint_theme: &BlockNodeLabelPaintPlan,
         label_background_theme: &BlockLabelBackgroundPlan,
         class_defs: &indexmap::IndexMap<
             String,
@@ -686,7 +688,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let font_size = typography_theme.font_size_px();
         let font_size_css: Box<str> = fmt(font_size).to_string().into();
         let text_color = theme.common.text_color.as_str();
-        let node_text_color = theme.node_text_color.as_str();
+        let node_text_color = node_label_paint_theme.color(theme.node_text_color.as_str());
         let title_color = theme.title_color.as_str();
         let main_bkg = theme.main_bkg.as_str();
         let node_border = theme.node_border.as_str();
@@ -863,6 +865,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id,
         effective_config,
         typography_theme,
+        node_label_paint_theme,
         label_background_theme,
         &model.class_defs,
         options,

@@ -96,6 +96,12 @@ fn render_block_direct_with_layout(
         &layout,
         model,
         node_paint_theme,
+        &crate::block::BlockNodeLabelPaintPlan::resolve(
+            None,
+            &merman_core::MermaidConfig::from_value(effective_config.clone()),
+            execution.work_meter(),
+        )
+        .expect("node label paint theme"),
         &BlockLabelBackgroundPlan::resolve(
             None,
             &merman_core::MermaidConfig::from_value(effective_config.clone()),

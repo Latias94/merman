@@ -63,6 +63,52 @@ impl BlockLabelBackgroundPlan {
     }
 }
 
+/// Block label text color resolved once for the shared HTML/SVG stylesheet.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct BlockNodeLabelPaintPlan {
+    color: Option<String>,
+}
+
+impl BlockNodeLabelPaintPlan {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_core::MermaidConfig,
+        work: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let Some(theme) = theme else {
+            return Ok(Self::default());
+        };
+        let config_owned = [
+            "themeVariables.nodeTextColor",
+            "themeVariables.primaryTextColor",
+            "themeVariables.textColor",
+        ]
+        .into_iter()
+        .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
+        if config_owned {
+            return Ok(Self::default());
+        }
+        let style = theme.style_with_work_meter(
+            ThemeTarget::NodeLabel,
+            ThemeVariant::Default,
+            None,
+            work,
+        )?;
+        let color = resolve_direct_static_fill(
+            theme,
+            &style,
+            &[ThemeTarget::NodeLabel],
+            DirectStaticSelectorDomain::Default,
+        )
+        .map(|paint| paint.css().to_owned());
+        Ok(Self { color })
+    }
+
+    pub(crate) fn color<'a>(&'a self, fallback: &'a str) -> &'a str {
+        self.color.as_deref().unwrap_or(fallback)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockTypographyOutcome {
     Inactive,

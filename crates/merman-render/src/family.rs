@@ -1740,6 +1740,7 @@ impl VennFamilyArtifact {
 pub(crate) struct BlockFamilyArtifact {
     pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     node_paint_theme: crate::block::BlockNodePaintThemePlan,
+    node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
     label_background_theme: crate::block::BlockLabelBackgroundPlan,
     typography_theme: crate::block::BlockTypographyThemePlan,
 }
@@ -1753,6 +1754,10 @@ impl BlockFamilyArtifact {
 
     pub(crate) const fn node_paint_theme(&self) -> &crate::block::BlockNodePaintThemePlan {
         &self.node_paint_theme
+    }
+
+    pub(crate) const fn node_label_paint_theme(&self) -> &crate::block::BlockNodeLabelPaintPlan {
+        &self.node_label_paint_theme
     }
 
     pub(crate) const fn label_background_theme(&self) -> &crate::block::BlockLabelBackgroundPlan {
