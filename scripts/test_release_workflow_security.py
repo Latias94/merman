@@ -309,6 +309,23 @@ jobs:
                     "--lib preset_qualification::", command,
                 )
 
+    def test_c_theme_consumer_runs_with_svg_in_ci_and_preflight(self) -> None:
+        for name, runner in (("ci.yml", "cargo nextest run"),
+                             ("release-preflight.yml", "cargo test")):
+            with self.subTest(workflow=name):
+                step = read(WORKFLOW_ROOT / name).split(
+                    "      - name: Test C ABI theme authoring consumer\n", 1,
+                )[1].split("\n      - name:", 1)[0]
+                self.assertNotIn("continue-on-error", step)
+                self.assertNotIn("if:", step)
+                self.assertIn("shell: bash", step)
+                command = " ".join(step.split("        run: |\n", 1)[1]
+                                   .replace("\\\n", " ").split())
+                self.assertIn(
+                    f"{runner} --locked -p merman-ffi --no-default-features "
+                    "--features svg --test c_consumer_smoke", command,
+                )
+
     def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):
             commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()

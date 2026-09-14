@@ -196,6 +196,12 @@ jobs:
       - name: Verify native ABI projections
         run: cargo run --locked -p xtask -- verify-native-abi
 
+      - name: Test C ABI theme authoring consumer
+        shell: bash
+        run: |
+          cargo test --locked -p merman-ffi --no-default-features \
+            --features svg --test c_consumer_smoke
+
       - name: Test optimized theme evidence and qualification rejection
         run: |
           cargo test --release --locked -p merman-render --no-default-features \
