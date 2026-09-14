@@ -85,19 +85,19 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 31/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 2/33; 36 routes | Block 32, Class 4. Exact family and route counts are guarded by a renderer test. |
+| Families without a family-owned Legacy route | 32/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 1/33; 32 routes | Block 32. Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 86 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v84; 470 routes / 706 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v85; 474 routes / 718 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v84 replaces Class's four static unqualified/Default `Title.fill` solid/transparent routes.
+KTD17 v85 additionally replaces Class Text's four static unqualified/Default solid/transparent routes.
 The existing Title channel belongs to namespace labels. Ordinary, extracted-root, and ELK paths
 share the direct writer; source `titleColor` ownership and generic Text author order remain intact.
 Mathematical labels can complete emission without proving inherited paint: BestEffort retains
-Incomplete evidence and RequirePortable rejects it. Class retains four generic Text legacy routes.
+Incomplete evidence and RequirePortable rejects it. Class no longer retains generic Text legacy routes; only Block remains in the executable bridge inventory.
 See the [Class namespace Title verification record](../knowledge/engineering/verification/2026-09-13-class-namespace-title-cutover.md)
 for the executed scope and source identity.
 

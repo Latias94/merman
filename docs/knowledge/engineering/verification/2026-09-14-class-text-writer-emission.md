@@ -57,7 +57,8 @@ This source was verified in the main worktree, not a new clean checkout. The pri
 `9be480c86` clean result does not cover this change. The completed Class migration must
 pass its broader owner suite and clean-checkout replay before retirement.
 
-Partially shadowed mixed rules still need capability accounting based on surviving
-properties. Class support, bridge dispatch and cutover authorization remain unreconciled;
-the earlier broader run's 38 failures have not been closed by these focused tests.
-Native cutover witnesses, provider retirement and C7a artifact/rollout gates remain open.
+Partially shadowed mixed rules are now accounted by surviving properties. Class Text support,
+bridge dispatch and KTD17 authorization are reconciled on the current source: the owner suite
+reached 3167/3170 before the final ledger assertions, and the final route/native witness tests
+pass. A clean-checkout replay of this newer source, full SVG structure gate, and C7a
+artifact/rollout gates remain open.
