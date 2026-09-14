@@ -259,3 +259,62 @@ Use a checkout-local target for Typst smoke. The full command ledger additionall
 standard package-group packing/verification, offline install, installed-browser witness and
 six-profile dependency checks. The budget paths in final checks intentionally point at the
 replacement JSON while all measured runtime source remains pinned to `f2adde25e`.
+
+## Follow-up after final Block cutover at `361d0a28a`
+
+Keep the accepted budget limits unchanged. A fresh build at
+`361d0a28a` passes all **24/24** limits after the final Block marker/text typed
+cutover and family bridge retirement. No production source, capability, font resource,
+optimizer recipe or budget value changed during this follow-up.
+
+The five Web artifacts were rebuilt with
+`CARGO_BUILD_JOBS=2 npm run build --prefix platforms/web`, assembled into their npm
+packages and measured with the existing
+`wasm-size-matrix --surface web --web-package-root` path. Input freshness, package
+contracts, production WASM smoke and DOM safety smoke passed. Typst used the canonical
+publish recipe and post-link pipeline; its rebuilt package passed 21 shared support
+vectors, two materializations, three error envelopes, 22 positive compile fixtures
+and nine expected failures. The packaged Typst WASM has the reported post-link size.
+
+| Artifact | Raw | Stripped/post-link | Gzip | Brotli |
+| --- | ---: | ---: | ---: | ---: |
+| web-analysis | 3,675,043 | 3,674,778 | 1,412,251 | 1,073,788 |
+| web-ascii | 5,198,169 | 5,197,904 | 1,914,963 | 1,445,313 |
+| web-editor | 3,786,176 | 3,785,911 | 1,456,761 | 1,108,837 |
+| web-full | 15,942,065 | 15,941,800 | 5,944,778 | 4,374,639 |
+| web-render | 14,056,236 | 14,055,971 | 5,301,922 | 3,905,650 |
+| typst-wasm | 18,790,002 | 11,618,981 | 4,453,280 | 3,287,993 |
+
+Compared with the accepted `f2adde25e` measurements, Web full adds 17,438 raw bytes
+(0.11%) and 7,041 Brotli bytes; Web render adds 17,524 raw bytes (0.12%) and 177
+Brotli bytes. Typst adds 17,438 post-link bytes (0.15%) and 5,729 Brotli bytes.
+These observations include both typed writer additions and bridge deletion; they
+are net changes, not per-symbol attribution or a measured optimization.
+
+Rust 1.95.0, wasm-pack 0.15.0, Binaryen 131 and wasm-tools 1.253.0 match the recorded
+baseline. The follow-up uses Node 26.6.0 and Typst 0.15.1 on macOS ARM64. Artifact Cargo builds
+ran serially with two jobs; the shared target worked without an isolated fallback.
+The earlier ignored experiment directory is not available in this checkout's target;
+historical comparisons therefore use the committed measurements above, not a new
+remeasurement of the old binaries. Checkout paths and tool differences preclude an
+exact byte-reproducibility claim.
+
+| Artifact | Follow-up package WASM SHA-256 |
+| --- | --- |
+| web-analysis | `8df9ffe336959666d68a955f7462a4437653616f5c37edd8e82da5d1960b0c66` |
+| web-ascii | `28563124c29b09456292b535d7b7585c8d3e3bcef880b1dcf96a4f2bee5d366c` |
+| web-editor | `f6ea46cbc862235fbbed1c39b4792e03af5b8424e06569f2e5db223a5f9c01e0` |
+| web-full | `b4c1b59bbe5cdeece229cc3495fae822aed1356b91bf598277042258fd2d1ee5` |
+| web-render | `d6dbfc26f774bfe02e86ff8b520aa98c580dbf27cbd21fe436ecbb1dfacec5d7` |
+| typst-wasm | `21e7fe17fcac8bf910b8ed2f6541ced04ac3ccc2728e481d5e3e3cf352e237ed` |
+
+Current raw measurement logs, metric records, hashes and commands are retained under
+`target/bench/experiments/theme-artifact-budget-followup-361d0a28a/`.
+This follow-up did not repeat offline Web tarball installation, the complete browser
+suite, cross-host publication or the wider native/CLI/Python matrix.
+
+A justified capability increase can warrant a budget increase; passing a size limit
+alone does not establish that a product has an acceptable cold start or peak memory.
+Keep those user costs separate from compressed transfer size. The current evidence
+supports retaining the accepted size baseline and continuing delivery validation;
+it does not establish minimum possible size or close C7a.
