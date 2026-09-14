@@ -12736,6 +12736,10 @@ fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
     let evidence = FamilyThemeEvidence::from_theme(Some(&theme));
     let expected = vec![
         FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Text,
+        },
+        FamilyThemeMechanismKey::Rule {
             index: 1,
             target: ThemeTarget::Node,
         },
@@ -12744,7 +12748,7 @@ fn native_evidence_requirements_preserve_order_and_mixed_facet_ownership() {
             target: ThemeTarget::Text,
         },
     ];
-    // Class Text.fill is legacy-only. A sibling native facet still requires its shared rule key.
+    // Class Text.fill is typed; shadowed rules retain identity so evidence can account for them.
     assert_eq!(evidence.required, expected);
     assert_eq!(evidence.required_index, expected.into_iter().collect());
     assert!(!FamilyThemeEvidence::not_applicable(Some(&theme)));
@@ -12769,12 +12773,19 @@ fn native_evidence_requirements_cover_empty_legacy_only_and_many_rules() {
         )
         .unwrap()
         .resolve(DiagramFamilyId::CLASS);
-    for theme in [&empty, &legacy_only] {
-        let evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        assert!(evidence.required.is_empty());
-        assert!(evidence.required_index.is_empty());
-        assert!(FamilyThemeEvidence::not_applicable(Some(theme)));
-    }
+    let empty_evidence = FamilyThemeEvidence::from_theme(Some(&empty));
+    assert!(empty_evidence.required.is_empty());
+    assert!(empty_evidence.required_index.is_empty());
+    assert!(FamilyThemeEvidence::not_applicable(Some(&empty)));
+    let legacy_evidence = FamilyThemeEvidence::from_theme(Some(&legacy_only));
+    assert_eq!(
+        legacy_evidence.required,
+        vec![FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Text
+        }]
+    );
+    assert!(!FamilyThemeEvidence::not_applicable(Some(&legacy_only)));
 
     let mut rules = ThemeRuleSet::default();
     for _ in 0..512 {
