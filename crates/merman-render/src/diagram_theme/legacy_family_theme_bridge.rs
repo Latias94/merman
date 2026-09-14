@@ -2000,10 +2000,10 @@ gitGraph
     #[test]
     fn legacy_compiler_dispatch_is_block_only() {
         for family in DiagramFamilyId::all() {
-            let compiler = legacy_family_compiler(family).expect("dispatch lookup must succeed");
+            let compiler = legacy_family_compiler(*family).expect("dispatch lookup must succeed");
             assert_eq!(
                 compiler.is_some(),
-                family == DiagramFamilyId::BLOCK,
+                *family == DiagramFamilyId::BLOCK,
                 "legacy compiler dispatch must remain Block-only for {family:?}"
             );
         }
