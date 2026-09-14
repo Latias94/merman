@@ -504,6 +504,7 @@ impl CutoverWitnessProfile {
                 ThemeTarget::EdgeLabelBackground
                     | ThemeTarget::NodeLabel
                     | ThemeTarget::Edge
+                    | ThemeTarget::Marker
                     | ThemeTarget::Cluster
             )
         {
@@ -2569,17 +2570,17 @@ mod tests {
         for (name, source, closed) in [
             (
                 "point",
-                "block-beta\n columns 3\n A space B\n A <--> B\n",
+                "block-beta\n columns 3\n A space B\n A --> B\n",
                 true,
             ),
             (
                 "circle",
-                "block-beta\n columns 3\n A space B\n A o--o B\n",
+                "block-beta\n columns 3\n A space B\n A --o B\n",
                 true,
             ),
             (
                 "cross",
-                "block-beta\n columns 3\n A space B\n A x--x B\n",
+                "block-beta\n columns 3\n A space B\n A --x B\n",
                 false,
             ),
             ("self", "block-beta\n A --> A\n", true),

@@ -381,11 +381,12 @@ pub enum ThemeRouteCutoverProjection {
     ClusterLabelFill = 53,
     EdgeLabelBackgroundFill = 54,
     ChartTextPaint = 55,
+    MarkerPaint = 56,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 56] = [
+    const ALL: [Self; 57] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -442,6 +443,7 @@ impl ThemeRouteCutoverProjection {
         Self::ClusterLabelFill,
         Self::EdgeLabelBackgroundFill,
         Self::ChartTextPaint,
+        Self::MarkerPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -491,6 +493,7 @@ impl ThemeRouteCutoverProjection {
             Self::KanbanTaskStroke => "task.default.stroke",
             Self::JourneyTaskStroke => "task.stroke",
             Self::TreeViewMarkerPaint => "marker.paint",
+            Self::MarkerPaint => "marker.paint",
             Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
             Self::GanttTaskWarningStroke => "task.warning.stroke",
             Self::TimelineEventFill => "event.fill",
@@ -552,7 +555,8 @@ impl ThemeRouteCutoverProjection {
             | Self::JourneyTaskFill
             | Self::JourneyTaskStroke
             | Self::TreeViewMarkerPaint
-            | Self::GitGraphCommitLabelBackgroundFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::GitGraphCommitLabelBackgroundFill
+            | Self::MarkerPaint => ThemeRouteCutoverProjectionAction::Replace,
             Self::GanttTaskWarningStroke
             | Self::TimelineEventFill
             | Self::ErTableOddFill

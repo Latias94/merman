@@ -20,8 +20,8 @@ in an independent clean checkout, including both Block and Class retirement inte
 The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
-KTD17 v88 covers 494 routes and 778 route-profile witnesses; the executable legacy inventory
-now contains only Block's 12 routes (Marker 8, Text 4). Block Cluster adds eight static fill/stroke
+KTD17 v89 covers 502 routes and 786 route-profile witnesses; the executable legacy inventory
+now contains only Block's four generic Text routes. Block Marker and Cluster add typed terminal coverage for their static fill/stroke
 routes with classic, neo, and handDrawn witnesses. Node and Cluster share one final shell plan
 and emitted-terminal receipt; existing Node paint retains property-local priority.
 Source `f2adde25e` passed 3227 scoped Release tests in the main worktree and an independent
@@ -114,14 +114,14 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 32/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 1/33; 12 routes | Block 12 (Marker 8, Text 4). Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
+| Families with executable Legacy routes | 1/33; 4 routes | Block 4 generic Text routes remain. Block Marker, Cluster, NodeLabel and Edge are typed; exact counts are guarded by renderer and acceptance tests. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 88 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v88; 494 routes / 778 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 89 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v89; 502 routes / 786 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v88 replaces Block's static Cluster fill/stroke projections with direct Composite rectangle
+KTD17 v89 replaces Block's static Marker and Cluster fill/stroke projections with direct Composite rectangle
 paint. Ordinary nodes are outside the Cluster domain. Source inline/class paint and explicit
 Cluster configuration retain ownership; a valid Node paint winner owns only its own property.
 Unsupported Node requests keep their residual even when Cluster fallback paints the shell.
@@ -134,7 +134,7 @@ KTD17 v87 replaced Block's eight static unqualified/Default solid/transparent Ed
 routes. Actual path receipts bind source identity, exact layout-derived geometry, paint and
 single emission; missing, duplicate or damaged terminals cannot certify a route. Legitimate
 zero-length self-loops remain renderable and do not claim applied paint. Source lineColor and
-matching class styles retain ownership. Marker paint remains a separate legacy surface;
+matching class styles retain ownership. Marker paint was a separate legacy surface at v88; v89 moves it to typed terminal ownership.
 KTD23 v9 is unchanged because Edge paint has a typed replacement.
 
 KTD17 v86 added Block NodeLabel's four static unqualified/Default solid/transparent routes.
@@ -183,8 +183,7 @@ KTD23 v8 retires Block's static unqualified/Default ClusterLabel.fill identities
 the secondaryTextColor/tertiaryTextColor projection had no writer consumer. The
 unused Block generic Text fallback is also removed. At that historical point, Class still
 retained generic Text compatibility assignments; the later Class Text cutover retired them. Native pixel comparisons preserve
-the composite label and retain an active Node paint control. Marker paint remains
-legacy because its arrowMarkerPath consumer is real. Class edge-label background has an independent
+the composite label and retain an active Node paint control. Marker paint was legacy at that historical point; the subsequent v89 typed Marker cutover now owns that consumer. Class edge-label background has an independent
 historical and runtime witness: the legacy `.edgeLabel[data-look="neo"]` selector is present in
 reference CSS but no emitted edge-label group carries that attribute, while actual label backgrounds
 use `.labelBkg`/`.edgeLabel .label` selectors across Classic, Neo, HandDrawn, HTML-label, and SVG-label
@@ -531,7 +530,7 @@ one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both 
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
 Revision 86 added the typed Class namespace Title query; revision 87 adds Block Edge fill
-and stroke-paint queries. Revision 88 adds Block Cluster fill and stroke-paint queries.
+and stroke-paint queries. Revision 89 adds typed Block Marker fill and stroke-paint queries alongside the Cluster queries.
 Installed N-API darwin-arm64, Node-WASM, and Python wheel artifacts built from clean source
 `51f6308ac` pass all fifteen revision-86 support vectors: Node through asynchronous/synchronous
 calls under pinned Node 24.13.1, and Python through one-shot/reusable APIs under both 3.12.8 and

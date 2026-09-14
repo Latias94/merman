@@ -23,7 +23,7 @@ pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 56] = [
+); 57] = [
     (
         ThemeRouteCutoverProjection::ChartTextPaint,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -229,6 +229,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
+        ThemeRouteCutoverProjection::MarkerPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
         ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
@@ -409,7 +413,7 @@ const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::KanbanTaskStroke];
 const MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
-    &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
+    &[ThemeRouteCutoverProjection::MarkerPaint];
 const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
 const TIMELINE_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
