@@ -461,7 +461,7 @@ const CLASS_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 474] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 478] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2455,6 +2455,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 474] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,
