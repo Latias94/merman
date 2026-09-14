@@ -7,7 +7,11 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 ## Snapshot: 2026-09-14
 
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
-Source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
+The current source through `5834e84e5` passes 3097 scoped Release owner tests (two existing skips)
+and the previously recorded 3170-test owner run, plus current Web/WASM package smoke. The current
+transport matrix also passes Node 40/40, Web catalog 8/8, Typst 41/41, Native C ABI and UniFFI
+2/2, and Flutter ABI 3 contract verification.
+The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
 KTD17 v85 covers 474 routes and 718 route-profile witnesses; the executable legacy inventory
@@ -46,8 +50,9 @@ through its actual WASM ABI. The pinned Typst CLI passed 22 compilations and nin
 [Typst artifact record](../knowledge/engineering/verification/2026-09-13-typst-theme-artifact-revision86.md)
 for the exact payload identity and limits. This does not promote public qualification cells.
 
-All five Web packages were rebuilt from clean source `4e4f3acc3`, packed, installed offline and
-checked through Chromium public entries. Full/render each passed the 15 revision-86 support
+All five Web packages were rebuilt from current source `5834e84e5`, packed, installed offline and
+checked through the package smoke matrix and DOM safety smoke. Full/render each passed the 15
+revision-86 support
 vectors and the shared authoring/catalog task. All twenty size-budget checks still fail; this
 updates installed-consumer evidence without closing C7a. See the
 [Web consumer record](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md).
