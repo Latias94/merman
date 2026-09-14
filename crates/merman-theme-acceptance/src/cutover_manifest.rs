@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 84;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 85;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    226, 141, 110, 56, 88, 70, 217, 138, 178, 145, 175, 94, 21, 144, 43, 48, 179, 4, 79, 235, 201,
-    229, 101, 1, 32, 85, 33, 227, 235, 138, 21, 81,
+    48, 137, 72, 67, 254, 226, 9, 198, 23, 254, 233, 181, 22, 249, 6, 8, 178, 132, 167, 67, 103,
+    107, 113, 95, 154, 92, 136, 15, 149, 87, 3, 137,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -455,7 +455,13 @@ const FLOWCHART_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 470] = [
+const CLASS_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::NodeLabelFill,
+    ThemeRouteCutoverProjection::TitleFill,
+    ThemeRouteCutoverProjection::ClusterLabelFill,
+];
+
+const ACTIVE_ROUTES: [RouteAuthorization; 474] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2595,6 +2601,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 470] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLASS_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLASS_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLASS_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLASS_TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::CLASS,
