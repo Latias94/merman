@@ -1998,6 +1998,18 @@ gitGraph
     }
 
     #[test]
+    fn legacy_compiler_dispatch_is_block_only() {
+        for family in DiagramFamilyId::all() {
+            let compiler = legacy_family_compiler(family).expect("dispatch lookup must succeed");
+            assert_eq!(
+                compiler.is_some(),
+                family == DiagramFamilyId::BLOCK,
+                "legacy compiler dispatch must remain Block-only for {family:?}"
+            );
+        }
+    }
+
+    #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
             49, 107, 86, 220, 165, 170, 20, 220, 180, 75, 4, 252, 118, 119, 247, 37, 124, 117, 252,
