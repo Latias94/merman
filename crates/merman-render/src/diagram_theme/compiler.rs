@@ -63,19 +63,14 @@ impl DiagramThemeCompiler {
         let family_programs = Arc::new(super::family_program::FamilyThemeProgramCache::new(
             Arc::clone(&spec),
         ));
-        let legacy_family_theme_bridge =
-            super::legacy_family_theme_bridge::LegacyFamilyThemeBridge::new(Arc::clone(
-                &family_programs,
-            ));
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
-        let parse_compatibility_bridge = legacy_family_theme_bridge.clone();
-        let parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
-            fingerprint,
-            mermaid_config,
-            move |family, control| parse_compatibility_bridge.overlay_for_family(family, control),
-        )
-        .expect("compiled Mermaid compatibility must satisfy the core plan contract");
+        let parse_compatibility =
+            merman_core::__private::ThemeCompatibilityPlan::try_without_family_overlays(
+                fingerprint,
+                mermaid_config,
+            )
+            .expect("compiled Mermaid compatibility must satisfy the core plan contract");
         let parse_compatibility =
             crate::family::bind_theme_parse_defaults(parse_compatibility, &spec);
         let report = ThemeRecipeReport::compiled(
@@ -220,6 +215,43 @@ mod tests {
             }],
         )
         .expect("valid shadow graph")
+    }
+
+    #[test]
+    fn parsing_a_compiled_theme_does_not_prepare_legacy_family_programs() {
+        use crate::diagram_theme::{CanvasPaint, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    ),
+                )),
+            )
+            .unwrap();
+        let engine = theme.install_parse_compatibility(merman_core::Engine::new());
+        for source in [
+            "block\nA --> B",
+            "flowchart TD\nA --> B",
+            "sequenceDiagram\nA->>B: Message",
+            "stateDiagram-v2\nA --> B",
+        ] {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap();
+            assert!(parsed.is_some(), "fixture must reach family detection");
+            assert_eq!(theme.0.family_programs.len(), 0, "{source}");
+        }
+        theme.resolve(crate::DiagramFamilyId::BLOCK);
+        assert_eq!(theme.0.family_programs.len(), 1);
+        assert!(
+            theme
+                .0
+                .family_programs
+                .contains(crate::DiagramFamilyId::BLOCK)
+        );
     }
 
     #[test]

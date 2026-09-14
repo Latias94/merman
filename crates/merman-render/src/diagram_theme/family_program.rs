@@ -31,8 +31,7 @@ pub(super) struct FamilyThemeProgram {
     rule_facet_dispositions: BTreeMap<(usize, FamilyThemeRuleFacet), FamilyThemeDisposition>,
 }
 
-/// Per-recipe cache for the immutable family programs consumed by both typed adapters and the
-/// temporary Mermaid compatibility bridge.
+/// Per-recipe cache for the immutable family programs consumed by typed adapters.
 #[derive(Debug)]
 pub(super) struct FamilyThemeProgramCache {
     spec: Arc<DiagramThemeSpec>,
@@ -198,6 +197,7 @@ impl FamilyThemeProgram {
         &self.effect_binding_indices
     }
 
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(super) fn has_legacy_compatibility(&self) -> bool {
         self.mechanism_routes
             .iter()

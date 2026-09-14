@@ -6,6 +6,14 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-14
 
+Compiled themes no longer install a family Legacy overlay provider. The former bridge/cache is
+compiled only for unit tests and the internal acceptance configuration; independent KTD23 probes
+and historical authority remain available. Root compatibility configuration and family-owned
+parse-default eligibility are retained. Parsing alone no longer compiles family theme programs;
+typed consumers prepare the selected program on demand. Support revision 90 corrects Block
+generic Text fill discovery to partial typed support, matching its existing writer. Text stroke
+remains Unsupported; mixed fill/stroke requests retain a residual and fail strict rendering.
+
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
 following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
@@ -69,16 +77,21 @@ Support revision, bridge counts and qualification cells are unchanged; C7a/C7b r
 The final Typst publish artifact at clean source `f151192c9` passed all 15 revision-86 support
 vectors, two materializations, three authoring/resource errors and the shared preset catalog
 through its actual WASM ABI. The pinned Typst CLI passed 22 compilations and nine expected failures;
-55 scoped Rust tests also passed. All four Typst size budgets still fail. See the
+55 scoped Rust tests also passed. All four Typst size budgets failed at that historical revision. See the
 [Typst artifact record](../knowledge/engineering/verification/2026-09-13-typst-theme-artifact-revision86.md)
 for the exact payload identity and limits. This does not promote public qualification cells.
 
 All five Web packages were rebuilt from current source `5834e84e5`, packed, installed offline and
 checked through the package smoke matrix and DOM safety smoke. Full/render each passed the 15
 revision-86 support
-vectors and the shared authoring/catalog task. All twenty size-budget checks still fail; this
+vectors and the shared authoring/catalog task. All twenty size-budget checks failed at that historical revision; this
 updates installed-consumer evidence without closing C7a. See the
 [Web consumer record](../knowledge/engineering/verification/2026-09-13-web-theme-consumers-revision86.md).
+
+The later [artifact budget reassessment](../performance/theme_artifact_budget_reassessment_2026-09-14.md)
+accepted a one-source baseline. Its follow-up at `361d0a28a` rebuilt all five Web packages and the
+Typst publish artifact; all 24 size limits passed unchanged. Those measurements predate the
+provider removal described above and do not close the C7a release matrix.
 
 C5 closed at `ff486589c` after 1128/1128 private Release owner tests passed in a clean checkout.
 The scope includes all 41 parser variants through typed preparation and SVG writers, all 33 logical
@@ -117,7 +130,7 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Families with executable Legacy routes | 0/33; 0 routes | Block generic Text, Marker, Cluster, NodeLabel and Edge are typed; the compatibility bridge has no executable family dispatch. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 89 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 90 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v89; 506 routes / 814 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 

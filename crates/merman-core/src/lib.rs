@@ -254,7 +254,7 @@ pub mod __private {
     #[derive(Clone)]
     pub struct ThemeCompatibilityPlan {
         recipe: ThemeCompatibilityRecipe,
-        provider: Arc<dyn PostDetectionConfigOverlayProvider>,
+        provider: Option<Arc<dyn PostDetectionConfigOverlayProvider>>,
     }
 
     impl fmt::Debug for ThemeCompatibilityPlan {
@@ -267,6 +267,20 @@ pub mod __private {
     }
 
     impl ThemeCompatibilityPlan {
+        /// Builds a parse recipe without a post-detection family overlay provider.
+        pub fn try_without_family_overlays(
+            recipe_identity: [u8; 32],
+            compatibility_config: MermaidConfig,
+        ) -> Result<Self, ThemeCompatibilityPlanError> {
+            Ok(Self {
+                recipe: ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
+                    recipe_identity,
+                    compatibility_config,
+                )?),
+                provider: None,
+            })
+        }
+
         pub fn try_new(
             recipe_identity: [u8; 32],
             compatibility_config: MermaidConfig,
@@ -285,9 +299,9 @@ pub mod __private {
             )?);
             Ok(Self {
                 recipe,
-                provider: Arc::new(ThemeCompatibilityProvider {
+                provider: Some(Arc::new(ThemeCompatibilityProvider {
                     resolver: Arc::new(resolver),
-                }),
+                })),
             })
         }
 
@@ -328,9 +342,10 @@ pub mod __private {
             plan.recipe.0.clone(),
         ));
         engine.rebuild_site_config();
-        engine.fallback_post_detection_config_overlay = Some(
-            FallbackPostDetectionConfigOverlay::Provider(Arc::clone(&plan.provider)),
-        );
+        engine.fallback_post_detection_config_overlay = plan
+            .provider
+            .as_ref()
+            .map(|provider| FallbackPostDetectionConfigOverlay::Provider(Arc::clone(provider)));
         engine
     }
 

@@ -24,6 +24,7 @@ mod definition_admission;
 mod effects;
 mod family_mechanism_matrix;
 mod family_program;
+#[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_family_theme_bridge;
 #[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_projection_retirement;

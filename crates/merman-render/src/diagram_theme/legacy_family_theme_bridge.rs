@@ -1,5 +1,8 @@
+#[cfg(test)]
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+#[cfg(test)]
+use std::sync::OnceLock;
 
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use std::collections::BTreeSet;
@@ -7,9 +10,11 @@ use std::collections::BTreeSet;
 #[cfg(test)]
 use merman_core::__private::ThemeFamilyCompatibilityOverlayBuilder;
 use merman_core::__private::{ThemeCompatibilityOverlayError, ThemeFamilyCompatibilityOverlay};
+#[cfg(test)]
 use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 #[cfg(test)]
 use serde_json::Map;
+#[cfg(test)]
 use serde_json::Value;
 
 #[cfg(any(test, merman_internal_theme_acceptance))]
@@ -25,7 +30,6 @@ use super::family_program::FamilyThemeProgramCache;
 #[cfg(test)]
 use super::semantic::ThemeTarget;
 #[cfg(any(test, merman_internal_theme_acceptance))]
-#[cfg(any(test, merman_internal_theme_acceptance))]
 use super::semantic::ThemeVariant;
 use crate::DiagramFamilyId;
 
@@ -37,11 +41,12 @@ use sha2::{Digest as _, Sha256};
 
 #[cfg(test)]
 use super::family_mechanism_matrix::FamilyThemeMechanism;
+#[cfg(test)]
+use super::legacy_projection_retirement::value_digest;
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use super::legacy_projection_retirement::{
     ThemeLegacyProjectionDisposition, ThemeLegacyProjectionObservation,
     ThemeLegacyProjectionProbeError, ThemeLegacyProjectionProbeReceipt, ThemeLegacyRouteValue,
-    value_digest,
 };
 #[cfg(any(test, merman_internal_theme_acceptance))]
 use super::legacy_tombstones::{ThemeLegacyRouteFacet, ThemeLegacyRouteSelector};
@@ -50,19 +55,19 @@ use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 #[cfg(test)]
 use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
+#[cfg(test)]
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 
+#[cfg(test)]
 type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
-/// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
-/// typed theme program directly.
-///
-/// This bridge is deliberately lossy. Its provenance must be reported as legacy compatibility,
-/// never as evidence that a typed mechanism was applied.
+/// Test-only historical provider harness. Production themes install no family overlay provider.
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(super) struct LegacyFamilyThemeBridge {
     inner: Arc<LegacyFamilyThemeBridgeInner>,
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 struct LegacyFamilyThemeBridgeInner {
     family_programs: Arc<FamilyThemeProgramCache>,
@@ -82,6 +87,7 @@ struct LegacyFamilyThemeArtifact {
     accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
+#[cfg(test)]
 impl LegacyFamilyThemeBridge {
     pub(super) fn new(family_programs: Arc<FamilyThemeProgramCache>) -> Self {
         let artifacts = DiagramFamilyId::all()

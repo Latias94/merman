@@ -368,14 +368,50 @@ const NODE_DEFAULT_PATHS: &[&str] = &[
 ];
 
 fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {
-    crate::__private::ThemeCompatibilityPlan::try_new(
+    crate::__private::ThemeCompatibilityPlan::try_without_family_overlays(
         [0x5a; 32],
         MermaidConfig::from_value(config),
-        |_, _| Ok(Ok(None)),
     )
     .unwrap()
     .try_with_post_detection_default_paths("gitGraph", NODE_DEFAULT_PATHS)
     .unwrap()
+}
+
+#[test]
+fn installing_provider_free_theme_removes_previous_family_overlay_provider() {
+    use crate::__private::{ThemeCompatibilityPlan, install_theme_compatibility};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let recorded_calls = Arc::clone(&calls);
+    let previous = ThemeCompatibilityPlan::try_new(
+        [0x19; 32],
+        MermaidConfig::from_value(json!({"theme": "dark"})),
+        move |_, control| {
+            control.checkpoint()?;
+            recorded_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Ok(None))
+        },
+    )
+    .unwrap();
+    let engine = install_theme_compatibility(Engine::new(), &previous);
+    engine.parse_metadata_sync("gitGraph\ncommit").unwrap();
+    assert!(calls.load(Ordering::SeqCst) > 0);
+
+    calls.store(0, Ordering::SeqCst);
+    let replacement = node_default_plan(json!({"theme": "base"}));
+    let engine = install_theme_compatibility(engine, &replacement);
+    assert!(engine.fallback_post_detection_config_overlay.is_none());
+    let parsed = engine.parse_metadata_sync("gitGraph\ncommit").unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(parsed.effective_config.get_str("theme"), Some("base"));
+    assert_eq!(
+        crate::__private::config_post_detection_default_blocked(
+            &parsed.effective_config,
+            "themeVariables.primaryColor",
+        ),
+        Some(false),
+    );
 }
 
 #[test]
