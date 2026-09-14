@@ -132,11 +132,6 @@ fn prepare_block_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let node_label_paint_theme = crate::block::BlockNodeLabelPaintPlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        execution.work_meter_ref(),
-    )?;
     let label_background_theme = crate::block::BlockLabelBackgroundPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -152,6 +147,13 @@ fn prepare_block_family(
         crate::config::config_effective_html_labels(meta.effective_config.as_value()),
         typography_theme.text_style().clone(),
         execution.text_measurer(),
+    )?;
+    let node_label_paint_theme = crate::block::BlockNodeLabelPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        &layout,
+        execution.work_meter_ref(),
     )?;
     let source_owned_fill = execution
         .resolved_theme()

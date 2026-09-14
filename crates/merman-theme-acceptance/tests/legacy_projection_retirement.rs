@@ -23,8 +23,8 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 #[test]
 fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        63, 155, 201, 62, 227, 53, 32, 180, 173, 171, 153, 35, 129, 117, 6, 36, 146, 146, 143, 115,
-        226, 88, 49, 176, 109, 16, 79, 192, 159, 221, 209, 82,
+        209, 222, 42, 192, 128, 167, 191, 249, 15, 99, 159, 157, 91, 92, 172, 202, 31, 84, 243,
+        156, 113, 240, 69, 230, 105, 58, 221, 28, 177, 16, 82, 221,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
         113, 216, 240, 96, 78, 109, 128, 32, 228, 87, 90, 101, 180, 72, 232, 194, 206, 89, 54, 101,
@@ -38,7 +38,7 @@ fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert_eq!(status.matrix_route_count(), 32);
+    assert_eq!(status.matrix_route_count(), 28);
     assert_eq!(status.matrix_family_count(), 1);
     assert_eq!(status.dispatched_family_count(), 1);
     assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);

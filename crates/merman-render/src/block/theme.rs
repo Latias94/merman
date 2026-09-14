@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use indexmap::IndexMap;
 use merman_core::diagrams::block::BlockClassDefRenderModel;
@@ -63,33 +63,61 @@ impl BlockLabelBackgroundPlan {
     }
 }
 
-/// Block label text color resolved once for the shared HTML/SVG stylesheet.
+/// Per-node label paint, resolved against source ownership and verified after SVG emission.
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
-    expectation: Option<DirectPaintExpectation>,
+    expectations: Arc<[Option<BlockNodeLabelExpectation>]>,
+    html_labels: bool,
     evidence: FamilyThemeEvidence,
-    terminal: Mutex<BlockNodeLabelPaintReceipt>,
+    pending: BTreeMap<usize, ThemeCapability>,
+    terminal: OnceLock<BlockNodeLabelPaintReceipt>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+struct BlockNodeLabelExpectation {
+    paint: DirectPaintExpectation,
+    text: String,
+}
+
+#[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintReceipt {
-    css_matches: bool,
-    visible_labels: usize,
+    seen: Vec<bool>,
+    valid: bool,
 }
 
 impl BlockNodeLabelPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::MermaidConfig,
+        model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let Some(theme) = theme else {
-            return Ok(Self {
-                expectation: None,
-                evidence: FamilyThemeEvidence::default(),
-                terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
-            });
+        let html_labels = crate::config::config_effective_html_labels(config.as_value());
+        let mut plan = Self {
+            expectations: Arc::from([]),
+            html_labels,
+            evidence: FamilyThemeEvidence::from_theme(theme),
+            pending: BTreeMap::new(),
+            terminal: OnceLock::new(),
         };
+        let Some(theme) = theme else { return Ok(plan) };
+        if !theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::NodeLabel,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::NodeLabel
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::NodeLabel,
+                    ..
+                }
+            )
+        }) {
+            return Ok(plan);
+        }
         let config_owned = [
             "themeVariables.nodeTextColor",
             "themeVariables.primaryTextColor",
@@ -97,88 +125,290 @@ impl BlockNodeLabelPaintPlan {
         ]
         .into_iter()
         .any(|path| merman_core::__private::config_path_overrides_typed_default(config, path));
-        if config_owned {
-            return Ok(Self {
-                expectation: None,
-                evidence: FamilyThemeEvidence::default(),
-                terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
-            });
-        }
-        let style = theme.style_with_work_meter(
+        let has_ordinal = theme.family_rules().any(|(_, rule)| {
+            matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
+                && rule.ordinal().is_some()
+        });
+        let static_style = theme.text_style_with_work_meter(
             ThemeTarget::NodeLabel,
             ThemeVariant::Default,
             None,
             work,
         )?;
-        let expectation = resolve_direct_static_fill(
-            theme,
-            &style,
-            &[ThemeTarget::NodeLabel],
-            DirectStaticSelectorDomain::Default,
-        )
-        .map(DirectPaintExpectation::from_paint);
-        Ok(Self {
-            expectation,
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
-            terminal: Mutex::new(BlockNodeLabelPaintReceipt::default()),
-        })
-    }
-
-    pub(crate) fn color<'a>(&'a self, fallback: &'a str) -> &'a str {
-        self.expectation
-            .as_ref()
-            .map_or(fallback, DirectPaintExpectation::css)
-    }
-
-    pub(crate) fn observe_css(&self, emitted: &str, fallback: &str) {
-        let expected = self.color(fallback);
-        let mut receipt = self
-            .terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        receipt.css_matches = expected == emitted;
-    }
-
-    pub(crate) fn record_visible_label(&self, label: &str) {
-        if !label.trim().is_empty() {
-            let mut receipt = self
-                .terminal
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            receipt.visible_labels = receipt.visible_labels.saturating_add(1);
+        let sources = super::resolve_block_node_sources(model);
+        let color_classes = model
+            .class_defs
+            .values()
+            .filter(|class| {
+                class
+                    .styles
+                    .iter()
+                    .any(|raw| owns_label_color(raw, "color"))
+                    || (!html_labels
+                        && class
+                            .text_styles
+                            .iter()
+                            .any(|raw| owns_label_color(raw, "fill")))
+            })
+            .map(|class| class.id.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut winners = BTreeSet::new();
+        let mut capabilities = BTreeMap::new();
+        let mut source_owned = Vec::with_capacity(layout.nodes.len());
+        let mut expectations = Vec::with_capacity(layout.nodes.len());
+        for (index, node) in layout.nodes.iter().enumerate() {
+            work.charge(1)?;
+            let source = sources.get(node.id.as_str());
+            let owned = config_owned
+                || source.is_some_and(|source| {
+                    source
+                        .styles
+                        .iter()
+                        .any(|raw| owns_label_color(raw, "color"))
+                        || if source.classes.is_empty() {
+                            color_classes.contains("default")
+                        } else {
+                            source
+                                .classes
+                                .iter()
+                                .any(|class| color_classes.contains(class.as_str()))
+                        }
+                });
+            let label = source
+                .map(|source| super::decode_block_label_html(source.label))
+                .unwrap_or_default();
+            let text = if html_labels {
+                label
+            } else {
+                crate::flowchart::flowchart_label_plain_text_for_layout(&label, "text", false)
+            };
+            let visible = !text.trim().is_empty()
+                && node.label_width.unwrap_or(0.0) > 0.0
+                && node.label_height.unwrap_or(0.0) > 0.0;
+            source_owned.push(owned || !visible);
+            let dynamic_style;
+            let style = if has_ordinal {
+                dynamic_style = theme.text_style_with_work_meter(
+                    ThemeTarget::NodeLabel,
+                    ThemeVariant::Default,
+                    Some(index + 1),
+                    work,
+                )?;
+                &dynamic_style
+            } else {
+                &static_style
+            };
+            if visible {
+                winners.extend(
+                    style
+                        .winner_rule_properties()
+                        .filter_map(|(property, origin)| {
+                            (!(owned && property == ResolvedStyleProperty::Fill))
+                                .then_some((origin.rule_index(), property))
+                        }),
+                );
+            }
+            let paint = if visible && !owned {
+                resolve_direct_static_fill(
+                    theme,
+                    style,
+                    &[ThemeTarget::NodeLabel],
+                    DirectStaticSelectorDomain::Default,
+                )
+                .map(DirectPaintExpectation::from_paint)
+            } else {
+                None
+            };
+            if let Some(paint) = paint.as_ref() {
+                capabilities.insert(paint.rule_index(), paint.capability());
+            }
+            expectations.push(paint.map(|paint| BlockNodeLabelExpectation { paint, text }));
         }
+        let mut observations = BTreeMap::<usize, NodeRuleObservation>::new();
+        for route in theme.family_mechanism_routes().iter().copied() {
+            let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::NodeLabel,
+                facet,
+                ..
+            } = route.mechanism()
+            else {
+                continue;
+            };
+            let observation = observations.entry(rule_index).or_default();
+            if !winners.contains(&(rule_index, resolved_style_property_for_facet(facet))) {
+                continue;
+            }
+            observation.applicable = true;
+            match route.disposition() {
+                FamilyThemeDisposition::TypedAdapter => {
+                    if matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
+                        if let Some(capability) = capabilities.get(&rule_index) {
+                            observation
+                                .capabilities
+                                .insert(ResolvedStyleProperty::Fill, *capability);
+                        } else {
+                            observation.incomplete = true;
+                        }
+                    } else {
+                        observation.incomplete = true;
+                    }
+                }
+                FamilyThemeDisposition::Unsupported => {
+                    observation
+                        .residual
+                        .get_or_insert(unsupported_residual_for_facet(facet));
+                }
+                FamilyThemeDisposition::LegacyCompatibility => {
+                    observation.incomplete = true;
+                }
+            }
+        }
+        for (index, observation) in observations {
+            let key = FamilyThemeMechanismKey::Rule {
+                index,
+                target: ThemeTarget::NodeLabel,
+            };
+            if !observation.applicable {
+                plan.evidence.mark_not_applicable(key);
+            } else if let Some(reason) = observation.residual {
+                plan.evidence.mark_residual(key, reason);
+            } else if !observation.incomplete
+                && let Some(capability) = observation.capabilities.get(&ResolvedStyleProperty::Fill)
+            {
+                plan.pending.insert(index, *capability);
+            }
+        }
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::NodeLabel,
+                TerminalVariantDomain::uniform(layout.nodes.len(), ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned)],
+            work,
+        )?;
+        plan.expectations = expectations.into();
+        Ok(plan)
     }
 
-    pub(crate) fn record_terminal(&self) -> bool {
-        let receipt = self
-            .terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.expectation.is_none() || (receipt.css_matches && receipt.visible_labels != 0)
+    pub(crate) fn color(&self, node_index: usize) -> Option<&str> {
+        self.expectations
+            .get(node_index)?
+            .as_ref()
+            .map(|expected| expected.paint.css())
+    }
+
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockNodeLabelPaintReceipt> {
+        self.expectations
+            .iter()
+            .any(Option::is_some)
+            .then(|| BlockNodeLabelPaintReceipt {
+                seen: vec![false; self.expectations.len()],
+                valid: true,
+            })
+    }
+
+    /// Inspect the checkpointed label fragment, never a separately recomputed CSS value.
+    pub(crate) fn observe_label(
+        &self,
+        receipt: &mut BlockNodeLabelPaintReceipt,
+        node_index: usize,
+        fragment: &str,
+    ) {
+        let Some(seen) = receipt.seen.get_mut(node_index) else {
+            receipt.valid = false;
+            return;
+        };
+        receipt.valid &= !*seen;
+        *seen = true;
+        let Some(expected) = self.expectations[node_index].as_ref() else {
+            return;
+        };
+        receipt.valid &= self.label_matches(expected, fragment);
+    }
+
+    fn label_matches(&self, expected: &BlockNodeLabelExpectation, fragment: &str) -> bool {
+        let Ok(document) = roxmltree::Document::parse(fragment) else {
+            return false;
+        };
+        let mut terminals = document
+            .descendants()
+            .filter(|node| node.has_tag_name(if self.html_labels { "p" } else { "text" }));
+        let Some(terminal) = terminals.next() else {
+            return false;
+        };
+        if terminals.next().is_some() {
+            return false;
+        }
+        let property = if self.html_labels { "color" } else { "fill" };
+        let actual_paint = terminal
+            .attribute("style")
+            .unwrap_or("")
+            .split(';')
+            .filter_map(|raw| raw.split_once(':'))
+            .filter(|(key, _)| key.trim() == property)
+            .map(|(_, value)| value.trim())
+            .next_back();
+        if actual_paint != Some(expected.paint.css()) {
+            return false;
+        }
+        if self.html_labels
+            && !document.descendants().any(|node| {
+                node.has_tag_name("foreignObject")
+                    && ["width", "height"].into_iter().all(|name| {
+                        node.attribute(name)
+                            .and_then(|value| value.parse::<f64>().ok())
+                            .is_some_and(|value| value.is_finite() && value > 0.0)
+                    })
+            })
+        {
+            return false;
+        }
+        terminal
+            .descendants()
+            .filter(|node| node.is_text())
+            .flat_map(|node| node.text().unwrap_or("").chars())
+            .filter(|ch| !ch.is_whitespace())
+            .eq(expected.text.chars().filter(|ch| !ch.is_whitespace()))
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: Option<BlockNodeLabelPaintReceipt>) -> bool {
+        let Some(receipt) = receipt else {
+            return self.expectations.iter().all(Option::is_none);
+        };
+        let complete = receipt.valid
+            && self
+                .expectations
+                .iter()
+                .enumerate()
+                .all(|(index, expected)| {
+                    expected.is_none() || receipt.seen.get(index) == Some(&true)
+                });
+        complete && self.terminal.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let Some(expected) = self.expectation.as_ref() else {
-            return evidence;
-        };
-        let key = FamilyThemeMechanismKey::Rule {
-            index: expected.rule_index(),
-            target: ThemeTarget::NodeLabel,
-        };
-        let receipt = self
-            .terminal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if receipt.css_matches {
-            if receipt.visible_labels == 0 {
-                evidence.mark_not_applicable(key);
-            } else {
-                evidence.mark_applied_with_capabilities(key, [expected.capability()]);
+        if self.terminal.get().is_some() {
+            for (&index, &capability) in &self.pending {
+                evidence.mark_applied_with_capabilities(
+                    FamilyThemeMechanismKey::Rule {
+                        index,
+                        target: ThemeTarget::NodeLabel,
+                    },
+                    [capability],
+                );
             }
         }
         evidence
     }
+}
+
+fn owns_label_color(raw: &str, property: &str) -> bool {
+    crate::mermaid_style::parse_style_declaration(raw)
+        .is_some_and(|declaration| declaration.property() == property)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1042,6 +1272,83 @@ fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn node_label_receipt_plan(html_labels: bool) -> BlockNodeLabelPaintPlan {
+        BlockNodeLabelPaintPlan {
+            expectations: ["Alpha", "Beta"]
+                .into_iter()
+                .map(|text| {
+                    Some(BlockNodeLabelExpectation {
+                        paint: DirectPaintExpectation::new(
+                            0,
+                            "#123456",
+                            ThemeCapability::SolidPaint,
+                        ),
+                        text: text.to_owned(),
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            html_labels,
+            evidence: FamilyThemeEvidence::default(),
+            pending: BTreeMap::new(),
+            terminal: OnceLock::new(),
+        }
+    }
+
+    #[test]
+    fn node_label_receipt_requires_each_checkpointed_terminal_exactly_once() {
+        for html in [false, true] {
+            let fragments = ["Alpha", "Beta"].map(|text| if html {
+                format!(r##"<g><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><span><p style="color:#123456;">{text}</p></span></div></foreignObject></g>"##)
+            } else {
+                format!(r##"<g><text style="fill:#123456;"><tspan>{text}</tspan></text></g>"##)
+            });
+            for mutation in [
+                "none",
+                "missing",
+                "duplicate",
+                "paint",
+                "content",
+                "identity",
+                "zero-area",
+            ] {
+                if !html && mutation == "zero-area" {
+                    continue;
+                }
+                let plan = node_label_receipt_plan(html);
+                let mut receipt = plan.begin_terminal_receipt().unwrap();
+                let first = match mutation {
+                    "paint" => fragments[0].replace("#123456", "#abcdef"),
+                    "content" => fragments[0].replace("Alpha", "Wrong"),
+                    "zero-area" => fragments[0].replace("width=\"40\"", "width=\"0\""),
+                    _ => fragments[0].clone(),
+                };
+                let index = if mutation == "identity" { 1 } else { 0 };
+                plan.observe_label(&mut receipt, index, &first);
+                if mutation == "duplicate" {
+                    plan.observe_label(&mut receipt, 0, &fragments[0]);
+                }
+                if mutation != "missing" {
+                    plan.observe_label(&mut receipt, 1, &fragments[1]);
+                }
+                assert_eq!(
+                    plan.record_terminal(Some(receipt)),
+                    mutation == "none",
+                    "{html}: {mutation}"
+                );
+                if mutation == "none" {
+                    let mut duplicate = plan.begin_terminal_receipt().unwrap();
+                    plan.observe_label(&mut duplicate, 0, &fragments[0]);
+                    plan.observe_label(&mut duplicate, 1, &fragments[1]);
+                    assert!(
+                        !plan.record_terminal(Some(duplicate)),
+                        "a finalized plan cannot be resealed"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn typography_css_checks_reject_mismatches_and_duplicate_emissions() {

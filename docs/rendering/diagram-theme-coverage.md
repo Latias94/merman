@@ -7,17 +7,18 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 ## Snapshot: 2026-09-14
 
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
-The current source through `bb937ecb1` passes 3097 scoped Release owner tests (two existing skips)
-and the previously recorded 3170-test owner run, plus current Web/WASM package smoke. The current
-transport matrix also passes Node 40/40, Web catalog 8/8, Typst 41/41, Native C ABI and UniFFI
+Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
+following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
+transport matrix passed Node 40/40, Web catalog 8/8, Typst 41/41, Native C ABI and UniFFI
 2/2, and Flutter ABI 3 contract verification. Flutter one-shot theme authoring now routes all three
 authoring operations through the theme-specific resource admission path.
 The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
-KTD17 v85 covers 474 routes and 718 route-profile witnesses; the executable legacy inventory
-now contains only Block's 32 routes. These are scoped migration results, not C7a eligibility
-or complete Class mechanism support. See the
+KTD17 v86 covers 478 routes and 730 route-profile witnesses; the executable legacy inventory
+now contains only Block's 28 routes. Block NodeLabel adds four static fill routes with
+classic, neo, and handDrawn witnesses; its paint is bound to individual node terminals.
+These are scoped migration results, not C7a eligibility or complete Class mechanism support. See the
 [Class Text convergence record](../knowledge/engineering/verification/2026-09-14-class-text-convergence.md).
 
 The earlier `523ce8881` cutover produced 38 owner-test failures. Subsequent writer-emission,
@@ -25,18 +26,19 @@ shadowed-rule, route-authorization, support and dispatch repairs closed those fa
 owner combination above. Historical verification records retain their own source and scope;
 they do not describe the current inventory.
 
-Class's existing text terminal inventory now retains color ownership alongside independent
-font facts. NodeLabel and namespace Title share those facts, including explicit rejection of
+Historical prerequisite (`c16be4559`): Class's text terminal inventory retained color
+ownership alongside independent font facts. NodeLabel and namespace Title share those facts, including explicit rejection of
 empty/source-owned/unknown text as inherited paint. Source `c16be4559` passed 3281 private
 Release owner tests in both the main worktree and a clean checkout (two existing skips), plus
-main-worktree Class structure and Clippy checks. This is a prerequisite, not Text bridge
-retirement. See the [shared terminal verification record](../knowledge/engineering/verification/2026-09-13-class-shared-text-terminal-facts.md).
+main-worktree Class structure and Clippy checks. This record predates the completed Class Text
+bridge retirement described above. See the [shared terminal verification record](../knowledge/engineering/verification/2026-09-13-class-shared-text-terminal-facts.md).
 
-Class NodeLabel now shares generic Text author order in all paint resolution paths, including
-per-node ordinal caching. Source `00174dc2a` passed 3278 private Release owner tests in both
+Historical author-order repair (`00174dc2a`): Class NodeLabel shares generic Text author order
+in all paint resolution paths, including per-node ordinal caching. Source `00174dc2a` passed 3278 private Release owner tests in both
 the main worktree and a clean checkout (two existing skips), plus main-worktree SVG structure
-and Clippy checks. Generic Text remains legacy/incomplete where unproved; no support or
-retirement counts changed. See the [author-order repair record](../knowledge/engineering/verification/2026-09-13-class-text-node-author-order.md).
+and Clippy checks. At that revision, generic Text remained legacy/incomplete where unproved;
+that repair did not change support or retirement counts. The subsequent Class Text retirement
+supersedes that status. See the [author-order repair record](../knowledge/engineering/verification/2026-09-13-class-text-node-author-order.md).
 
 The evidence requirement index repair at `d92dee3ad` passed 3,273 private Release owner tests
 (with two existing skips), SVG structure comparison and actual Typst package checks in a clean
@@ -92,14 +94,18 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 32/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 1/33; 32 routes | Block 32. Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
+| Families with executable Legacy routes | 1/33; 28 routes | Block 28. Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 86 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v85; 474 routes / 718 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v86; 478 routes / 730 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v85 adds Class Text's four static unqualified/Default solid/transparent routes.
+KTD17 v86 adds Block NodeLabel's four static unqualified/Default solid/transparent routes.
+Terminal checks cover source/config ownership, empty labels, overwritten rules and unsupported
+sibling facets. This leaves generic Block Text and its compatibility provider active.
+
+KTD17 v85 added Class Text's four static unqualified/Default solid/transparent routes.
 The preceding v84 Title routes continue to belong to namespace labels. Source ownership,
 shared Text/role author order, and residuals for unsupported requests remain explicit.
 Removing Class from bridge dispatch does not make its ordinal, gradient, effect or other
@@ -177,13 +183,13 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block. Block `NodeLabel.fill` remains a
-separate migration boundary: its current writer consumes `nodeTextColor` through `.label text`,
-`span`, and `p` for both HTML and SVG labels, while `BlockNodePaintThemePlan` currently owns only
-node-shell paint. A future cutover must add a label-specific terminal plan, source/config ownership
-checks, and independent SVG/PNG evidence before changing the four static routes or bridge output.
-The exact cutover boundary and required receipts are recorded in the [Block NodeLabel cutover
-boundary](../knowledge/engineering/verification/2026-09-14-block-node-label-cutover-boundary.md).
+The global provider remains necessary for Block's remaining generic Text and other legacy
+routes. The earlier [Block NodeLabel cutover boundary](../knowledge/engineering/verification/2026-09-14-block-node-label-cutover-boundary.md)
+records the shared-CSS design that preceded the typed replacement. NodeLabel now uses a
+per-node HTML/SVG terminal plan, with source/config ownership and actual emitted-fragment
+checks. The [terminal repair verification](../knowledge/engineering/verification/2026-09-14-block-node-label-terminal-repair.md)
+records 3157 scoped Release tests and the executable SVG/PNG route authorization. Remaining
+provider/probe retirement and the broader C7a delivery gates are separate work.
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which

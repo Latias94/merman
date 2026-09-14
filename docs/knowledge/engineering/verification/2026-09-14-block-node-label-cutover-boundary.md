@@ -3,15 +3,23 @@
 This record defines the evidence required before retiring Block's remaining `NodeLabel.fill`
 legacy projection. It is a migration boundary, not a support claim.
 
-## Current owner
+## Status after the terminal repair
 
-Block `NodeLabel.fill` is still consumed through the shared `nodeTextColor` compatibility value.
-The Block writer emits that value through both label families:
+This document retains the pre-cutover design and its required evidence. The static NodeLabel
+routes now have a per-node typed writer and executable SVG/PNG route authorization; see the
+[terminal repair record](2026-09-14-block-node-label-terminal-repair.md) for exact validation scope.
+The shared Block provider still serves generic Text and other legacy mechanisms. Its complete
+retirement, including remaining probes, is not implied by the NodeLabel route migration.
+
+## Historical owner before cutover
+
+Before cutover, Block `NodeLabel.fill` was consumed through the shared `nodeTextColor` compatibility value.
+The Block writer emitted that value through both label families:
 
 - HTML labels: `.label`, `span.nodeLabel`, and `p` inside `foreignObject`;
 - SVG labels: `.label text` and the generated `tspan` text sink.
 
-`BlockNodePaintThemePlan` currently owns node-shell `fill` and `stroke` only. It does not own
+At that point, `BlockNodePaintThemePlan` owned node-shell `fill` and `stroke` only. It did not own
 label paint or prove the final text color at each visible label terminal.
 
 ## Required cutover evidence

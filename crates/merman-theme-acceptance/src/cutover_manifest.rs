@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 85;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 86;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    136, 75, 18, 191, 9, 133, 6, 95, 171, 7, 88, 184, 171, 169, 139, 11, 254, 30, 241, 194, 92, 90,
-    136, 0, 182, 35, 1, 54, 246, 229, 1, 196,
+    121, 242, 243, 195, 170, 4, 96, 199, 175, 159, 242, 94, 208, 201, 183, 143, 66, 129, 36, 134,
+    138, 39, 95, 117, 211, 180, 142, 104, 146, 161, 237, 228,
 ];
 
 const PROJECTION_ACTIONS: [(

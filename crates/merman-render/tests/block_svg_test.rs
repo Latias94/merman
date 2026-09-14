@@ -323,6 +323,383 @@ fn render_block_with_theme_requirement(
         .expect("render themed Block")
 }
 
+fn block_node_label_theme(patch: ThemeStylePatch) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::NodeLabel, patch).for_family(DiagramFamilyId::BLOCK),
+            )),
+        )
+        .unwrap()
+}
+
+#[test]
+fn block_node_label_paint_is_bound_to_node_terminals() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for html in [false, true] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\n A[\"Alpha\"] -- \"Edge\" --> B[\"Beta\"]\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": html}),
+            )),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|n| n.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(
+            !stylesheet.contains("#b316cd"),
+            "node paint must not replace shared label CSS"
+        );
+        for id in ["block-theme-A", "block-theme-B"] {
+            let node = document
+                .descendants()
+                .find(|n| n.attribute("id") == Some(id))
+                .unwrap();
+            let terminal = node
+                .descendants()
+                .find(|n| n.has_tag_name(if html { "p" } else { "text" }))
+                .unwrap();
+            assert!(
+                terminal
+                    .attribute("style")
+                    .unwrap_or("")
+                    .contains("#b316cd")
+            );
+        }
+        let edge = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("edgeLabel"))
+            .expect("edge label terminal");
+        assert!(
+            !edge
+                .descendants()
+                .any(|node| node.attribute("style").unwrap_or("").contains("#b316cd"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+    }
+}
+
+#[test]
+fn block_empty_node_label_paint_is_not_applicable() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for html in [false, true] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\n A[\" \"]\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": html}),
+            )),
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn block_node_label_source_color_suppresses_theme_evidence() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for html in [false, true] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\n A[\"Alpha\"]\n style A color:#123456\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": html}),
+            )),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|n| n.attribute("id") == Some("block-theme-A"))
+            .unwrap();
+        assert!(
+            node.descendants()
+                .any(|n| n.attribute("style").unwrap_or("").contains("#123456"))
+        );
+        assert!(
+            !node
+                .descendants()
+                .any(|n| n.attribute("style").unwrap_or("").contains("#b316cd"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn block_node_label_overwritten_rule_has_no_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::NodeLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                        )
+                        .with_variant(ThemeVariant::Default)
+                        .for_family(DiagramFamilyId::BLOCK),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::NodeLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::BLOCK),
+                    ),
+            ),
+        )
+        .unwrap();
+    let rendered =
+        render_block_with_theme_and_engine("block\n A[\"Alpha\"]\n", &theme, Engine::new());
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn block_node_label_mixed_rule_cannot_certify_unconsumed_stroke() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+    );
+    let rendered = render_block_with_theme_requirement(
+        "block\n A[\"Alpha\"]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert!(
+        evidence.theme_residual_count() > 0
+            || evidence.accounted_count() < evidence.required_count()
+    );
+}
+
+#[test]
+fn block_node_label_mixed_rule_is_rejected_in_strict_mode() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+    );
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync("block\n A[\"Alpha\"]\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    assert!(
+        artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .is_err()
+    );
+}
+
+#[test]
+fn block_node_label_mixed_source_ownership_proves_only_theme_nodes() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for html in [false, true] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\n A[\"Alpha\"] B[\"Beta\"]\n style A color:#123456\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": html}),
+            )),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (id, color) in [("block-theme-A", "#123456"), ("block-theme-B", "#b316cd")] {
+            let node = document
+                .descendants()
+                .find(|n| n.attribute("id") == Some(id))
+                .unwrap();
+            assert!(
+                node.descendants()
+                    .any(|n| n.attribute("style").unwrap_or("").contains(color))
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+    }
+}
+
+#[test]
+fn block_node_label_config_color_is_not_a_typed_application() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for path in ["nodeTextColor", "primaryTextColor", "textColor"] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\n A[\"Alpha\"]\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables": {path: "#123456"}}),
+            )),
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "{path}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{path}");
+    }
+}
+
+#[test]
+fn block_node_label_preserves_generic_text_author_order() {
+    for node_last in [false, true] {
+        let targets = if node_last {
+            [ThemeTarget::Text, ThemeTarget::NodeLabel]
+        } else {
+            [ThemeTarget::NodeLabel, ThemeTarget::Text]
+        };
+        let rules = targets
+            .into_iter()
+            .fold(ThemeRuleSet::default(), |rules, target| {
+                let color = if target == ThemeTarget::NodeLabel {
+                    "#b316cd"
+                } else {
+                    "#123456"
+                };
+                rules.with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                )
+            });
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let rendered = render_block_with_theme_requirement(
+            "block\n A[\"Alpha\"]\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|n| n.attribute("id") == Some("block-theme-A"))
+            .unwrap();
+        assert_eq!(
+            node.descendants()
+                .any(|n| n.attribute("style").unwrap_or("").contains("#b316cd")),
+            node_last
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(node_last));
+        if !node_last {
+            assert_eq!(evidence.not_applicable_count(), 1);
+        }
+    }
+}
+
+#[test]
+fn block_node_label_class_color_owns_only_assigned_classes() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    for html in [false, true] {
+        for (source, owned) in [
+            (
+                "block\n A[\"Alpha\"]\n class A paint\n classDef paint color:#123456\n",
+                true,
+            ),
+            (
+                "block\n A[\"Alpha\"]\n classDef default color:#123456\n",
+                true,
+            ),
+            (
+                "block\n A[\"Alpha\"]\n class A plain\n classDef plain stroke:#123456\n classDef default color:#654321\n",
+                false,
+            ),
+        ] {
+            let rendered = render_block_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"htmlLabels": html}),
+                )),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|n| n.attribute("id") == Some("block-theme-A"))
+                .unwrap();
+            assert_eq!(
+                node.descendants()
+                    .any(|n| n.attribute("style").unwrap_or("").contains("#b316cd")),
+                !owned
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+        }
+    }
+}
+
+#[test]
+fn block_node_label_ordinal_winner_keeps_an_unsupported_residual() {
+    let rules = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            )
+            .for_family(DiagramFamilyId::BLOCK),
+        )
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(2).unwrap())
+            .for_family(DiagramFamilyId::BLOCK),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap();
+    let rendered = render_block_with_theme_requirement(
+        "block\n A[\"Alpha\"] B[\"Beta\"]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
 #[test]
 fn block_explicit_default_font_size_has_a_typed_terminal_receipt() {
     for explicit in [false, true] {

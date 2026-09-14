@@ -675,7 +675,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
         typography_theme: &'a BlockTypographyThemePlan,
-        node_label_paint_theme: &BlockNodeLabelPaintPlan,
         label_background_theme: &BlockLabelBackgroundPlan,
         class_defs: &indexmap::IndexMap<
             String,
@@ -688,7 +687,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let font_size = typography_theme.font_size_px();
         let font_size_css: Box<str> = fmt(font_size).to_string().into();
         let text_color = theme.common.text_color.as_str();
-        let node_text_color = node_label_paint_theme.color(theme.node_text_color.as_str());
+        let node_text_color = theme.node_text_color.as_str();
         let title_color = theme.title_color.as_str();
         let main_bkg = theme.main_bkg.as_str();
         let node_border = theme.node_border.as_str();
@@ -865,19 +864,12 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         diagram_id,
         effective_config,
         typography_theme,
-        node_label_paint_theme,
         label_background_theme,
         &model.class_defs,
         options,
     )?;
     label_background_theme.record_stylesheet();
-    let configured_node_text_color = MermaidThemeAdapter::new(effective_config)
-        .node_diagram()
-        .node_text_color;
-    node_label_paint_theme.observe_css(
-        node_label_paint_theme.color(configured_node_text_color.as_str()),
-        configured_node_text_color.as_str(),
-    );
+    let mut node_label_receipt = node_label_paint_theme.begin_terminal_receipt();
     let typography_css_matches = typography_theme.observe_css(
         typography_receipt.as_mut(),
         css_emission.font_family_css,
@@ -930,7 +922,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         };
         let mut node_box_style = compiled_styles.box_style;
         let node_text_style = compiled_styles.text_style;
-        let node_svg_text_style = compiled_styles.svg_text_style;
+        let mut node_svg_text_style = compiled_styles.svg_text_style;
+        let typed_label_color = node_label_paint_theme.color(node_index);
+        if let Some(color) = typed_label_color {
+            let _ = write!(&mut node_svg_text_style, "fill:{color};");
+        }
         let node_div_style_prefix = compiled_styles.div_style_prefix;
         if let Some((_, css)) = typed_fill {
             node_box_style.push_str("fill:");
@@ -1149,7 +1145,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_visible_label(&label);
         }
-        node_label_paint_theme.record_visible_label(&label);
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -1176,6 +1171,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
+        let label_start = out.len();
         if html_labels {
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
@@ -1185,7 +1181,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let label_markup = if node.label.is_empty() {
                 String::new()
             } else {
-                format!("<p>{}</p>", escape_xml(&label))
+                match typed_label_color {
+                    Some(color) => format!(
+                        r#"<p style="color:{};">{}</p>"#,
+                        escape_attr(color),
+                        escape_xml(&label)
+                    ),
+                    None => format!("<p>{}</p>", escape_xml(&label)),
+                }
             };
             let _ = write!(
                 &mut out,
@@ -1217,6 +1220,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             out.push_str("</g>");
         }
 
+        out.checkpoint()?;
+        if let Some(receipt) = node_label_receipt.as_mut() {
+            node_label_paint_theme.observe_label(receipt, node_index, &out.as_str()[label_start..]);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -1433,7 +1440,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     }
     if !typography_css_matches
         || typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt))
-        || !node_label_paint_theme.record_terminal()
+        || !node_label_paint_theme.record_terminal(node_label_receipt)
     {
         return Err(Error::InvalidModel {
             message: "Block typography terminal receipt was incomplete".to_string(),
