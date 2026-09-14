@@ -2630,3 +2630,371 @@ fn block_edge_invisible_self_loop_preserves_semantic_ordinals() {
         assert_eq!(evidence.theme_residual_count(), usize::from(ordinal == 2));
     }
 }
+
+const BLOCK_CLUSTER_SOURCE: &str =
+    "block\n columns 1\n block:group[\"Group\"]\n A[\"Alpha\"]\n end\n B[\"Beta\"]\n";
+
+fn block_cluster_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    block_edge_theme(rules)
+}
+
+#[test]
+fn block_cluster_static_paint_reaches_only_composite_shells() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for transparent in [false, true] {
+            let paint = if transparent {
+                CanvasPaint::Transparent
+            } else {
+                CanvasPaint::solid("#b316cd").unwrap()
+            };
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default()
+                    .with_fill(paint.clone())
+                    .with_stroke(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = block_cluster_theme([rule]);
+            let rendered =
+                render_block_with_theme_and_engine(BLOCK_CLUSTER_SOURCE, &theme, Engine::new());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let css = if transparent {
+                "transparent"
+            } else {
+                "#b316cd"
+            };
+            let cluster = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class")
+                        .unwrap_or("")
+                        .split_whitespace()
+                        .any(|class| class == "composite")
+                })
+                .unwrap();
+            assert_eq!(cluster.tag_name().name(), "rect");
+            assert!(
+                cluster
+                    .attribute("style")
+                    .unwrap()
+                    .contains(&format!("fill:{css};stroke:{css};"))
+            );
+            let ordinary = document.descendants().filter(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .attribute("class")
+                        .unwrap_or("")
+                        .contains("label-container")
+                    && *node != cluster
+            });
+            assert!(
+                ordinary
+                    .into_iter()
+                    .all(|node| !node.attribute("style").unwrap_or("").contains(css))
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_cluster_node_priority_is_resolved_per_paint_property() {
+    for split in [false, true] {
+        let node_patch = if split {
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap())
+        } else {
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#2468ac").unwrap())
+                .with_stroke(CanvasPaint::solid("#2468ac").unwrap())
+        };
+        let theme = block_cluster_theme([
+            ThemeRule::new(ThemeTarget::Node, node_patch),
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                    .with_stroke(CanvasPaint::solid("#b316cd").unwrap()),
+            ),
+        ]);
+        let rendered =
+            render_block_with_theme_and_engine(BLOCK_CLUSTER_SOURCE, &theme, Engine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("class").unwrap_or("").contains("composite"))
+            .unwrap();
+        let style = cluster.attribute("style").unwrap();
+        assert!(style.contains("fill:#2468ac;"));
+        assert!(style.contains(if split {
+            "stroke:#b316cd;"
+        } else {
+            "stroke:#2468ac;"
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), if split { 2 } else { 1 });
+        assert_eq!(evidence.not_applicable_count(), usize::from(!split));
+    }
+}
+
+#[test]
+fn block_cluster_source_and_explicit_config_own_their_properties() {
+    for source_style in [false, true] {
+        let theme = block_cluster_theme([ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                .with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+        )]);
+        let source = if source_style {
+            format!("{BLOCK_CLUSTER_SOURCE}style group fill:#abcdef,stroke:#123456\n")
+        } else {
+            BLOCK_CLUSTER_SOURCE.to_string()
+        };
+        let engine = if source_style {
+            Engine::new()
+        } else {
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef","clusterBorder":"#123456"}})))
+        };
+        let rendered = render_block_with_theme_and_engine(&source, &theme, engine);
+        assert!(!rendered.svg().contains("fill:#b316cd;"));
+        assert!(!rendered.svg().contains("stroke:#2468ac;"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn block_cluster_empty_domain_is_not_applicable_and_unsupported_winners_stay_residual() {
+    for case in ["empty", "mixed", "ordinal"] {
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap());
+        if case == "mixed" {
+            patch = patch.with_stroke_width(4.0).unwrap();
+        }
+        let mut rule = ThemeRule::new(ThemeTarget::Cluster, patch);
+        if case == "ordinal" {
+            rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+        }
+        let theme = block_cluster_theme([rule]);
+        let rendered = render_block_with_theme_requirement(
+            if case == "empty" {
+                "block\n A\n"
+            } else {
+                BLOCK_CLUSTER_SOURCE
+            },
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(case == "empty")
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(case != "empty")
+        );
+    }
+}
+
+#[test]
+fn block_cluster_class_source_and_config_masks_are_property_local() {
+    for case in ["class", "cluster-config", "node-config"] {
+        let theme = block_cluster_theme([
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                    .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+            ),
+        ]);
+        let source = if case == "class" {
+            format!("{BLOCK_CLUSTER_SOURCE}classDef brand fill:#abcdef\nclass group brand\n")
+        } else {
+            BLOCK_CLUSTER_SOURCE.to_string()
+        };
+        let engine = if case == "cluster-config" {
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"clusterBkg":"#abcdef"}}),
+            ))
+        } else if case == "node-config" {
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"mainBkg":"#abcdef", "nodeBorder":"#abcdef"}}),
+            ))
+        } else {
+            Engine::new()
+        };
+        let rendered = render_block_with_theme_and_engine(&source, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("class").unwrap_or("").contains("composite"))
+            .unwrap();
+        let style = cluster.attribute("style").unwrap();
+        assert_eq!(style.contains("fill:#b316cd;"), case == "node-config");
+        assert!(style.contains(if case == "node-config" {
+            "stroke:#123456;"
+        } else {
+            "stroke:#2468ac;"
+        }));
+        let ordinary = document.descendants().filter(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("class")
+                    .unwrap_or("")
+                    .contains("label-container")
+                && *node != cluster
+        });
+        assert!(ordinary.into_iter().all(|node| {
+            node.attribute("style")
+                .unwrap_or("")
+                .contains("stroke:#2468ac;")
+                == (case != "node-config")
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
+}
+
+#[test]
+fn block_cluster_fallback_preserves_unsupported_node_gradient_residual() {
+    use merman_render::diagram_theme::{GradientStop, LinearGradient};
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+            GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
+        ],
+    )
+    .unwrap();
+    let theme = block_cluster_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+    ]);
+    for source in [
+        "block\n block:group[\"Group\"]\n end\n",
+        BLOCK_CLUSTER_SOURCE,
+    ] {
+        let rendered = render_block_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("class").unwrap_or("").contains("composite"))
+            .unwrap();
+        assert!(
+            cluster
+                .attribute("style")
+                .unwrap()
+                .contains("fill:#b316cd;")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 1);
+    }
+}
+
+#[test]
+fn block_cluster_structural_node_class_owns_actual_shell_paint() {
+    let theme = block_cluster_theme([ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+            .with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    let source = format!("{BLOCK_CLUSTER_SOURCE}classDef node fill:#abcdef,stroke:#123456\n");
+    let rendered = render_block_with_theme_and_engine(&source, &theme, Engine::new());
+    assert!(
+        rendered
+            .svg()
+            .contains(".node&gt;*{fill:#abcdef!important;stroke:#123456!important;}")
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let cluster = document
+        .descendants()
+        .find(|node| node.attribute("class").unwrap_or("").contains("composite"))
+        .unwrap();
+    assert!(!cluster.attribute("style").unwrap().contains("#b316cd"));
+    assert!(!cluster.attribute("style").unwrap().contains("#2468ac"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn block_cluster_and_node_ignore_default_class_when_plain_is_assigned() {
+    let theme = block_cluster_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+    ]);
+    let source = format!(
+        "{BLOCK_CLUSTER_SOURCE}classDef default fill:#abcdef,stroke:#123456\nclassDef plain color:#000000\nclass group,B plain\n"
+    );
+    let rendered = render_block_with_theme_and_engine(&source, &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let cluster = document
+        .descendants()
+        .find(|node| node.attribute("class").unwrap_or("").contains("composite"))
+        .unwrap();
+    assert!(
+        cluster
+            .attribute("style")
+            .unwrap()
+            .contains("fill:#b316cd;stroke:#2468ac;")
+    );
+    assert!(terminal_node_has_class(
+        rendered.svg(),
+        "block-theme-group",
+        "plain"
+    ));
+    assert!(!terminal_node_has_class(
+        rendered.svg(),
+        "block-theme-group",
+        "default"
+    ));
+    let ordinary = terminal_shell_styles(rendered.svg(), "block-theme-B");
+    assert_eq!(terminal_stroke(&ordinary[0].1), Some("#2468ac"));
+    let default_owned = terminal_shell_styles(rendered.svg(), "block-theme-A");
+    assert!(
+        default_owned
+            .iter()
+            .all(|(_, style)| terminal_stroke(style) != Some("#2468ac"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+}

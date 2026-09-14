@@ -20,9 +20,11 @@ in an independent clean checkout, including both Block and Class retirement inte
 The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
-KTD17 v87 covers 486 routes and 754 route-profile witnesses; the executable legacy inventory
-now contains only Block's 20 routes. Block Edge adds eight static fill/stroke routes with
-classic, neo, and handDrawn witnesses. Paint is bound to each emitted edge path; Edge.fill remains
+KTD17 v88 covers 494 routes and 778 route-profile witnesses; the executable legacy inventory
+now contains only Block's 12 routes (Marker 8, Text 4). Block Cluster adds eight static fill/stroke
+routes with classic, neo, and handDrawn witnesses. Node and Cluster share one final shell plan
+and emitted-terminal receipt; existing Node paint retains property-local priority.
+The preceding Block Edge tranche added eight static fill/stroke routes. Paint is bound to each emitted edge path; Edge.fill remains
 a stroke fallback only when stroke is unspecified. The old Edge-to-Marker projection is removed.
 Block NodeLabel's preceding four static fill routes remain bound to individual node terminals.
 Source `a902b5d53` passed 3218 scoped Release owner tests in both the main worktree and an
@@ -106,14 +108,23 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 32/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 1/33; 20 routes | Block 20. Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
+| Families with executable Legacy routes | 1/33; 12 routes | Block 12 (Marker 8, Text 4). Class Text bridge dispatch and four legacy routes are retired; exact counts are guarded by renderer and acceptance tests. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 87 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v87; 486 routes / 754 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 88 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v88; 494 routes / 778 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v87 replaces Block's eight static unqualified/Default solid/transparent Edge fill/stroke
+KTD17 v88 replaces Block's static Cluster fill/stroke projections with direct Composite rectangle
+paint. Ordinary nodes are outside the Cluster domain. Source inline/class paint and explicit
+Cluster configuration retain ownership; a valid Node paint winner owns only its own property.
+Unsupported Node requests keep their residual even when Cluster fallback paints the shell.
+Transparent Cluster paint no longer passes through the legacy CSS alpha replacement. Actual
+shell receipts validate identity, transform, Composite geometry and each final paint property.
+The old Cluster configuration assignments, duplicate writer ownership scan and style-self-report
+receipt are removed. KTD23 v9 remains unchanged.
+
+KTD17 v87 replaced Block's eight static unqualified/Default solid/transparent Edge fill/stroke
 routes. Actual path receipts bind source identity, exact layout-derived geometry, paint and
 single emission; missing, duplicate or damaged terminals cannot certify a route. Legitimate
 zero-length self-loops remain renderable and do not claim applied paint. Source lineColor and
@@ -505,16 +516,16 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
-Support discovery now has an independent seventeen-case golden in
+Support discovery now has an independent nineteen-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 87 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+revision 88 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
 surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
 Revision 86 added the typed Class namespace Title query; revision 87 adds Block Edge fill
-and stroke-paint queries.
+and stroke-paint queries. Revision 88 adds Block Cluster fill and stroke-paint queries.
 Installed N-API darwin-arm64, Node-WASM, and Python wheel artifacts built from clean source
 `51f6308ac` pass all fifteen revision-86 support vectors: Node through asynchronous/synchronous
 calls under pinned Node 24.13.1, and Python through one-shot/reusable APIs under both 3.12.8 and

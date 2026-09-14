@@ -631,17 +631,6 @@ fn compile_block_family(
         EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
         [("arrowheadColor", reader.stroke_or_fill(ThemeTarget::Marker))],
     );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
-        [
-            ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
-            ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
-        ],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
-        [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
-    );
 
     contributions.finish_into(builder)
 }
@@ -1993,14 +1982,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 20);
+        assert_eq!(status.matrix_route_count(), 12);
         assert_eq!(status.matrix_family_count(), 1);
         assert_eq!(status.dispatched_family_count(), 1);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                184, 120, 158, 107, 18, 39, 7, 31, 139, 54, 146, 228, 14, 176, 101, 53, 207, 70,
-                89, 112, 139, 44, 250, 59, 84, 222, 226, 73, 87, 253, 59, 3
+                82, 158, 56, 87, 221, 84, 135, 159, 221, 169, 207, 110, 18, 115, 239, 172, 222, 25,
+                127, 237, 243, 180, 242, 98, 82, 194, 254, 73, 155, 6, 183, 61
             ]
         );
         assert_eq!(
@@ -2870,65 +2859,75 @@ gitGraph
     }
 
     #[test]
-    fn class_cluster_scalar_retires_all_legacy_assignments_without_rederiving_other_paint() {
-        const SOURCE: &str = "classDiagram\nnamespace Group {\nclass A\nclass B\n}\nA --> B : relation\nnote for A \"memo\"\n";
-        for selected in ["base", "dark", "neo"] {
-            for explicit_secondary in [None, Some("#456789")] {
-                let mut compatibility = MermaidThemeCompatibility::default()
-                    .with_theme(selected)
-                    .unwrap();
-                if let Some(color) = explicit_secondary {
-                    compatibility = compatibility
-                        .with_variable("secondaryColor", color)
+    fn cluster_scalar_retires_all_legacy_assignments_without_rederiving_other_paint() {
+        for (family, source) in [
+            (
+                DiagramFamilyId::CLASS,
+                "classDiagram\nnamespace Group {\nclass A\nclass B\n}\nA --> B : relation\nnote for A \"memo\"\n",
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                "block-beta\n columns 1\n block:group[\"Group\"]\n A[\"Alpha\"]\n end\n B[\"Beta\"]\n",
+            ),
+        ] {
+            for selected in ["base", "dark", "neo"] {
+                for explicit_secondary in [None, Some("#456789")] {
+                    let mut compatibility = MermaidThemeCompatibility::default()
+                        .with_theme(selected)
                         .unwrap();
-                }
-                let baseline_spec =
-                    DiagramThemeSpec::new().with_mermaid_compatibility(compatibility.clone());
-                let baseline = parse_with_compatibility(
-                    &baseline_spec,
-                    SOURCE,
-                    baseline_spec.mermaid().to_mermaid_config(),
-                );
-                for paint in [CanvasPaint::Transparent, solid("#123456")] {
-                    for variant in [None, Some(ThemeVariant::Default)] {
-                        let mut rule = ThemeRule::new(
-                            ThemeTarget::Cluster,
-                            ThemeStylePatch::default()
-                                .with_fill(paint.clone())
-                                .with_stroke(paint.clone()),
-                        );
-                        if let Some(variant) = variant {
-                            rule = rule.with_variant(variant);
-                        }
-                        let spec = baseline_spec
-                            .clone()
-                            .with_styles(ThemeRuleSet::default().with_rule(rule));
-                        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::CLASS);
-                        assert!(artifact.overlay.is_empty());
-                        assert!(artifact.contribution_ids.is_empty());
-                        let parsed = parse_with_compatibility(
-                            &spec,
-                            SOURCE,
-                            spec.mermaid().to_mermaid_config(),
-                        );
-                        assert_eq!(fallback_contribution_count(&parsed), 0);
-                        for key in [
-                            "clusterBkg",
-                            "clusterBorder",
-                            "secondaryColor",
-                            "noteBkgColor",
-                            "noteBorderColor",
-                            "noteTextColor",
-                            "edgeLabelBackground",
-                            "secondaryBorderColor",
-                            "gradientStop",
-                        ] {
-                            let path = format!("themeVariables.{key}");
-                            assert_eq!(
-                                parsed.effective_config.get_str(&path),
-                                baseline.effective_config.get_str(&path),
-                                "{selected}/{key}"
+                    if let Some(color) = explicit_secondary {
+                        compatibility = compatibility
+                            .with_variable("secondaryColor", color)
+                            .unwrap();
+                    }
+                    let baseline_spec =
+                        DiagramThemeSpec::new().with_mermaid_compatibility(compatibility.clone());
+                    let baseline = parse_with_compatibility(
+                        &baseline_spec,
+                        source,
+                        baseline_spec.mermaid().to_mermaid_config(),
+                    );
+                    for paint in [CanvasPaint::Transparent, solid("#123456")] {
+                        for variant in [None, Some(ThemeVariant::Default)] {
+                            let mut rule = ThemeRule::new(
+                                ThemeTarget::Cluster,
+                                ThemeStylePatch::default()
+                                    .with_fill(paint.clone())
+                                    .with_stroke(paint.clone()),
                             );
+                            if let Some(variant) = variant {
+                                rule = rule.with_variant(variant);
+                            }
+                            let spec = baseline_spec
+                                .clone()
+                                .with_styles(ThemeRuleSet::default().with_rule(rule));
+                            let artifact = bridge(&spec).compile_for_family(family);
+                            assert!(artifact.overlay.is_empty());
+                            assert!(artifact.contribution_ids.is_empty());
+                            let parsed = parse_with_compatibility(
+                                &spec,
+                                source,
+                                spec.mermaid().to_mermaid_config(),
+                            );
+                            assert_eq!(fallback_contribution_count(&parsed), 0);
+                            for key in [
+                                "clusterBkg",
+                                "clusterBorder",
+                                "secondaryColor",
+                                "noteBkgColor",
+                                "noteBorderColor",
+                                "noteTextColor",
+                                "edgeLabelBackground",
+                                "secondaryBorderColor",
+                                "gradientStop",
+                            ] {
+                                let path = format!("themeVariables.{key}");
+                                assert_eq!(
+                                    parsed.effective_config.get_str(&path),
+                                    baseline.effective_config.get_str(&path),
+                                    "{selected}/{key}"
+                                );
+                            }
                         }
                     }
                 }

@@ -1,8 +1,8 @@
 use super::super::*;
 use crate::block::{
-    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintSourceOwnership,
-    BlockNodePaintThemePlan, BlockNodeShellKind, BlockRectangleKind, BlockShapeBoundary,
-    BlockShapeGeometry, BlockTypographyThemePlan, block_label_is_effectively_empty,
+    BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan, BlockNodeShellKind,
+    BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
+    block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::parity::roughjs_common::{
@@ -524,9 +524,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
     let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
-    let node_paint_source_ownership = node_paint_receipt
-        .as_ref()
-        .map(|_| BlockNodePaintSourceOwnership::new(&model.class_defs));
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
@@ -558,15 +555,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         text_style: String,
         svg_text_style: String,
         div_style_prefix: String,
-        owns_fill: bool,
-        owns_stroke: bool,
     }
 
     fn compile_block_inline_styles(styles: &[String]) -> CompiledBlockInlineStyles {
         let mut box_decls: Vec<(String, String)> = Vec::new();
         let mut text_decls: Vec<(String, String)> = Vec::new();
-        let mut owns_fill = false;
-        let mut owns_stroke = false;
 
         for raw in styles {
             let trimmed = raw.trim().trim_end_matches(';').trim();
@@ -576,8 +569,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let Some((key, value)) = parse_style_decl(trimmed) else {
                 continue;
             };
-            owns_fill |= key == "fill";
-            owns_stroke |= key == "stroke";
             if is_rect_style_key(key) {
                 push_ordered_decl(&mut box_decls, key, trimmed);
             }
@@ -622,8 +613,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             text_style: style_attr(&text_decls),
             svg_text_style,
             div_style_prefix: div_prefix,
-            owns_fill,
-            owns_stroke,
         }
     }
 
@@ -916,16 +905,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             continue;
         };
         let compiled_styles = compile_block_inline_styles(node.styles);
-        let source_owns_fill = node_paint_source_ownership
-            .as_ref()
-            .is_some_and(|ownership| ownership.owns_fill(compiled_styles.owns_fill, node.classes));
-        let source_owns_stroke = node_paint_source_ownership
-            .as_ref()
-            .is_some_and(|ownership| {
-                ownership.owns_stroke(compiled_styles.owns_stroke, node.classes)
-            });
-        let typed_fill = node_paint_theme.typed_fill(node_index, source_owns_fill);
-        let typed_stroke = node_paint_theme.typed_stroke(node_index, source_owns_stroke);
+        let typed_fill = node_paint_theme.typed_fill(node_index);
+        let typed_stroke = node_paint_theme.typed_stroke(node_index);
 
         let class_str = if node.classes.is_empty() {
             "default flowchart-label".to_string()
@@ -940,12 +921,12 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             let _ = write!(&mut node_svg_text_style, "fill:{color};");
         }
         let node_div_style_prefix = compiled_styles.div_style_prefix;
-        if let Some((_, css)) = typed_fill {
+        if let Some(css) = typed_fill {
             node_box_style.push_str("fill:");
             node_box_style.push_str(css);
             node_box_style.push(';');
         }
-        if let Some((_, css)) = typed_stroke {
+        if let Some(css) = typed_stroke {
             node_box_style.push_str("stroke:");
             node_box_style.push_str(css);
             node_box_style.push(';');
@@ -957,6 +938,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
+        let node_shell_start = out.len();
         let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
         options.checkpoint_emit()?;
         let _ = write!(
@@ -1138,16 +1120,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         node_shells_match &= shell_kinds == geometry.boundary.canonical_shell_kinds();
         checkpointed_nodes.insert(n.id.as_str());
         if let Some(receipt) = node_paint_receipt.as_mut() {
-            receipt.record_checkpointed_node(
+            receipt.observe_checkpointed_node(
                 node_index,
-                source_owns_fill,
-                typed_fill,
-                source_owns_stroke,
-                typed_stroke,
-                shell_kinds
-                    .iter()
-                    .copied()
-                    .map(|kind| (kind, node_box_style.as_str())),
+                diagram_id.semantic_str(),
+                &out.as_str()[node_shell_start..],
             );
         }
 

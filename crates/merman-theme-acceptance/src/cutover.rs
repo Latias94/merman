@@ -311,6 +311,8 @@ const BLOCK_NODE_SOURCE: &str = r#"block-beta
 "#;
 // Empty cells keep the line terminals visible outside node and marker geometry.
 const BLOCK_EDGE_SOURCE: &str = "block-beta\n columns 3\n A[\"Alpha\"] space B[\"Beta\"]\n C[\"Gamma\"] space D[\"Delta\"]\n A --> B\n C -- \"connects\" --> D\n";
+const BLOCK_CLUSTER_SOURCE: &str =
+    "block-beta\n columns 1\n block:group[\"Group\"]\n A[\"Alpha\"]\n end\n B[\"Beta\"]\n";
 const BLOCK_EDGE_LABEL_SOURCE: &str = "block-beta\n  A[\"Alpha\"] -- \"relates\" --> B[\"Beta\"]\n";
 const ZENUML_TITLE_SOURCE: &str = "zenuml\ntitle Cutover ZenUML title\nClient->Service: request\n";
 const VENN_THEME_SOURCE: &str = r#"venn-beta
@@ -498,7 +500,10 @@ impl CutoverWitnessProfile {
         if route.family_id() == DiagramFamilyId::BLOCK
             && matches!(
                 route.target(),
-                ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel | ThemeTarget::Edge
+                ThemeTarget::EdgeLabelBackground
+                    | ThemeTarget::NodeLabel
+                    | ThemeTarget::Edge
+                    | ThemeTarget::Cluster
             )
         {
             return &Self::TEXT_LOOKS;
@@ -769,6 +774,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_EDGE_SOURCE),
+        (
+            DiagramFamilyId::BLOCK,
+            ThemeTarget::Cluster,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(BLOCK_CLUSTER_SOURCE),
         (DiagramFamilyId::BLOCK, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
             Ok(BLOCK_NODE_SOURCE)
         }
@@ -2568,11 +2578,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_486_routes_and_754_artifact_witnesses() {
+    fn route_inventory_retains_494_routes_and_778_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 486);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 754);
+        assert_eq!(inventory.len(), 494);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 778);
     }
 
     #[test]

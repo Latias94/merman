@@ -577,12 +577,18 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
+            DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::BLOCK,
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
+            DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::BLOCK,
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE),
@@ -2597,7 +2603,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::BLOCK
-        && target == ThemeTarget::Node
+        && matches!(target, ThemeTarget::Node | ThemeTarget::Cluster)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -5842,6 +5848,34 @@ mod tests {
                 vec!["edge-label-background.fill"],
             ),
             (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Cluster,
+                Fill,
+                Transparent,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Cluster,
+                Fill,
+                Solid,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Cluster,
+                Stroke,
+                Transparent,
+                vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Cluster,
+                Stroke,
+                Solid,
+                vec!["cluster.stroke"],
+            ),
+            (
                 DiagramFamilyId::C4,
                 ThemeTarget::Text,
                 Fill,
@@ -7482,7 +7516,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 244);
+        assert_eq!(qualified.len(), 248);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7526,7 +7560,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
-            12
+            16
         );
         assert_eq!(
             qualified
@@ -8148,7 +8182,7 @@ mod tests {
         }
         assert_eq!(
             counts,
-            [(DiagramFamilyId::BLOCK, 20)].into_iter().collect(),
+            [(DiagramFamilyId::BLOCK, 12)].into_iter().collect(),
             "bridge retirement must update the exact route ledger"
         );
         assert_eq!(
