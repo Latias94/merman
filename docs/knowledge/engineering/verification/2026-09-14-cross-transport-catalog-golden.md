@@ -24,3 +24,8 @@ output, or admission values before producing an artifact-bound catalog.
 This record does not claim current-source execution of Flutter or real Web/WASM packaged artifacts.
 Those consumers remain owned by their platform CI and release preflight lanes and require a
 same-revision matrix run before the C7a contract can freeze.
+
+Flutter tooling is installed on this host, but the checkout has no resolved `package:test`
+dependency. Both `dart test tool/abi3_contract_test.dart` and the repository's `dart run`
+entrypoint stop before executing tests with “Could not find package `test`”. No dependency files
+were changed; Flutter remains a platform-CI-owned gate for the final same-revision matrix.
