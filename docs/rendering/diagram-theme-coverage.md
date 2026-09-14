@@ -182,6 +182,8 @@ separate migration boundary: its current writer consumes `nodeTextColor` through
 `span`, and `p` for both HTML and SVG labels, while `BlockNodePaintThemePlan` currently owns only
 node-shell paint. A future cutover must add a label-specific terminal plan, source/config ownership
 checks, and independent SVG/PNG evidence before changing the four static routes or bridge output.
+The exact cutover boundary and required receipts are recorded in the [Block NodeLabel cutover
+boundary](../knowledge/engineering/verification/2026-09-14-block-node-label-cutover-boundary.md).
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
 identities against baseline `096a8f7f3`. Both projected only `themeVariables.titleColor`, which
