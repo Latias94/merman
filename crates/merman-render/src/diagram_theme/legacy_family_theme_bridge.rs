@@ -473,8 +473,9 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 
 fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
     let compiler: LegacyFamilyCompiler = match family {
-        DiagramFamilyId::CLASS | DiagramFamilyId::BLOCK => compile_node_family,
-        DiagramFamilyId::FLOWCHART
+        DiagramFamilyId::BLOCK => compile_node_family,
+        DiagramFamilyId::CLASS
+        | DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::RADAR
         | DiagramFamilyId::QUADRANT_CHART
@@ -651,23 +652,6 @@ fn compile_node_family(
         contributions.add_theme_variables(
             ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
             [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
-        );
-    }
-
-    // Class generic Text keeps its existing assignments until its own cutover.
-    if family == DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            "cluster-label.fill",
-            [
-                (
-                    "secondaryTextColor",
-                    reader.text_fill(ThemeTarget::ClusterLabel),
-                ),
-                (
-                    "tertiaryTextColor",
-                    reader.text_fill(ThemeTarget::ClusterLabel),
-                ),
-            ],
         );
     }
 
@@ -1947,6 +1931,7 @@ gitGraph
         assert_eq!(
             actual,
             BTreeSet::from([
+                DiagramFamilyId::CLASS,
                 DiagramFamilyId::FLOWCHART,
                 DiagramFamilyId::SWIMLANE,
                 DiagramFamilyId::RADAR,
