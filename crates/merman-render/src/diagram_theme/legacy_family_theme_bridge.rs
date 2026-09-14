@@ -186,7 +186,7 @@ fn compile_selected_family(
             "family matrix declares legacy compatibility but dispatch is classified as bridge-free",
         )
     })?;
-    let reader = FamilyStyleReader::new(family, program);
+    let reader = FamilyStyleReader::new(program);
     let mut builder = OverlayBuilder::new(family);
     compiler(&mut builder, &reader)?;
     Ok(builder.finish())
@@ -652,13 +652,12 @@ fn compile_node_family(
 }
 
 struct FamilyStyleReader {
-    family: DiagramFamilyId,
     program: Arc<FamilyThemeProgram>,
 }
 
 impl FamilyStyleReader {
-    fn new(family: DiagramFamilyId, program: Arc<FamilyThemeProgram>) -> Self {
-        Self { family, program }
+    fn new(program: Arc<FamilyThemeProgram>) -> Self {
+        Self { program }
     }
 
     fn style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
@@ -694,15 +693,6 @@ impl FamilyStyleReader {
                     .stroke_or_fill_resolution(ThemeTarget::Edge)
                     .into_value(),
             },
-            LegacyPaintResolution::Unsupported if self.family == DiagramFamilyId::CLASS => {
-                MarkerPaintContribution {
-                    contribution_id: ThemeRouteCutoverProjection::MarkerPaintFromEdge
-                        .contribution_id(),
-                    value: self
-                        .stroke_or_fill_resolution(ThemeTarget::Edge)
-                        .into_value(),
-                }
-            }
             marker => MarkerPaintContribution {
                 contribution_id: EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
                 value: marker.into_value(),
