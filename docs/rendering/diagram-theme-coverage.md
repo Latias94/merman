@@ -25,6 +25,13 @@ See the [installed consumer verification](../knowledge/engineering/verification/
 for artifact identities, size observations and the remaining platform/rollout scope.
 Public qualification cells and C7a contract status are unchanged.
 
+At `83c640598`, a clean macOS ARM64 checkout built and verified the canonical CLI/LSP
+archives. The CLI passed all 18 scoped preset observations and archive-bound replay, plus
+12 light/dark definition/spec SVG/PNG comparisons. Independent C6a tests (2/2; 18 cells)
+and Rust authoring tests (13/13) also passed. See the
+[CLI archive verification](../knowledge/engineering/verification/2026-09-14-cli-archive-theme-qualification.md).
+These host observations retain `HostDependent` admission and leave C7a gates open.
+
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
 following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
