@@ -5221,3 +5221,76 @@ fn class_typed_text_output_failure_cannot_return_a_completed_receipt() {
         );
     }
 }
+
+#[test]
+fn class_generic_text_partially_shadowed_rule_keeps_its_winning_fill() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for html_labels in [false, true] {
+            for source_owned in [false, true] {
+                let mut mixed =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+                mixed.stroke.paint = Specified::Clear;
+                let mut stroke = ThemeStylePatch::default();
+                stroke.stroke.paint = Specified::Value(CanvasPaint::solid("#654321").unwrap());
+                let rule = |patch| {
+                    let rule = ThemeRule::new(ThemeTarget::Text, patch);
+                    match variant {
+                        Some(variant) => rule.with_variant(variant),
+                        None => rule,
+                    }
+                };
+                let theme = class_edge_rules_theme([rule(mixed), rule(stroke)]);
+                let source = if source_owned {
+                    "classDiagram\nclass Account\nstyle Account color:#cc0000\n"
+                } else {
+                    "classDiagram\nclass Account\n"
+                };
+                let engine = || {
+                    Engine::new().with_site_config(MermaidConfig::from_value(
+                        json!({"htmlLabels": html_labels}),
+                    ))
+                };
+                let rendered = try_render_class_svg_with_theme_requirement(
+                    source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let account = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("id")
+                            .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                    })
+                    .unwrap();
+                let has_color = |color: &str| {
+                    account.descendants().any(|node| {
+                        node.attribute("style")
+                            .is_some_and(|style| style.contains(color))
+                    })
+                };
+                assert_eq!(has_color("#123456"), !source_owned);
+                assert_eq!(has_color("#cc0000"), source_owned);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(
+                    evidence.accounted_count(),
+                    1,
+                    "variant={variant:?}, html={html_labels}, source={source_owned}"
+                );
+                assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+                assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                let error = try_render_class_svg_with_theme_and_engine(source, &theme, engine())
+                    .err()
+                    .unwrap();
+                assert_eq!(
+                    error.incomplete_family_theme(),
+                    Some((DiagramFamilyId::CLASS, 2, 1))
+                );
+            }
+        }
+    }
+}

@@ -171,6 +171,9 @@ impl ClassTextThemePlan {
                         _ => false,
                     };
                     *shadowed.entry(rule_index).or_insert(true) &= facet_shadowed;
+                    if facet_shadowed {
+                        continue;
+                    }
                     let capability = if route.disposition() == FamilyThemeDisposition::TypedAdapter
                     {
                         match facet {
@@ -191,6 +194,10 @@ impl ClassTextThemePlan {
                     }
                 }
             }
+        }
+        // Fully shadowed rules still need their NotApplicable evidence key.
+        for &rule_index in shadowed.keys() {
+            text_rules.entry(rule_index).or_insert(None);
         }
         let selected = theme.and_then(|theme| {
             crate::family::resolve_direct_static_fill(
@@ -1617,5 +1624,84 @@ mod tests {
         assert!(!inherited_terminal.source_owns_every_visible_run());
         assert!(inherited_terminal.color_ownership_is_unverified());
         assert_eq!(inherited.unverified_font_run_count(), 1);
+    }
+    #[test]
+    fn partially_shadowed_text_evidence_preserves_rule_identity_and_ordinal_residuals() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified,
+            ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        };
+        use crate::environment::RenderEnvironment;
+        use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+
+        for ordinal in [false, true] {
+            for source_owned in [false, true] {
+                let mut mixed =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+                mixed.stroke.paint = Specified::Clear;
+                let mut stroke = ThemeStylePatch::default();
+                stroke.stroke.paint = Specified::Value(CanvasPaint::solid("#654321").unwrap());
+                let mut later = ThemeRule::new(ThemeTarget::Text, stroke);
+                if ordinal {
+                    later = later.with_ordinal(OrdinalSelector::exact(1).unwrap());
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new().with_styles(
+                            ThemeRuleSet::default()
+                                .with_rule(ThemeRule::new(ThemeTarget::Text, mixed))
+                                .with_rule(later),
+                        ),
+                    )
+                    .unwrap();
+                let source = if source_owned {
+                    "classDiagram\nclass Account\nstyle Account color:#cc0000\n"
+                } else {
+                    "classDiagram\nclass Account\n"
+                };
+                let parsed = crate::__private::install_parse_compatibility(
+                    &theme,
+                    merman_core::Engine::new(),
+                )
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+                let session = RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let rendered =
+                    crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .unwrap();
+                let completion = rendered.into_completion();
+                let report = completion.report().style_report();
+                let key = FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Text,
+                };
+                let applied = if !ordinal && !source_owned {
+                    vec![key.clone()]
+                } else {
+                    vec![]
+                };
+                let not_applicable = if !ordinal && source_owned {
+                    vec![key]
+                } else {
+                    vec![]
+                };
+                assert_eq!(
+                    report.theme_applied_mechanisms(),
+                    applied,
+                    "ordinal={ordinal}, source={source_owned}"
+                );
+                assert_eq!(
+                    report.theme_not_applicable_mechanisms(),
+                    not_applicable,
+                    "ordinal={ordinal}, source={source_owned}"
+                );
+            }
+        }
     }
 }
