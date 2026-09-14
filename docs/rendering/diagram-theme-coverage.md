@@ -4,7 +4,13 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-13
+## Snapshot: 2026-09-14
+
+Class Text writer emissions now bind edge-label, cardinality, root-title and note paint
+facts to actual style writes. Source `ab3534038` passed 195 selected Release tests and
+the full SVG structure comparison in the main worktree. It does not close the wider
+Class cutover or its clean-checkout/native qualification gates. See the
+[writer-emission verification](../knowledge/engineering/verification/2026-09-14-class-text-writer-emission.md).
 
 The Class Text cutover at `523ce8881` is **not closed**. Its broader private owner run
 had 38 failures across evidence, support, bridge and authorization checks. Corrective

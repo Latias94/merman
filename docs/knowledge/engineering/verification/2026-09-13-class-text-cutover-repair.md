@@ -78,10 +78,12 @@ The clean run covers the selected owner tests. Full structure comparison ran in 
 worktree against the same renderer source. This does not claim full workspace, complete
 browser-suite, installed-package or final artifact-profile verification.
 
+The writer-emission obligation was subsequently addressed by
+[the Class writer-emission repair](2026-09-14-class-text-writer-emission.md), including
+notes. That source has its own scoped verification and does not inherit this clean result.
+
 ## Remaining cutover obligations
 
-- Bind edge-label, cardinality and root-title paint facts to actual writer emission;
-  comparing the expected style with itself is insufficient evidence.
 - Reconcile partially shadowed mixed rules by their surviving properties. The bounded
   full-shadowing repair does not claim complete ordinal or cross-selector coverage.
 - Close support/matrix/bridge dispatch and cutover authorization with native terminal
