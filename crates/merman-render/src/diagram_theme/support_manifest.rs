@@ -957,7 +957,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "block",
         target: "node-label",
-        kind: SupportClaimKind::LegacyPartial,
+        kind: SupportClaimKind::TypedPartial,
         facets: &["fill"],
     },
     RuleClaim {
