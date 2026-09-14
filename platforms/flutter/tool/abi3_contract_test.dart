@@ -618,6 +618,29 @@ void preservesScopedPresetQualification() {
     'required_attribution': null,
     'export_kind': 'complete_spec',
   };
+  final vectors =
+      jsonDecode(
+            File.fromUri(
+              Platform.script.resolve(
+                '../../../crates/merman-theme-authoring-fixtures/'
+                'fixtures/authoring-v1/qualified-cells.json',
+              ),
+            ).readAsStringSync(),
+          )
+          as List;
+  for (final vector in vectors) {
+    final expected = vector['cell'] as Map<String, dynamic>;
+    final actual = MermanThemePreset.fromJson(
+      preset([expected]),
+    ).qualifiedCells.single;
+    _expect(
+      actual.familyId == expected['family_id'] &&
+          actual.outputId == expected['output_id'] &&
+          actual.profileId == expected['profile_id'] &&
+          actual.admissionStatus == expected['admission_status'],
+      '${vector['id']}: qualified cells must preserve every open identifier',
+    );
+  }
   final parsed = MermanThemePreset.fromJson(
     preset([
       cell('embedded-profile', 'portable'),
