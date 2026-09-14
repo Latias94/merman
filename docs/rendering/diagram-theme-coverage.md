@@ -176,7 +176,7 @@ reconciled over completed edge references, in start/end occurrence order. Unrefe
 do not create occurrences. Source/config paint ownership suppresses only its own facet; missing
 expected path completion remains incomplete. A winning request on an unowned visible marker
 remains a residual, while absent, shadowed, or non-intersecting requests are NotApplicable.
-The global provider remains necessary for Block and Class. Block `NodeLabel.fill` remains a
+The global provider remains necessary for Block. Block `NodeLabel.fill` remains a
 separate migration boundary: its current writer consumes `nodeTextColor` through `.label text`,
 `span`, and `p` for both HTML and SVG labels, while `BlockNodePaintThemePlan` currently owns only
 node-shell paint. A future cutover must add a label-specific terminal plan, source/config ownership
