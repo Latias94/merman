@@ -29,6 +29,9 @@ except ImportError:
     from release_process import CommandRunner, run_checked
 
 ROOT = Path(__file__).resolve().parents[1]
+QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v3"
+QUALIFIED_ADMISSION = "host_dependent"
+
 BUILD = [
     "cargo", "build", "--release", "--locked", "-p", "merman-theme-acceptance",
     "--no-default-features", "--features", "png,layout-cytoscape", "--example", "preset_qualification",
@@ -125,10 +128,18 @@ def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
         base = entries[preset_id]
         if not base["available"]:
             raise RuntimeError("Qualified preset is unavailable in CLI catalog")
-        cells = [{
-            "family_id": cell["family"], "output_id": cell["output"],
-            "profile_id": preset["profile"], "admission_status": cell["admission"],
-        } for cell in preset["cells"]]
+        profile = preset.get("profile")
+        if profile != QUALIFIED_PROFILE:
+            raise RuntimeError("Unknown or unsupported qualification profile")
+        cells = []
+        for cell in preset["cells"]:
+            admission = cell.get("admission")
+            if admission != QUALIFIED_ADMISSION:
+                raise RuntimeError("Unknown or unsupported qualification admission status")
+            cells.append({
+                "family_id": cell["family"], "output_id": cell["output"],
+                "profile_id": profile, "admission_status": admission,
+            })
         cells.sort(key=lambda cell: (cell["family_id"], cell["output_id"], cell["profile_id"]))
         scopes = {(cell["family_id"], cell["output_id"]) for cell in cells}
         if not cells or len(scopes) != len(cells):
