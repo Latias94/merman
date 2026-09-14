@@ -2661,7 +2661,7 @@ mod tests {
             "actual route count {}",
             inventory.len()
         );
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 786);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 802);
     }
 
     #[test]

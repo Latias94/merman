@@ -461,7 +461,12 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
         (
-            DiagramFamilyId::TREE_VIEW | DiagramFamilyId::BLOCK,
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Marker,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TREE_VIEW_MARKER_PAINT),
+        (
+            DiagramFamilyId::BLOCK,
             ThemeTarget::Marker,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_MARKER_PAINT),

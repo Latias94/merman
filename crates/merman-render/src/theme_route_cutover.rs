@@ -493,7 +493,7 @@ impl ThemeRouteCutoverProjection {
             Self::KanbanTaskStroke => "task.default.stroke",
             Self::JourneyTaskStroke => "task.stroke",
             Self::TreeViewMarkerPaint => "marker.paint",
-            Self::MarkerPaint => "marker.paint",
+            Self::MarkerPaint => "block.marker.paint",
             Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
             Self::GanttTaskWarningStroke => "task.warning.stroke",
             Self::TimelineEventFill => "event.fill",
@@ -717,7 +717,7 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_TREE_VIEW_MARKER_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
     pub const REPLACE_MARKER_PAINT: Self =
-        Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
+        Self::replacing(ThemeRouteCutoverProjection::MarkerPaint);
     pub const REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill);
     pub const REPLACE_GANTT_TASK_WARNING_STROKE: Self =
