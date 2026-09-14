@@ -299,20 +299,6 @@ fn project_claim(claim: SupportClaimKind) -> SupportClaimProjection {
                 "theme-support.public-value-domain-partial",
             ],
         },
-        SupportClaimKind::LegacySurface => SupportClaimProjection::TwoReasons {
-            state: ThemeSupportStateV1::Conditional,
-            reason_ids: [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.document-surface-dependent",
-            ],
-        },
-        SupportClaimKind::LegacyPartial => SupportClaimProjection::TwoReasons {
-            state: ThemeSupportStateV1::Conditional,
-            reason_ids: [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.public-value-domain-partial",
-            ],
-        },
         SupportClaimKind::Unsupported => SupportClaimProjection::OneReason {
             state: ThemeSupportStateV1::Unsupported,
             reason_id: "theme-support.no-supported-route",

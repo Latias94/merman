@@ -16,8 +16,6 @@ pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 90;
 pub(super) enum SupportClaimKind {
     TypedSurface,
     TypedPartial,
-    LegacySurface,
-    LegacyPartial,
     Unsupported,
     Missing,
 }
@@ -1717,17 +1715,15 @@ mod tests {
     }
 
     fn claim_kind(summary: FamilyThemeSupportSummary) -> SupportClaimKind {
+        assert!(
+            !summary.has_legacy(),
+            "retired family compatibility must not supply a production support claim"
+        );
         if summary.has_typed() {
-            if summary.has_legacy() || summary.has_unsupported() {
+            if summary.has_unsupported() {
                 SupportClaimKind::TypedPartial
             } else {
                 SupportClaimKind::TypedSurface
-            }
-        } else if summary.has_legacy() {
-            if summary.has_unsupported() {
-                SupportClaimKind::LegacyPartial
-            } else {
-                SupportClaimKind::LegacySurface
             }
         } else {
             assert!(
