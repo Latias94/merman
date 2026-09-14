@@ -5121,23 +5121,98 @@ mod tests {
                 && route.projections == TIMELINE_EVENT_FILL_PROJECTIONS
         }));
 
-        for family in [DiagramFamilyId::REQUIREMENT, DiagramFamilyId::BLOCK] {
-            let qualified = ACTIVE_ROUTES
-                .iter()
-                .filter(|route| {
-                    route.id.family_id() == family
-                        && route.id.selector()
-                            == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(
-                qualified.len(),
-                if family == DiagramFamilyId::REQUIREMENT {
-                    10
-                } else {
-                    16
-                }
-            );
+        let requirement_default_count = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::REQUIREMENT
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .count();
+        assert_eq!(requirement_default_count, 10);
+
+        let block_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::BLOCK
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        let expected_block_facets = [
+            (
+                ThemeTarget::Node,
+                ThemeRouteCutoverFacet::Fill,
+                NODE_FILL_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Node,
+                ThemeRouteCutoverFacet::Stroke,
+                NODE_STROKE_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::NodeLabel,
+                ThemeRouteCutoverFacet::Fill,
+                NODE_LABEL_FILL_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Text,
+                ThemeRouteCutoverFacet::Fill,
+                NODE_LABEL_FILL_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Edge,
+                ThemeRouteCutoverFacet::Fill,
+                EDGE_STROKE_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Edge,
+                ThemeRouteCutoverFacet::Stroke,
+                EDGE_STROKE_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Marker,
+                ThemeRouteCutoverFacet::Fill,
+                MARKER_PAINT_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Marker,
+                ThemeRouteCutoverFacet::Stroke,
+                MARKER_PAINT_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Cluster,
+                ThemeRouteCutoverFacet::Fill,
+                CLUSTER_FILL_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::Cluster,
+                ThemeRouteCutoverFacet::Stroke,
+                CLUSTER_STROKE_PROJECTIONS,
+            ),
+            (
+                ThemeTarget::EdgeLabelBackground,
+                ThemeRouteCutoverFacet::Fill,
+                &[ThemeRouteCutoverProjection::EdgeLabelBackgroundFill],
+            ),
+        ];
+        assert_eq!(block_default.len(), expected_block_facets.len() * 2);
+        for (target, facet, projections) in expected_block_facets {
+            for value in [
+                ThemeRouteCutoverValue::Transparent,
+                ThemeRouteCutoverValue::Solid,
+            ] {
+                let matching = block_default
+                    .iter()
+                    .filter(|route| {
+                        route.id.target() == target
+                            && route.id.facet() == facet
+                            && route.id.value() == value
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(matching.len(), 1, "Block {target:?}/{facet:?}/{value:?}");
+                assert_eq!(matching[0].projections, projections);
+            }
         }
 
         let er_relation_default = ACTIVE_ROUTES
@@ -5274,7 +5349,7 @@ mod tests {
                     }
                     (ThemeTarget::Marker, ThemeRouteCutoverFacet::Fill)
                     | (ThemeTarget::Marker, ThemeRouteCutoverFacet::Stroke) => {
-                        MARKER_PAINT_PROJECTIONS
+                        super::TREE_VIEW_MARKER_PAINT_PROJECTIONS
                     }
                     _ => return false,
                 }

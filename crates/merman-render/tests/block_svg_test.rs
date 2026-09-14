@@ -365,6 +365,50 @@ fn block_generic_text_paint_is_bound_to_node_text_terminals() {
 }
 
 #[test]
+fn block_generic_text_stroke_keeps_a_residual_with_or_without_fill() {
+    for fill in [false, true] {
+        let mut patch =
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#b316cd").unwrap());
+        if fill {
+            patch = patch.with_fill(CanvasPaint::solid("#0f8a6e").unwrap());
+        }
+        let theme = block_generic_text_theme(patch);
+        let source = "block\n A[\"Alpha\"]\n";
+        let rendered = render_block_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert!(
+            matches!(
+                result,
+                Err(merman_render::Error::UnverifiedFamilyTheme {
+                    family_id: DiagramFamilyId::BLOCK,
+                    residual_count: 1,
+                })
+            ),
+            "Text.stroke must remain unproved even when fill is consumed"
+        );
+    }
+}
+
+#[test]
 fn block_node_label_paint_is_bound_to_node_terminals() {
     let theme = block_node_label_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),

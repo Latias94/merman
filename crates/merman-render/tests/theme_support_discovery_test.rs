@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 89);
+    assert_eq!(support.claim_revision(), 90);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -305,7 +305,7 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 89);
+        assert_eq!(support.claim_revision(), 90);
     }
 }
 
@@ -1788,7 +1788,7 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.claim_revision(), 89);
+    assert_eq!(support.claim_revision(), 90);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),
@@ -1805,7 +1805,7 @@ fn block_edge_discovery_reports_partial_typed_fill_and_stroke() {
         let query =
             ThemeSupportQueryV1::known("block", ThemeSupportOutputV1::StandaloneSvg, "edge", facet);
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 89);
+        assert_eq!(support.claim_revision(), 90);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1827,7 +1827,7 @@ fn block_cluster_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 89);
+        assert_eq!(support.claim_revision(), 90);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1849,7 +1849,7 @@ fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 89);
+        assert_eq!(support.claim_revision(), 90);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1859,4 +1859,23 @@ fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
             ]
         );
     }
+}
+
+#[test]
+fn block_generic_text_discovery_reports_partial_typed_fill() {
+    let support = describe_theme_support(&ThemeSupportQueryV1::known(
+        "block",
+        ThemeSupportOutputV1::StandaloneSvg,
+        "text",
+        ThemeRuleFacetV1::Fill,
+    ));
+    assert_eq!(support.claim_revision(), 90);
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }

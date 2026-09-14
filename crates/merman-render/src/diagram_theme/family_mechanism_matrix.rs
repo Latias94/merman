@@ -2621,6 +2621,7 @@ pub(super) fn classify_rule_facet(
                 variant: None | Some(ThemeVariant::Default)
             }
         )
+        && (target != ThemeTarget::Text || matches!(facet, FamilyThemeRuleFacet::Fill(_)))
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -5891,28 +5892,42 @@ mod tests {
                 ThemeTarget::Marker,
                 Fill,
                 Transparent,
-                vec!["marker.paint"],
+                vec!["block.marker.paint"],
             ),
             (
                 DiagramFamilyId::BLOCK,
                 ThemeTarget::Marker,
                 Fill,
                 Solid,
-                vec!["marker.paint"],
+                vec!["block.marker.paint"],
             ),
             (
                 DiagramFamilyId::BLOCK,
                 ThemeTarget::Marker,
                 Stroke,
                 Transparent,
-                vec!["marker.paint"],
+                vec!["block.marker.paint"],
             ),
             (
                 DiagramFamilyId::BLOCK,
                 ThemeTarget::Marker,
                 Stroke,
                 Solid,
-                vec!["marker.paint"],
+                vec!["block.marker.paint"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
             ),
             (
                 DiagramFamilyId::C4,
@@ -7555,7 +7570,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 252);
+        assert_eq!(qualified.len(), 254);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7599,7 +7614,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
-            20
+            22
         );
         assert_eq!(
             qualified
@@ -8199,35 +8214,10 @@ mod tests {
     }
 
     #[test]
-    fn legacy_route_inventory_has_explicit_family_coverage() {
-        let families = legacy_compatibility_route_inventory()
-            .into_iter()
-            .map(|route| match route {
-                LegacyCompatibilityRouteKey::BaseTypography { family, .. }
-                | LegacyCompatibilityRouteKey::RuleFacet { family, .. }
-                | LegacyCompatibilityRouteKey::OrdinalPalette { family, .. }
-                | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
-            })
-            .collect::<std::collections::BTreeSet<_>>();
-        let mut counts = std::collections::BTreeMap::new();
-        for route in legacy_compatibility_route_inventory() {
-            let family = match route {
-                LegacyCompatibilityRouteKey::BaseTypography { family, .. }
-                | LegacyCompatibilityRouteKey::RuleFacet { family, .. }
-                | LegacyCompatibilityRouteKey::OrdinalPalette { family, .. }
-                | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
-            };
-            *counts.entry(family).or_insert(0usize) += 1;
-        }
-        assert_eq!(
-            counts,
-            [(DiagramFamilyId::BLOCK, 4)].into_iter().collect(),
-            "bridge retirement must update the exact route ledger"
-        );
-        assert_eq!(
-            families,
-            [DiagramFamilyId::BLOCK].into_iter().collect(),
-            "bridge retirement must update the explicit family ledger"
+    fn legacy_route_inventory_is_empty_after_final_family_retirement() {
+        assert!(
+            legacy_compatibility_route_inventory().is_empty(),
+            "no family may reintroduce a legacy route after provider retirement"
         );
     }
 
