@@ -1573,8 +1573,9 @@ the subsequent complete catalog/owner replay supplies the milestone closure evid
   discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
   normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
   final render or export report remains authoritative for one request. Because this candidate has
-  not been published, `claim_revision = 26` remains an alpha-only claim-authority lineage marker
-  without constituting a stable public compatibility promise. `claim_revision` versions only
+  not been published, the current `claim_revision` from the renderer-owned support manifest
+  remains an alpha-only claim-authority lineage marker without constituting a stable public
+  compatibility promise. `claim_revision` versions only
   this capability-support claim authority. It is never reused as a preset-catalog schema, recipe
   revision, recipe/resource fingerprint, or qualification revision; those KTD21 identities advance
   and invalidate independently. Rust, JSON metadata,
@@ -1664,9 +1665,8 @@ the subsequent complete catalog/owner replay supplies the milestone closure evid
   lists only compiled-in recipes/resources while equivalent capability profiles receive identical
   public projections. Export vectors cover both `PresetExportV1` tags and reject unknown tags,
   missing or duplicate payloads, and untagged shape guessing. Revision tests keep the current
-  unpublished capability `claim_revision = 26` while independently changing catalog, recipe, and
-  qualification identities. The
-  rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
+  unpublished capability `claim_revision` aligned with that authority while independently changing
+  catalog, recipe, and qualification identities. The rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.
   A concise release checklist references the final ADR and executable-table revisions, existing
   C5/C6 receipts, pre-freeze family and authoring witnesses, generated binding artifacts,

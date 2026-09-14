@@ -18,6 +18,13 @@ clean checkout (two manual benchmarks skipped), plus the main-worktree full SVG 
 See the [provider retirement verification](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md)
 for the scope, corrected ledger/discovery drift, and remaining C7a delivery work.
 
+At `c68394113`, rebuilt Flutter macOS ARM64 and installed Node N-API/Node-WASM consumers
+passed the revision-90 authoring vectors. Flutter exercised all three budgeted operations
+through both consumers; each Node transport performed 44 support queries and 23 SVG renders.
+See the [installed consumer verification](../knowledge/engineering/verification/2026-09-14-theme-consumers-revision90.md)
+for artifact identities, size observations and the remaining platform/rollout scope.
+Public qualification cells and C7a contract status are unchanged.
+
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
 following the earlier 3170-test owner run, plus Web/WASM package smoke. Its recorded
