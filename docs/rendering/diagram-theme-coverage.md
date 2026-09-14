@@ -17,6 +17,8 @@ Source `1c37f8096` passed 4899 Release owner tests in both the main worktree and
 clean checkout (two manual benchmarks skipped), plus the main-worktree full SVG structure gate.
 See the [provider retirement verification](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md)
 for the scope, corrected ledger/discovery drift, and remaining C7a delivery work.
+The current [C7a owner-gate record](../knowledge/engineering/verification/2026-09-14-c7a-owner-gates-current.md)
+binds the latest qualification/archive and artifact-closure checks to one source revision.
 
 At `c68394113`, rebuilt Flutter macOS ARM64 and installed Node N-API/Node-WASM consumers
 passed the revision-90 authoring vectors. Flutter exercised all three budgeted operations
