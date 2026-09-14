@@ -54,11 +54,11 @@ pub(in crate::svg::parity) fn write_svg_text_centered(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
+pub(in crate::svg::parity) fn write_svg_text_centered_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     text: &str,
-    style: &str,
-) {
+    style: &'a str,
+) -> Option<&'a str> {
     write_svg_text_impl(
         out,
         text,
@@ -66,7 +66,7 @@ pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
         true,
         true,
         SvgTextEntityMode::DecodedModel,
-    );
+    )
 }
 
 pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
@@ -182,16 +182,14 @@ fn write_svg_text_source_word_lines_impl(
     out.push_str("</text>");
 }
 
-fn open_svg_text(
+fn open_svg_text<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
-    style: Option<&str>,
+    style: Option<&'a str>,
     center_text: bool,
     label_id: Option<PreparedTextLabelId>,
-) {
+) -> Option<&'a str> {
     out.push_str(r#"<text y="-10.1""#);
-    if let Some(style) = style {
-        let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
-    }
+    let emitted_style = super::util::write_style_attribute(out, style);
     if center_text {
         out.push_str(r#" text-anchor="middle""#);
     }
@@ -199,6 +197,7 @@ fn open_svg_text(
         let _ = write!(out, r#" id="{label_id}""#);
     }
     out.push('>');
+    emitted_style
 }
 
 fn outer_tspan_class(include_row_class: bool) -> &'static str {
@@ -279,21 +278,21 @@ fn open_tspan(
     }
 }
 
-fn write_svg_text_impl(
+fn write_svg_text_impl<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     text: &str,
-    style: Option<&str>,
+    style: Option<&'a str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
-) {
-    open_svg_text(out, style, center_text, None);
+) -> Option<&'a str> {
+    let emitted_style = open_svg_text(out, style, center_text, None);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class, 1.1);
         out.push_str("</text>");
-        return;
+        return emitted_style;
     }
 
     for (index, line) in lines.iter().enumerate() {
@@ -305,6 +304,7 @@ fn write_svg_text_impl(
     }
 
     out.push_str("</text>");
+    emitted_style
 }
 
 fn write_svg_text_word(
@@ -388,21 +388,21 @@ fn write_svg_text_markdown_lines(
     );
 }
 
-fn write_svg_text_markdown_lines_with_style(
+fn write_svg_text_markdown_lines_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<(String, bool, bool)>],
-    style: Option<&str>,
+    style: Option<&'a str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
     row_style: Option<SvgTextRowStyle<'_>>,
-) {
-    open_svg_text(out, style, center_text, None);
+) -> Option<&'a str> {
+    let emitted_style = open_svg_text(out, style, center_text, None);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class, 1.1);
         out.push_str("</text>");
-        return;
+        return emitted_style;
     }
 
     for (index, words) in lines.iter().enumerate() {
@@ -438,6 +438,7 @@ fn write_svg_text_markdown_lines_with_style(
     }
 
     out.push_str("</text>");
+    emitted_style
 }
 
 pub(in crate::svg::parity) fn write_svg_text_markdown(
@@ -464,11 +465,11 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
     write_svg_text_markdown_centered_with_style(out, markdown, include_style.then_some(""));
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style(
+pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
-    style: Option<&str>,
-) {
+    style: Option<&'a str>,
+) -> Option<&'a str> {
     let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
     write_svg_text_markdown_lines_with_style(
         out,
@@ -478,7 +479,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style(
         true,
         SvgTextEntityMode::DecodedModel,
         None,
-    );
+    )
 }
 
 pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(

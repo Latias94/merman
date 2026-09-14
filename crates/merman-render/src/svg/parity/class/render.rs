@@ -292,22 +292,18 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),
     // centered in the root viewport.
+    let mut title_emission = None;
     if let Some(title) = view_box.title.as_ref() {
-        let _ = write!(
+        title_emission = super::label::write_class_diagram_title(
             &mut out,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText"{}>{}</text>"#,
-            fmt(title.x),
-            fmt(title.y),
-            typography_theme
-                .title_paint()
-                .map_or_else(String::new, |paint| format!(
-                    r#" style="{}""#,
-                    escape_attr_display(paint.style())
-                )),
-            escape_xml_display(title.text)
+            title.x,
+            title.y,
+            title.text,
+            typography_theme.title_paint().map(|paint| paint.style()),
         );
         out.checkpoint()?;
     }
+
     if let Some(receipt) = typography_receipt.as_mut() {
         let facts = view_box
             .title
@@ -317,7 +313,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             });
         let facts = typography_theme
             .title_paint()
-            .map_or(facts, |paint| paint.observe(facts, paint.style()));
+            .map_or(facts, |paint| paint.observe(facts, title_emission));
         receipt.record_diagram_title(facts);
     }
 

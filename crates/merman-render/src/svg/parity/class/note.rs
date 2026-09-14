@@ -174,7 +174,6 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     };
     let note_data_look_attr = format!(r#" data-look="{}""#, escape_attr_display(ctx.look));
     let note_label_class = "label noteLabel";
-    let note_span_class = "nodeLabel markdown-node-label";
     let mut note_shape = String::new();
     if hand_drawn {
         let _ = write!(
@@ -205,6 +204,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         );
     }
 
+    let emitted_style;
     if ctx.use_html_labels {
         let note_div_style =
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -213,7 +213,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="{}" class="{}">"##,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml">"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -225,9 +225,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_w),
             fmt(label_h),
             escape_attr_display(&note_div_style),
-            escape_attr_display(&note_label_style),
-            note_span_class,
         );
+        emitted_style = super::label::open_class_note_label(out, Some(&note_label_style));
         let sanitize_start = ctx.timing.start();
         let note_html = if let Some(math_html) =
             class_math_html_label(note_src, Some(ctx.mermaid_config), ctx.math_renderer)
@@ -264,14 +263,15 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             fmt(label_x),
             fmt(label_y),
         );
-        write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
+        emitted_style =
+            write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
         out.push_str("</g></g></g>");
         let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
         stats.typography = crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
     }
 
     if let Some(paint) = ctx.text_paint {
-        stats.typography = paint.observe(stats.typography, &note_label_style);
+        stats.typography = paint.observe(stats.typography, emitted_style);
     }
     Ok(stats)
 }

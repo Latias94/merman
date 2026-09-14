@@ -124,9 +124,12 @@ impl ClassTextPaint {
     pub(crate) fn observe(
         &self,
         facts: ClassTextTerminalFacts,
-        style: &str,
+        style: Option<&str>,
     ) -> ClassTextTerminalFacts {
-        facts.with_paint(Some((self.rule_index, self.css.as_str())), style)
+        facts.with_paint(
+            Some((self.rule_index, self.css.as_str())),
+            style.unwrap_or(""),
+        )
     }
 }
 

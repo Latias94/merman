@@ -5184,3 +5184,40 @@ fn class_generic_text_shadowing_preserves_winning_sibling_facets() {
         assert!(try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err());
     }
 }
+
+#[test]
+fn class_typed_text_output_failure_cannot_return_a_completed_receipt() {
+    let source = "---\ntitle: Registry\n---\nclassDiagram\nA \"1\" --> \"many\" B : owns\nnote for A \"Audit\"\n";
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let render = |limit| {
+        let mut policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        if let Some(limit) = limit {
+            policy = policy
+                .with_limit(ResourceLimitId::MaxSvgBytes, limit)
+                .unwrap();
+        }
+        try_render_class_svg_with_theme_environment(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic().with_resource_policy(policy),
+        )
+    };
+    let baseline = render(None).unwrap();
+    let exact = baseline.svg().len();
+    assert_eq!(render(Some(exact)).unwrap().svg(), baseline.svg());
+    for limit in [1, exact - 1] {
+        let error = match render(Some(limit)) {
+            Ok(_) => panic!("failed output cannot expose an Applied receipt"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error, merman_render::Error::ResourceLimitExceeded(_)),
+            "{error}"
+        );
+    }
+}

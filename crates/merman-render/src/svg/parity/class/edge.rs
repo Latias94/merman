@@ -674,6 +674,7 @@ fn render_class_edge_label_group(
     let background_visible =
         !trimmed.is_empty() && label.is_some_and(|label| label.width > 0.0 && label.height > 0.0);
     let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
+    let mut emitted_style = None;
     if use_html_labels {
         let empty_div_style =
             class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -701,7 +702,7 @@ fn render_class_edge_label_group(
                 fmt(lbl.height.max(0.0)),
                 escape_attr_display(div_style.as_str()),
             );
-            render_class_html_label(
+            emitted_style = render_class_html_label(
                 out,
                 &ClassHtmlLabelSpec {
                     span_class: "edgeLabel",
@@ -733,7 +734,7 @@ fn render_class_edge_label_group(
         };
         let typography = ctx
             .text_paint
-            .map_or(typography, |paint| paint.observe(typography, paint.style()));
+            .map_or(typography, |paint| paint.observe(typography, emitted_style));
         return (typography, background_visible);
     }
 
@@ -758,7 +759,7 @@ fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        super::label::write_class_svg_edge_text_markdown_with_style(
+        emitted_style = super::label::write_class_svg_edge_text_markdown_with_style(
             out,
             trimmed,
             ctx.text_paint.map(|paint| paint.style()),
@@ -771,7 +772,7 @@ fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        super::label::write_class_svg_edge_text_with_style(
+        emitted_style = super::label::write_class_svg_edge_text_with_style(
             out,
             trimmed,
             ctx.text_paint.map(|paint| paint.style()),
@@ -786,7 +787,7 @@ fn render_class_edge_label_group(
     };
     let typography = ctx
         .text_paint
-        .map_or(typography, |paint| paint.observe(typography, paint.style()));
+        .map_or(typography, |paint| paint.observe(typography, emitted_style));
     (typography, background_visible)
 }
 
@@ -845,10 +846,11 @@ fn render_class_edge_terminal_group(
     let foreign_height = measured.height.max(0.0);
     let inner_tx = -foreign_width / 2.0;
     let inner_ty = -foreign_height / 2.0;
+    let emitted_style;
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"{}>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -857,17 +859,17 @@ fn render_class_edge_terminal_group(
             fmt(foreign_height),
             fmt(style_width),
             fmt(style_height),
-            ctx.text_paint.map_or_else(String::new, |paint| format!(
-                r#" style="{}""#,
-                escape_attr_display(paint.style())
-            )),
+        );
+        emitted_style = super::label::open_class_cardinality_label(
+            out,
+            ctx.text_paint.map(|paint| paint.style()),
         );
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"{}>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">"#,
             fmt(x),
             fmt(y),
             fmt(inner_tx),
@@ -876,10 +878,10 @@ fn render_class_edge_terminal_group(
             fmt(foreign_height),
             fmt(style_width),
             fmt(style_height),
-            ctx.text_paint.map_or_else(String::new, |paint| format!(
-                r#" style="{}""#,
-                escape_attr_display(paint.style())
-            )),
+        );
+        emitted_style = super::label::open_class_cardinality_label(
+            out,
+            ctx.text_paint.map(|paint| paint.style()),
         );
         render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g>");
@@ -890,7 +892,7 @@ fn render_class_edge_terminal_group(
         crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed)
     };
     ctx.text_paint
-        .map_or(facts, |paint| paint.observe(facts, paint.style()))
+        .map_or(facts, |paint| paint.observe(facts, emitted_style))
 }
 
 fn render_class_terminal_label(

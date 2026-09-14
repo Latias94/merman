@@ -37,6 +37,18 @@ pub(super) const fn css_selector_diagram_id<I>(diagram_id: I) -> CssSelectorDiag
     CssSelectorDiagramId(diagram_id)
 }
 
+/// Returns only the style attribute accepted by the output sink.
+/// Final document checkpoints still own failures in subsequent writes.
+pub(super) fn write_style_attribute<'a>(
+    out: &mut impl SvgOutput,
+    style: Option<&'a str>,
+) -> Option<&'a str> {
+    let style = style?;
+    write!(out, r#" style="{}""#, escape_attr_display(style))
+        .ok()
+        .map(|()| style)
+}
+
 pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
