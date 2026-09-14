@@ -473,7 +473,7 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 
 fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
     let compiler: LegacyFamilyCompiler = match family {
-        DiagramFamilyId::BLOCK => compile_node_family,
+        DiagramFamilyId::BLOCK => compile_block_family,
         DiagramFamilyId::CLASS
         | DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
@@ -597,7 +597,7 @@ pub(crate) fn legacy_projection_probe(
     )
 }
 
-fn compile_node_family(
+fn compile_block_family(
     builder: &mut OverlayBuilder,
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
