@@ -503,6 +503,7 @@ impl CutoverWitnessProfile {
                 route.target(),
                 ThemeTarget::EdgeLabelBackground
                     | ThemeTarget::NodeLabel
+                    | ThemeTarget::Text
                     | ThemeTarget::Edge
                     | ThemeTarget::Marker
                     | ThemeTarget::Cluster
@@ -786,9 +787,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Cluster,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(BLOCK_CLUSTER_SOURCE),
-        (DiagramFamilyId::BLOCK, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
-            Ok(BLOCK_NODE_SOURCE)
-        }
+        (
+            DiagramFamilyId::BLOCK,
+            ThemeTarget::NodeLabel | ThemeTarget::Text,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(BLOCK_NODE_SOURCE),
         (
             DiagramFamilyId::BLOCK,
             ThemeTarget::EdgeLabelBackground,
@@ -2652,7 +2655,7 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_506_routes_and_806_artifact_witnesses() {
+    fn route_inventory_retains_506_routes_and_814_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
         assert_eq!(
@@ -2661,7 +2664,7 @@ mod tests {
             "actual route count {}",
             inventory.len()
         );
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 806);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 814);
     }
 
     #[test]

@@ -69,7 +69,7 @@ pub(crate) struct BlockNodeLabelPaintPlan {
     expectations: Arc<[Option<BlockNodeLabelExpectation>]>,
     html_labels: bool,
     evidence: FamilyThemeEvidence,
-    pending: BTreeMap<usize, ThemeCapability>,
+    pending: BTreeMap<(usize, ThemeTarget), ThemeCapability>,
     terminal: OnceLock<BlockNodeLabelPaintReceipt>,
 }
 
@@ -105,15 +105,10 @@ impl BlockNodeLabelPaintPlan {
         if !theme.family_mechanism_routes().iter().any(|route| {
             matches!(
                 route.mechanism(),
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::NodeLabel,
-                    ..
-                } | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::NodeLabel
-                } | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::NodeLabel,
-                    ..
-                }
+                FamilyThemeMechanism::RuleFacet { target, .. }
+                | FamilyThemeMechanism::OrdinalPalette { target }
+                | FamilyThemeMechanism::EffectBinding { target, .. }
+                    if matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text)
             )
         }) {
             return Ok(plan);
@@ -212,30 +207,39 @@ impl BlockNodeLabelPaintPlan {
                 resolve_direct_static_fill(
                     theme,
                     style,
-                    &[ThemeTarget::NodeLabel],
+                    &[ThemeTarget::Text, ThemeTarget::NodeLabel],
                     DirectStaticSelectorDomain::Default,
                 )
                 .map(DirectPaintExpectation::from_paint)
             } else {
                 None
             };
-            if let Some(paint) = paint.as_ref() {
-                capabilities.insert(paint.rule_index(), paint.capability());
+            if let Some(paint) = paint.as_ref()
+                && let Some((_, origin)) =
+                    style.winner_rule_properties().find(|(property, origin)| {
+                        *property == ResolvedStyleProperty::Fill
+                            && origin.rule_index() == paint.rule_index()
+                    })
+            {
+                capabilities.insert((paint.rule_index(), origin.target()), paint.capability());
             }
             expectations.push(paint.map(|paint| BlockNodeLabelExpectation { paint, text }));
         }
-        let mut observations = BTreeMap::<usize, NodeRuleObservation>::new();
+        let mut observations = BTreeMap::<(usize, ThemeTarget), NodeRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             let FamilyThemeMechanism::RuleFacet {
                 rule_index,
-                target: ThemeTarget::NodeLabel,
+                target,
                 facet,
                 ..
             } = route.mechanism()
             else {
                 continue;
             };
-            let observation = observations.entry(rule_index).or_default();
+            if !matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text) {
+                continue;
+            }
+            let observation = observations.entry((rule_index, target)).or_default();
             if !winners.contains(&(rule_index, resolved_style_property_for_facet(facet))) {
                 continue;
             }
@@ -243,7 +247,7 @@ impl BlockNodeLabelPaintPlan {
             match route.disposition() {
                 FamilyThemeDisposition::TypedAdapter => {
                     if matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        if let Some(capability) = capabilities.get(&rule_index) {
+                        if let Some(capability) = capabilities.get(&(rule_index, target)) {
                             observation
                                 .capabilities
                                 .insert(ResolvedStyleProperty::Fill, *capability);
@@ -264,11 +268,8 @@ impl BlockNodeLabelPaintPlan {
                 }
             }
         }
-        for (index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index,
-                target: ThemeTarget::NodeLabel,
-            };
+        for ((index, target), observation) in observations {
+            let key = FamilyThemeMechanismKey::Rule { index, target };
             if !observation.applicable {
                 plan.evidence.mark_not_applicable(key);
             } else if let Some(reason) = observation.residual {
@@ -276,17 +277,24 @@ impl BlockNodeLabelPaintPlan {
             } else if !observation.incomplete
                 && let Some(capability) = observation.capabilities.get(&ResolvedStyleProperty::Fill)
             {
-                plan.pending.insert(index, *capability);
+                plan.pending.insert((index, target), *capability);
             }
         }
         reconcile_unsupported_terminal_domains(
             theme,
             &mut plan.evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::NodeLabel,
-                TerminalVariantDomain::uniform(layout.nodes.len(), ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned)],
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::NodeLabel,
+                    TerminalVariantDomain::uniform(layout.nodes.len(), ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Text,
+                    TerminalVariantDomain::uniform(layout.nodes.len(), ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned),
+            ],
             work,
         )?;
         plan.expectations = expectations.into();
@@ -392,12 +400,9 @@ impl BlockNodeLabelPaintPlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         if self.terminal.get().is_some() {
-            for (&index, &capability) in &self.pending {
+            for (&(index, target), &capability) in &self.pending {
                 evidence.mark_applied_with_capabilities(
-                    FamilyThemeMechanismKey::Rule {
-                        index,
-                        target: ThemeTarget::NodeLabel,
-                    },
+                    FamilyThemeMechanismKey::Rule { index, target },
                     [capability],
                 );
             }

@@ -333,6 +333,37 @@ fn block_node_label_theme(patch: ThemeStylePatch) -> DiagramTheme {
         .unwrap()
 }
 
+fn block_generic_text_theme(patch: ThemeStylePatch) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Text, patch).for_family(DiagramFamilyId::BLOCK),
+            )),
+        )
+        .unwrap()
+}
+
+#[test]
+fn block_generic_text_paint_is_bound_to_node_text_terminals() {
+    let theme = block_generic_text_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#0f8a6e").unwrap()),
+    );
+    let rendered =
+        render_block_with_theme_and_engine("block\n A[\"Alpha\"]\n", &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let node = document
+        .descendants()
+        .find(|n| n.attribute("id") == Some("block-theme-A"))
+        .unwrap();
+    assert!(
+        node.descendants()
+            .any(|n| { n.attribute("style").unwrap_or("").contains("#0f8a6e") })
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
 #[test]
 fn block_node_label_paint_is_bound_to_node_terminals() {
     let theme = block_node_label_theme(
@@ -616,10 +647,8 @@ fn block_node_label_preserves_generic_text_author_order() {
         );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), usize::from(node_last));
-        if !node_last {
-            assert_eq!(evidence.not_applicable_count(), 1);
-        }
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
     }
 }
 
