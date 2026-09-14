@@ -35,3 +35,16 @@ artifacts. Rebuilding with `npm run build:wasm` failed twice in `merman-render` 
 `E0463: can't find crate for rust_embed_impl`, reported through `ratex_svg`. The failure occurs
 before package smoke and is a build-environment/cache issue; no source or generated package files
 were changed by this attempt. Web/WASM packaged-artifact qualification therefore remains open.
+
+The real Web/WASM package matrix was then rebuilt with
+`CARGO_PROFILE_WASM_SIZE_LTO=false` (the local workaround for the wasm-size LTO
+`rust_embed_impl` failure) and verified end to end:
+
+- five WASM input manifests passed;
+- package provenance/prepack verification passed for full, analysis, render, editor, and ascii;
+- all five installed package smoke cases passed;
+- the DOM safety smoke passed.
+
+The generated package outputs remain build artifacts and produced no tracked source diff.
+This is current-source package evidence; the existing Typst size budget failure remains a separate
+release configuration gate.
