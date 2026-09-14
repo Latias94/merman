@@ -7,7 +7,7 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 ## Snapshot: 2026-09-14
 
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
-The current source through `687239af5` passes 3097 scoped Release owner tests (two existing skips)
+The current source through `1edd2ecf9` passes 3097 scoped Release owner tests (two existing skips)
 and the previously recorded 3170-test owner run, plus current Web/WASM package smoke. The current
 transport matrix also passes Node 40/40, Web catalog 8/8, Typst 41/41, Native C ABI and UniFFI
 2/2, and Flutter ABI 3 contract verification. Flutter one-shot theme authoring now routes all three
