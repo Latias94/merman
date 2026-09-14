@@ -36,11 +36,16 @@ void _expectJson(Object? actual, Object? expected, String context) {
   }
 }
 
-void _checkError(Execute execute, Map<String, dynamic> vector, String mode) {
+void _checkError(
+  Execute execute,
+  Map<String, dynamic> vector,
+  String mode, {
+  MermanOperation operation = MermanOperation.materializeThemeJson,
+}) {
   final context = '$mode/${vector['id']}';
   try {
     execute(
-      MermanOperation.materializeThemeJson,
+      operation,
       vector['source'] as String,
       optionsJson: vector['options_json'] as String?,
     );
@@ -55,6 +60,14 @@ void _checkError(Execute execute, Map<String, dynamic> vector, String mode) {
       vector['resource'],
       '$context resource',
     );
+    if (vector['theme_authoring'] == null) {
+      _expectJson(
+        error.details?['theme_authoring'],
+        null,
+        '$context authoring',
+      );
+      return;
+    }
     // Copy the immutable native envelope before removing explanatory messages.
     final authoring = jsonDecode(jsonEncode(error.details?['theme_authoring']));
     if (authoring is! Map || authoring['diagnostics'] is! List) {
@@ -127,12 +140,71 @@ void main() {
       for (final vector in errors) {
         _checkError(execute, vector as Map<String, dynamic>, consumer.key);
       }
+      // All authoring operations must reach theme admission before generic engine limits.
+      final encodedLimit =
+          (errors.singleWhere((vector) => vector['id'] == 'encoded-byte-limit')
+                  as Map)
+              .cast<String, dynamic>();
+      for (final operation in [
+        MermanOperation.describeThemeSupportJson,
+        MermanOperation.exportThemePresetJson,
+      ]) {
+        _checkError(
+          execute,
+          {...encodedLimit, 'theme_authoring': null},
+          '${consumer.key}/${operation.operationId}',
+          operation: operation,
+        );
+      }
+      final budgetedInputs = <MermanOperation, String>{
+        MermanOperation.materializeThemeJson: read('light.definition.json'),
+        MermanOperation.describeThemeSupportJson: jsonEncode(
+          support.first['query'],
+        ),
+        MermanOperation.exportThemePresetJson: 'editor-light',
+      };
+      for (final request in budgetedInputs.entries) {
+        final baseline = execute(request.key, request.value);
+        // Preset export also admits the expanded recipe, so its budget must cover that input.
+        final encodedBudget =
+            request.key == MermanOperation.exportThemePresetJson
+            ? utf8.encode(jsonEncode(baseline.jsonObject)).length
+            : utf8.encode(request.value).length;
+        MermanOperationResult bounded;
+        try {
+          bounded = execute(
+            request.key,
+            request.value,
+            optionsJson: jsonEncode({
+              'resources': {
+                'profile': 'constrained',
+                'limits': {'max_theme_encoded_bytes': encodedBudget},
+              },
+            }),
+          );
+        } on MermanException catch (error) {
+          throw StateError(
+            '${consumer.key}/${request.key.operationId}: ${error.details}',
+          );
+        }
+        _expectJson(
+          bounded.mediaType,
+          baseline.mediaType,
+          '${consumer.key}/${request.key.operationId} bounded media',
+        );
+        _expectJson(
+          bounded.jsonObject,
+          baseline.jsonObject,
+          '${consumer.key}/${request.key.operationId} encoded byte budget',
+        );
+      }
     }
   } finally {
     engine.close();
   }
   print(
     'Flutter Native Assets theme authoring passed: '
-    '2 materializations, ${support.length} support queries, ${errors.length} errors per consumer',
+    '2 materializations, ${support.length} support queries, '
+    '${errors.length + 2} errors, 3 budgeted operations per consumer',
   );
 }

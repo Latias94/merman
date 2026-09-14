@@ -3,7 +3,8 @@
 ## Scope and source
 
 Base commit: `6365279d6995b8e5bd6c17423afcb85bbf9213f1`, with the file contents recorded below. This is a local-worktree
-verification, not a clean-checkout, full-workspace, browser, or release-profile claim.
+verification. The clean-checkout replay below binds the subsequent commit. Neither run is
+a full-workspace, browser, or release-profile claim.
 C7a and the remaining Block bridge retirement stay open.
 
 The previous label receipt compared a recomputed CSS value with itself, counted any nonempty
@@ -46,6 +47,15 @@ CARGO_BUILD_JOBS=2 python3 scripts/run_theme_acceptance.py nextest run --release
   --lib --test block_svg_test --test legacy_projection_retirement \
   --test block_title_legacy_projection --test route_cutover_runtime --no-fail-fast
 ```
+
+## Clean-checkout replay
+
+Commit `44d81d033fa5c9f1305b36142551d8989d6c2738` was cloned into an independent local Git
+checkout with an empty `git status --porcelain` before and after the Rust run. The same command
+above, additionally selecting `--test class_edge_label_background_legacy_projection`, passed
+**3158 tests with 2 existing skips**. Cargo reused the main worktree's target directory; Cargo
+compiled the workspace packages from the independent checkout paths. This is source-isolation
+evidence, not a cold dependency-cache build. No tracked source was modified during this replay.
 
 ## Verified file identities
 

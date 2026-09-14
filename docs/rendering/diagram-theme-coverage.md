@@ -12,6 +12,11 @@ following the earlier 3170-test owner run, plus Web/WASM package smoke. Its reco
 transport matrix passed Node 40/40, Web catalog 8/8, Typst 41/41, Native C ABI and UniFFI
 2/2, and Flutter ABI 3 contract verification. Flutter one-shot theme authoring now routes all three
 authoring operations through the theme-specific resource admission path.
+The [Flutter budget matrix](../knowledge/engineering/verification/2026-09-14-flutter-authoring-budget-matrix.md)
+subsequently rebuilt the macOS arm64 Native Assets library at `44d81d033` and exercised valid
+and rejected budgets for all three operations through both consumers. Independent old-wrapper
+mutations fail the new regression. The same source passed 3158 scoped Release tests (two skips)
+in an independent clean checkout, including both Block and Class retirement integration targets.
 The original Class convergence source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
 additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
 text channels have native Solid/Transparent controls across three looks and two selectors.
