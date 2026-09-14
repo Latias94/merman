@@ -29,3 +29,9 @@ Flutter was validated after the repository-standard `flutter pub get`; `dart run
 tool/abi3_contract_test.dart` completed with “ABI 3 Dart contract tests passed”. Dependency resolution
 produced no lockfile diff. This covers the checked-in Flutter contract consumer; packaged release
 artifacts remain owned by the platform release lane.
+
+A real Web package smoke was attempted after `verify-wasm-inputs` rejected stale generated WASM
+artifacts. Rebuilding with `npm run build:wasm` failed twice in `merman-render` with Rust error
+`E0463: can't find crate for rust_embed_impl`, reported through `ratex_svg`. The failure occurs
+before package smoke and is a build-environment/cache issue; no source or generated package files
+were changed by this attempt. Web/WASM packaged-artifact qualification therefore remains open.
