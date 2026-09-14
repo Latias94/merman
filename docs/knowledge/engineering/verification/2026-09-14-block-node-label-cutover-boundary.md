@@ -40,3 +40,16 @@ Typed Applied.
 
 Until this record's requirements are implemented and independently exercised, the Block legacy
 projection remains intentional and must not be removed merely to reduce the inventory count.
+
+## Implementation shape
+
+The evidence model should follow the existing `FlowchartTextSurfacePaintPlan` pattern: resolve the
+family request once, retain a family-local receipt, and reconcile the request only after the writer
+has observed its terminals. Block must keep its own terminal identity because HTML `foreignObject`
+labels and SVG `text`/`tspan` labels do not share the same DOM sink. Reusing the Flowchart plan
+itself would erase that distinction and would make a passing CSS check insufficient proof of Block
+terminal coverage.
+
+The first implementation slice should therefore land the Block plan and writer receipt together,
+with the matrix and cutover-manifest changes in the same revision. A plan that is compiled but not
+wired into both writers is incomplete and must not change the route disposition.
