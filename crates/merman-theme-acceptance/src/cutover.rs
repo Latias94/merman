@@ -89,7 +89,10 @@ B[Beta]
 end
 "#;
 const CLASS_NODE_SOURCE: &str = "classDiagram\nclass Alpha\nclass Beta\n";
-const CLASS_TEXT_SOURCE: &str = r#"classDiagram
+const CLASS_TEXT_SOURCE: &str = r#"---
+title: Class text terminals
+---
+classDiagram
 class Alpha {
   +String id
   +render() String
@@ -98,7 +101,7 @@ class Beta
 namespace Internal {
   class Gamma
 }
-Alpha --> Beta : relates
+Alpha "1" --> "many" Beta : relates
 note for Alpha "annotated"
 "#;
 const ER_TEXT_SOURCE: &str =
