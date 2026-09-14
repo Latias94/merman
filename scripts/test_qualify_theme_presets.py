@@ -157,13 +157,16 @@ class CliQualificationTests(unittest.TestCase):
         changed = copy.deepcopy(original)
         changed["presets"][0]["catalog_entry"]["maturity"] = "stable"
         changes.append(changed)
-        for field, value in [("profile", "future-profile"), ("admission", "future-admission")]:
+        for field, value in [("profile", "future-profile"), ("family", "future-family"),
+                             ("output", "pdf"), ("admission", "future-admission")]:
             changed = copy.deepcopy(original)
             if field == "profile":
                 changed["presets"][0][field] = value
             else:
                 changed["presets"][0]["cells"][0][field] = value
-            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "qualification (profile|admission)"):
+            with self.subTest(field=field), self.assertRaisesRegex(
+                RuntimeError, "(qualification (profile|family|admission)|Undeclared CLI qualification target)"
+            ):
                 qualify_cli(self.binary, changed, runner=self.run_cli)
         for changed in changes:
             with self.subTest(changed=changed), self.assertRaisesRegex(RuntimeError, "catalog|scope"):

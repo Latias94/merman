@@ -31,6 +31,8 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[1]
 QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v3"
 QUALIFIED_ADMISSION = "host_dependent"
+QUALIFIED_FAMILIES = {"flowchart", "state", "sequence"}
+QUALIFIED_OUTPUTS = {"svg", "png"}
 
 BUILD = [
     "cargo", "build", "--release", "--locked", "-p", "merman-theme-acceptance",
@@ -133,11 +135,17 @@ def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
             raise RuntimeError("Unknown or unsupported qualification profile")
         cells = []
         for cell in preset["cells"]:
+            family = cell.get("family")
+            if family not in QUALIFIED_FAMILIES:
+                raise RuntimeError("Unknown or unsupported qualification family")
+            output = cell.get("output")
+            if output not in QUALIFIED_OUTPUTS:
+                raise RuntimeError("Unknown or unsupported qualification output")
             admission = cell.get("admission")
             if admission != QUALIFIED_ADMISSION:
                 raise RuntimeError("Unknown or unsupported qualification admission status")
             cells.append({
-                "family_id": cell["family"], "output_id": cell["output"],
+                "family_id": family, "output_id": output,
                 "profile_id": profile, "admission_status": admission,
             })
         cells.sort(key=lambda cell: (cell["family_id"], cell["output_id"], cell["profile_id"]))
