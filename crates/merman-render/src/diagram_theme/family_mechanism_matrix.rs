@@ -5910,6 +5910,20 @@ mod tests {
                 vec!["title.fill"],
             ),
             (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["title.fill", "node-label.fill", "cluster-label.fill"],
+            ),
+            (
                 DiagramFamilyId::CYNEFIN,
                 ThemeTarget::Text,
                 Fill,
@@ -7757,8 +7771,8 @@ mod tests {
                         vec![ThemeRouteCutoverProjection::NodeLabelFill]
                     }
                     (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => vec![
-                        ThemeRouteCutoverProjection::NodeLabelFill,
                         ThemeRouteCutoverProjection::TitleFill,
+                        ThemeRouteCutoverProjection::NodeLabelFill,
                         ThemeRouteCutoverProjection::ClusterLabelFill,
                     ],
                     (ThemeTarget::Cluster, ThemeRouteCutoverFacet::Fill) => {
