@@ -16,8 +16,8 @@ const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 89;
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    8, 59, 130, 65, 213, 101, 22, 123, 163, 53, 207, 87, 67, 132, 165, 128, 238, 192, 66, 73, 179,
-    235, 36, 68, 228, 22, 170, 73, 144, 82, 79, 198,
+    181, 162, 176, 252, 157, 102, 78, 218, 8, 219, 241, 3, 135, 142, 75, 147, 138, 76, 19, 181,
+    120, 72, 74, 160, 95, 64, 3, 136, 229, 37, 74, 195,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -467,7 +467,7 @@ const CLASS_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ClusterLabelFill,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 502] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 506] = [
     route(
         DiagramFamilyId::XY_CHART,
         ThemeTarget::Text,
@@ -2551,6 +2551,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 502] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::BLOCK,

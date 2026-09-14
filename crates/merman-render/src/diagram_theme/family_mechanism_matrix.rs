@@ -450,6 +450,9 @@ fn legacy_bridge_projections(
             ThemeTarget::NodeLabel,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL),
+        (DiagramFamilyId::BLOCK, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL)
+        }
         (
             DiagramFamilyId::TREE_VIEW,
             ThemeTarget::NodeLabel | ThemeTarget::Text,
@@ -2610,7 +2613,7 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::BLOCK
         && matches!(
             target,
-            ThemeTarget::Node | ThemeTarget::Cluster | ThemeTarget::Marker
+            ThemeTarget::Text | ThemeTarget::Node | ThemeTarget::Cluster | ThemeTarget::Marker
         )
         && matches!(
             selector,
