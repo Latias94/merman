@@ -6,6 +6,14 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-13
 
+The Class Text cutover at `523ce8881` is **not closed**. Its broader private owner run
+had 38 failures across evidence, support, bridge and authorization checks. Corrective
+source `9be480c86` fixes fully shadowed rules, winner provenance and fallback text
+semantics, with 183 focused Release tests passing in both the main worktree and a clean
+checkout. It does not retire the Class provider or reconcile the wider failed gate.
+The inventory totals below describe the last reconciled baseline, not qualification of this incomplete cutover. See the
+[repair and remaining obligations](../knowledge/engineering/verification/2026-09-13-class-text-cutover-repair.md).
+
 Class's existing text terminal inventory now retains color ownership alongside independent
 font facts. NodeLabel and namespace Title share those facts, including explicit rejection of
 empty/source-owned/unknown text as inherited paint. Source `c16be4559` passed 3281 private
