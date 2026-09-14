@@ -25,6 +25,11 @@ now contains only Block's 20 routes. Block Edge adds eight static fill/stroke ro
 classic, neo, and handDrawn witnesses. Paint is bound to each emitted edge path; Edge.fill remains
 a stroke fallback only when stroke is unspecified. The old Edge-to-Marker projection is removed.
 Block NodeLabel's preceding four static fill routes remain bound to individual node terminals.
+Source `a902b5d53` passed 3218 scoped Release owner tests in both the main worktree and an
+independent clean checkout (two existing skips). The main worktree also passed the full SVG
+structure gate and rebuilt Flutter Native Assets authoring with all 17 revision-87 support
+queries and the three-operation budget matrix. See the
+[Block Edge record](../knowledge/engineering/verification/2026-09-14-block-edge-direct-paint.md).
 These are scoped migration results, not C7a eligibility or complete Class mechanism support. See the
 [Class Text convergence record](../knowledge/engineering/verification/2026-09-14-class-text-convergence.md).
 
