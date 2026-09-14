@@ -24,7 +24,13 @@ KTD17 v88 covers 494 routes and 778 route-profile witnesses; the executable lega
 now contains only Block's 12 routes (Marker 8, Text 4). Block Cluster adds eight static fill/stroke
 routes with classic, neo, and handDrawn witnesses. Node and Cluster share one final shell plan
 and emitted-terminal receipt; existing Node paint retains property-local priority.
-The preceding Block Edge tranche added eight static fill/stroke routes. Paint is bound to each emitted edge path; Edge.fill remains
+Source `f2adde25e` passed 3227 scoped Release tests in the main worktree and an independent
+clean checkout (two existing skips), the main-worktree full SVG structure gate, and rebuilt
+Flutter Native Assets checks with 19 revision-88 support queries. The
+[Cluster verification record](../knowledge/engineering/verification/2026-09-14-block-cluster-direct-paint.md)
+records the one clean-run nextest leak observation and its passing isolated rerun.
+The preceding Block Edge tranche added eight static fill/stroke routes. Paint is bound to each
+emitted edge path; Edge.fill remains
 a stroke fallback only when stroke is unspecified. The old Edge-to-Marker projection is removed.
 Block NodeLabel's preceding four static fill routes remain bound to individual node terminals.
 Source `a902b5d53` passed 3218 scoped Release owner tests in both the main worktree and an
