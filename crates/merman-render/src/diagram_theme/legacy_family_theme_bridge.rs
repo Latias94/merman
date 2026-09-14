@@ -49,7 +49,7 @@ pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1."
 const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
 
 type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
-type LegacyFamilyCompiler = fn(&mut OverlayBuilder, &FamilyStyleReader) -> BridgeResult<()>;
+type BlockLegacyCompiler = fn(&mut OverlayBuilder, &FamilyStyleReader) -> BridgeResult<()>;
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -471,8 +471,8 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
-fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
-    let compiler: LegacyFamilyCompiler = match family {
+fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<BlockLegacyCompiler>> {
+    let compiler: BlockLegacyCompiler = match family {
         DiagramFamilyId::BLOCK => compile_block_family,
         DiagramFamilyId::CLASS
         | DiagramFamilyId::FLOWCHART
