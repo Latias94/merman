@@ -993,7 +993,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "class",
         target: "text",
-        kind: SupportClaimKind::LegacyPartial,
+        kind: SupportClaimKind::TypedPartial,
         facets: &["fill"],
     },
     RuleClaim {

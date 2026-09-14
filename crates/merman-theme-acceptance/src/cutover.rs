@@ -2299,6 +2299,92 @@ mod tests {
     }
 
     #[test]
+    fn class_text_channels_have_independent_native_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        // Source-owned node text keeps unrelated glyphs identical in each pair. A passing PNG
+        // comparison must therefore come from the named, independently unowned text channel.
+        for (channel, source) in [
+            (
+                "node",
+                "classDiagram\nclass Alpha {\n+String id\n+render() String\n}\n",
+            ),
+            (
+                "namespace",
+                "classDiagram\nnamespace Internal {\nclass Alpha\n}\nstyle Alpha color:#112233\n",
+            ),
+            (
+                "edge",
+                "classDiagram\nAlpha --> Beta : relates\nstyle Alpha color:#112233\nstyle Beta color:#112233\n",
+            ),
+            (
+                "start-cardinality",
+                "classDiagram\nAlpha \"1\" --> Beta\nstyle Alpha color:#112233\nstyle Beta color:#112233\n",
+            ),
+            (
+                "end-cardinality",
+                "classDiagram\nAlpha --> \"many\" Beta\nstyle Alpha color:#112233\nstyle Beta color:#112233\n",
+            ),
+            (
+                "note",
+                "classDiagram\nclass Alpha\nnote for Alpha \"annotated\"\nstyle Alpha color:#112233\n",
+            ),
+            (
+                "diagram-title",
+                "---\ntitle: Class text terminals\n---\nclassDiagram\nclass Alpha\nstyle Alpha color:#112233\n",
+            ),
+        ] {
+            for profile in CutoverWitnessProfile::TEXT_LOOKS {
+                for selector in [
+                    ThemeRouteCutoverSelector::StaticUnqualified,
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                ] {
+                    let render = |value| {
+                        let route = inventory
+                            .iter()
+                            .copied()
+                            .find(|route| {
+                                route.family_id() == DiagramFamilyId::CLASS
+                                    && route.target() == ThemeTarget::Text
+                                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                                    && route.selector() == selector
+                                    && route.value() == value
+                            })
+                            .expect("Class text fill route");
+                        let case = super::CutoverCase {
+                            id: CutoverWitnessId::new(route, profile),
+                            source,
+                        };
+                        let rendered = super::render_cutover_case(case, vec![route])
+                            .unwrap_or_else(|error| {
+                                panic!("{channel}/{profile:?}/{selector:?}: {error}")
+                            });
+                        (route, rendered.document)
+                    };
+                    let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                    let (transparent_route, transparent) =
+                        render(ThemeRouteCutoverValue::Transparent);
+                    let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                        &solid,
+                        &transparent,
+                        solid_route,
+                        transparent_route,
+                        &merman_export::RasterOptions::default().with_scale(2.0),
+                        merman::OperationControl::new(),
+                    )
+                    .unwrap_or_else(|error| panic!("{channel}/{profile:?}/{selector:?}: {error}"));
+                    for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                        super::validate_cutover_target_receipt(
+                            CutoverTargetAdmissionContract::PortableNativePngV1,
+                            receipt,
+                        )
+                        .expect("isolated Class text channel must satisfy native target admission");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn edge_label_background_cutover_has_native_terminal_proof() {
         let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
         for family in [

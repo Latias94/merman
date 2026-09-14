@@ -617,19 +617,8 @@ fn compile_node_family(
             ("nodeBorder", reader.stroke(ThemeTarget::Node)),
         ],
     );
-    let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
-    if family == DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
-            [
-                ("primaryTextColor", node_label_fill.clone()),
-                ("nodeTextColor", node_label_fill.clone()),
-                ("textColor", node_label_fill.clone()),
-                ("classText", node_label_fill.clone()),
-                ("labelColor", node_label_fill),
-            ],
-        );
-    } else {
+    if family != DiagramFamilyId::CLASS {
+        let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
         contributions.add_theme_variables(
             ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
             [
@@ -637,14 +626,6 @@ fn compile_node_family(
                 ("nodeTextColor", node_label_fill.clone()),
                 ("textColor", node_label_fill),
             ],
-        );
-    }
-    // Class generic Text still projects to namespace titleColor; typed Title no longer does.
-    // Block has no diagram-title terminal, including for the generic Text fallback.
-    if family == DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            "title.fill",
-            [("titleColor", reader.text_fill(ThemeTarget::Title))],
         );
     }
     if family != DiagramFamilyId::CLASS {
@@ -4022,7 +4003,7 @@ gitGraph
     }
 
     #[test]
-    fn class_default_node_surfaces_stay_typed_when_text_keeps_the_bridge_active() {
+    fn class_default_node_surfaces_keep_all_typed_projections_out_of_the_bridge() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
@@ -4054,12 +4035,8 @@ gitGraph
         let bridge = bridge(&spec);
         let artifact = bridge.compile_for_family(DiagramFamilyId::CLASS);
 
-        assert!(!artifact.overlay.is_empty());
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.class.title.fill")
-        );
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
         for projection in [
             ThemeRouteCutoverProjection::NodeFill,
             ThemeRouteCutoverProjection::NodeStroke,
@@ -4079,7 +4056,9 @@ gitGraph
         let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.titleColor"),
-            Some("#e2e8f0")
+            baseline
+                .effective_config
+                .get_str("themeVariables.titleColor")
         );
         for path in [
             "themeVariables.primaryColor",
@@ -4097,18 +4076,8 @@ gitGraph
         }
 
         let evidence = theme_parse_evidence(&parsed);
-        assert_eq!(evidence.fallback_contribution_count(), 2);
-        assert_eq!(
-            evidence
-                .fallback_contributions()
-                .flat_map(|contribution| contribution.surviving_assignment_paths())
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from([
-                "themeVariables.titleColor",
-                "themeVariables.secondaryTextColor",
-                "themeVariables.tertiaryTextColor"
-            ])
-        );
+        assert_eq!(evidence.fallback_contribution_count(), 0);
+        assert!(evidence.fallback_contributions().next().is_none());
     }
 
     #[test]
@@ -4154,25 +4123,14 @@ gitGraph
                 ),
             );
             let artifact = bridge(&spec).compile_for_family(family);
+            assert!(!artifact.contribution_ids.contains(&format!(
+                "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
+            )));
             assert_eq!(
-                artifact.contribution_ids.contains(&format!(
-                    "{CONTRIBUTION_ID_PREFIX}{family}.cluster-label.fill"
-                )),
-                family == DiagramFamilyId::CLASS,
-            );
-            if family == DiagramFamilyId::CLASS {
-                let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
-                for path in [
-                    "themeVariables.secondaryTextColor",
-                    "themeVariables.tertiaryTextColor",
-                ] {
-                    assert_eq!(parsed.effective_config.get_str(path), Some("#2468ac"));
-                }
-            }
-            assert!(
                 artifact
                     .contribution_ids
-                    .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.node-label.fill"))
+                    .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.node-label.fill")),
+                family != DiagramFamilyId::CLASS
             );
         }
     }
@@ -4272,7 +4230,7 @@ gitGraph
                         artifact
                             .contribution_ids
                             .contains(&format!("{CONTRIBUTION_ID_PREFIX}{family}.title.fill")),
-                        family == DiagramFamilyId::CLASS && target == ThemeTarget::Text,
+                        false,
                         "family={family}, target={target:?}, variant={variant:?}"
                     );
                 }
