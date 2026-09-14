@@ -6,19 +6,19 @@ A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are
 
 ## Snapshot: 2026-09-14
 
-Class Text writer emissions now bind edge-label, cardinality, root-title and note paint
-facts to actual style writes. Source `ab3534038` passed 195 selected Release tests and
-the full SVG structure comparison in the main worktree. It does not close the wider
-Class cutover or its clean-checkout/native qualification gates. See the
-[writer-emission verification](../knowledge/engineering/verification/2026-09-14-class-text-writer-emission.md).
+Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
+Source `2a92c56b6` passed 3170 private Release owner tests (two existing skips) and 124
+additional Class SVG, authoring and route-runtime tests in a clean checkout. Seven isolated
+text channels have native Solid/Transparent controls across three looks and two selectors.
+KTD17 v85 covers 474 routes and 718 route-profile witnesses; the executable legacy inventory
+now contains only Block's 32 routes. These are scoped migration results, not C7a eligibility
+or complete Class mechanism support. See the
+[Class Text convergence record](../knowledge/engineering/verification/2026-09-14-class-text-convergence.md).
 
-The Class Text cutover at `523ce8881` is **not closed**. Its broader private owner run
-had 38 failures across evidence, support, bridge and authorization checks. Corrective
-source `9be480c86` fixes fully shadowed rules, winner provenance and fallback text
-semantics, with 183 focused Release tests passing in both the main worktree and a clean
-checkout. It does not retire the Class provider or reconcile the wider failed gate.
-The inventory totals below describe the last reconciled baseline, not qualification of this incomplete cutover. See the
-[repair and remaining obligations](../knowledge/engineering/verification/2026-09-13-class-text-cutover-repair.md).
+The earlier `523ce8881` cutover produced 38 owner-test failures. Subsequent writer-emission,
+shadowed-rule, route-authorization, support and dispatch repairs closed those failures in the
+owner combination above. Historical verification records retain their own source and scope;
+they do not describe the current inventory.
 
 Class's existing text terminal inventory now retains color ownership alongside independent
 font facts. NodeLabel and namespace Title share those facts, including explicit rejection of
@@ -93,13 +93,13 @@ The source inventories, not this summary, authorize rendering and retirement:
 | KTD17 scalar cutover | v85; 474 routes / 718 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v9; 80 routes / 160 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
-KTD17 v85 additionally replaces Class Text's four static unqualified/Default solid/transparent routes.
-The existing Title channel belongs to namespace labels. Ordinary, extracted-root, and ELK paths
-share the direct writer; source `titleColor` ownership and generic Text author order remain intact.
-Mathematical labels can complete emission without proving inherited paint: BestEffort retains
-Incomplete evidence and RequirePortable rejects it. Class no longer retains generic Text legacy routes; only Block remains in the executable bridge inventory.
-See the [Class namespace Title verification record](../knowledge/engineering/verification/2026-09-13-class-namespace-title-cutover.md)
-for the executed scope and source identity.
+KTD17 v85 adds Class Text's four static unqualified/Default solid/transparent routes.
+The preceding v84 Title routes continue to belong to namespace labels. Source ownership,
+shared Text/role author order, and residuals for unsupported requests remain explicit.
+Removing Class from bridge dispatch does not make its ordinal, gradient, effect or other
+unsupported mechanisms portable. See the convergence record above for current verification
+and the [namespace Title record](../knowledge/engineering/verification/2026-09-13-class-namespace-title-cutover.md)
+for that earlier tranche.
 
 KTD17 v83 replaces Class's eight scalar Cluster routes after the Edge cutover: unqualified/Default
 fill and stroke, each solid/transparent. Ordinary, extracted, and ELK namespace rectangles receive

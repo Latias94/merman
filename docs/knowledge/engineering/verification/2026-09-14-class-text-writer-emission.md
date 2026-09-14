@@ -57,8 +57,7 @@ This source was verified in the main worktree, not a new clean checkout. The pri
 `9be480c86` clean result does not cover this change. The completed Class migration must
 pass its broader owner suite and clean-checkout replay before retirement.
 
-Partially shadowed mixed rules are now accounted by surviving properties. Class Text support,
-bridge dispatch and KTD17 authorization are reconciled on the current source: the owner suite
-reached 3167/3170 before the final ledger assertions, and the final route/native witness tests
-pass. A clean-checkout replay of this newer source, full SVG structure gate, and C7a
-artifact/rollout gates remain open.
+The subsequent [Class Text convergence record](2026-09-14-class-text-convergence.md) records
+surviving-facet accounting, cutover authorization, support and dispatch reconciliation, and
+a clean-checkout owner replay. Those results belong to its named source, not `ab3534038`.
+C7a artifact qualification and public rollout remain separate gates.
