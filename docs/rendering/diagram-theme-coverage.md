@@ -13,6 +13,10 @@ parse-default eligibility are retained. Parsing alone no longer compiles family 
 typed consumers prepare the selected program on demand. Support revision 90 corrects Block
 generic Text fill discovery to partial typed support, matching its existing writer. Text stroke
 remains Unsupported; mixed fill/stroke requests retain a residual and fail strict rendering.
+Source `1c37f8096` passed 4899 Release owner tests in both the main worktree and an independent
+clean checkout (two manual benchmarks skipped), plus the main-worktree full SVG structure gate.
+See the [provider retirement verification](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md)
+for the scope, corrected ledger/discovery drift, and remaining C7a delivery work.
 
 Class Text is now a partial typed surface and no longer enters the family bridge dispatch.
 Source `bb937ecb1` recorded 3097 scoped Release owner tests (two existing skips),
