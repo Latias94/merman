@@ -601,7 +601,6 @@ fn compile_node_family(
     builder: &mut OverlayBuilder,
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
-    let family = reader.family;
     let mut contributions = FamilyContributions::new();
 
     contributions.add_theme_variables(
@@ -618,42 +617,36 @@ fn compile_node_family(
             ("nodeBorder", reader.stroke(ThemeTarget::Node)),
         ],
     );
-    if family != DiagramFamilyId::CLASS {
-        let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
-            [
-                ("primaryTextColor", node_label_fill.clone()),
-                ("nodeTextColor", node_label_fill.clone()),
-                ("textColor", node_label_fill),
-            ],
-        );
-    }
-    if family != DiagramFamilyId::CLASS {
-        let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            [("lineColor", edge_paint)],
-        );
-        let marker_paint = reader.marker_paint_contribution();
-        contributions.add_theme_variables(
-            marker_paint.contribution_id,
-            [("arrowheadColor", marker_paint.value)],
-        );
-    }
-    if family != DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
-            [
-                ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
-                ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
-            ],
-        );
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
-            [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
-        );
-    }
+    let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
+        [
+            ("primaryTextColor", node_label_fill.clone()),
+            ("nodeTextColor", node_label_fill.clone()),
+            ("textColor", node_label_fill),
+        ],
+    );
+    let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        [("lineColor", edge_paint)],
+    );
+    let marker_paint = reader.marker_paint_contribution();
+    contributions.add_theme_variables(
+        marker_paint.contribution_id,
+        [("arrowheadColor", marker_paint.value)],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
+        [
+            ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
+            ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
+        ],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
+        [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
+    );
 
     contributions.finish_into(builder)
 }
