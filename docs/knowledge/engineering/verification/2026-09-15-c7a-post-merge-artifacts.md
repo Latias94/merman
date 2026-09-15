@@ -4,13 +4,13 @@ title: Post-merge C7a artifact and consumer validation
 timestamp: 2026-09-15
 related_plan: docs/plans/2026-09-15-theme-c7a-c7b-replan.md
 git_branch: refactor/presentation-theme-model
-git_commit: 835d1a8c4d0651364d710f9c01a992e0a214410a
+git_commit: 747f359b274ae410639f4517953cfb1adc7e26c8
 tags: theme,c7a,artifacts,bindings,verification
 ---
 
 # Scope
 
-The candidate checkout at `/tmp/merman-c7a-fde874d51` now points to `835d1a8c4`.
+The candidate checkout at `/tmp/merman-c7a-fde874d51` now points to `747f359b2`.
 Its directory name identifies the initial checkout, not its current revision. This is an
 unpublished development build using the workspace's existing `0.8.0-alpha.6` version;
 it is not the published alpha.6 artifact and does not declare C7a contract freeze.
@@ -135,10 +135,81 @@ At `c2ad43c8d`, the qualification, CLI archive, release bundle and preset catalo
 contract suites passed all 87 tests. These cover rejected stale records and wrong artifact
 bindings; their fixture observations do not replace native archive execution.
 
+# First-release follow-up regression
+
+The version audit is also linked from the August 9 addendum's current-contract section;
+its older KTD transport decisions remain historical. No package version or historical
+receipt identity changed in this follow-up.
+
+The first complete workspace run at `835d1a8c4` stopped on an obsolete Block assertion
+that required Legacy Cluster CSS. Block's documented property-local Node priority now
+writes the composite shell directly. Commit `9c02c5d5c` checks that real terminal paint;
+the six diagram-theme coverage tests passed. The next full run found one Rustdoc fixture
+that assumed a Mermaid `style` directive preserved an escaped resource URL. Style
+admission now rejects that resource before embedding. Commit `747f359b2` verifies its
+absence in both permissive and strict SVG while retaining strict rejection of HTML
+resources. All six Rustdoc regression consumers passed. The existing direct-SVG escaped
+resource rejection tests remain unchanged.
+
+At clean source `747f359b2`, the complete default workspace nextest run passed **11102/11102**
+tests, with **12 skipped**, in 224.839 seconds. This includes the rendering and SVG pipeline
+unit/integration suites but does not enable workspace-only acceptance or every feature.
+The owner command was `cargo nextest run --locked --cargo-quiet --test-threads 2 --no-fail-fast`,
+with two Cargo build jobs and two Rayon threads. Log:
+`/tmp/merman-c7a-747f359b2-workspace.log`. Rust formatting and diff checks passed.
+
+The same clean source passed **13/13 optimized acceptance integration tests**, with no
+skips. `scripts/run_theme_acceptance.py` enabled the internal cfg for the six explicit
+targets: `legacy_projection_retirement`, `block_title_legacy_projection`,
+`class_edge_label_background_legacy_projection`, `flowchart_marker_legacy_projection`,
+`route_cutover_runtime` and `preset_qualification`. The recipe used `--release --locked
+-p merman-theme-acceptance --no-default-features --features png,layout-cytoscape` with
+nextest and two test threads. Log: `/tmp/merman-c7a-747f359b2-retirement.log`. These checks
+revalidate the retired production routes and scoped qualification; they do not promote
+additional presets or family breadth.
+
+The Python wheel builder also ignored an external `CARGO_TARGET_DIR` when locating its
+native library and metadata rlib. The mismatch was reproduced directly. Commit
+`c7f661394` reads Cargo's reported target directory instead of guessing it. The artifact
+recipe and wheel-license suites passed 33 tests; Python compilation passed.
+
+At the same clean `747f359b2` source, `scripts/build-python-uniffi-wheel.py --run-smoke`
+built the `python-uniffi-native` ARM64 macOS profile, generated bindings from its production
+rlib, checked the support projections and target license report, and installed the wheel in
+an independent venv. The Python 3.14 consumer passed the shared definitions, three-family
+rendering, isolation, rule override, cold complete spec, preset export/catalog, all 22 support
+vectors and all three budgeted authoring operations through one-shot and reusable consumers.
+The external Cargo target was used for both the native library and generator input; the
+candidate checkout remained clean. This is an installed macOS ARM64 wheel witness, not
+Linux/Windows wheel or all supported Python-version coverage.
+
+Artifact: `/tmp/merman-c7a-747f359b2-python-wheels/merman-0.8.0a6-py3-none-macosx_11_0_arm64.whl`,
+9228294 bytes, SHA-256 `b41eee101b9ff17294210fdb47c978323d084c94219d812b5daeb8ab589dfab0`.
+Log: `/tmp/merman-c7a-747f359b2-python-wheel.log`.
+
+# Installed Node-WASM follow-up
+
+Clean source `747f359b2` also built the independent Node-WASM candidate with the pinned
+Node 24.21.0/npm 12.0.2 tools. The owner candidate builder, WASM package assembly and
+packed-content verifier passed. The resulting tarball was installed into
+`/tmp/merman-c7a-747f359b2-node-wasm-consumer`, and the installed-package smoke resolved
+`@mermanjs/node-wasm` from that directory.
+
+The consumer passed two shared definition vectors, two catalog checks, three family-isolation
+checks, one rule override, one cold complete spec, three preset exports, 44 support queries,
+six authoring diagnostics and two resource-limit checks. It executed 23 JSON operations and
+23 SVG renders. This covers asynchronous and synchronous theme consumers in the Node-WASM
+profile; it does not promote native raster or browser-host qualification.
+
+Artifact: `/tmp/merman-c7a-747f359b2-node-wasm-tarballs/mermanjs-node-wasm-0.8.0-alpha.6.tgz`,
+7293436 bytes, SHA-256 `0de3a43ab7532c6ad5aa71919a1fcd720de3f8a59402d8fbd9f83d479aad9a3b`.
+The build receipt records source `747f359b274ae410639f4517953cfb1adc7e26c8` and the checkout
+remained clean. Logs use `/tmp/merman-c7a-747f359b2-node-wasm-{build,assemble,verify,pack,install,smoke}.log`.
+
 # Remaining evidence
 
-The remaining platform owner matrix is not yet claimed by this record. Installed
-Node-WASM, the final Python wheel, full workspace regression, optimized retirement
-revalidation and the complete browser/host execution matrix remain open. Linux/Windows
-execution and C7a public rollout/contract closure still need their owner evidence. Preserve the completed Block retirement and its independent
-historical authority; no new bridge implementation is part of this verification work.
+The complete browser/host execution matrix is not yet claimed by this record. Linux/Windows
+execution and C7a public rollout/contract closure still need their owner evidence. The
+published acceptance boundary and final release-profile matrix must retain their explicit
+owner checks. Preserve the completed Block retirement and its independent historical
+authority; no new bridge implementation is part of this verification work.

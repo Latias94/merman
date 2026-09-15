@@ -189,3 +189,12 @@ Node-WASM and Python wheel consumers and the remaining platform/browser owners. 
 artifact's actual source identity in the record; earlier macOS observations do not substitute
 for Linux/Windows owner execution. Close the named candidate, public rollout and compatibility
 freeze only after those remaining gates pass.
+
+At clean `747f359b2`, the complete default workspace regression passed 11102/11102 tests
+(12 skips), and the six explicit Release retirement/qualification integration targets
+passed 13/13 with no skips. The Block coverage and Rustdoc resource fixture corrections
+are recorded in the artifact verification document. This closes that post-merge local
+regression tranche. The same source also built and installed the macOS ARM64
+`python-uniffi-native` wheel; its authoring/catalog/resource consumer passed. The independent
+Node-WASM tarball was also built, packed, installed and exercised through both consumer modes.
+The complete browser/host matrix and public-rollout owners still govern C7a closure.
