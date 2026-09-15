@@ -254,3 +254,12 @@ so no main merge is pending. `release-version.py check --version 0.8.0-alpha.7` 
 the workspace, Cargo locks, Node/Web/Playground projections, Python, Android and Flutter
 surfaces. Preparation-mode changelog validation passed. The worktree contains only the two
 pre-existing untracked knowledge directories; no generated or user-owned files were staged.
+
+# Cargo-dist artifact-plan audit at `2eb8e15a5`
+
+The generated cargo-dist plan for `v0.8.0-alpha.7` was checked with
+`release_artifact_bundle.py verify-plan` for the local `aarch64-apple-darwin` lane and the
+configured native runner `macos-15`. The plan contains both CLI and LSP archive families and
+routes this target to a native, non-container job. The corresponding local archives already
+passed structural and executable replay checks. Other matrix rows remain hosted evidence and
+were not inferred from this local run.
