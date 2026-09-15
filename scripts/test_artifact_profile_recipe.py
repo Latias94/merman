@@ -431,13 +431,31 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             ):
                 artifact_profile_recipe.rustc_host_target()
 
+    def test_python_wheel_uses_cargo_reported_target_directory(self) -> None:
+        with mock.patch.object(
+            wheel_builder.subprocess,
+            "run",
+            return_value=SimpleNamespace(
+                stdout=json.dumps({"target_directory": "/external/cargo-target"})
+            ),
+        ) as run:
+            self.assertEqual(
+                wheel_builder.cargo_target_directory(), Path("/external/cargo-target")
+            )
+        self.assertEqual(run.call_args.kwargs["cwd"], wheel_builder.REPO_ROOT)
+        self.assertTrue(run.call_args.kwargs["check"])
+        self.assertIn("--locked", run.call_args.args[0])
+
     def test_python_production_and_generator_commands_have_separate_features(self) -> None:
         recipe = load_artifact_profile("python-uniffi-native")
         wheel_builder.validate_python_native_recipe(recipe)
         target = "aarch64-apple-darwin"
         production = cargo_build_args(recipe, target=target)
-        metadata_library = wheel_builder.production_metadata_library_path(recipe, target)
-        cdylib = wheel_builder.production_cdylib_path(recipe, target)
+        target_directory = Path("/external/cargo-target")
+        metadata_library = wheel_builder.production_metadata_library_path(
+            recipe, target, target_directory
+        )
+        cdylib = wheel_builder.production_cdylib_path(recipe, target, target_directory)
         generator = wheel_builder.python_generator_args(
             recipe,
             metadata_library,
@@ -451,16 +469,14 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(production[production.index("--target") + 1], target)
         self.assertEqual(
             cdylib,
-            wheel_builder.REPO_ROOT
-            / "target"
+            target_directory
             / target
             / recipe.cargo_profile
             / "libmerman_uniffi.dylib",
         )
         self.assertEqual(
             metadata_library,
-            wheel_builder.REPO_ROOT
-            / "target"
+            target_directory
             / target
             / recipe.cargo_profile
             / "libmerman_uniffi.rlib",
@@ -586,6 +602,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     return_value=recipe,
                 ),
                 mock.patch.object(wheel_builder, "validate_python_native_recipe"),
+                mock.patch.object(
+                    wheel_builder,
+                    "cargo_target_directory",
+                    return_value=root / "external-target",
+                ),
                 mock.patch.object(
                     wheel_builder,
                     "select_python_wheel_target",
