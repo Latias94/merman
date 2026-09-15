@@ -29,6 +29,8 @@ Public qualification cells and C7a contract status are unchanged.
 The [Android consumer verification](../knowledge/engineering/verification/2026-09-15-android-theme-consumer.md)
 now compiles instrumentation smoke with one-shot and reusable theme authoring diagnostics;
 device execution remains owned by the CI emulator job.
+The [platform binding rollout record](../knowledge/engineering/verification/2026-09-15-platform-binding-theme-rollout.md)
+links the current host verifier and clean APK build to source `9cb958b8f`.
 
 At `83c640598`, a clean macOS ARM64 checkout built and verified the canonical CLI/LSP
 archives. The CLI passed all 18 scoped preset observations and archive-bound replay, plus
