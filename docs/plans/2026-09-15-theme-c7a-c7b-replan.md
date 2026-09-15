@@ -184,11 +184,9 @@ that Cargo output lives inside the checkout. The shared-target `xtask` was expli
 for the candidate before accepting independent-checkout evidence. No production theme model
 or qualification framework was added.
 
-Next run the full workspace regression and optimized retirement owners, then the installed
-Node-WASM and Python wheel consumers and the remaining platform/browser owners. Keep each
-artifact's actual source identity in the record; earlier macOS observations do not substitute
-for Linux/Windows owner execution. Close the named candidate, public rollout and compatibility
-freeze only after those remaining gates pass.
+The follow-up runs below complete the workspace, retirement and installed-consumer work
+that remained after this initial artifact tranche. Keep each artifact's actual source identity;
+earlier macOS observations do not substitute for Linux/Windows owner execution.
 
 At clean `747f359b2`, the complete default workspace regression passed 11102/11102 tests
 (12 skips), and the six explicit Release retirement/qualification integration targets
@@ -197,4 +195,10 @@ are recorded in the artifact verification document. This closes that post-merge 
 regression tranche. The same source also built and installed the macOS ARM64
 `python-uniffi-native` wheel; its authoring/catalog/resource consumer passed. The independent
 Node-WASM tarball was also built, packed, installed and exercised through both consumer modes.
-The complete browser/host matrix and public-rollout owners still govern C7a closure.
+At clean `b7a526353`, the [browser/platform owner record](../knowledge/engineering/verification/2026-09-15-c7a-browser-platform-verification.md)
+adds 110 Chromium desktop, 49 Firefox/WebKit and 12 Chromium mobile passes. Public Cargo
+acceptance isolation passed, and the same source passed local Android transport clippy plus
+rebuilt Flutter authoring/resource consumers. Next execute Android AAR/device and the remaining
+Apple/Linux/Windows artifact owners, reconcile the final archive/profile records, then close
+the named candidate, public rollout and compatibility freeze. Browser portability qualification
+and unqualified preset breadth remain outside these application-smoke claims.

@@ -9,9 +9,14 @@ sets and release evidence differ.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | post-merge verification pending | C ABI 3, Android JNI transport API 2, UniFFI API 7, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
-| `public-typst` | post-consolidation verification pending | Typst plugin ABI 3 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
-| `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
+| `public-native` | macOS consumers verified; remaining artifact/host matrix pending | C ABI 3, Android JNI transport API 2, UniFFI API 7, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-typst` | local package/import/compile verification passed; publication pending | Typst plugin ABI 3 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
+| `public-node-alpha` | macOS ARM64 and Node-WASM installed smokes passed; remaining native targets pending | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
+
+The [post-merge artifact record](../knowledge/engineering/verification/2026-09-15-c7a-post-merge-artifacts.md)
+and [browser/platform record](../knowledge/engineering/verification/2026-09-15-c7a-browser-platform-verification.md)
+name each tested source and actual artifact. The rows above do not claim a full current-source
+platform rebuild or C7a contract freeze.
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 2. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
