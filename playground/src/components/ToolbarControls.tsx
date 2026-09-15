@@ -250,7 +250,11 @@ export function ToolbarControls() {
         onValueChange={(value) => setSvgPipeline(normalizeSvgPipeline(value))}
       >
         {MERMAN_SVG_PIPELINES.map((pipeline) => (
-          <DropdownMenuRadioItem key={pipeline} value={pipeline}>
+          <DropdownMenuRadioItem
+            key={pipeline}
+            value={pipeline}
+            aria-description={t(`svgPipelineDescriptions.${pipeline}`)}
+          >
             {t(`svgPipelines.${pipeline}`)}
           </DropdownMenuRadioItem>
         ))}
