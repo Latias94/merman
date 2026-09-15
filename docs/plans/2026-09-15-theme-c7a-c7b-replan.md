@@ -201,6 +201,10 @@ acceptance isolation passed, and the same source passed local Android transport 
 rebuilt Flutter authoring/resource consumers. The [Android artifact/device record](../knowledge/engineering/verification/2026-09-15-c7a-android-artifact-verification.md)
 adds both AAR architectures and Maven staging at `5e76f9835`, 46 JVM passes, and nine API 36
 ARM64 device passes at `6517f6b1f`. This does not replace the CI API 29 x86_64 lane.
-Next execute the remaining Apple/Linux/Windows artifact owners, reconcile the final archive/profile records, then close
+The [Apple artifact record](../knowledge/engineering/verification/2026-09-15-c7a-apple-artifact-verification.md)
+adds the complete five-target XCFramework, unchanged generated bindings, Swift package and macOS
+ARM64 consumer passes, plus ZIP/legal/checksum validation. The older Swift compiler floor remains
+an independent CI obligation. Next finish Linux/Windows and the remaining declared platform lanes,
+reconcile the final archive/profile records, then close
 the named candidate, public rollout and compatibility freeze. Browser portability qualification
 and unqualified preset breadth remain outside these application-smoke claims.
