@@ -237,3 +237,12 @@ a temporary directory with archive names preserved.
 
 This is a local macOS ARM64 archive witness. It does not establish Linux/Windows execution or
 replace the unresolved alpha.6 facade compatibility decision.
+
+# Release preparation contract rerun at `aa397206a`
+
+`python3 scripts/verify_release_changelog.py --version 0.8.0-alpha.7` passed in preparation
+mode. The immutable `--require-date` form correctly remains blocked while the candidate
+changelogs are `Unreleased`, as required by the release guide; no release date was invented.
+The release surface, workflow security and prerelease compatibility contract tests passed
+48/48. The compatibility checker still reports the known alpha.6 previous-facade failure and
+therefore C7a remains open.
