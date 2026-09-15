@@ -118,3 +118,16 @@ retirement, Block title retirement, Class edge-label-background retirement, Flow
 retirement and route-cutover runtime. Nextest ran 15 tests across 7 binaries; all 15 passed with
 zero skips. This revalidates the completed Block/provider retirement and current manifest digest;
 it does not close the alpha.6 compatibility decision or the missing hosted artifact matrix.
+
+# Cross-transport current-source rerun at `de9c3f5f1`
+
+The current source reran the cross-transport contract lanes without changing fixtures:
+
+- Node API and Web catalog tests: 48/48 passed.
+- Python qualification, catalog and CLI archive contract tests: 67/67 passed.
+- Rust bindings-core authoring/error/resource vectors plus Typst, Native C ABI and UniFFI shared support golden: 15/15 passed, with 393 unrelated tests filtered.
+- Flutter ABI 3 contract runner (`dart run tool/abi3_contract_test.dart`): passed with `ABI 3 Dart contract tests passed`.
+
+These are current-source contract and golden checks. They do not establish installed package
+provenance, Windows execution, Apple Swift 5.9 execution, or the unresolved alpha.6 facade
+compatibility contract.
