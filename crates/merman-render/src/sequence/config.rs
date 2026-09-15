@@ -161,6 +161,7 @@ impl<'a> SequenceConfigView<'a> {
         crate::config::config_f64(self.effective_config, &[key])
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve_role_typography(
         &self,
         role: SequenceTypographyConfigRole,

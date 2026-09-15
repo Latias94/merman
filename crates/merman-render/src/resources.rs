@@ -1183,6 +1183,7 @@ impl OperationWorkMeter {
             .map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
     }
 
+    #[cfg(test)]
     pub(crate) fn preflight_parsed_render(
         &self,
         parsed: &ParsedDiagramRender,

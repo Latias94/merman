@@ -258,6 +258,7 @@ impl FamilyThemeProgram {
         Ok(resolved)
     }
 
+    #[cfg(test)]
     pub(super) fn resolve_text_style(
         &self,
         target: ThemeTarget,

@@ -21,10 +21,11 @@ This remains a release blocker; version selection does not waive it. Final artif
 
 ## Current status and execution baseline
 
-The implementation baseline for this revision is `72980c2fe`, which prepares the workspace
-and coupled packages for `v0.8.0-alpha.7`. Version and changelog checks pass. Theme contracts
-remain v1. The recorded 606 script passes validate local preparation, not installed artifacts
-on every release host.
+The implementation baseline for this revision is `a6b5d75e2`, which includes the alpha.7
+version projection, the SVG prerelease compatibility lane, and the test-only helper boundary
+cleanup. Version and changelog checks pass, the full SVG structure comparison passes, and the
+focused helper regression is 72/72. Theme contracts remain v1. The recorded 606 script passes
+validate local preparation, not installed artifacts on every release host.
 
 C5 and representative C6a are complete. All 33 families have typed consumption paths, and
 the production Legacy route inventory is empty, including Block. Post-merge retirement,
@@ -38,6 +39,22 @@ second migration. Remaining family mechanism breadth belongs to C7b. See the
 the September 15 preparation. The historical records below describe the merge audit, fixes,
 platform builds and tests at their actual source revisions. They are not evidence that every
 platform was rebuilt at `72980c2fe`.
+
+The current branch does not need another main merge: `origin/main` remains an ancestor of the
+candidate. Any later main changes must be reviewed as a new integration input and must not be
+silently folded into the alpha.7 evidence already recorded here.
+
+### Version policy for the remaining work
+
+Use the latest published artifact for each public surface as the comparison baseline. The next
+workspace release is `v0.8.0-alpha.7`; it is the only release-number increment in this candidate.
+All newly introduced, unpublished theme contracts (definition, expansion, complete spec,
+materialized wire, authoring diagnostics, support/catalog, qualification and execution evidence)
+remain at version `1`. Do not increase a theme number for internal iterations, and do not reset a
+published or independently owned ABI merely because the theme work is unpublished. Migration
+batch IDs, acceptance ledgers, hash domains and historical evidence filenames retain their
+identities and are not product version counters. The complete per-owner audit is maintained in
+[`UNRELEASED_CONTRACT_VERSIONS.md`](../release/UNRELEASED_CONTRACT_VERSIONS.md).
 
 | Workstream | Current status | Remaining exit condition |
 | --- | --- | --- |
@@ -106,6 +123,7 @@ The next action is a maintainer decision between an isolated package version lin
 alpha.7 with explicit acceptance of the old-consumer resolution break. Keep the current product
 model and selected alpha.7 preparation while that decision is pending. Do not restore the retired
 presentation API, repeat the same failed build, or claim that compatibility assessment closes C7a.
+The decision cannot be replaced by a version bump or by weakening the checker.
 
 ## C7a: release-facing closure
 
@@ -149,6 +167,18 @@ presentation API, repeat the same failed build, or claim that compatibility asse
 2. Preserve historical probes and migration records in acceptance-only code; remove a helper only after confirming it has no remaining consumer or audit obligation.
 3. Keep historical Class cutover failures separate from completed Class retirement, as the current coverage snapshot does.
 4. Inventory remaining family mechanism breadth independently of the zero Legacy route count. Do not create new family bridges to improve route counts.
+
+## Latest bounded cleanup
+
+The renderer helper cleanup completed on `a6b5d75e2` scopes four helpers to test builds where
+production consumers do not exist. Focused nextest coverage passed 72/72, production
+`cargo check` passed, and the full SVG structure comparison passed with the existing documented
+browser-text-layout residuals. This is a maintenance boundary cleanup, not evidence that C7a
+compatibility or the final artifact matrix is closed.
+
+Do not remove acceptance metadata accessors, historical retirement authority, or catalog
+qualification helpers solely because a production feature build does not call them; those
+paths remain owned by acceptance and release verification.
 
 ## Deferred unless measured
 

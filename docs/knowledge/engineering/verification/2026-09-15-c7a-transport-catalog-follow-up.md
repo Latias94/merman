@@ -77,3 +77,35 @@ passed in 5.00 seconds without a `LEAK` marker. The first direct `cargo test` at
 as evidence because it omitted the workspace acceptance cfg and consequently ran zero tests.
 Logs: `/tmp/merman-c7a-c6-cargo-test-acceptance.log` and
 `/tmp/merman-c7a-c6-original-features-recheck.log`.
+
+
+# Test-only helper boundary follow-up
+
+On the working tree based on `a6b5d75e2`, a repository-wide Rust reference check identified
+four private helpers whose callers exist only in unit-test configurations:
+`FamilyThemeProgram::resolve_text_style`, `SequenceConfigView::resolve_role_typography`,
+`CssFontSizeContext::with_medium_px`, and `OperationWorkMeter::preflight_parsed_render`.
+Each helper now uses `#[cfg(test)]`, matching its consumers. Their implementations and test
+callers remain intact; production continues to use the existing metered and typed-property
+paths. This is a build-boundary cleanup, not a measured runtime or artifact-size improvement.
+Qualification metadata and historical acceptance helpers were not deleted merely because
+an ordinary production build reports them as unused.
+
+Validation on this working tree:
+
+- `cargo fmt --all -- --check` and `git diff --check` passed.
+- `CARGO_BUILD_JOBS=1 cargo nextest run --locked -p merman-render --lib --no-default-features -E 'test(diagram_theme::resolved::tests::) | test(sequence::config::tests::) | test(mermaid_style::tests::) | test(resources::tests::)' --test-threads 2` passed 72/72 selected tests; 2,483 tests were filtered out.
+- `CARGO_BUILD_JOBS=1 cargo check --locked -p merman-render --no-default-features` passed and no longer reports these four unused methods. Other warnings remain; this is not a complete dead-code audit.
+
+Logs: `/tmp/merman-c7a-test-helper-scope.log` and
+`/tmp/merman-c7a-test-helper-production-check.log`.
+
+The remaining Apple compiler-floor gate has a separate owner: `.github/workflows/ci.yml`
+job `apple-swift-5-9-smoke` selects Xcode 15.2 and verifies Swift 5.9 before building and
+checking the generated source. The `apple-xcframework` job in `release-preflight.yml` uses
+`macos-15` without that compiler-floor selection. A passing preflight Apple build alone
+cannot close the Swift 5.9 obligation. This is an inspection of workflow responsibilities,
+not evidence of a new hosted run.
+
+The release-contract decision recorded in the release-line assessment remains pending.
+No compatibility exception, package-line change or C7a freeze was applied by this cleanup.

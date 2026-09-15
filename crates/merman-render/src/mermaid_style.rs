@@ -628,6 +628,7 @@ impl CssFontSizeContext {
         Self::new(font_size_px, font_size_px)
     }
 
+    #[cfg(test)]
     pub(crate) fn with_medium_px(mut self, medium_px: f64) -> Self {
         self.medium_px = medium_px.max(1.0);
         self
