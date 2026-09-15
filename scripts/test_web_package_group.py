@@ -398,7 +398,10 @@ class WebPackageArtifactTests(unittest.TestCase):
             output_dir = Path(cwd) / command[command.index("--pack-destination") + 1]
             shutil.copyfile(self.artifacts / filename, output_dir / filename)
             return subprocess.CompletedProcess(
-                command, 0, json.dumps([{"filename": filename}]), ""
+                command,
+                0,
+                json.dumps({package["name"]: {"name": package["name"], "filename": filename}}),
+                "",
             )
 
         with chdir(self.root), mock.patch.object(
