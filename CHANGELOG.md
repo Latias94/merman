@@ -20,7 +20,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added artifact-aware theme catalog and support queries across Rust, CLI and first-party bindings, plus the Brutalist, Spotless and Cyberpunk alpha presets. All ten presets remain alpha; availability does not imply portability, and qualification is limited to the exact artifact, family/output cells and host conditions proved. See [preset qualification](docs/rendering/preset-qualification.md).
 - Added theme resource budgets and `max_prepared_text_retained_bytes` to bound retained prepared-text memory; generated SDK resource helpers expose the same limits.
 
-- Added `merman-rustdoc` options `background` for the SVG canvas color, `id_prefix` for generated items with overlapping source locations, and `inherit` to control parent tree rendering defaults. See the [macro guide](crates/merman-rustdoc/README.md#configure-rendering) for configuration and scope rules.
+- Added `merman-rustdoc` options `background` for the SVG canvas color, `id_prefix` for generated items with overlapping source locations, `inherit` to control parent tree rendering defaults, and `crate_path` for facade re-exports without a direct macro dependency. See the [macro guide](crates/merman-rustdoc/README.md#configure-rendering) for configuration and scope rules.
 - Added `merman-doc`, a shared Markdown diagram discovery and HTML wrapping library used by the CLI rustdoc generator and attribute macro; it does not depend on a renderer or perform file access.
 - Documented stable Cargo integration for `.mmd` changes through a consumer `build.rs` watching the diagram directory, with no extra build dependency. Directory tracking covers file edits, additions, deletions, and restoration of missing includes; macro file reads alone do not register those dependencies.
 
@@ -37,6 +37,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.
 
 ### Fixed
+
+- Removed per-container Markdown prefix copies and repeated negative include-line scans, avoiding quadratic memory and suffix-scanning work on deeply nested or heavily formatted prose without diagrams.
+- Preserved conditional `cfg_attr` documentation in its original order during delayed rustdoc macro expansion, including nested conditions.
 
 - Preserved visible line segments on both sides of horizontal ASCII/Unicode edge labels, including bidirectional arrows, and corrected cell centering for even-width labels (#132).
 
