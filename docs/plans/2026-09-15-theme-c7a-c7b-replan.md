@@ -286,3 +286,10 @@ logs at `/tmp/merman-c7a-57ec788c0-linux-archives.log`. Until that command compl
 archive records remain the only completed Linux artifact evidence. The workspace version is
 still the development `0.8.0-alpha.6` and changelogs remain Unreleased; selecting the actual next
 release version/date and passing its immutable preflight are still required before C7a freeze.
+
+The same-source Linux archive refresh at `57ec788c0` completed after this follow-up: CLI/LSP
+runtime checks, 18 qualification comparisons, and complete qualification/catalog replay all passed.
+The catalog companion binds the exact archive and executable bytes and retains only the three
+native alpha preset entries with six HostDependent cells each. It does not promote shared SDK
+catalog cells. The formal preflight remains intentionally pending while the changelog is
+`Unreleased` and no next workspace version/date has been selected.

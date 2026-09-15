@@ -133,3 +133,27 @@ Linux installed Node profiles, native Linux ARM64 and Windows owner execution,
 Apple compiler-floor verification, and the final clean same-source candidate/rollout/freeze
 remain separate gates. The actual Linux companion is now available for final bundle
 verification; earlier macOS records keep their own source and host identities.
+
+## Same-source refresh at `57ec788c0`
+
+After the workspace and release-contract follow-ups, the Linux builder was refreshed to clean
+source `57ec788c0a4b49227cf8226d4e0df43686ac6a1e`. The same cargo-dist plan, archive execution,
+qualification run, and saved-record replay completed successfully. This refresh uses the existing
+qualification and catalog schemas; it does not promote any catalog entry or change admission.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `merman-cli-x86_64-unknown-linux-gnu.tar.xz` | 15,820,240 | `d9aedbd54ae67047368c5c39dcd5341077c1e558677dc6b070b0b4eacbf6fcb6` |
+| `merman-lsp-x86_64-unknown-linux-gnu.tar.xz` | 4,605,092 | `5fa242194c957a5eb983f969b5349b9f955e942dea74a8710666a9f014fcf90c` |
+| `preset-qualification.json` | 44,180 | `e893943f0205fad54a42d74a1e32238fe3abdbd4856f2152278e14325d4d486b` |
+| `preset-qualification.catalog.json` | 14,655 | `3005ef30dc446774d1f7bc2729d0160839a16bfc6373a057898620808a032e8e` |
+
+The catalog companion binds the CLI archive SHA, executable SHA, source commit, target,
+`resvg-safe` pipeline, and host-dependent system-font profile. Brutalist, Spotless, and Cyberpunk
+retain six cells each (Flowchart/State/Sequence SVG and PNG); the seven retained compatibility
+presets retain zero cells. The archive remains an unpublished development candidate labelled
+`0.8.0-alpha.6`; it is not the immutable published alpha.6 release.
+
+The actual archive log is `/tmp/merman-c7a-57ec788c0-linux-archives.log`; host copies are under
+`/tmp/merman-c7a-57ec788c0-linux-artifacts/`. The clean builder checkout had no tracked or
+untracked changes after verification.
