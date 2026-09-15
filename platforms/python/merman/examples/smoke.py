@@ -24,7 +24,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 def main() -> None:
     api = merman.Merman()
-    require(api.binding_api_version_v9() == 9, "unexpected UniFFI binding API version")
+    require(api.binding_api_version_v7() == 7, "unexpected UniFFI binding API version")
 
     tiny_source_options = (
         merman.ResourceOptionsBuilder()

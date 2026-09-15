@@ -47,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV9() == 9 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -165,8 +165,8 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 8 or older generated source and native libraries together to API 9. Replace the
-  version probe with `bindingApiVersionV9()`. API 9 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
+- Move API 6 or older generated source and native libraries together to API 7. Replace the
+  version probe with `bindingApiVersionV7()`. API 7 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
   `compactAttempted` in the schema-3 ASCII output plan; `layoutProfile` identifies the selected
   Canonical or Compact geometry. API 6 introduced the capability admission arrays and encoding.
   The generated source and native library must move atomically. `MermanOperationRequestV4` remains the current

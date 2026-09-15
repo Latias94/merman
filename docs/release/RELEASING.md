@@ -14,6 +14,20 @@ prerelease component such as `0.8.0-alpha.5`, `0.8.0-beta.1`, or `0.8.0-rc.1` us
 channel. Do not describe the project or a `0.x` release as alpha solely because its major version
 is zero.
 
+## Contract version baseline
+
+Version a public API, ABI, or serialized format against its latest published contract, including
+prereleases. Keep a new, unpublished contract at version 1. Consolidate incompatible changes
+within one unreleased development cycle into a single next contract version; commits and merge
+repairs do not each allocate another version. A compatible change need not bump the contract.
+Package versions follow their own SemVer and channel rules.
+
+Before consolidation, check the owning registry, release tag, and separately distributed artifacts.
+Do not reuse a version that has already shipped. Regenerate and verify matching bindings together;
+use source identities and content digests to distinguish unpublished build artifacts.
+Migration batch IDs and historical evidence revisions identify past observations, not public
+compatibility versions. Preserve their identity and references rather than relabeling old evidence.
+
 ## Release Workflows
 
 | Workflow | Publishes | Channel |

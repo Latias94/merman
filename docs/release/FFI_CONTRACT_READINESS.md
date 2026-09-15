@@ -9,17 +9,17 @@ sets and release evidence differ.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | post-merge verification pending | C ABI 3, Android JNI transport API 2, UniFFI API 9, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-native` | post-merge verification pending | C ABI 3, Android JNI transport API 2, UniFFI API 7, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
 | `public-typst` | green | Typst plugin ABI 2 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
 | `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 2. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI is API 9 and includes
+partial-table consumers are no longer a supported SDK target. UniFFI is API 7 and includes
 operation-scoped cancellation/deadline controls with structured terminal details, ASCII capability
 admission arrays, schema-3 ASCII output-plan encoding and layout-selection metadata, and the
 shared theme-authoring diagnostic envelope in `details_json`.
-API 9 replaces the API 7/8 version-probe
+API 7 replaces the API 6 version-probe
 symbol so stale generated bindings fail before decoding revised records. Source SDK breaks do not
 retain compatibility aliases.
 

@@ -110,3 +110,18 @@ claim Android device execution or all published platform packages.
 Next, review post-merge lockfile churn and regenerate legal projections, then finish auditing
 both merge parents and rebuild the final package profiles. Linux archive execution, the full
 platform matrix, and C7a contract freeze remain open.
+
+## Unreleased version consolidation
+
+Registry and GitHub release checks on 2026-09-15 identify `v0.8.0-alpha.6` (published
+2026-09-02) as the latest workspace prerelease; its UniFFI API is 6. The API 9 integration
+record above describes an unpublished development build. The next public UniFFI contract
+is consolidated to API 7, retaining both merged record changes and rejecting the published
+API 6 probe. Native Apple-profile rebuild and regenerated Swift/Python consumers passed:
+60 Rust binding tests, 29 Python tests, and real Swift/Python render and authoring smokes.
+This remains local macOS ARM64 evidence, not the complete release artifact matrix.
+
+Audit the remaining version axes against that published baseline before the C7a freeze.
+New theme formats start at 1; remove superseded unpublished support-query shapes rather
+than carrying a compatibility branch. Keep published formats and historical migration
+batch identities distinct from this first-release numbering.

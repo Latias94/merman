@@ -28,12 +28,12 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 9;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
 
-// UniFFI method checksums do not protect every nested record layout. API 9 replaces the API 7/8
-// probes to combine ASCII selection metadata with the expanded theme-authoring error envelope.
+// UniFFI method checksums do not protect every nested record layout. API 7 replaces the API 6
+// probe to combine ASCII selection metadata with the expanded theme-authoring error envelope.
 #[cfg(test)]
-const UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS: [u16; 2] = [21_723, 7_797];
+const UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS: [u16; 1] = [60_120];
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -726,7 +726,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v9(&self) -> u32 {
+    pub fn binding_api_version_v7(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -2724,16 +2724,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 9);
-        assert_eq!(engine.binding_api_version_v9(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
+        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v7_and_v8_bindings_are_rejected_before_record_decoding() {
+    fn api_v6_bindings_are_rejected_before_record_decoding() {
         for checksum in UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS {
             assert_ne!(
-                uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v9(),
+                uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
                 checksum
             );
         }
@@ -2743,13 +2743,13 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v9")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v9")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
         );
-        for version in [7, 8] {
+        for version in [6] {
             assert!(
                 !generated_header.contains(&format!(
                     "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v{version}"
