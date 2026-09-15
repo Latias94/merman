@@ -464,6 +464,10 @@ jobs:
           cache: npm
           cache-dependency-path: head/tools/mermaid-cli/package-lock.json
 
+      - name: Install pinned npm
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
       - name: Install Mermaid JS toolchain
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
         working-directory: head/tools/mermaid-cli

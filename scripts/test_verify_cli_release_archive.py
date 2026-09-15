@@ -1690,6 +1690,32 @@ class RuntimeContractTests(unittest.TestCase):
                 ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
                 ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("qualified_cells", [{}])),
                 (
+                    "ASCII output schema version",
+                    lambda value: value["ascii"].__setitem__("output_schema_version", 2),
+                ),
+                (
+                    "ASCII report",
+                    lambda value: value["ascii"]["report"].__setitem__(
+                        "success_schema_version", 2,
+                    ),
+                ),
+                (
+                    "ASCII flowchart",
+                    lambda value: next(
+                        family
+                        for family in value["ascii"]["families"]
+                        if family["family"] == "flowchart"
+                    ).__setitem__("layout_profiles", ["canonical", "compact"]),
+                ),
+                (
+                    "ASCII sequence",
+                    lambda value: next(
+                        family
+                        for family in value["ascii"]["families"]
+                        if family["family"] == "sequence"
+                    ).__setitem__("layout_profiles", ["canonical", "compact"]),
+                ),
+                (
                     "ASCII report",
                     lambda value: value["ascii"]["report"].__setitem__(
                         "encoding",

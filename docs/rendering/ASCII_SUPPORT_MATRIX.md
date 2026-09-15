@@ -12,7 +12,7 @@ omitted.
 | `semantic_coverage` | `full`, `partial`, or `null` | How much of the family's typed semantics the terminal output preserves. `null` means no output is available. |
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
 | `structured_text_fallback` | Boolean | Whether the typed family has an admitted complete structured projection that can be selected when its primary result exceeds a bounded viewport. This applies to both diagrammatic and already-structured families. |
-| `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. Flowchart and Sequence expose `canonical` and `compact`; every other supported family currently exposes `canonical` only. |
+| `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. Flowchart and Sequence expose `canonical`, `compact`, and `auto`; every other supported family currently exposes `canonical` only. |
 | `width_profiles` / `widthProfiles` | Array | Terminal display-width conventions admitted for this family: `unicode` and `cjk` for every supported output. |
 | `encodings` | Array | Primary result encodings admitted for this family: `plain`, `ansi16`, `ansi256`, `truecolor`, and `html` for every supported output. |
 | `fallback_encodings` / `fallbackEncodings` | Array | Encodings admitted with viewport `fallback`. This is currently `plain` only; styled fallback requests are rejected before rendering. |
@@ -32,19 +32,28 @@ and diagram-only filters use the separate diagrammatic projection.
 Binding migration: consumers must replace `summary_fallback` with `structured_text_fallback`, read
 `semantic_coverage` and `primary_projection` as the source fields, treat `support_level` only as a
 compatibility view, and preflight layout/width/encoding combinations from the four admission arrays
-instead of assuming that a renderer-wide option is valid for every family.
+instead of assuming that a renderer-wide option is valid for every family. Package availability is
+also independent: first check the compiled artifact's operations, then the family's admitted
+combinations. The [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes)
+show how hosts supply policy and consume results without terminal detection inside the renderer.
 
 ## Viewport and report contract
 
-`AsciiOutput` is the canonical schema-2 result for a render request. `AsciiOutput::metadata()` is
+`AsciiOutput` is the canonical schema-3 result for a render request. `AsciiOutput::metadata()` is
 used by operation metadata and platform bindings; `AsciiOutput::report()` is the CLI JSON projection
-with the same metadata plus `text`. Schema 2 adds an explicit `encoding` field. Both surfaces use the
+with the same metadata plus `text`. Schema 3 carries `encoding`, `requested_layout_profile`, and `compact_attempted`;
+`layout_profile` identifies the selected primary geometry. Both surfaces use the
 same field names, enum strings, nullable fallback fields, display-cell extents, and width/layout
 profiles. Logical height counts content rows; a final line terminator does not create an extra row.
 CLI report mode is Plain-only: host `auto` resolves to Plain and an explicit ANSI/HTML report request
-is rejected. Rust and binding result APIs can return styled text because their schema-2 metadata
+is rejected. Rust and binding result APIs can return styled text because their schema-3 metadata
 identifies it. Viewport Fallback is also Plain-only; styled fallback combinations are rejected by
-capability preflight.
+capability preflight, even when that particular input would fit.
+
+Auto requires an explicit width and is available only for Flowchart and Sequence. It tries Compact
+once after Canonical exceeds that width, chooses the narrower valid candidate, and keeps Canonical
+on ties. The host's overflow policy still governs a result that remains wide. Narrower output can
+be taller; Auto does not choose a graph direction or truncate long labels.
 
 A measured candidate owns its metrics once; fallback construction checks width and output ceilings
 incrementally, then commits one render-wide resource admission. Overflow remains a presentation
@@ -57,7 +66,7 @@ before flattening under bounded profiles.
 
 | Family set | Layout profiles | Width profiles | Primary encodings | Fallback encodings |
 | --- | --- | --- | --- | --- |
-| Flowchart, Sequence | `canonical`, `compact` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Flowchart, Sequence | `canonical`, `compact`, `auto` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | State, Class, ER, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none |
 
@@ -83,8 +92,10 @@ These families intentionally produce a terminal-safe semantic report or outline 
 diagram. The output is useful for logs, debugging, and narrow terminals, and can aid accessibility
 when the typed model retains the relevant metadata, but it is
 excluded from diagrammatic-family counts and from claims that Merman has an ASCII geometry
-implementation. It is selected only by the explicit viewport `Fallback` policy; resource limits and
-cancellation remain hard errors and never trigger this projection.
+implementation. These families emit structured text as their primary output. An additional bounded
+reflow is selected only by the explicit viewport `Fallback` policy; resource limits and cancellation
+remain hard errors and never trigger that fallback. A host may choose source display or truncation
+as its own product policy, but neither is the renderer's complete structured fallback contract.
 
 | Mermaid family | Semantic coverage | Primary projection | What the report preserves | Why it is not counted as an ASCII diagram |
 | --- | --- | --- | --- | --- |
@@ -150,7 +161,7 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
 | Issue #53 Flowchart | canonical | `74×57` | 3220 | 51 |
-| Issue #53 Flowchart | compact | `58×67` | 3006 | 43 |
+| Issue #53 Flowchart | compact | `56×67` | 2910 | 41 |
 | Sequence self-messages/notes | canonical | `82×58` | 3227 | 20 |
 | Sequence self-messages/notes | compact | `78×58` | 2982 | 21 |
 

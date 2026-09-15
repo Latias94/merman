@@ -4,7 +4,7 @@ use super::super::surface::GraphSurface;
 use crate::canvas::CanvasColor;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
 
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn mixed_stroke_junction_is_rejected_without_overwriting_the_existing_route() {
         let mut canvas = RawCanvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
-        let mut route_cells = RouteCells::new();
+        let mut route_cells = RouteCells::default();
         set_route_cell_with_paint(
             &mut canvas,
             &mut route_cells,

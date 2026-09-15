@@ -15,7 +15,7 @@ use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use merman_core::OperationPhase;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 pub(super) fn apply_subgraph_direction_overrides(
     context: &GroupPlacementContext<'_, '_>,
@@ -128,7 +128,7 @@ fn build_group_override_graph(
     let mut override_graph = AsciiGraph::new_for_diagram(graph.diagram_type(), direction);
     override_graph.root_policy = graph.root_policy;
 
-    let mut endpoint_to_member = HashMap::<GraphEndpointIndex, usize>::new();
+    let mut endpoint_to_member = HashMap::<GraphEndpointIndex, usize>::default();
     resources.charge_layout_work(members.len())?;
     let member_node_count = members.iter().try_fold(0usize, |total, member| {
         resources.checked_work_add(total, member.node_indices.len())
@@ -319,7 +319,7 @@ fn place_group_nodes(
     let ranked = super::super::super::grid::place_ranked_grid_nodes_without_group_adjustments(
         graph, direction, resources, execution,
     )?;
-    let mut placements = HashMap::new();
+    let mut placements = HashMap::default();
     placements.try_reserve(ranked.len()).map_err(|_| {
         crate::error::AsciiError::AllocationFailed {
             phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),

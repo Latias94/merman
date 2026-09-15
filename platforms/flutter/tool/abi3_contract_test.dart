@@ -354,7 +354,7 @@ void decodesTypedMetadataCatalogs() {
     'semantic_coverage': 'partial',
     'primary_projection': 'diagrammatic',
     'structured_text_fallback': false,
-    'layout_profiles': ['canonical', 'compact'],
+    'layout_profiles': ['canonical', 'compact', 'auto'],
     'width_profiles': ['unicode', 'cjk'],
     'encodings': ['plain', 'ansi16'],
     'fallback_encodings': ['plain'],
@@ -443,7 +443,7 @@ void decodesTypedMetadataCatalogs() {
         ascii.semanticCoverage == 'partial' &&
         ascii.primaryProjection == 'diagrammatic' &&
         !ascii.structuredTextFallback &&
-        ascii.layoutProfiles.last == 'compact' &&
+        ascii.layoutProfiles.last == 'auto' &&
         ascii.widthProfiles.last == 'cjk' &&
         ascii.encodings.last == 'ansi16' &&
         ascii.fallbackEncodings.single == 'plain' &&
@@ -1081,7 +1081,7 @@ void decodesTypedOperationMetadata() {
       'byte_length': 96,
       'output_plan': {
         'kind': 'ascii',
-        'schema_version': 2,
+        'schema_version': 3,
         'family': 'flowchart-v2',
         'projection': 'unicode',
         'encoding': 'utf-8',
@@ -1091,6 +1091,8 @@ void decodesTypedOperationMetadata() {
         'emitted_height': 8,
         'width_profile': 'unicode',
         'layout_profile': 'compact',
+        'requested_layout_profile': 'auto',
+        'compact_attempted': true,
         'requested_max_width': 40,
         'overflowed': true,
         'outcome': 'fallback',
@@ -1105,7 +1107,7 @@ void decodesTypedOperationMetadata() {
   final asciiPlan = ascii.outputPlan;
   _expect(
     asciiPlan is MermanAsciiOutputPlan &&
-        asciiPlan.schemaVersion == 2 &&
+        asciiPlan.schemaVersion == 3 &&
         asciiPlan.family == 'flowchart-v2' &&
         asciiPlan.projection == 'unicode' &&
         asciiPlan.encoding == 'utf-8' &&
@@ -1115,6 +1117,8 @@ void decodesTypedOperationMetadata() {
         asciiPlan.emittedHeight == 8 &&
         asciiPlan.widthProfile == 'unicode' &&
         asciiPlan.layoutProfile == 'compact' &&
+        asciiPlan.requestedLayoutProfile == 'auto' &&
+        asciiPlan.compactAttempted &&
         asciiPlan.requestedMaxWidth == 40 &&
         asciiPlan.overflowed &&
         asciiPlan.outcome == 'fallback' &&
@@ -1145,6 +1149,8 @@ void decodesTypedOperationMetadata() {
           'emitted_height': 1,
           'width_profile': 'unicode',
           'layout_profile': 'canonical',
+          'requested_layout_profile': 'canonical',
+          'compact_attempted': false,
           'requested_max_width': null,
           'overflowed': false,
           'outcome': 'primary',

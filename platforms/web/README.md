@@ -23,6 +23,12 @@ All public browser packages use one lockstep version. The npm `alpha` channel in
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
 
+The [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes)
+explain explicit output, theme, width, and error policy. Map each recipe to the operations in your
+initialized artifact; workspace support is not a promise that every Web package includes it.
+The host owns environment detection, scheduling, caches, and display actions. The Web SDK provides
+its documented DOM-admission helpers without owning the surrounding editor or terminal UI.
+
 ## Quick start
 
 ```sh
@@ -45,6 +51,34 @@ renderSvgToElement(target, `flowchart TD
 
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
+
+## Choose an SVG pipeline
+
+Browser previews should keep the default `parity` pipeline, which preserves Mermaid HTML labels
+and styles. `readable` is an advanced text overlay for consumers that ignore HTML labels; a browser
+can display both the HTML and fallback text, producing overlap. It is not a higher-quality preview
+mode. Choose `resvg-safe` when sending SVG to resvg/usvg; it converts HTML labels and performs
+additional compatibility cleanup. See the [SVG options guide](../../docs/bindings/OPTIONS_JSON.md#svg-options)
+for the consumer matrix. Pipeline selection does not replace the mounting policy below.
+
+## ASCII host policy
+
+Use an ASCII-capable package (`@mermanjs/web` or `@mermanjs/web-ascii`) and inspect
+`asciiCapabilities()` for the detected family. In builds containing Auto, only Flowchart and
+Sequence admit `auto` or `compact`; other supported families use `canonical`. Auto requires an
+explicit `ascii.max_width`. Viewport `fallback` requires `ascii.color_mode: "plain"`; a styled
+fallback request is invalid even when the input would fit. Bindings reject environment-dependent
+color `auto`, so the host must resolve its color policy before the call.
+
+`renderAscii()` returns a text string, not an `AsciiOutput` report object. Do not read metadata
+fields from that string or infer overflow/fallback state by parsing the drawing. Rust typed results
+and CLI `--ascii-report` provide the report-oriented recipes. See the
+[ASCII option contract](../../docs/bindings/OPTIONS_JSON.md#ascii-options) for versioned fields and
+the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) for admitted family combinations.
+
+For known host RGB colors, supply `ascii.theme` with TrueColor, or ANSI256 for an approximation.
+ANSI16 uses terminal Reset and named colors for semantic roles. SVG `presentation.theme` does not
+configure ASCII colors; the host maps its application theme into each output independently.
 
 ## Mount SVG safely
 

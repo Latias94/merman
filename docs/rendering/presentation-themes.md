@@ -1,71 +1,49 @@
-# Diagram Themes and SVG Output
+# Presentation Themes and Output
 
-The unreleased branch after alpha.5 exposes an **experimental** typed diagram-theme surface. A
-theme recipe is compiled from
-`DiagramThemeSpec` (or one of the first-party `ThemePreset` values) into an immutable
-`DiagramTheme`, then attached to the operation `RenderRequest`. This surface is not a
-completed cross-target compatibility promise: compilation reports required capabilities, while
-family, document, and export stages provide the evidence and target-specific admission decision.
-The private C6a representative matrix covers Flowchart, State, and Sequence across Standalone SVG
-and PNG. It does not imply equivalent support for every diagram family or output target.
-
-Merman keeps independent concerns in separate owners:
+Merman keeps four independent choices separate: host theme values, Merman presentation behavior, Mermaid configuration, and SVG output policy. A caller can combine them, but selecting one never silently selects another.
 
 | Owner | Public input | Use it for |
 | --- | --- | --- |
-| Versioned authoring | `ThemeDefinitionV1` -> `materialize_theme*` -> `MaterializedThemeWireV1` | Compact cross-family tokens plus ordered authored rules and deterministic materialization identity |
-| Compiled diagram theme | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `RenderRequest::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
+| Host theme | `Presentation::with_theme(...)` / `presentation.theme` | Semantic host colors, typography, and series colors |
+| Merman presentation | `Presentation::with_profile(...)` / `presentation.profile` | Product-owned behavior such as the `merman-modern` Flowchart treatment |
 | Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
-| Layout and runtime | `Renderer`, `RenderRequest`, `SvgRequest`, and explicit operation control | Container dimensions, text measurement, math, resource policy, renderer selection, cancellation, and deadlines |
 | SVG output | `SvgRequest.pipeline` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
 
-There is no public `PresentationTheme`, `HostTheme`, `PresentationProfile`, or aggregate
-`Presentation` replacement. Product recipes belong in the host application and compose these
-owners explicitly.
-
-## Explicit typography and recipe identity
-
-Typography retains whether each property was supplied, independently of its effective value.
-`ThemeTextStyle::default()` leaves properties unspecified; calling `with_font_size_px(16.0)`
-explicitly requests that size even though 16px is the Rust default. Complete-spec JSON follows the
-same rule: omitting `font_size_px` differs from supplying `16`. A family that does not support base
-font size reports the explicit request as a residual and rejects it under `RequirePortable`.
-Source/config ownership and absent terminals still determine applicability.
-
-Authoring materialization leaves omitted size and weight absent in the complete spec. Its default
-font stack remains an intentional token-expansion choice. Explicit authored size and weight,
-including 16px and weight 400, remain present through export and reimport.
-
-Recipe fingerprint revision 4 includes typography property presence. Rebuild recipe-keyed caches
-and acceptance evidence rather than reusing revision 3 identities. Re-export presets when moving
-from older materialized specs: an old complete spec that explicitly contains 16px or weight 400 now
-correctly expresses those requests; the compiler does not guess whether those fields were once
-inserted by an older materializer. The complete-spec wire schema remains version 1.
+The default renderer remains Mermaid-parity oriented. An empty presentation is a no-op. The host
+resolves its own appearance and maps those values into the chosen output's theme input; Merman does
+not inspect a terminal or editor theme. See the
+[host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes) for
+executable request composition.
 
 ## Rust API
 
-Select a built-in typed preset and attach the compiled value to the SVG request:
-
 ```rust
-use merman::svg::{DiagramThemeCompiler, SvgPipeline, SvgRenderOptions, ThemePreset};
+use merman::svg::{
+    HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline, SvgRenderOptions,
+};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
-let output = Renderer::new().render(
-    RenderRequest::svg(
-        source,
-        OperationControl::new(),
-        SvgRequest {
-            pipeline: Some(SvgPipeline::resvg_safe()),
-            options: SvgRenderOptions {
-                diagram_id: Some("theme-preset-example".to_string()),
-                ..Default::default()
-            },
+let presentation = Presentation::new()
+    .with_profile(PresentationProfile::MermanModern)
+    .with_theme(HostTheme::from_preset(HostThemePreset::OneDark));
+
+let resolved = presentation.resolve();
+let renderer = Renderer::new().with_engine(
+    resolved.materialize_engine(merman::Engine::new()),
+);
+let output = renderer.render(RenderRequest::svg(
+    source,
+    OperationControl::new(),
+    SvgRequest {
+        presentation: resolved.render_policy(),
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        options: SvgRenderOptions {
+            diagram_id: Some("preview".to_string()),
             ..Default::default()
         },
-    )
-    .with_theme(theme),
-)?;
+        ..Default::default()
+    },
+))?;
 let RenderOutput::Svg(Some(svg)) = output else {
     return Err("no Mermaid diagram detected".into());
 };
@@ -73,177 +51,73 @@ let RenderOutput::Svg(Some(svg)) = output else {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`ThemePreset` currently contains `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. Presets are
-visual theme data. They do not select `look: neo`, an ELK renderer, an SVG pipeline, or a product
-behavior profile. The seven retained recipes use the explicit Mermaid compatibility lane.
-The three native alpha candidates (`brutalist`, `spotless`, `cyberpunk`) use recipe revision 5
-without Mermaid compatibility fields. Presets describe visual styles and do not bundle font files
-or select the host's font-source/embedding policy. Applications supply font resources through the
-existing theme asset API when they need self-contained output. Acceptance fixtures may provide
-explicit font resources, but that validates a declared resource profile rather than the unmodified
-catalog recipe. All qualified scopes remain empty.
-
-Use the versioned authoring contract for compact cross-family tokens. The materializer expands one
-definition into a complete editable spec; the ordinary compiler remains the only semantic compiler:
+`HostTheme` can also be built from semantic roles rather than a bundled preset. Role IDs describe host intent such as `canvas`, `surface-alt`, `text`, `line`, `edge-label-background`, `actor-text`, `error`, and `success`; the compiler maps them to Mermaid configuration owned by the relevant diagram families.
 
 ```rust
-use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
-    compile_theme_definition,
-};
+use merman::svg::{HostTheme, HostThemeAppearance, ThemeRole};
 
-let definition = ThemeDefinitionV1::new(
-    ThemeTokensV1::default()
-        .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
-        .with_color(ThemeColorTokenV1::Surface, "#111827")
-        .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
-        .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
-        .with_color(ThemeColorTokenV1::Border, "#475569")
-        .with_color(ThemeColorTokenV1::Line, "#94a3b8")
-        .with_series(["#60a5fa", "#34d399", "#f59e0b"].map(str::to_owned).to_vec()),
-);
-let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?;
-# let request = merman::RenderRequest::svg(
-#     "flowchart TD\nA --> B",
-#     merman::OperationControl::new(),
-#     merman::SvgRequest::default(),
-# ).with_theme(theme);
+let theme = HostTheme::new()
+    .with_appearance(HostThemeAppearance::Dark)
+    .try_with_font_family("Inter, system-ui, sans-serif")?
+    .try_with_role(ThemeRole::Canvas, "#0f172a")?
+    .try_with_role(ThemeRole::Text, "#e5e7eb")?
+    .try_with_role(ThemeRole::Line, "#94a3b8")?;
 ```
 
-`merman::diagram_theme` selectively re-exports the dependency-neutral authoring wire used by the
-renderer. The name is intentionally visual: terminal/ASCII styling is not part of this contract.
-Callers that need to inspect or edit the complete materialized spec use the public
-`materialize_theme*` operations and receive the closed `MaterializedThemeWireV1` success value.
-Those operations perform host admission before delegating to the renderer's private, pure
-`ThemeMaterializer`, which owns defaults, expansion order, and palette replacement. The compile
-facade above reuses the same admitted lowering path before semantic compilation. Version 1
-intentionally publishes no materialization digest. Materialization does not inspect family
-capabilities or render output. Raw untrusted JSON must use the bounded JSON materialization or
-compile operation rather than ordinary Serde decoding. Render-time bindings remain limited to
-either a preset reference or a complete `theme.spec` until their authoring operations adopt the
-same contract.
-Built-in preset recipes remain alpha inventory: this migration preserves their resolved visual
-winners but intentionally does not freeze prior recipe fingerprints or rule indices.
+See [`presentation_profile.rs`](../../crates/merman/examples/presentation_profile.rs) for a ready-made profile and preset combination, or [`custom_presentation_theme.rs`](../../crates/merman/examples/custom_presentation_theme.rs) for a self-contained semantic-role mapping.
 
-## Capability Discovery
+Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, and `ayu-dark`. The One Dark, Gruvbox, and Ayu presets are Merman's semantic mappings inspired by those color systems; they are not claims of byte-for-byte identity with a particular editor distribution.
 
-Static discovery describes the current build's coarse upper bound without claiming that a concrete
-document applied a rule or produced a portable output:
+Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
 
-```rust
-use merman::diagram_theme::{
-    DiagramFamilyId, ThemeRuleFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
-    ThemeTarget, describe_theme_support,
-};
+`merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. A build without `layout-elk` can still discover and select the profile for diagrams that do not require that aspect. Use the SVG plan or presentation catalog to detect blocked aspects for the actual artifact and diagram.
 
-let support = describe_theme_support(&ThemeSupportQueryV1::known(
-    DiagramFamilyId::FLOWCHART.as_str(),
-    ThemeSupportOutputV1::StandaloneSvg,
-    ThemeTarget::Node.id(),
-    ThemeRuleFacetV1::Radius,
-));
+## Terminal themes
 
-println!("{:?}: {:?}", support.state(), support.reason_ids());
-```
+ASCII/Unicode uses `AsciiTerminalPalette` and `AsciiColorTheme`, independently of SVG `HostTheme`
+and `Presentation`. A host may map the same application colors into both inputs, but SVG typography,
+CSS-oriented family variables, and terminal role encoding remain separate. `presentation.theme`
+does not populate `ascii.theme` or select an ASCII color mode.
 
-The result is one of `Unconditional`, `Conditional`, `NotApplicable`, `Unsupported`, or
-`Unverified`. A family-owned direct route and a legacy Mermaid compatibility route may both be
-`Conditional`; stable reason IDs distinguish them. Unknown identifiers remain visible and return
-`Unverified`. The current alpha implementation makes positive static claims only for Standalone
-SVG. Browser SVG and PNG/JPEG/PDF remain `Unverified` until their terminal or export owner projects
-qualification into this contract. Only the evidence and target-admission receipt from an actual
-render can report application, residuals, host dependence, or portability.
-
-## Private C6a Evidence Boundary
-
-The non-published `merman-theme-acceptance` crate runs with the workspace-only
-`merman_internal_theme_acceptance` cfg through `scripts/run_theme_acceptance.py`.
-Production crates have no acceptance Cargo feature, and package manifests exclude the independent
-acceptance modules. This internal configuration exposes one generic,
-renderer-owned `SvgArtifactReceipt` through a hidden seam. The receipt is sealed when the
-renderer creates its finalized `StandaloneSvgArtifact`; the facade only retains and borrows that
-receipt. The acceptance harness can therefore inspect immutable facts from the finalized SVG
-without reparsing the SVG or rebuilding CSS and geometry semantics.
-
-The C6a harness then applies fixture-specific semantic predicates to those facts and combines
-them with the target-owned admission receipts. PNG checks are projections of the same
-`RenderedDocument`: they may use the document's sealed SVG receipt for source geometry and the
-PNG target receipt for the encoded bytes. The harness emits the private `C6aEligibilityReceipt`
-only for the versioned 18-cell representative ledger (three proof recipes × Flowchart, State,
-and Sequence × Standalone SVG and PNG). This receipt is an internal qualification checkpoint,
-not a public claim that every family, theme, or output target is supported.
-
-`DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
-typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared
-requirements. The compiler validates the complete recipe and returns a `DiagramTheme`; it does not
-read CSS variables, selectors, or host application state.
-
-## Independent Configuration
-
-The useful parts of a product recipe that used to be bundled under a named profile are explicit:
-
-```rust
-use merman::svg::{DiagramThemeCompiler, ThemePreset};
-use serde_json::json;
-
-let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
-let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({
-    "look": "neo",
-    "flowchart": { "defaultRenderer": "elk" }
-})));
-let renderer = merman::Renderer::new().with_engine(engine);
-let request = merman::RenderRequest::svg(
-    "flowchart TD\nA --> B",
-    merman::OperationControl::new(),
-    merman::SvgRequest::default(),
-).with_theme(theme);
-# let _ = (renderer, request);
-```
-
-The configuration above is illustrative: ELK must be available in the selected artifact, and
-ordinary Flowcharts are the only diagrams that acquire that layout requirement. A theme never
-silently selects either option. A custom SVG pipeline, root background, scoped CSS policy, or
-postprocessor remains an explicit `SvgPipeline`/`SvgOutputPolicy` choice.
-
-## Complete Visual Recipes
-
-Typed theme input is intentionally bounded. Use the owner that matches the semantics of each
-value:
-
-| Recipe component | Merman owner | Status |
+| Host intent | ASCII color mode | Palette behavior |
 | --- | --- | --- |
-| Cross-family tokens and ordered authored rules | `ThemeDefinitionV1` / `materialize_theme*` | Experimental versioned authoring |
-| Semantic palette, typography, geometry, and ordinal series | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` | Experimental typed support |
-| Layered canvas and bounded effects | `DiagramThemeSpec` | Experimental typed model; target evidence is still required |
-| Exact Mermaid variables and per-family settings | `MermaidConfig` / `site_config` or `DiagramThemeSpec::mermaid` | Supported compatibility lanes, with Mermaid precedence |
-| Selector-heavy `themeCSS` | Trusted Rust/native CLI `site_config.themeCSS` | Host capability lane; rejected by general bindings and not typed portability evidence |
-| Solid exported background and SVG cleanup | `SvgOutputPolicy` / `SvgPipeline` | Explicit output policy |
-| External fonts and exact glyph metrics | `ThemeAssets`/`FontCatalogSpec` plus a matching text-measurement policy | Resource- and target-dependent |
-| Product annotations, editor overlays, and controls | Host application | Outside the diagram-theme contract |
+| Plain logs or a machine text channel | `Plain` | No color escapes; viewport fallback is available |
+| Use the terminal's own palette | `Ansi16` | Primary text and most structural roles use Reset; emphasis uses named ANSI colors |
+| Apply a known host RGB palette | `TrueColor` | Semantic roles resolve through `AsciiColorTheme` |
+| Approximate a host RGB palette | `Ansi256` | Resolved RGB colors are mapped to the 256-color encoding |
 
-Raw CSS, custom postprocessors, browser-only effects, and under-attested host text measurement can
-produce document residuals (for example `Unverified` or `Failed`) and can make the final target
-`HostDependent` or `Rejected`. `DocumentResidualReason` describes an unresolved mechanism; the
-separate `TargetAdmissionStatus` describes the final output decision. They must not be described as
-proof that a typed theme is portable. `RequirePortable` is an explicit host/output admission
-request; it is not implied by successful compilation.
+ANSI16 deliberately bypasses the RGB theme for semantic roles; direct authored RGB colors are
+quantized separately. Named terminal colors and Reset do not guarantee contrast for an arbitrary
+user-customized terminal palette. Styled output accepts viewport `Allow` or `Error`; `Fallback` is
+Plain-only and an invalid styled/fallback combination is rejected even when the diagram would fit.
+
+See the [terminal theme API](../../crates/merman-ascii/README.md#terminal-theme-api) and
+[binding ASCII options](../bindings/OPTIONS_JSON.md#ascii-options) for palette fields and overrides.
 
 ## Options JSON
 
-Bindings use Options JSON schema 3. The current theme field is top-level and is a closed tagged
-union: exactly one of `preset` or `spec` must be present. An empty object, both members, or a null
-member is invalid.
+Bindings use Options JSON schema 2:
 
 ```json
 {
-  "version": 3,
-  "theme": {
-    "preset": "one-dark"
+  "version": 2,
+  "presentation": {
+    "profile": "merman-modern",
+    "theme": {
+      "preset": "one-dark",
+      "font_family": "Inter, system-ui, sans-serif",
+      "roles": {
+        "canvas": "#0f172a",
+        "text": "#e5e7eb",
+        "line": "#94a3b8"
+      },
+      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
+    }
   },
   "site_config": {
-    "look": "neo",
-    "flowchart": { "defaultRenderer": "elk" }
+    "flowchart": {
+      "defaultRenderer": "dagre-wrapper"
+    }
   },
   "svg": {
     "pipeline": "resvg-safe"
@@ -251,97 +125,26 @@ member is invalid.
 }
 ```
 
-Use `theme.spec` for a complete typed recipe. The supported top-level sections are `mermaid`,
-`typography`, `styles`, `canvas`, `effects`, `requirements`, and `assets`. Binding JSON rejects
-unknown fields and unsupported enum values. `theme.spec.mermaid` accepts only the bounded Mermaid
-compatibility values (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`,
-`redux-dark`, `redux-color`, or `redux-dark-color`) plus scalar string, number, and boolean
-variables; renderer selection, `look`, layout, raw CSS, and output policy stay outside this section.
+Raw Mermaid overrides belong only at top-level `site_config`. Output choices belong only under `svg`. The removed `host_theme` group is rejected with a migration error instead of being accepted as a compatibility alias.
 
-Typed effect graphs describe only the effect identity and ordered primitives. They do not accept an
-authored filter region: the family adapter derives the terminal region from the actual painted
-geometry, then applies the effective session resource ceiling before emission. This keeps recipe
-identity independent of node size while preventing a stale or undersized authored box from
-clipping the output.
+## Precedence
 
-```json
-{
-  "theme": {
-    "spec": {
-      "mermaid": {
-        "theme": "base",
-        "dark_mode": true,
-        "variables": { "primaryColor": "#2563eb" }
-      },
-      "typography": {
-        "default": {
-          "font_stack": ["Inter", "system-ui", "sans-serif"],
-          "font_size_px": 14,
-          "line_height": 1.4
-        }
-      },
-      "styles": [
-        {
-          "kind": "rule",
-          "target": "node",
-          "family": "flowchart",
-          "style": {
-            "fill": "#111827",
-            "stroke": { "paint": "#60a5fa", "width": 2 }
-          }
-        },
-        {
-          "kind": "ordinal-palette",
-          "target": "chart-series",
-          "colors": ["#60a5fa", "#34d399", "#f59e0b"]
-        }
-      ],
-      "canvas": { "base": "#0f172a", "bleed": 8 },
-      "effects": [],
-      "requirements": { "capabilities": ["semantic-rules"] }
-    }
-  }
-}
-```
+Merman materializes configuration in this order:
 
-Font family names in `typography.font_stack` are CSS preferences only. Merman does not bundle or
-silently embed `Inter` (or any other default family) in presets or package artifacts. Native and
-browser hosts resolve the stack from their own installed fonts and fallback rules. Stable output
-that depends on a particular face must provide an explicitly authorized `assets` catalog and select
-the corresponding embedding policy; that resource remains caller-owned and subject to admission
-limits.
+1. The renderer's base engine configuration.
+2. Defaults selected by `presentation.profile`.
+3. Explicit values from `presentation.theme`.
+4. Explicit top-level `site_config` layers.
+5. Diagram frontmatter and directives.
+6. The independently selected SVG output pipeline after rendering.
 
-For a reusable binding engine, a constructor theme is compiled once. A request-level `theme`
-object replaces that complete value; `null` clears it; omission inherits it. The theme object is
-not deep-merged with the constructor theme. Resource ceilings and admission policy remain
-constructor-owned and cannot be raised by a request.
+Rust callers materialize presentation defaults into an `Engine`, apply explicit site configuration
+to that engine, and pass the resolved render policy through `SvgRequest.presentation`. Bindings
+perform the same structural merge from their separate `presentation` and `site_config` fields.
+Explicit Mermaid configuration and source-local configuration win over presentation defaults.
 
-The `theme-catalog` metadata entry describes the presets, semantic target IDs, capability IDs,
-font source/container IDs, and theme resource limits available in the selected artifact. Query the
-artifact catalog when a slim build may omit a capability.
+## Discovery
 
-## Precedence and CLI Compatibility
+Rust callers enumerate built-in values through `theme_preset_descriptors()` and `presentation_profile_descriptors()`. Native and Web callers use the `presentation-catalog` metadata payload. Catalog IDs are open strings: consumers must tolerate future presets, profiles, aspect kinds, and capability requirements instead of treating the current list as a closed enum.
 
-Configuration precedence is structural and independent of builder call order:
-
-1. The base `Engine` configuration.
-2. The compiled theme's explicit Mermaid compatibility values.
-3. Explicit renderer or bounded binding `site_config`; general bindings cannot supply `themeCSS`
-   or replace `secure`.
-4. Diagram frontmatter and directives, subject to hardened secure keys.
-5. Typed semantic rules, typography, canvas, effects, and resources are resolved by the family,
-   document, and output stages that consume them; their evidence is reported separately from the
-   Mermaid configuration object.
-6. The selected SVG output pipeline runs after rendering and owns terminal output policy.
-
-The official Mermaid CLI selector remains unchanged: `merman-cli mmdc -t/--theme` accepts the
-upstream values `default`, `forest`, `dark`, and `neutral` (with an omitted value meaning
-`default`). Merman's native inputs are separate: render/batch commands use `--theme-definition`
-for a shareable `ThemeDefinitionV1`, `--theme-preset` for a built-in preset, or `--theme-file` for
-an advanced complete selection. Binding callers use the corresponding Rust-owned theme operation;
-no host reimplements token expansion.
-
-The removed `presentation`, `host_theme`, `PresentationTheme`, `HostTheme`, and
-`PresentationProfile::MermanModern` names are not compatibility aliases. Options JSON rejects the
-removed groups with migration-oriented errors; choose top-level `theme`, `site_config`, explicit
-layout configuration, and `svg` instead.
+The catalog reports artifact-level availability. `svg-plan-json` reports the operation-specific result after the diagram family, effective renderer, explicit overrides, and compiled capabilities are known.

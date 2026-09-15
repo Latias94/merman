@@ -1,6 +1,7 @@
 mod adapter;
 mod charset;
 mod draw;
+mod horizontal_label;
 mod label;
 mod layout;
 mod model;

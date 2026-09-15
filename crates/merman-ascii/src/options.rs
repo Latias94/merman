@@ -31,13 +31,15 @@ pub enum TerminalWidthProfile {
     Cjk,
 }
 
-/// ASCII 布局密度配置。Canonical 保持现有默认几何；Compact 仅作为显式选择的候选配置。
+/// Family layout selection. Auto tries Compact once when Canonical exceeds an explicit viewport.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiLayoutProfile {
     #[default]
     Canonical,
     Compact,
+    /// Requires a bounded viewport; only admitted families may retry with Compact.
+    Auto,
 }
 
 impl AsciiLayoutProfile {
@@ -46,6 +48,7 @@ impl AsciiLayoutProfile {
         match self {
             Self::Canonical => "canonical",
             Self::Compact => "compact",
+            Self::Auto => "auto",
         }
     }
 }
@@ -217,6 +220,7 @@ const OVERRIDE_GRAPH_PADDING_Y: u8 = 1 << 1;
 const OVERRIDE_FLOWCHART_WRAP_WIDTH: u8 = 1 << 2;
 const OVERRIDE_SEQUENCE_PARTICIPANT_SPACING: u8 = 1 << 3;
 const COMPACT_FLOWCHART_WRAP_WIDTH: usize = 24;
+const COMPACT_FLOWCHART_RANK_GAP_X: usize = 3;
 const COMPACT_SEQUENCE_PARTICIPANT_SPACING: usize = 3;
 
 impl Default for AsciiRenderOptions {
@@ -342,7 +346,7 @@ impl AsciiRenderOptions {
                 profile: self.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
                     node_border_padding: self.box_border_padding,
-                    rank_gap_x: self.graph_padding_x,
+                    rank_gap_x: self.resolved_flowchart_rank_gap_x(),
                     rank_gap_y: self.graph_padding_y,
                     node_label_wrap_width: self.resolved_flowchart_wrap_width(),
                     group_padding_x: 2,
@@ -388,6 +392,17 @@ impl AsciiRenderOptions {
                 color_mode: host.color_mode,
                 encoding: AsciiOutputEncoding::from_color_mode(host.color_mode),
             },
+        }
+    }
+
+    fn resolved_flowchart_rank_gap_x(self) -> usize {
+        if self.layout_profile == AsciiLayoutProfile::Compact
+            && self.layout_overrides & OVERRIDE_GRAPH_PADDING_X == 0
+            && self.graph_padding_x == Self::default().graph_padding_x
+        {
+            COMPACT_FLOWCHART_RANK_GAP_X
+        } else {
+            self.graph_padding_x
         }
     }
 
@@ -516,10 +531,8 @@ mod tests {
         assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(canonical.options.sequence_participant_spacing, 5);
         assert_eq!(compact.options.sequence_participant_spacing, 5);
-        assert_eq!(
-            canonical.layout.flowchart.rank_gap_x,
-            compact.layout.flowchart.rank_gap_x
-        );
+        assert_eq!(canonical.layout.flowchart.rank_gap_x, 5);
+        assert_eq!(compact.layout.flowchart.rank_gap_x, 3);
         assert_eq!(
             canonical.layout.flowchart.rank_gap_y,
             compact.layout.flowchart.rank_gap_y
@@ -624,6 +637,21 @@ mod tests {
             .resolve_policies();
 
         assert_eq!(policies.layout.sequence.participant_spacing, 7);
+    }
+
+    #[test]
+    fn explicit_horizontal_spacing_wins_over_compact() {
+        for spacing in [0, 1, 5, 7] {
+            let resolved = AsciiRenderOptions::unicode()
+                .with_layout_profile(AsciiLayoutProfile::Compact)
+                .with_graph_padding_x(spacing)
+                .resolve_policies();
+            assert_eq!(resolved.layout.flowchart.rank_gap_x, spacing);
+        }
+        let mut direct =
+            AsciiRenderOptions::unicode().with_layout_profile(AsciiLayoutProfile::Compact);
+        direct.graph_padding_x = 7;
+        assert_eq!(direct.resolve_policies().layout.flowchart.rank_gap_x, 7);
     }
 
     #[test]

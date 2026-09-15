@@ -5,9 +5,13 @@ FROM ${RUST_IMAGE} AS rust-toolchain
 
 FROM ${NODE_IMAGE}
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends build-essential ca-certificates git pkg-config python3 \
-    && rm -rf /var/lib/apt/lists/*
+# The full Node image inherits these tools from buildpack-deps. Verify them
+# without refreshing the retired Bullseye package repositories.
+RUN set -eu; \
+    for tool in cc c++ make pkg-config python3 git; do \
+        command -v "$tool"; \
+    done; \
+    test -s /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup

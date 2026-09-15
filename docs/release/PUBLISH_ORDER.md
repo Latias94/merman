@@ -99,6 +99,14 @@ dedicated workflows. Only crates within the same coupled batch use lexical order
 publish flow, release preflight, and release workflow consume this same projection; Markdown is
 not parsed as a release-order database.
 
+The unreleased `merman-doc` implementation crate joins this coupled graph through Cargo metadata.
+Both `merman-cli` and `merman-rustdoc` depend on it, so it is packaged and published before either
+consumer without a separate workflow or a hand-maintained package list. Its inherited version is
+the current workspace development baseline; its addition does not authorize republishing the
+already released `0.8.0-alpha.6` consumers. Select the next workspace version before releasing
+this refactor, then verify the derived graph and each generated `.crate` through the existing
+release preflight.
+
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 

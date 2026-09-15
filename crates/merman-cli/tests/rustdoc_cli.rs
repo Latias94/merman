@@ -6,6 +6,45 @@ use std::time::SystemTime;
 
 const VALID_SOURCE: &str = "flowchart LR\nA --> B\n";
 
+#[test]
+fn container_diagrams_build_and_recheck_without_flattening_source_structure() {
+    let root = tempfile::tempdir().unwrap();
+    write_source(root.path(), "one.mmd");
+    let source = concat!(
+        "# Guide\n\n",
+        "- Flow\n\n  ```mermaid\n  flowchart LR\n  A-->B\n  ```\n  **List after**\n\n",
+        "> include_mmd!(\"one.mmd\")\n> **Quote after**\n\n",
+        "[^architecture]: include_mmd!(\"one.mmd\")\n    **Footnote after**\n",
+    );
+    fs::write(root.path().join("source.md"), source).unwrap();
+    write_config(root.path(), &valid_config("source.md"));
+    let built = run(root.path(), &["rustdoc", "build"]);
+    assert_eq!(
+        exit_code(&built),
+        0,
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let generated = fs::read_to_string(
+        root.path()
+            .join("docs/generated/merman-rustdoc/architecture.md"),
+    )
+    .unwrap();
+    assert_eq!(generated.matches("data-merman-rustdoc=\"true\"").count(), 3);
+    assert!(generated.starts_with("# Guide\n\n- Flow\n"), "{generated}");
+    assert!(generated.contains("  **List after**"), "{generated}");
+    assert!(generated.contains("> **Quote after**"), "{generated}");
+    assert!(generated.contains("[^architecture]: <div"), "{generated}");
+    assert!(generated.contains("    **Footnote after**"), "{generated}");
+    let checked = run(root.path(), &["rustdoc", "check"]);
+    assert_eq!(
+        exit_code(&checked),
+        0,
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
 fn cli() -> PathBuf {
     assert_cmd::cargo::cargo_bin!("merman-cli").to_path_buf()
 }

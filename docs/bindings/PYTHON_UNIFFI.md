@@ -25,13 +25,6 @@ the shared wrapper layer, and
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for current Mermaid parity.
 
-API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
-complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
-`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
-cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
-probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
-and deploy the language projection with its matching native library.
-
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
@@ -64,40 +57,6 @@ cargo build -p merman-uniffi --profile native-distribution --no-default-features
 cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
-## Theme authoring consumer verification
-
-The repository's `platforms/python/merman/examples/theme_authoring.py` exercises an installed
-Python package through generated UniFFI bindings. Run it with the interpreter that has the matching
-wheel installed, from a repository checkout:
-
-```bash
-python platforms/python/merman/examples/theme_authoring.py
-```
-
-The ordinary wheel smoke also runs this witness, so the existing Python CI, release preflight, and
-final-wheel smoke paths cover it. To build and install the current wheel into the smoke environment:
-
-```bash
-python scripts/build-python-uniffi-wheel.py --run-smoke
-```
-
-The consumer reads the shared light/dark authoring vectors used by the Rust typed-builder tests.
-It checks readable JSON export, canonical definition bytes, and complete materialized specs against
-those fixed files with an independent Python oracle restricted to their ASCII-key/integral-number
-domain. It does not implement a general canonical JSON encoder. `materialize-theme-json` returns a
-versioned envelope whose `spec` is passed directly to `render_svg` through `theme.spec`; the consumer
-never writes an intermediate spec file.
-
-Flowchart, State, and Sequence renders must agree across one-shot and reusable clients and preserve
-light-dark-light isolation. The witness checks State's emitted surface fill, adds a family-scoped
-State rule, proves that rule does not affect Sequence, renders a separate cold-start complete spec,
-and compares each native candidate's preset selection with its exported complete spec. An ER
-`title.fill` support query must return `unsupported` with explanatory reason IDs.
-
-These checks establish a real non-Rust SVG authoring workflow. They do not qualify presets or claim
-PNG/PDF support for the default Python wheel. Font resources and font policy remain host-owned;
-the native candidate exports contain neither embedded fonts nor Mermaid compatibility fields.
-
 ## API
 
 The package re-exports the generated UniFFI API:
@@ -111,11 +70,11 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version_v8() == 8
+assert api.binding_api_version_v7() == 7
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version_v8()
+assert catalog["transport_api_version"] == api.binding_api_version_v7()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -136,7 +95,7 @@ validation = api.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = api.supported_diagrams()
 ascii_capabilities = api.ascii_capabilities()
 themes = api.supported_themes()
-theme_catalog = json.loads(api.theme_catalog_json())
+presentation_catalog = json.loads(api.presentation_catalog_json())
 family_capabilities = api.diagram_family_capabilities()
 lint_rules = api.lint_rule_catalog()
 
@@ -197,27 +156,26 @@ Cancellation is cooperative. A cancelled operation raises `MermanError.Binding` 
 checkpoint `phase`. It is distinct from resource rejection and returns no partial output. Opaque
 callbacks and single-call encoders can only be checked before and after invocation; use worker or
 process isolation for hard preemption.
-
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
-`ResourceOptionsBuilder` emits Options JSON schema `3`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
+`ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
 
-The direct UniFFI binding API is `8`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `7`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
 
-When migrating from API 7, replace `binding_api_version_v7()` with
-`binding_api_version_v8()` and regenerate the complete package with its matching native library.
-API 7 preserved the API 6 layout/width/encoding/fallback-encoding admission arrays and schema-2
-`MermanAsciiOutputPlan` encoding, and protects the merged `MermanDiagramFamilyCapability.family_id`
-record plus the versioned `theme_catalog_json()` metadata catalog. The symbol change makes stale
-generated bindings fail before decoding the added error details. API 6 or older consumers must
-likewise regenerate the whole projection rather than applying incremental shims.
+When migrating from API 6, replace `binding_api_version_v6()` with
+`binding_api_version_v7()` and regenerate the complete package with its matching native library.
+API 7 adds `requested_layout_profile` and `compact_attempted` to the schema-3
+`MermanAsciiOutputPlan`; `layout_profile` is the selected Canonical or Compact geometry. The symbol
+change makes stale generated bindings fail before decoding the revised record. API 6 introduced
+the capability admission arrays and output encoding; older consumers must also regenerate the
+whole projection rather than applying incremental shims.
 
 ## Text Measurement
 
@@ -272,12 +230,9 @@ mutation lifecycle.
   `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
   takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
-- Move API 5 generated modules and native libraries together to API 6 (historical) before consuming
-  ASCII capability admission arrays or schema-2 output-plan encoding. Generic request constructors
-  require `control`; pass `None` until the host adopts `MermanOperationControl`.
-- API 7 introduced the merged `family_id` capability record and `theme_catalog_json()` metadata
-  catalog. Move API 7 generated modules and native libraries together to API 8 before decoding
-  the added `details_json` error field.
+- Move API 6 or older generated modules and native libraries together to API 7 before consuming
+  schema-3 ASCII selection metadata. Generic request constructors require `control`;
+  pass `None` until the host adopts `MermanOperationControl`.
 - Use the result-returning binary methods when callers need typed operation metadata or the
   effective output plan. Switch on `output_plan.kind`; read `raster`, `pdf_filter_images`, or
   `ascii` when present, and retain `raw_json` for unknown future kinds. The ASCII payload records

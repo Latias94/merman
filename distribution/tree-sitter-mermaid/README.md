@@ -31,6 +31,16 @@ the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 npm install tree-sitter @mermanjs/tree-sitter-mermaid
 ```
 
+With npm 12 or later, review and approve the native install scripts, then rebuild:
+
+```console
+npm install-scripts approve tree-sitter @mermanjs/tree-sitter-mermaid
+npm rebuild tree-sitter @mermanjs/tree-sitter-mermaid
+```
+
+Commit the resulting `allowScripts` entries in your application's `package.json` so subsequent
+installs use the same version-specific approvals. Browser-only consumers do not need native scripts.
+
 ```js
 const Parser = require('tree-sitter');
 const Mermaid = require('@mermanjs/tree-sitter-mermaid');
@@ -166,6 +176,10 @@ From the Merman repository root, install the pinned package-local toolchain:
 npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
 npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
 ```
+
+The package manifest approves only the pinned Tree-sitter CLI and native runtime install scripts.
+`--ignore-scripts` still suppresses them during the initial install; the explicit rebuild downloads
+the CLI executable.
 
 Run the ordinary grammar and binding checks:
 

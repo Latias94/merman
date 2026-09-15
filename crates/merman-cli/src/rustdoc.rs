@@ -1,6 +1,5 @@
 pub(crate) mod config;
 mod document;
-mod html;
 mod publication;
 mod receipt;
 mod svg;

@@ -32,7 +32,7 @@ fn edge_style_is_applied_to_route_plan_cells_and_labels() {
     );
 
     let mut canvas = RawCanvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
-    let mut route_cells = RouteCells::new();
+    let mut route_cells = RouteCells::default();
     let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
     let plan = plan.with_style(GraphEdgeStyle {
         line: Some(line),
@@ -88,7 +88,7 @@ fn one_long_route_body_observes_cancellation_between_cells() {
         labels: RoutedLabelCatalog::for_test(Vec::new()),
     };
     let mut canvas = RawCanvas::with_width_profile(ROUTE_LEN, 1, TerminalWidthProfile::Unicode);
-    let mut route_cells = RouteCells::new();
+    let mut route_cells = RouteCells::default();
     let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
     let control = OperationControl::new();
     // The route-level checkpoint and first cell checkpoint succeed. The next fixed-cadence cell
@@ -151,7 +151,7 @@ fn edge_arrow_style_falls_back_to_line_style() {
     );
 
     let mut canvas = RawCanvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
-    let mut route_cells = RouteCells::new();
+    let mut route_cells = RouteCells::default();
     let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
 
     paint_route_plan(

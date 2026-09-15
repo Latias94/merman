@@ -136,7 +136,7 @@ function normalizeAsciiLayoutProfiles(value: unknown): AsciiLayoutProfile[] {
     throw new Error("Merman WASM returned invalid ASCII layout profiles.");
   }
   return value.map((profile) => {
-    if (profile === "canonical" || profile === "compact") return profile;
+    if (profile === "canonical" || profile === "compact" || profile === "auto") return profile;
     throw new Error("Merman WASM returned an unknown ASCII layout profile.");
   });
 }

@@ -77,7 +77,7 @@ select their own direct leaf set instead.
 | Complete CLI | `merman-cli` | Default direct leaves without ELK, or the exact `cli-release` recipe with ELK |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
-| One-step Rustdoc attributes | `merman-rustdoc` | Default `complete-svg`, or an explicit smaller renderer closure |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `svg + layout-cytoscape`; add `math` or `complete-svg` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
@@ -262,7 +262,10 @@ packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
-`complete-svg` feature intentionally compiles SVG, Cytoscape, and math into the proc-macro host.
+features compile SVG and Cytoscape into the proc-macro host. Add `math` for mathematical labels,
+or select `complete-svg` explicitly for SVG, Cytoscape, and math. This smaller default applies to
+the current source and the next release after `0.8.0-alpha.6`; the published alpha.6 macro still
+includes math by default. The `merman` facade default remains `complete-svg`.
 The explicit `complete-svg-elk` feature adds the EPL-2.0 ELK closure when a documentation artifact
 needs it. Optional dependency gating can keep that closure out of ordinary builds, but selecting
 the explicit ELK feature, `--all-features`, or an artifact profile that lists `layout-elk` compiles

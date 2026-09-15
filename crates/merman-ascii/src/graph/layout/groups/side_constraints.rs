@@ -8,7 +8,7 @@ use crate::graph::{
 use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::try_clone_layout_text;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 pub(super) fn reserve_group_left_constraint_space(
     graph: &AsciiGraph,

@@ -394,6 +394,8 @@ pub(crate) struct ResourceContext {
     layout_work_used: Rc<Cell<usize>>,
     document_cells_used: Rc<Cell<usize>>,
     operation: Option<ResourceOperation>,
+    retained_output_bytes: usize,
+    retained_document_cells: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -409,7 +411,17 @@ impl ResourceContext {
             layout_work_used: Rc::new(Cell::new(0)),
             document_cells_used: Rc::new(Cell::new(0)),
             operation: None,
+            retained_output_bytes: 0,
+            retained_document_cells: 0,
         }
+    }
+
+    /// Reserves the retained first candidate while another candidate is materialized.
+    /// Work remains shared; the reservation affects only simultaneous text storage.
+    pub(crate) fn with_retained_output(mut self, bytes: usize, cells: usize) -> Self {
+        self.retained_output_bytes = bytes;
+        self.retained_document_cells = cells;
+        self
     }
 
     /// Creates a ledger-sharing view whose resource admissions observe operation cancellation.
@@ -419,6 +431,8 @@ impl ResourceContext {
             layout_work_used: Rc::clone(&self.layout_work_used),
             document_cells_used: Rc::clone(&self.document_cells_used),
             operation: Some(ResourceOperation { control, phase }),
+            retained_output_bytes: self.retained_output_bytes,
+            retained_document_cells: self.retained_document_cells,
         }
     }
 
@@ -433,6 +447,8 @@ impl ResourceContext {
             layout_work_used: Rc::new(Cell::new(0)),
             document_cells_used: Rc::new(Cell::new(0)),
             operation: self.operation.clone(),
+            retained_output_bytes: self.retained_output_bytes,
+            retained_document_cells: self.retained_document_cells,
         }
     }
 
@@ -453,6 +469,8 @@ impl ResourceContext {
             layout_work_used: Rc::clone(&self.layout_work_used),
             document_cells_used: Rc::new(Cell::new(0)),
             operation: self.operation.clone(),
+            retained_output_bytes: self.retained_output_bytes,
+            retained_document_cells: self.retained_document_cells,
         }
     }
 
@@ -466,12 +484,17 @@ impl ResourceContext {
         &self,
         materialized_cells: usize,
     ) -> Result<Self> {
+        // Final text was already admitted including any retained candidate. Temporary padded
+        // rows need their full local allowance without subtracting that reservation twice.
+        let temporary_total = materialized_cells
+            .checked_add(self.retained_document_cells)
+            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         let policy = match self.policy.value(AsciiResourceLimitId::MaxDocumentCells) {
-            Some(current) if current < materialized_cells => self
+            Some(current) if current < temporary_total => self
                 .policy
                 .with_limit(
                     AsciiResourceLimitId::MaxDocumentCells,
-                    materialized_cells.max(1),
+                    temporary_total.max(1),
                 )
                 .map_err(|_| self.overflow(AsciiResourceLimitId::MaxDocumentCells))?,
             _ => self.policy,
@@ -699,6 +722,14 @@ impl ResourceContext {
     }
 
     fn check_after_checkpoint(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        let retained = match id {
+            AsciiResourceLimitId::MaxOutputBytes => self.retained_output_bytes,
+            AsciiResourceLimitId::MaxDocumentCells => self.retained_document_cells,
+            _ => 0,
+        };
+        let actual = actual
+            .checked_add(retained)
+            .ok_or_else(|| self.overflow_after_checkpoint(id))?;
         self.policy
             .check(id, actual)
             .map_err(|error| self.terminate_resource_error(error))

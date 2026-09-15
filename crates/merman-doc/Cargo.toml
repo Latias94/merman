@@ -1,0 +1,23 @@
+[package]
+name = "merman-doc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared Markdown and HTML integration for Merman rustdoc diagrams."
+documentation = "https://docs.rs/merman-doc"
+readme = "README.md"
+keywords = ["mermaid", "rustdoc", "markdown", "documentation"]
+categories = ["development-tools", "text-processing"]
+
+[dependencies]
+pulldown-cmark.workspace = true
+serde_json.workspace = true
+quick-xml.workspace = true
+
+[dev-dependencies]
+roxmltree.workspace = true
+pulldown-cmark = { workspace = true, features = ["html"] }

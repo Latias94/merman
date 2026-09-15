@@ -1,7 +1,4 @@
-import json
-
 import merman
-from theme_authoring import run_theme_authoring_smoke
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
@@ -24,29 +21,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 def main() -> None:
     api = merman.Merman()
-    require(api.binding_api_version_v8() == 8, "unexpected UniFFI binding API version")
-
-    tiny_source_options = (
-        merman.ResourceOptionsBuilder()
-        .profile(merman.ResourceProfile.CONSTRAINED)
-        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 1)
-        .build()
-        .to_options_json()
-    )
-    try:
-        api.render_svg(SOURCE, tiny_source_options)
-    except merman.MermanError.Binding as error:
-        require(
-            error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
-            and error.resource is not None
-            and error.resource.limit_id == "max_source_bytes"
-            and error.resource.phase == "source"
-            and error.resource.actual > error.resource.max
-            and error.resource.profile == "constrained",
-            "structured resource error smoke failed",
-        )
-    else:
-        raise RuntimeError("source limit unexpectedly accepted the smoke input")
+    require(api.binding_api_version_v7() == 7, "unexpected UniFFI binding API version")
 
     registry = merman.MermanIconRegistry.from_packs(
         [
@@ -123,15 +98,11 @@ def main() -> None:
                 f"default native artifact unexpectedly supports {capability_id}"
             )
 
-    constrained_source_options = (
-        merman.ResourceOptionsBuilder()
-        .profile(merman.ResourceProfile.CONSTRAINED)
-        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 8)
-        .build()
-        .to_options_json()
-    )
     try:
-        engine.render_svg(SOURCE, constrained_source_options)
+        engine.render_svg(
+            SOURCE,
+            '{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}',
+        )
     except merman.MermanError.Binding as error:
         require(
             error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
@@ -169,7 +140,6 @@ def main() -> None:
         raise RuntimeError("expired operation deadline did not cancel the request")
 
     engine.close()
-    run_theme_authoring_smoke()
     print("merman Python UniFFI smoke passed")
 
 

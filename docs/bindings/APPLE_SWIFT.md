@@ -12,13 +12,6 @@ The local SwiftPM package contains:
   generated C header, and module map; and
 - `scripts/build-apple-xcframework.sh`, which regenerates the Swift binding before packaging.
 
-API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
-complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
-`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
-cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
-probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
-and deploy the language projection with its matching native library.
-
 ## Build On macOS
 
 ```bash
@@ -54,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV8() == 8 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -134,7 +127,7 @@ shape and its local relations, such as every output also being an operation and 
 system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
 embedding a second copy of Merman's global vocabulary.
 
-Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `3`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
 
 ## Text Measurement
 
@@ -172,17 +165,15 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 7 generated source and native libraries together to API 8 before decoding the added
-  `detailsJson` error field. API 8 retains the existing ASCII admission arrays, schema-2 output
-  plans, `MermanDiagramFamilyCapability.familyId`, and `themeCatalogJson()` catalog. The generated
-  source and native library must move atomically. `MermanOperationRequestV4` remains the current
+- Move API 6 or older generated source and native libraries together to API 7. Replace the
+  version probe with `bindingApiVersionV7()`. API 7 adds `requestedLayoutProfile` and
+  `compactAttempted` to the schema-3 ASCII output plan; `layoutProfile` identifies the selected
+  Canonical or Compact geometry. API 6 introduced the capability admission arrays and encoding.
+  The generated source and native library must move atomically. `MermanOperationRequestV4` remains the current
   request record; add `control: nil` to generic request construction until the host adopts
   `MermanOperationControl`. Handle the optional `diagnostic`
   `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or
   ASCII failures from display text.
-- (Historical) Move API 5 generated source and native libraries together to API 6. API 6 added
-  the ASCII layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding;
-  regenerate the source and native library atomically.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
   required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
   optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.

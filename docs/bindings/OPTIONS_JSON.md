@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-08-10
+Last updated: 2026-08-01
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -15,29 +15,44 @@ may select it while constructing their temporary engine. Resource options are de
 stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
 explicit limit must belong to the selected operation.
 
-Schema `3` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+Schema `2` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
 or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
 unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
-Omitting `version` selects the current schema `3`; explicit legacy versions are rejected rather
+Omitting `version` selects the current schema `2`; explicit legacy versions are rejected rather
 than translated implicitly.
 
 ## Full Shape
 
 ```json
 {
-  "version": 3,
+  "version": 2,
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
-  "theme": {
-    "preset": "one-dark"
+  "presentation": {
+    "profile": "merman-modern",
+    "theme": {
+      "preset": "one-dark",
+      "appearance": "dark",
+      "font_family": "Inter, system-ui, sans-serif",
+      "roles": {
+        "canvas": "#0f172a",
+        "surface": "#111827",
+        "text": "#e5e7eb",
+        "border": "#475569",
+        "line": "#94a3b8",
+        "success": "#34d399"
+      },
+      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
+    }
   },
   "site_config": {
     "theme": "base",
     "themeVariables": {
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc"
-    }
+    },
+    "themeCSS": ".node rect { stroke-width: 2px; }"
   },
   "parse": {
     "suppress_errors": false
@@ -78,7 +93,6 @@ than translated implicitly.
       "max_model_text_bytes": 2097152,
       "max_model_nesting_depth": 256,
       "max_layout_work_units": 800000,
-      "max_prepared_text_retained_bytes": 25165824,
       "max_svg_elements": 250000,
       "max_svg_bytes": 25165824,
       "max_document_diagrams": 256,
@@ -117,19 +131,21 @@ than translated implicitly.
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
+    "scoped_css": ".node rect { stroke-width: 2px; }",
+    "css_override_policy": "preserve",
     "root_background_color": "#0f172a",
     "drop_native_duplicate_fallbacks": false
   },
   "raster": {
     "scale": 2,
-    "matte": "#ffffff",
+    "background": "#ffffff",
     "fit_to": { "width": 1200 }
   },
   "jpeg": {
     "quality": 85
   },
   "pdf": {
-    "page_paint": "transparent",
+    "background": "transparent",
     "page_policy": {
       "kind": "fit-css-width",
       "max_width_px": 1200
@@ -144,11 +160,11 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `3` | Options-schema version. Version `2` is the published alpha.4/alpha.5 grammar and is rejected because the current typed-theme and export-paint contract is not wire-compatible with it. Omitting the field uses the current schema-3 grammar for convenience callers; durable SDK integrations should send `3` explicitly. |
+| `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `theme` | object or null | none | Experimental complete compiled diagram theme: exactly one `preset` or `spec`. |
+| `presentation` | object | none | Optional first-party presentation profile plus independent host semantic theme data. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -255,9 +271,9 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 
 ## Site Config
 
-`site_config` accepts a bounded Mermaid configuration object applied through
+`site_config` accepts the same Mermaid configuration object that Rust users pass through
 `Engine::with_site_config(...)` before constructing a `Renderer`. It is intended for host-level
-defaults such as theme selection and `themeVariables`:
+Mermaid defaults such as theme selection, `themeVariables`, and Mermaid `themeCSS`:
 
 ```json
 {
@@ -267,134 +283,54 @@ defaults such as theme selection and `themeVariables`:
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc",
       "nodeBorder": "#38bdf8"
-    }
-  }
-}
-```
-
-`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`.
-`site_config.themeCSS` and `site_config.secure` are rejected by general bindings. Raw CSS and the
-set of protected Mermaid configuration keys are host trust decisions, so callers cannot replace
-them through one-shot options, reusable constructors, or request overlays. Trusted native hosts
-must use the Rust rendering API or native CLI host configuration. Binding consumers should use the
-typed `theme` schema for diagram styling and `svg.root_background_color` for the narrow root-canvas
-override.
-
-## Diagram Theme
-
-The unreleased top-level `theme` field is an experimental closed selection for one complete
-compiled diagram theme. It must be `null` or an object containing exactly one of `preset` and `spec`.
-`{}`, both members, and a null `preset`/`spec` payload are rejected. A successful compilation
-validates the bounded recipe and reports its requirements; it is not proof of the unfinished
-cross-family, cross-target portability matrix.
-
-`theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value
-compiles the corresponding Rust `ThemePreset`. It does not select `look: neo`, Flowchart ELK, an
-SVG pipeline, or a product profile.
-
-`theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
-
-| Field | Purpose |
-| --- | --- |
-| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, or `redux-dark-color`), `dark_mode`, and scalar `variables`. |
-| `typography` | Default and family-specific text styles. |
-| `styles` | Tagged semantic rules and ordinal palettes. `null` inside a style patch explicitly clears that property. |
-| `canvas` | Base paint, bounded layers, and bleed. |
-| `effects` | Tagged bounded filter graphs and semantic bindings. |
-| `requirements` | Required theme and text-layout capability IDs. |
-| `assets` | Embedded font catalog, aliases, generic-family mappings, sources, and embedding requirements. |
-
-An effect graph contains only its recipe-local `id` and ordered `primitives`; a semantic binding selects
-the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
-safe region from final paint geometry and admits it against the effective session resource policy.
-Because the schema is closed, the removed `region` member is rejected rather than ignored.
-
-```json
-{
-  "effects": [
-    {
-      "kind": "graph",
-      "id": "state-shadow",
-      "primitives": [{
-        "kind": "drop-shadow",
-        "offset_x": 5,
-        "offset_y": 6,
-        "blur_radius": 0,
-        "spread": 0,
-        "color": "#111827"
-      }]
     },
-    { "kind": "binding", "target": "state", "effect_id": "state-shadow" }
-  ]
+    "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
+  }
 }
 ```
 
-The binding schema rejects unknown nested fields. Mermaid compatibility variables accept only
-strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG
-output policy do not belong in `theme.spec.mermaid`; use their explicit owners instead.
+`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`. This option
+does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
+postprocessing for editor-specific colors.
+
+## Presentation
+
+`presentation` has two independent inputs: an optional first-party product profile and an optional host semantic theme. It does not own raw Mermaid configuration or SVG postprocessing. Default rendering is unchanged when `presentation` is omitted or empty.
 
 ```json
 {
-  "theme": {
-    "spec": {
-      "mermaid": {
-        "theme": "base",
-        "dark_mode": true,
-        "variables": {
-          "primaryColor": "#2563eb"
-        }
+  "presentation": {
+    "profile": "merman-modern",
+    "theme": {
+      "preset": "one-dark",
+      "appearance": "dark",
+      "font_family": "Inter, system-ui, sans-serif",
+      "font_size": "14px",
+      "roles": {
+        "canvas": "#0f172a",
+        "surface": "#111827",
+        "surface-alt": "#1f2937",
+        "text": "#e5e7eb",
+        "subtle-text": "#cbd5e1",
+        "border": "#475569",
+        "line": "#94a3b8",
+        "note-background": "#422006",
+        "note-border": "#f59e0b",
+        "success": "#34d399"
       },
-      "typography": {
-        "default": {
-          "font_stack": ["Inter", "system-ui", "sans-serif"],
-          "font_size_px": 14,
-          "line_height": 1.4
-        }
-      },
-      "styles": [
-        {
-          "kind": "rule",
-          "target": "node",
-          "family": "flowchart",
-          "style": {
-            "fill": "#111827",
-            "stroke": { "paint": "#60a5fa", "width": 2 }
-          }
-        },
-        {
-          "kind": "ordinal-palette",
-          "target": "chart-series",
-          "colors": ["#60a5fa", "#34d399", "#f59e0b"]
-        }
-      ],
-      "canvas": { "base": "#0f172a", "bleed": 8 },
-      "effects": [],
-      "requirements": { "capabilities": ["semantic-rules"] }
+      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
     }
   }
 }
 ```
 
-Theme selection is not part of the generic request deep merge. For a reusable engine, omitted
-`theme` inherits the constructor's compiled value, `theme: null` clears it, and a request
-`preset` or `spec` replaces it as one complete value. Requests cannot raise the constructor's
-theme admission or resource policies.
+`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
 
-Bounded Mermaid behavior overrides belong at top-level `site_config`; output choices belong under
-`svg`. Raw CSS is not part of either general-binding surface.
-`presentation` and `host_theme` are removed groups and return migration-oriented errors. Use
-top-level `theme`, `site_config`, explicit layout configuration, and `svg` as independent owners.
+`presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
 
-Mermaid configuration precedence is the base engine config, the compiled theme's explicit
-Mermaid compatibility values, top-level `site_config`, then diagram frontmatter and directives
-subject to hardened secure keys. Typed semantic rules, typography, canvas, effects, and assets are
-resolved by the consuming family/document/output stages rather than being flattened into a second
-Mermaid JSON cascade.
+Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
 
-Use the artifact's `theme-catalog` metadata entry to discover preset IDs, semantic targets,
-capabilities, font IDs, and resource limits. This is particularly important for artifacts that do
-not compile every SVG capability.
+Merge precedence is the engine's base config, presentation profile defaults, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
 
 ## Parse Options
 
@@ -425,13 +361,17 @@ defined by ADR 0070.
 ## ASCII Options
 
 `ascii` applies to `render_ascii` and reusable engines that call ASCII rendering. These options do
-not affect SVG, parse JSON, layout JSON, or validation output.
+not affect SVG, parse JSON, layout JSON, or validation output. Availability depends on the compiled
+transport/package as well as family capabilities; shared option parsing does not imply that every
+package ships an ASCII operation. The host supplies resolved environment facts. See the
+[host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes) for
+explicit terminal, machine-channel, SVG, and raster request composition.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
-| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` is admitted only for Flowchart and Sequence: it resolves the Flowchart wrap default from 40 to 24 cells and Sequence participant spacing from 5 to 3 unless the corresponding family option is explicit. Other supported families reject `compact`. |
+| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` uses a 24-cell Flowchart node wrap and a 3-cell horizontal rank gap, or 3-cell Sequence participant spacing, unless explicitly overridden. `auto` requires `max_width` and tries Compact once after Canonical overflows. Both are admitted only for Flowchart and Sequence. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`/`none`, `ansi16`/`ansi-16`/`ansi_16`, `ansi256`/`ansi-256`/`ansi_256`, `truecolor`/`true-color`/`true_color`, or `html`. Bindings reject host-dependent `auto`; the host must resolve it before constructing environment-independent options. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
@@ -447,9 +387,15 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
-| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound applied after normal layout. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
+| `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound used for planned-extent admission and Auto selection. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
 | `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
 | `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
+
+`ascii.theme` is independent of SVG `presentation.theme`. TrueColor resolves terminal roles through
+the supplied RGB palette; ANSI256 approximates those colors. ANSI16 instead uses terminal Reset and
+named ANSI colors for semantic roles, so it does not apply that RGB palette to those roles. The host
+owns any mapping of its application theme into both output-specific inputs. See
+[terminal themes](../rendering/presentation-themes.md#terminal-themes).
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
@@ -459,14 +405,40 @@ ASCII capability records expose `layout_profiles`, `width_profiles`, `encodings`
 `fallback_encodings` (camelCase in generated host DTOs where applicable). Preflight those arrays for
 the detected diagram family before rendering. Every supported family currently admits `unicode` and
 `cjk` width profiles plus Plain, ANSI16, ANSI256, TrueColor, and HTML primary encodings. Only
-Flowchart and Sequence admit `compact`; all other supported families are canonical-only.
+Flowchart and Sequence admit `compact` and `auto`; all other supported families are canonical-only.
 
 Viewport `fallback` is currently admitted only with `color_mode: "plain"`. Styled fallback requests
-are rejected instead of returning an ambiguous or partially styled compatibility projection.
+are rejected before rendering, even if the diagram would fit, instead of returning an ambiguous or
+partially styled compatibility projection.
 `allow` and `error` remain valid with every admitted primary encoding. The canonical ASCII output
-plan is schema `2`; it includes an explicit `encoding` field, and its logical height excludes a final
-line terminator. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
+plan is schema `3`; it includes `encoding`, `requested_layout_profile`, `layout_profile` (the
+selected primary geometry), and `compact_attempted`. Its logical height excludes a final line
+terminator. The options JSON version remains `2`; the output schema version is independent. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
 to Plain there and an explicit styled report request is rejected.
+
+Auto selects the narrower valid primary candidate and prefers Canonical on equal width. It does
+not change graph direction or truncate long edge labels. A narrower result may be taller. After
+selection, `overflow` determines whether a still-wide diagram is emitted, rejected, or replaced
+with the existing complete structured projection. Canonical and Compact remain fixed selections.
+No resource or cancellation failure triggers another attempt. With `allow`, retaining the first
+candidate while trying Compact consumes additional bounded text storage.
+
+For an 80-column Flowchart or Sequence request in an ASCII-capable artifact, use:
+
+```json
+{
+  "ascii": {
+    "layout_profile": "auto",
+    "max_width": 80,
+    "overflow": "fallback",
+    "color_mode": "plain"
+  }
+}
+```
+
+Use `allow` or `error` with styled primary output; Auto does not relax the Plain-only fallback
+contract. `primary_width`/`primary_height` and `overflowed` describe the selected primary candidate,
+even when structured fallback is emitted. `compact_attempted` is independent of `fallback_attempted`.
 
 The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
 
@@ -488,7 +460,7 @@ update requests rather than relying on an alias.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `environment.text_measurement` | string or null | `deterministic` | The only built-in value is `deterministic`. `null` selects no concrete override but remains explicit provenance. Install a host callback through the engine service API when the final display stack should own geometry; any explicit selector, including `null`, conflicts with that constructor-owned service. |
+| `environment.text_measurement` | string | `deterministic` | The only built-in value is `deterministic`; install a host callback through the engine service API when the final display stack should own geometry. |
 | `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
@@ -524,7 +496,6 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
 | `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
-| `resources.limits.max_prepared_text_retained_bytes` | positive integer | profile value | Maximum operation-local bytes retained by prepared-text artifacts. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
 | `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Checked logical extent for grid-backed terminal renderers. |
@@ -542,7 +513,7 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_total_embedded_image_pixels` | positive integer | profile value | Maximum aggregate intrinsic pixels across embedded raster images. |
 | `resources.limits.max_pdf_filter_image_pixels` | positive integer | profile value | Maximum retained pixel area for PDF filter-image rasterization after deterministic downsampling. |
 
-The eight render/model limits are intentionally family-neutral. Each family performs source-backed,
+The seven render/model limits are intentionally family-neutral. Each family performs source-backed,
 deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
 candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
 choose a workload profile instead of maintaining diagram-specific threshold tables.
@@ -633,7 +604,7 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under Options JSON schema `3`: an unknown id, a value below the
+Limit ids are closed under Options JSON schema `2`: an unknown id, a value below the
 descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
 rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
@@ -669,7 +640,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `8`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `7`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for
@@ -686,12 +657,26 @@ does not depend on them.
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
+| `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
+| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
-`readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
-renderer compatibility, including structural cleanup for labels that already include native SVG
-`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
+Choose the pipeline for the consumer that will display the SVG:
+
+| Consumer | Pipeline | Behavior |
+| --- | --- | --- |
+| Browser or Webview | `parity` (default) | Preserves Mermaid HTML labels and styles without adding text overlays. |
+| resvg/usvg, including native PNG/JPEG/PDF export | `resvg-safe` | Converts HTML labels, applies compatibility cleanup, and validates the result. Native binary exports select this contract automatically. |
+| Custom consumer that ignores HTML labels but needs the remaining SVG preserved | `readable` (advanced) | Keeps HTML and appends best-effort SVG text. Browsers can display both copies and show overlapping text. |
+
+`readable` is a text-fallback overlay, not pretty-printing or a higher-quality browser mode. Use
+`parity` for browser previews. `resvg-safe` also removes unsupported styles and active content,
+so it is not a lossless replacement for `readable`. Neither option substitutes for the host's
+browser DOM-admission policy. All three pipeline values and their defaults remain unchanged.
+
+`resvg-safe` includes structural cleanup for labels that already include native SVG `<switch>`
+text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
 additional native/fallback duplicate surfaces, including hosts that already request `resvg-safe`.
 Its generic text matching should be treated as an opt-in postprocessing policy. HTML label fallback
 text inherits Mermaid label/root fill colors when
@@ -702,10 +687,11 @@ Mermaid-compatible SVG and can include `<foreignObject>` HTML labels. Hosts that
 bytes into strict SVG renderers, rasterizers, or PDF converters should request `resvg-safe`
 explicitly instead of treating the default SVG as export-safe input.
 
-General bindings reject `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and
-`svg.cssOverridePolicy`. CSS acceptance and changes to existing cascade priority are host trust
-decisions and therefore remain limited to trusted Rust and native CLI integrations. This rejection
-applies to one-shot options, reusable-engine constructors, and request-local overlays.
+`svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
+root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
+`svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
+raster-safe contract as far as the built-in sanitizer can. Hosts still own CSS trust, palette
+semantics, and renderer-specific compatibility.
 
 `svg.root_background_color` is narrower than host CSS. It rewrites the root `<svg>` inline
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
@@ -719,11 +705,11 @@ diagram canvas to match the host surface. The value must be a single CSS declara
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `raster.scale` | positive finite number | `1` | Device-pixel scaling applied before the output resource ceiling. |
-| `raster.matte` | supported color string | transparent | Solid output compositing color: `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. This is separate from the diagram theme canvas. |
+| `raster.background` | supported color string | transparent | `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
 | `raster.fit_to.width` | positive integer | none | Optional target width in pixels. At least one fit dimension is required. |
 | `raster.fit_to.height` | positive integer | none | Optional target height in pixels. At least one fit dimension is required. |
 | `jpeg.quality` | integer from `1` to `100` | exporter default | JPEG encoder quality. |
-| `pdf.page_paint` | supported color string | transparent | Optional solid paint behind SVG content on the PDF page, using the same supported color vocabulary. This is separate from the diagram theme canvas. |
+| `pdf.background` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
 | `pdf.filter_scale` / `pdf.filterScale` | positive finite number | `4` | Requested sampling scale for localized SVG filter images. The exporter may reduce it to satisfy `max_pdf_filter_image_pixels`. |
 | `pdf.page_policy.kind` | string | `fit-svg` | `fit-svg`, `fixed`, or `fit-css-width`. |
 | `pdf.page_policy.width_pt` / `height_pt` | positive finite number | required by `fixed` | Fixed PDF page dimensions in points. |
@@ -733,13 +719,13 @@ PDF filter sampling is explicit, while its localized-image ceiling remains part 
 
 ## Examples
 
-Readable SVG with a stable id:
+Default browser SVG with a stable id:
 
 ```json
 {
   "svg": {
     "diagram_id": "docs-flow",
-    "pipeline": "readable"
+    "pipeline": "parity"
   }
 }
 ```
@@ -761,13 +747,27 @@ External Mermaid theme defaults for plain source:
 }
 ```
 
-Readable SVG with generic duplicate native/fallback labels removed:
+Advanced text-fallback SVG for a custom consumer that ignores HTML labels, with generic
+native/fallback duplicate cleanup. This cleanup does not prevent HTML/fallback overlap in browsers:
 
 ```json
 {
   "svg": {
     "pipeline": "readable",
     "drop_native_duplicate_fallbacks": true
+  }
+}
+```
+
+Resvg-safe SVG with host-scoped CSS:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "diagram_id": "host-preview",
+    "scoped_css": ".node rect { fill: #111827; } .merman-foreignobject-fallback-text { fill: #f8fafc; }",
+    "css_override_policy": "strip-existing-important"
   }
 }
 ```

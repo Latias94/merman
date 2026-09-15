@@ -24,7 +24,7 @@ ASCII_FAMILY_FIELDS = {
 }
 ASCII_MAPPING_FIELDS = {"detected_type", "family"}
 ASCII_REPORT = {
-    "success_schema_version": 2,
+    "success_schema_version": 3,
     "error_schema_version": 1,
     "encoding": "plain",
     "styled_output": False,
@@ -153,7 +153,7 @@ def _expected_family_contract(family: str) -> dict[str, object]:
         }
     layouts = ["canonical"]
     if family in ASCII_COMPACT_FAMILIES:
-        layouts.append("compact")
+        layouts.extend(["compact", "auto"])
     return {
         "semantic_coverage": "partial",
         "primary_projection": projection,
@@ -180,7 +180,7 @@ def canonical_ascii_capabilities() -> dict[str, object]:
         )
     return {
         "schema_version": 1,
-        "output_schema_version": 2,
+        "output_schema_version": 3,
         "report": dict(ASCII_REPORT),
         "families": families,
         "detected_type_mappings": [
@@ -199,7 +199,7 @@ def validate_ascii_capabilities(value: object) -> None:
         raise AsciiCapabilityContractError("ASCII schema version drifted")
     if (
         type(value["output_schema_version"]) is not int
-        or value["output_schema_version"] != 2
+        or value["output_schema_version"] != 3
     ):
         raise AsciiCapabilityContractError("ASCII output schema version drifted")
     if value["report"] != ASCII_REPORT:

@@ -4,17 +4,70 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import node_package_group
-from scripts.npm_package_group import DryRunNpmClient, npm_executable, reconcile_group
+from scripts.npm_package_group import (
+    DryRunNpmClient,
+    NpmCli,
+    PackageGroupError,
+    npm_executable,
+    reconcile_group,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DESCRIPTOR = ROOT / "platforms" / "node" / "package-surfaces.json"
+
+
+class NpmCliTests(unittest.TestCase):
+    @mock.patch("scripts.npm_package_group.subprocess.run")
+    def test_npm12_view_unwraps_one_integrity_and_dist_tag(self, run: mock.Mock) -> None:
+        integrity = "sha512-YWJjZA=="
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, json.dumps([integrity]), ""),
+            subprocess.CompletedProcess([], 0, json.dumps([{"alpha": "0.1.0-alpha.1"}]), ""),
+        ]
+        client = NpmCli()
+        self.assertEqual(client.version_integrity("@mermanjs/node", "0.1.0-alpha.1"), integrity)
+        self.assertEqual(client.dist_tag("@mermanjs/node", "alpha"), "0.1.0-alpha.1")
+
+    @mock.patch("scripts.npm_package_group.subprocess.run")
+    def test_npm12_view_rejects_ambiguous_and_invalid_results(self, run: mock.Mock) -> None:
+        client = NpmCli()
+        for value in ["sha512-YWJjZA==", [], ["sha512-YWJjZA=="] * 2, [None], ["invalid"]]:
+            with self.subTest(integrity=value):
+                run.return_value = subprocess.CompletedProcess([], 0, json.dumps(value), "")
+                with self.assertRaisesRegex(PackageGroupError, "invalid dist.integrity"):
+                    client.version_integrity("@mermanjs/node", "0.1.0")
+        for value in [{"alpha": "0.1.0"}, [], [{}, {}], [None], [{"alpha": 1}]]:
+            with self.subTest(tags=value):
+                run.return_value = subprocess.CompletedProcess([], 0, json.dumps(value), "")
+                with self.assertRaises(PackageGroupError):
+                    client.dist_tag("@mermanjs/node", "alpha")
+
+    @mock.patch("scripts.npm_package_group.subprocess.run")
+    def test_missing_registry_metadata_is_distinct_from_failed_lookup(self, run: mock.Mock) -> None:
+        client = NpmCli()
+        run.return_value = subprocess.CompletedProcess([], 1, "", "npm error code E404")
+        self.assertIsNone(client.version_integrity("@mermanjs/node", "0.1.0"))
+        self.assertIsNone(client.dist_tag("@mermanjs/node", "alpha"))
+        run.return_value = subprocess.CompletedProcess([], 0, "[{}]", "")
+        self.assertIsNone(client.dist_tag("@mermanjs/node", "alpha"))
+        for result in [
+            subprocess.CompletedProcess([], 1, "", "npm error code E401"),
+            subprocess.CompletedProcess([], 0, "not json", ""),
+        ]:
+            run.return_value = result
+            with self.assertRaises(PackageGroupError):
+                client.version_integrity("@mermanjs/node", "0.1.0")
+            with self.assertRaises(PackageGroupError):
+                client.dist_tag("@mermanjs/node", "alpha")
 
 
 class NodePackageGroupTests(unittest.TestCase):

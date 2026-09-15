@@ -40,7 +40,7 @@ fn issue_53_compact_plain_and_ansi16_share_one_flowchart_geometry() {
                 .unwrap_or_default(),
             plain.lines().count(),
         ),
-        (58, 67)
+        (56, 67)
     );
 }
 
@@ -61,11 +61,11 @@ fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() 
     assert_eq!(
         strip_ansi(&rendered),
         concat!(
-            "+---+     +---+\n",
-            "|   |     |   |\n",
-            "| A |-yes>| B |\n",
-            "|   |     |   |\n",
-            "+---+     +---+\n",
+            "+---+        +---+\n",
+            "|   |        |   |\n",
+            "| A |--yes-->| B |\n",
+            "|   |        |   |\n",
+            "+---+        +---+\n",
         )
     );
     for expected_code in [
@@ -212,8 +212,8 @@ fn flowchart_style_color_html_maps_linkstyle_edge_and_label_foreground_without_p
 
     assert_eq!(strip_html_spans(&rendered), plain);
     assert!(
-        rendered.contains("<span style=\"color:#123456\">-</span>")
-            || rendered.contains("<span style=\"color:#123456\">&gt;</span>"),
+        rendered.contains("<span style=\"color:#123456\">--</span>")
+            && rendered.contains("<span style=\"color:#123456\">--&gt;</span>"),
         "missing styled edge line or arrow in {rendered:?}"
     );
     assert!(

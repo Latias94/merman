@@ -36,13 +36,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "66d9946dce474e1945b52bbc090ec69d79cfed680a098b4cfe4d6422ec4c0775",
+    "cargo_lock_sha256": "13703a41400a09cb9076292db2aefcccef37fc8e70ee0c76c29e8a165d10fa1c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "a89c382151807edfdaea3e7a4ee67b5b89d7e20f7dbfe64b656aa5858e328037"
   },
   "dependency_closure": {
     "package_count": 98,
-    "packages_sha256": "23354736e395f4e14d87c384237b99d2dc14db728c3d5443a1fddd797734b9b4"
+    "packages_sha256": "030ce580427dfbe5c541c274a918c3f2102c3fde6cbdd9136180d6cc062448d4"
   },
   "licenses": [
     {
@@ -241,7 +241,7 @@
         },
         {
           "name": "thiserror",
-          "version": "2.0.20",
+          "version": "2.0.19",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -251,7 +251,7 @@
         },
         {
           "name": "thiserror-impl",
-          "version": "2.0.20",
+          "version": "2.0.19",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -279,7 +279,7 @@
       "packages": [
         {
           "name": "futures-core",
-          "version": "0.3.34",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -287,7 +287,7 @@
         },
         {
           "name": "futures-task",
-          "version": "0.3.34",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -295,7 +295,7 @@
         },
         {
           "name": "futures-util",
-          "version": "0.3.34",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -459,7 +459,7 @@
         },
         {
           "name": "js-sys",
-          "version": "0.3.104",
+          "version": "0.3.103",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -601,7 +601,7 @@
         },
         {
           "name": "wasm-bindgen",
-          "version": "0.2.127",
+          "version": "0.2.126",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -611,7 +611,7 @@
         },
         {
           "name": "wasm-bindgen-macro",
-          "version": "0.2.127",
+          "version": "0.2.126",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -621,7 +621,7 @@
         },
         {
           "name": "wasm-bindgen-macro-support",
-          "version": "0.2.127",
+          "version": "0.2.126",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -631,7 +631,7 @@
         },
         {
           "name": "wasm-bindgen-shared",
-          "version": "0.2.127",
+          "version": "0.2.126",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

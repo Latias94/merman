@@ -34,6 +34,8 @@ data class MermanAsciiOutputPlan(
     val emittedHeight: Long,
     val widthProfile: String,
     val layoutProfile: String,
+    val requestedLayoutProfile: String,
+    val compactAttempted: Boolean,
     val requestedMaxWidth: Long?,
     val overflowed: Boolean,
     val outcome: String,

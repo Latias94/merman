@@ -280,7 +280,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical",
-      "compact"
+      "compact",
+      "auto"
     ],
     "width_profiles": [
       "unicode",
@@ -834,7 +835,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical",
-      "compact"
+      "compact",
+      "auto"
     ],
     "width_profiles": [
       "unicode",

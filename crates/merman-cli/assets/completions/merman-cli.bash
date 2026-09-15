@@ -1499,7 +1499,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --ascii-layout-profile)
-                    COMPREPLY=($(compgen -W "canonical compact" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "canonical compact auto" -- "${cur}"))
                     return 0
                     ;;
                 --resource-profile)

@@ -382,7 +382,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             recipe.feature_argument,
         )
         with self.assertRaisesRegex(RuntimeError, "does not declare host target"):
-            cargo_host_build_args(recipe, "aarch64-unknown-linux-gnu")
+            cargo_host_build_args(recipe, "aarch64-unknown-linux-musl")
 
     def test_host_build_cli_uses_the_detected_rust_target(self) -> None:
         argv = [

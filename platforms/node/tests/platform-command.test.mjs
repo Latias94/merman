@@ -4,7 +4,31 @@ import test from "node:test";
 import {
   assertSuccessfulNpmSpawn,
   npmCommand,
+  npmPackRecord,
 } from "../../../scripts/npm-command.mjs";
+
+test("npm pack reads npm 12 named records and opts into baseline-container npm 11", () => {
+  const packageName = "@mermanjs/node";
+  const record = { name: packageName, filename: "mermanjs-node.tgz", files: [] };
+  assert.deepEqual(npmPackRecord(JSON.stringify({ [packageName]: record }), packageName), record);
+  assert.deepEqual(
+    npmPackRecord(JSON.stringify([record]), packageName, { allowNpm11: true }),
+    record,
+  );
+  for (const output of [
+    [record], {}, null, { another: record },
+    { [packageName]: { name: "another" } },
+    { [packageName]: record, another: { name: "another" } },
+  ]) {
+    assert.throws(() => npmPackRecord(JSON.stringify(output), packageName), /exactly one package/);
+  }
+  for (const output of [[], [record, record], [{ name: "another" }]]) {
+    assert.throws(
+      () => npmPackRecord(JSON.stringify(output), packageName, { allowNpm11: true }),
+      /exactly one package/,
+    );
+  }
+});
 
 test("npm subprocesses resolve through the shared Windows adapter", () => {
   assert.deepEqual(

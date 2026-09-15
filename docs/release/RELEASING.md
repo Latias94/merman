@@ -157,8 +157,8 @@ For an npm-only alpha test, `release-node.yml` treats `release_tag` as the packa
 same-named workspace tag; the workflow records the resolved commit in the package-group manifest,
 and release notes must not claim that separately published channels are byte-identical.
 
-The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24.13.1, enters
-the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
+The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24.21.0 and
+npm 12.0.2, enters the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
 the immutable source commit without credentials. The source checkout supplies only the package
 surface descriptor; the trusted revision verifies the downloaded package-group hashes before
 publishing missing packages directly under the final tag. The job must not build, test, or execute
@@ -221,6 +221,8 @@ owner-specific artifact workflows while recording its historical compatibility e
 not move the tag or treat the exception as permission for a later prerelease.
 
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
+
+`python3 scripts/verify_release_changelog.py --version <workspace-version>` accepts an unversioned `[Unreleased]` entry during development and still checks every versioned projection against the supplied workspace version. Immutable preflight adds `--require-date`, which requires every first entry to name that version and a valid date; it never skips pending changes to validate an older release underneath them.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
 

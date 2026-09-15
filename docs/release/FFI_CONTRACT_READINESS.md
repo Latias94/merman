@@ -9,17 +9,18 @@ sets and release evidence differ.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | green | C ABI 3, Android JNI transport API 2, UniFFI API 8, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
-| `public-typst` | alpha scaffold; C7a blocked | Typst plugin ABI 4 with SVG, canonical analysis, Alpha theme catalog discovery, three explicitly Alpha theme-authoring operations, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix; no C7a contract-candidate claim |
+| `public-native` | green | C ABI 3, Android JNI transport API 2, UniFFI API 7, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-typst` | green | Typst plugin ABI 2 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
 | `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public seven-package contract, generated wire contract, glibc-baseline native builds, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 2. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI is API 8 and includes the
-post-alpha.5 family-capability contraction, operation-scoped cancellation/deadline controls with
-structured terminal details, ASCII capability admission arrays, and schema-2 ASCII output-plan
-encoding. API 8 adds complete core-owned `details_json` to binding errors and replaces the API 7
-version-probe symbol so stale generated bindings fail before decoding the expanded error layout. Source SDK breaks do not retain compatibility aliases.
+partial-table consumers are no longer a supported SDK target. UniFFI is API 7 and includes
+operation-scoped cancellation/deadline controls with structured terminal details, ASCII capability
+admission arrays, and schema-3 ASCII output-plan encoding and layout-selection metadata.
+API 7 replaces the API 6 version-probe
+symbol so stale generated bindings fail before decoding revised records. Source SDK breaks do not
+retain compatibility aliases.
 
 ## Dependency boundary
 

@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { spawnNpmSync } from "../../../scripts/npm-command.mjs";
+import { npmPackRecord, spawnNpmSync } from "../../../scripts/npm-command.mjs";
 import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import {
   allPackageWasmExportNames,
@@ -329,13 +329,13 @@ function assertPackageTypeConsumers(checked) {
       );
       let metadata;
       try {
-        metadata = JSON.parse(result.stdout);
+        metadata = npmPackRecord(result.stdout, item.descriptor.name);
       } catch (error) {
         throw new Error(
           `Unable to read npm pack metadata for ${item.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const filename = metadata?.[0]?.filename;
+      const filename = metadata.filename;
       if (typeof filename !== "string" || filename.length === 0) {
         throw new Error(`npm pack did not report a tarball for ${item.descriptor.name}.`);
       }

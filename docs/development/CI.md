@@ -147,6 +147,12 @@ Pull requests build and test the site but do not deploy it. Main-branch runs upl
 WebKit retain focused smoke coverage because browser-specific loading and worker failures are a
 user-visible contract rather than a duplicate source-level test.
 
+Host Node.js jobs use npm 12.0.2, with Node.js 24.21.0 for the Node 24 lanes. The external
+Mermaid performance comparison retains its Node 22 lane. Native Linux package builds retain the
+Node.js 24.13.1 Alpine 3.22 and Bullseye containers and their bundled npm 11 to preserve the
+existing musl and glibc compatibility baselines. Node.js 24.21.0 has no matching official container
+variants; upgrading those operating-system baselines requires separate native artifact evidence.
+
 ## Scheduled Maintenance
 
 The repository has focused weekly schedules for full host Rust tests, fuzzing, security,
@@ -184,6 +190,15 @@ evidence:
 - exact package contents, checksums, symbols, provenance, and installation smoke;
 - full SDK and registry package assembly;
 - release version and documentation projections.
+
+The `cli-and-lsp-archives` job owns final Linux CLI/LSP archive evidence on native x86_64 and
+ARM64 runners. It evaluates the full pinned cargo-dist plan with the requested version without
+creating a tag, checks the selected target's runner/host and planned assets, then builds and
+executes both final archives with adjacent-checksum verification. Each target uploads its plan,
+build manifest, archives, and checksums as `preflight-cli-lsp-<target>`. Keep the run and source SHA
+with any target-admission decision. This job replaces the former x86_64-only archive build inside
+`versions-and-packages`; it does not duplicate that build or add release permissions. Complete
+global installer, bundle, and attestation gates remain owned by the tagged release workflow.
 
 The Web size gate measures the final wasm-bindgen binaries copied into the npm packages. It must not
 build and measure a second Cargo-only approximation of the same package.

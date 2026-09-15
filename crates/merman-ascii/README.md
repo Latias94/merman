@@ -6,6 +6,11 @@
 
 This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not parse Mermaid syntax itself.
 
+The host supplies width, charset, color mode, palette, and overflow policy. This crate does not probe
+terminal state or own a pager, cache, viewer, clipboard, or source-display policy. The
+[host integration recipes](../merman/examples/README.md#host-integration-recipes) show facade requests
+for terminal text and plain agent/log output without adding a host-policy abstraction.
+
 Terminal geometry uses `TerminalWidthProfile::Unicode` by default. Select
 `TerminalWidthProfile::Cjk` when the target terminal renders East Asian ambiguous characters as
 wide. Measurement, wrapping, truncation, placement, and output use the selected profile together;
@@ -48,8 +53,8 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 Every concrete built-in typed family has one capability record. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
 derived from them. The same record exposes `layout_profiles`, `width_profiles`, `encodings`, and
-`fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact
-layout is currently admitted only for Flowchart and Sequence; every other supported family reports
+`fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact and Auto
+layout selection are currently admitted only for Flowchart and Sequence; every other supported family reports
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
@@ -58,13 +63,13 @@ The canonical report API is `AsciiRenderer::render_model_report` or
 `AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
 `primary_extent` and `emitted_extent`, projection, width profile, layout profile, requested bound,
 overflow outcome, fallback capability/attempt/reason state, trim state, and lossiness. The convenience
-`render_model`/`render_parsed` helpers project only the text. `AsciiViewportPolicy::Fallback` never
+`render_model`/`render_parsed` helpers project only the text. `OverflowPolicy::Fallback` never
 clips or ellipsizes authored values; it either returns a complete typed compatibility projection or
 `AsciiError::FallbackUnavailable`.
 
-`AsciiOutput::metadata()` is the canonical schema-2 transport payload for binding operation plans;
-`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Schema 2 identifies the
-text `encoding` explicitly. CLI report mode is a machine channel: `auto` resolves to Plain there and
+`AsciiOutput::metadata()` is the canonical schema-3 transport payload for binding operation plans;
+`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Schema 3 identifies the
+text `encoding`, requested/effective layout profiles, and whether Compact was attempted. CLI report mode is a machine channel: `auto` resolves to Plain there and
 an explicitly styled report request is rejected. Styled Rust and binding results remain supported
 and carry their exact encoding identity. Both projections are derived from the same measured
 candidate, so CLI, Rust, and bindings do not remeasure text or reconstruct enum and field names
@@ -82,10 +87,23 @@ Flowchart node labels wrap before layout at a default width of 40 terminal displ
 `AsciiRenderOptions::with_flowchart_node_label_wrap_width` to tune that family-owned terminal
 policy. The value is not a CSS-pixel conversion of Mermaid's SVG `wrappingWidth`; the same
 grapheme-safe plan drives node measurement and final text materialization. The opt-in Compact
-profile resolves the Flowchart default to 24 cells and Sequence participant spacing from 5 to 3,
+profile resolves the Flowchart node-wrap default to 24 cells and horizontal rank gap from 5 to 3,
+and Sequence participant spacing from 5 to 3,
 unless the caller explicitly overrides the corresponding family option. These adjustments are
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
+
+Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
+and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
+valid diagram (Canonical on ties). The existing `Allow`, `Error`, or `Fallback` policy applies to
+the selected candidate. A narrower diagram may be taller; Auto does not change direction or
+truncate labels. String-only renderer methods without a viewport reject Auto.
+
+`AsciiOutput::layout_profile` identifies the selected primary geometry, while
+`requested_layout_profile` and `compact_attempted` explain automatic selection. All attempts share
+one work budget and cancellation control. Retained candidate text counts toward storage admission.
+Use the spacing builders for explicit overrides, including a value equal to the default; direct
+assignment of a default-valued public field cannot record that intent.
 
 ## Resource Policy
 
@@ -109,8 +127,15 @@ while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
 
 `AsciiColorMode::Ansi16` is the terminal-native profile. Unstyled primary text remains at terminal
 Reset and sparse named ANSI accents mark renderer-owned structural roles, so the renderer does not
-guess whether the terminal background is light or dark. ANSI16 changes encoding only: its stripped
-text and logical extent are identical to Plain for the same layout request.
+guess whether the terminal background is light or dark. ANSI16 does not resolve semantic roles
+through the RGB theme; direct authored RGB colors are quantized separately. Use TrueColor when the
+host's RGB palette should control terminal role colors, or ANSI256 for an approximation. ANSI16
+changes encoding only: its stripped text and logical extent are identical to Plain for the same
+layout request.
+
+SVG `HostTheme` and terminal `AsciiTerminalPalette` are independent inputs. The host can map its
+own palette into both; selecting an SVG presentation theme does not set terminal colors. See
+[presentation and terminal themes](../../docs/rendering/presentation-themes.md#terminal-themes).
 
 Bindings expose the same shape as `ascii.theme` in options JSON. Color values use the existing CSS color parser for opaque terminal colors; transparent colors are rejected rather than silently falling back.
 

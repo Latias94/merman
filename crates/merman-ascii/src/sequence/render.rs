@@ -87,6 +87,11 @@ fn render_sequence_diagram_inner(
             // spent proving that the primary exceeds the viewport, but discard its speculative
             // document cells before the fallback candidate starts.
             Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Err(error @ AsciiError::UnsupportedFeature { .. })
+                if execution.is_optional_layout_candidate() =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }

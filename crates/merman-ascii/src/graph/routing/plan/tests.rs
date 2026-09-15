@@ -1122,7 +1122,10 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
             .iter()
             .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
     );
-    assert_eq!(plan.labels.first().map(PlannedRouteLabel::width), Some(4));
+    assert_eq!(
+        plan.labels.first().map(|label| label.placement.width()),
+        Some(4)
+    );
 }
 
 #[test]
@@ -1381,7 +1384,7 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
         plan.labels,
         vec![PlannedRouteLabel::new(
             RoutedLabelText::new("loop").expect("single-line label should exist"),
-            RoutedLabelPlacement::new(0, 4, 4),
+            RoutedLabelPlacement::new(1, 4, 4),
         )]
     );
 }
@@ -1413,7 +1416,7 @@ fn top_down_bent_route_plans_side_bend_arrow_and_label() {
         plan.labels,
         vec![PlannedRouteLabel::new(
             RoutedLabelText::new("bend").expect("single-line label should exist"),
-            RoutedLabelPlacement::new(2, 1, 4),
+            RoutedLabelPlacement::new(3, 1, 4),
         )]
     );
 }

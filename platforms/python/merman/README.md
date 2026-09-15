@@ -4,14 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `8`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. This repository documents the prepared `0.8.0a6` source candidate; the PyPI prerelease channel is an independent publication and may resolve an older package until the matching wheel is authorized. The source-tree README describes the unreleased candidate, while each PyPI artifact preserves the documentation for that published version.
-
-API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
-complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
-`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
-cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
-probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
-and deploy the language projection with its matching native library.
+> **Alpha:** Python and native APIs may break before the stable release. The source tree targets direct UniFFI binding API `7`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. PyPI publishes `0.8.0a6` for macOS arm64, manylinux x86_64, and Windows x86_64 from the verified alpha.6 release artifact.
 
 ## Install
 
@@ -39,7 +32,7 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 8; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records preserve the API 6 layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding. API 7 also protected the merged `MermanDiagramFamilyCapability.family_id` record and versioned `theme_catalog_json()` metadata catalog.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 6; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding.
 
 ## Reuse An Engine
 
@@ -80,9 +73,14 @@ svg = client.render_svg(source, resource_options)
 
 Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. Leave the profile unset when a reusable request must inherit its constructor ceiling. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.theme_catalog_json()` for open-ended compiled-theme presets, preset requirements, supported visual outputs, effective theme resource ceilings, and the compiler's known font/container/semantic vocabulary. The `known_*` arrays describe accepted vocabulary, not proof that every renderer consumes every value. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `8` and is independent from native C ABI and the text-measurement protocol version.
+Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `7` and is independent from native C ABI and the text-measurement protocol version.
 
-Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `8`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
+API 7 adds `requested_layout_profile` and `compact_attempted` to the schema-3 ASCII output plan.
+The effective `layout_profile` remains Canonical or Compact. Replace `binding_api_version_v6()`
+with `binding_api_version_v7()` and regenerate the package and native library together; published
+alpha.6 wheels retain API 6.
+
+Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `7`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
 
 For generic operations, construct `MermanOperationControl(timeout_ms=...)`, retain it in the host,
 and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from another thread requests

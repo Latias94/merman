@@ -1481,11 +1481,11 @@ fn compiled_capabilities_match_the_full_test_artifact() {
 
     let ascii = &payload["ascii"];
     assert_eq!(ascii["schema_version"], 1);
-    assert_eq!(ascii["output_schema_version"], 2);
+    assert_eq!(ascii["output_schema_version"], 3);
     assert_eq!(
         ascii["report"],
         serde_json::json!({
-            "success_schema_version": 2,
+            "success_schema_version": 3,
             "error_schema_version": 1,
             "encoding": "plain",
             "styled_output": false,
@@ -1512,7 +1512,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
             .unwrap_or_else(|| panic!("missing ASCII family {family_id}: {ascii}"));
         assert_eq!(
             family["layout_profiles"],
-            serde_json::json!(["canonical", "compact"])
+            serde_json::json!(["canonical", "compact", "auto"])
         );
         assert_eq!(
             family["width_profiles"],

@@ -8,9 +8,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Advanced the direct UniFFI API to `8`. Errors now preserve the complete core-owned
-  details JSON, including theme-authoring diagnostic codes, paths, and structured context.
-  Regenerate language bindings and native libraries together; use the API 8 version probe.
+- Advance the direct UniFFI binding API to `7`. Schema-3 ASCII output plans add the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `binding_api_version_v7()` to reject stale record layouts.
 
 ## [0.8.0a6] - 2026-09-02
 
@@ -18,31 +16,11 @@ This section describes alpha.6, published to PyPI on 2026-09-04 with matching ma
 
 ### Breaking changes
 
-- Advanced the direct UniFFI binding API to `7` because the merged diagram-family capability record
-  changed after API 6 added ASCII layout/width/encoding/fallback admission arrays and schema-2
-  output-plan encoding. API 7 replaces `binding_api_version_v6()` with `binding_api_version_v7()`
-  so stale generated packages fail before decoding the changed family record and
-  `theme_catalog_json()` metadata shape. Regenerate and deploy the Python package and native
-  library together.
-- (Historical) Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained
-  layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2
-  encoding. API 6 replaced `binding_api_version_v5()` with `binding_api_version_v6()` so stale
-  generated packages failed before decoding either changed record. Regenerate and deploy the Python
-  package and native library together.
+- Advanced the direct UniFFI binding API to `6` because `MermanAsciiCapability` gained layout/width/encoding/fallback admission arrays and `MermanAsciiOutputPlan` gained schema-2 encoding. API 6 replaces `binding_api_version_v5()` with `binding_api_version_v6()` so stale generated packages fail before decoding either changed record. Regenerate and deploy the Python package and native library together.
 - Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
-- Advanced the direct UniFFI binding API to `5` after adding required lint-rule `tags`, replacing the alpha.5 diagram-family taxonomy fields with the core-owned `family_id`, and revising `MermanAsciiCapability` plus `MermanError.Binding` wire layouts. API 5
-  replaces `transport_api_version()` with `binding_api_version_v5()` and removes the API 4 probe
-  symbol, so stale generated packages reject the new library before decoding either record.
-  Regenerate and deploy the Python package and native library together.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
-- Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `theme_catalog_json()` for open-ended compiled-theme discovery.
-- Advanced Options JSON to schema `3`; regenerate the Python projection and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
-- Analysis facts now use schema `2` and no longer include the Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact; diagnostics remain on schema `1`.
-- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to `structured_text_fallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract.
-
-### Changed
-
-- Generated resource options now include `max_prepared_text_retained_bytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to `structured_text_fallback`. `MermanOutputPlan.ascii` exposes the schema-2 terminal projection and viewport outcome, while structured ASCII diagnostics include the requested and actual width context.
 - Wheel builds derive archive timestamps from the accepted source commit, and publication completes only after PyPI exposes the exact expected wheel SHA-256 values.
 
 ## [0.8.0a5] - 2026-08-09

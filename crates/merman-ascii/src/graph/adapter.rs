@@ -20,7 +20,7 @@ use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
     FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel, FlowchartRenderContext,
 };
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::num::NonZeroUsize;
 
 const FLOW_PROJECTION_COPY_CHUNK_BYTES: usize = 8 * 1024;
@@ -346,15 +346,15 @@ impl<'a> FlowchartMembershipIndex<'a> {
         let construction_work = resources.checked_work_add(model.subgraphs.len(), member_count)?;
         resources.charge_layout_work(construction_work)?;
 
-        let mut parent_group_by_member = HashMap::new();
+        let mut parent_group_by_member = HashMap::default();
         parent_group_by_member
             .try_reserve(member_count)
             .map_err(|_| projection_allocation_failed())?;
-        let mut group_ids = HashSet::new();
+        let mut group_ids = HashSet::default();
         group_ids
             .try_reserve(model.subgraphs.len())
             .map_err(|_| projection_allocation_failed())?;
-        let mut canonical_slot_by_group_id = HashMap::new();
+        let mut canonical_slot_by_group_id = HashMap::default();
         canonical_slot_by_group_id
             .try_reserve(model.subgraphs.len())
             .map_err(|_| projection_allocation_failed())?;
@@ -386,7 +386,7 @@ impl<'a> FlowchartMembershipIndex<'a> {
                             .try_reserve_exact(subgraph.nodes.len())
                             .map_err(|_| projection_allocation_failed())?;
                         canonical_group_members.push(members);
-                        let mut member_ids = HashSet::new();
+                        let mut member_ids = HashSet::default();
                         member_ids
                             .try_reserve(subgraph.nodes.len())
                             .map_err(|_| projection_allocation_failed())?;
@@ -810,7 +810,7 @@ fn validate_supported_flowchart_model(
         }
     }
 
-    let mut node_ids = HashSet::new();
+    let mut node_ids = HashSet::default();
     node_ids
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;

@@ -1,25 +1,47 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
     Attribute, Expr, ExprLit, Fields, ForeignItem, ImplItem, Item, Lit, LitStr, Meta, TraitItem,
     parse_quote,
 };
 
-use crate::doc::rewrite_doc_lines;
 use crate::error::{Error, Result};
 use crate::options::{Options, ScopeMode};
+use syn::parse::{Parse, ParseStream};
+use syn::{Token, bracketed, parenthesized, spanned::Spanned};
 
-pub(crate) fn expand(input: TokenStream, options: Options) -> Result<TokenStream> {
+pub(crate) fn expand(
+    input: TokenStream,
+    options: &Options,
+    namespace: &str,
+    helper: &syn::Path,
+) -> Result<TokenStream> {
     let mut item = syn::parse2::<Item>(input)?;
     validate_scope(&item, options.scope)?;
+    let recurse = options.scope == ScopeMode::Tree;
+    let mut parent = None;
+    visit_item(&mut item, recurse, &mut |attributes| {
+        if parent.is_none() {
+            for attribute in attributes {
+                if let Some(document) = deferred_doc(attribute, helper)? {
+                    parent = Some(document.options);
+                    break;
+                }
+            }
+        }
+        Ok(())
+    })?;
+    let options = parent.map_or_else(|| options.clone(), |parent| options.with_parent(&parent));
 
-    let mut next_diagram = 0;
-    rewrite_item(
-        &mut item,
-        options,
-        &mut next_diagram,
-        options.scope == ScopeMode::Tree,
-    )?;
+    let mut context = Expansion {
+        options: &options,
+        namespace,
+        helper,
+        next_document: 0,
+    };
+    visit_item(&mut item, recurse, &mut |attributes| {
+        rewrite_attrs(attributes, &mut context)
+    })?;
 
     Ok(quote! { #item })
 }
@@ -33,57 +55,50 @@ fn validate_scope(item: &Item, scope: ScopeMode) -> Result<()> {
     Ok(())
 }
 
-fn rewrite_item(
-    item: &mut Item,
-    options: Options,
-    next_diagram: &mut usize,
-    recurse: bool,
-) -> Result<()> {
-    rewrite_attrs(item_attrs_mut(item), options, next_diagram)?;
+type AttributeVisitor<'a> = dyn FnMut(&mut Vec<Attribute>) -> Result<()> + 'a;
+
+fn visit_item(item: &mut Item, recurse: bool, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
+    visitor(item_attrs_mut(item))?;
     if recurse {
-        rewrite_item_children(item, options, next_diagram)?;
+        visit_item_children(item, visitor)?;
     }
     Ok(())
 }
 
-fn rewrite_item_children(
-    item: &mut Item,
-    options: Options,
-    next_diagram: &mut usize,
-) -> Result<()> {
+fn visit_item_children(item: &mut Item, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
     match item {
         Item::Enum(item) => {
             for variant in &mut item.variants {
-                rewrite_attrs(&mut variant.attrs, options, next_diagram)?;
-                rewrite_fields(&mut variant.fields, options, next_diagram)?;
+                visitor(&mut variant.attrs)?;
+                visit_fields(&mut variant.fields, visitor)?;
             }
         }
         Item::ForeignMod(item) => {
             for item in &mut item.items {
-                rewrite_foreign_item(item, options, next_diagram)?;
+                visit_foreign_item(item, visitor)?;
             }
         }
         Item::Impl(item) => {
             for item in &mut item.items {
-                rewrite_impl_item(item, options, next_diagram)?;
+                visit_impl_item(item, visitor)?;
             }
         }
         Item::Mod(item) => {
             if let Some((_brace, items)) = &mut item.content {
                 for item in items {
-                    rewrite_item(item, options, next_diagram, true)?;
+                    visit_item(item, true, visitor)?;
                 }
             }
         }
-        Item::Struct(item) => rewrite_fields(&mut item.fields, options, next_diagram)?,
+        Item::Struct(item) => visit_fields(&mut item.fields, visitor)?,
         Item::Trait(item) => {
             for item in &mut item.items {
-                rewrite_trait_item(item, options, next_diagram)?;
+                visit_trait_item(item, visitor)?;
             }
         }
         Item::Union(item) => {
             for field in &mut item.fields.named {
-                rewrite_attrs(&mut field.attrs, options, next_diagram)?;
+                visitor(&mut field.attrs)?;
             }
         }
         _ => {}
@@ -92,16 +107,16 @@ fn rewrite_item_children(
     Ok(())
 }
 
-fn rewrite_fields(fields: &mut Fields, options: Options, next_diagram: &mut usize) -> Result<()> {
+fn visit_fields(fields: &mut Fields, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
     match fields {
         Fields::Named(fields) => {
             for field in &mut fields.named {
-                rewrite_attrs(&mut field.attrs, options, next_diagram)?;
+                visitor(&mut field.attrs)?;
             }
         }
         Fields::Unnamed(fields) => {
             for field in &mut fields.unnamed {
-                rewrite_attrs(&mut field.attrs, options, next_diagram)?;
+                visitor(&mut field.attrs)?;
             }
         }
         Fields::Unit => {}
@@ -109,46 +124,34 @@ fn rewrite_fields(fields: &mut Fields, options: Options, next_diagram: &mut usiz
     Ok(())
 }
 
-fn rewrite_impl_item(
-    item: &mut ImplItem,
-    options: Options,
-    next_diagram: &mut usize,
-) -> Result<()> {
+fn visit_impl_item(item: &mut ImplItem, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
     match item {
-        ImplItem::Const(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ImplItem::Fn(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ImplItem::Macro(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ImplItem::Type(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
+        ImplItem::Const(item) => visitor(&mut item.attrs),
+        ImplItem::Fn(item) => visitor(&mut item.attrs),
+        ImplItem::Macro(item) => visitor(&mut item.attrs),
+        ImplItem::Type(item) => visitor(&mut item.attrs),
         ImplItem::Verbatim(_) => Ok(()),
         _ => Ok(()),
     }
 }
 
-fn rewrite_trait_item(
-    item: &mut TraitItem,
-    options: Options,
-    next_diagram: &mut usize,
-) -> Result<()> {
+fn visit_trait_item(item: &mut TraitItem, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
     match item {
-        TraitItem::Const(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        TraitItem::Fn(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        TraitItem::Macro(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        TraitItem::Type(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
+        TraitItem::Const(item) => visitor(&mut item.attrs),
+        TraitItem::Fn(item) => visitor(&mut item.attrs),
+        TraitItem::Macro(item) => visitor(&mut item.attrs),
+        TraitItem::Type(item) => visitor(&mut item.attrs),
         TraitItem::Verbatim(_) => Ok(()),
         _ => Ok(()),
     }
 }
 
-fn rewrite_foreign_item(
-    item: &mut ForeignItem,
-    options: Options,
-    next_diagram: &mut usize,
-) -> Result<()> {
+fn visit_foreign_item(item: &mut ForeignItem, visitor: &mut AttributeVisitor<'_>) -> Result<()> {
     match item {
-        ForeignItem::Fn(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ForeignItem::Macro(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ForeignItem::Static(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
-        ForeignItem::Type(item) => rewrite_attrs(&mut item.attrs, options, next_diagram),
+        ForeignItem::Fn(item) => visitor(&mut item.attrs),
+        ForeignItem::Macro(item) => visitor(&mut item.attrs),
+        ForeignItem::Static(item) => visitor(&mut item.attrs),
+        ForeignItem::Type(item) => visitor(&mut item.attrs),
         ForeignItem::Verbatim(_) => Ok(()),
         _ => Ok(()),
     }
@@ -176,46 +179,183 @@ fn item_attrs_mut(item: &mut Item) -> &mut Vec<Attribute> {
     }
 }
 
-fn rewrite_attrs(
-    attrs: &mut Vec<Attribute>,
-    options: Options,
-    next_diagram: &mut usize,
-) -> Result<()> {
-    let input = std::mem::take(attrs);
-    let mut output = Vec::with_capacity(input.len());
-    let mut doc_lines = Vec::new();
+struct Expansion<'a> {
+    options: &'a Options,
+    namespace: &'a str,
+    helper: &'a syn::Path,
+    next_document: usize,
+}
 
-    for attr in input {
-        if let Some(line) = doc_attr_value(&attr) {
-            doc_lines.push(line);
-            continue;
-        }
+/// The internal protocol keeps original literals so nested attributes can override options.
+pub(crate) struct DeferredDoc {
+    pub(crate) options: Options,
+    pub(crate) namespace: LitStr,
+    pub(crate) indentation: usize,
+    pub(crate) documents: Vec<LitStr>,
+}
 
-        flush_doc_lines(&mut doc_lines, next_diagram, options, &mut output)?;
-        output.push(attr);
+impl Parse for DeferredDoc {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let options_input;
+        parenthesized!(options_input in input);
+        let options =
+            Options::parse(options_input.parse()?).map_err(|err| input.error(err.to_string()))?;
+        input.parse::<Token![,]>()?;
+        let namespace = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let indentation = input.parse::<syn::LitInt>()?.base10_parse()?;
+        input.parse::<Token![,]>()?;
+        let documents_input;
+        bracketed!(documents_input in input);
+        let documents = documents_input
+            .parse_terminated(|input| input.parse::<LitStr>(), Token![,])?
+            .into_iter()
+            .collect();
+        Ok(Self {
+            options,
+            namespace,
+            indentation,
+            documents,
+        })
     }
+}
 
-    flush_doc_lines(&mut doc_lines, next_diagram, options, &mut output)?;
+fn rewrite_attrs(attrs: &mut Vec<Attribute>, context: &mut Expansion<'_>) -> Result<()> {
+    let input = std::mem::take(attrs);
+    let mut all_documents = Vec::new();
+    let mut dynamic = false;
+    for attr in &input {
+        if let Some(value) = doc_attr_value(attr) {
+            let literal = LitStr::new(&value, attr.span());
+            all_documents.push(LitStr::new(
+                &crate::doc::prepare_literal(&literal),
+                attr.span(),
+            ));
+        } else if let Some(deferred) = deferred_doc(attr, context.helper)? {
+            all_documents.extend(deferred.documents);
+        } else if attr.path().is_ident("doc") {
+            dynamic = true;
+        }
+    }
+    // Dynamic documentation is left to rustdoc; do not infer indentation from an isolated group.
+    let indentation = if dynamic {
+        0
+    } else {
+        crate::doc::common_indentation(&all_documents)
+    };
+    let mut output = Vec::with_capacity(input.len());
+    let mut documents = Vec::new();
+    let mut insert_at = None;
+    let mut style = syn::AttrStyle::Outer;
+    for attr in input {
+        if let Some(value) = doc_attr_value(&attr) {
+            if insert_at.is_none() {
+                insert_at = Some(output.len());
+                style = attr.style;
+            }
+            let literal = LitStr::new(&value, attr.span());
+            documents.push(LitStr::new(
+                &crate::doc::prepare_literal(&literal),
+                attr.span(),
+            ));
+        } else if let Some(deferred) = deferred_doc(&attr, context.helper)? {
+            if insert_at.is_none() {
+                insert_at = Some(output.len());
+                style = attr.style;
+            }
+            documents.extend(deferred.documents);
+        } else {
+            // Dynamic doc expressions retain their position and are not evaluated by this adapter.
+            if attr.path().is_ident("doc") {
+                flush_documents(
+                    &mut documents,
+                    &mut insert_at,
+                    &style,
+                    &mut output,
+                    context,
+                    indentation,
+                );
+            }
+            output.push(attr);
+        }
+    }
+    flush_documents(
+        &mut documents,
+        &mut insert_at,
+        &style,
+        &mut output,
+        context,
+        indentation,
+    );
     *attrs = output;
     Ok(())
 }
 
-fn flush_doc_lines(
-    doc_lines: &mut Vec<String>,
-    next_diagram: &mut usize,
-    options: Options,
-    out_attrs: &mut Vec<Attribute>,
-) -> Result<()> {
-    if doc_lines.is_empty() {
-        return Ok(());
+fn deferred_doc(attr: &Attribute, helper: &syn::Path) -> Result<Option<DeferredDoc>> {
+    if !attr.path().is_ident("doc") {
+        return Ok(None);
     }
+    let Meta::NameValue(value) = &attr.meta else {
+        return Ok(None);
+    };
+    let Expr::Macro(expr) = &value.value else {
+        return Ok(None);
+    };
+    let expected: syn::Path = parse_quote!(#helper::__render_doc);
+    if expr
+        .mac
+        .path
+        .segments
+        .iter()
+        .map(|s| &s.ident)
+        .ne(expected.segments.iter().map(|s| &s.ident))
+    {
+        return Ok(None);
+    }
+    Ok(Some(syn::parse2(expr.mac.tokens.clone())?))
+}
 
-    for line in rewrite_doc_lines(doc_lines, next_diagram, options)? {
-        let line = LitStr::new(&line, Span::call_site());
-        out_attrs.push(parse_quote! { #[doc = #line] });
+fn flush_documents(
+    documents: &mut Vec<LitStr>,
+    insert_at: &mut Option<usize>,
+    style: &syn::AttrStyle,
+    output: &mut Vec<Attribute>,
+    context: &mut Expansion<'_>,
+    indentation: usize,
+) {
+    let Some(index) = insert_at.take() else {
+        return;
+    };
+    let namespace = format!("{}-{}", context.namespace, context.next_document);
+    context.next_document += 1;
+    let options = context.options.tokens();
+    let helper = context.helper;
+    // Rustdoc trims an outer newline from each multiline doc value. Keep standalone
+    // blank attributes at group boundaries so dynamic neighbors retain their separation.
+    let values = std::mem::take(documents);
+    let first = values
+        .iter()
+        .position(|value| !value.value().is_empty())
+        .unwrap_or(values.len());
+    let end = values
+        .iter()
+        .rposition(|value| !value.value().is_empty())
+        .map_or(first, |index| index + 1);
+    let middle = &values[first..end];
+    let mut replacement: Vec<Attribute> = Vec::new();
+    for value in &values[..first] {
+        replacement.push(parse_quote! { #[doc = #value] });
     }
-    doc_lines.clear();
-    Ok(())
+    if !middle.is_empty() {
+        replacement.push(parse_quote! { #[doc = #helper::__render_doc!((#options), #namespace, #indentation, [#(#middle),*])] });
+    }
+    for value in &values[end..] {
+        replacement.push(parse_quote! { #[doc = #value] });
+    }
+    for mut attr in replacement.into_iter().rev() {
+        attr.style = *style;
+        output.insert(index, attr);
+    }
 }
 
 fn doc_attr_value(attr: &Attribute) -> Option<String> {
@@ -250,7 +390,13 @@ mod tests {
             ..Options::default()
         };
 
-        let err = expand(quote! { pub mod external; }, options).unwrap_err();
+        let err = expand(
+            quote! { pub mod external; },
+            &options,
+            "test",
+            &syn::parse_quote!(::merman_rustdoc),
+        )
+        .unwrap_err();
 
         assert!(err.to_string().contains("requires an inline module"));
     }

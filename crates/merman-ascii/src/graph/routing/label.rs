@@ -445,8 +445,15 @@ pub(super) fn routed_label_right_of_vertical_route_placement_for_descriptor(
 fn horizontal_label_x(start: CanvasCoord, end: CanvasCoord, width: usize) -> usize {
     let min_x = start.x.min(end.x);
     let max_x = start.x.max(end.x);
-    let middle_x = min_x + (max_x - min_x) / 2;
-    middle_x.saturating_sub(width / 2)
+    let span = max_x - min_x;
+    let label_span = width.saturating_sub(1);
+    if label_span <= span {
+        // Center occupied cells, including both endpoints, before rounding to a grid position.
+        min_x + (span - label_span) / 2
+    } else {
+        let middle_x = min_x + span / 2;
+        middle_x.saturating_sub(width / 2)
+    }
 }
 
 fn vertical_label_y(start: CanvasCoord, end: CanvasCoord) -> usize {
