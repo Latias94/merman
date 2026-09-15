@@ -246,3 +246,11 @@ changelogs are `Unreleased`, as required by the release guide; no release date w
 The release surface, workflow security and prerelease compatibility contract tests passed
 48/48. The compatibility checker still reports the known alpha.6 previous-facade failure and
 therefore C7a remains open.
+
+# Candidate ancestry and version authority audit at `b10576aae`
+
+After refreshing `origin/main`, `origin/main` remains an ancestor of the candidate (`4c2ac7817`),
+so no main merge is pending. `release-version.py check --version 0.8.0-alpha.7` passed across
+the workspace, Cargo locks, Node/Web/Playground projections, Python, Android and Flutter
+surfaces. Preparation-mode changelog validation passed. The worktree contains only the two
+pre-existing untracked knowledge directories; no generated or user-owned files were staged.
