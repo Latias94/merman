@@ -153,3 +153,17 @@ matrix passed with raw 18,784,145 bytes, stripped 11,612,278, gzip 4,454,338, an
 
 The generated artifact is local release evidence only; it does not establish the missing Windows,
 Swift 5.9, or alpha.6 facade compatibility gates.
+
+# Current Web artifact rebuild and prepack rerun at `9e692c3c4`
+
+The five Web WASM profiles were rebuilt from the current alpha.7 inputs with the repository's
+local `CARGO_PROFILE_WASM_SIZE_LTO=false` workaround. `verify-wasm-inputs` then accepted all five
+fresh provenance records. Package assembly initially exposed that the Web prepack verifier did
+not enable the existing npm 11 array-metadata compatibility in `npmPackRecord`; this was fixed by
+passing `allowNpm11: true`, with a focused regression test. After assembly, package verification,
+all five installed-package smoke cases, DOM safety smoke, and the Web size matrix passed.
+
+The final Web matrix measured stripped artifacts of 3,674,593 (analysis), 5,201,706 (ascii),
+3,785,732 (editor), 15,937,402 (full), and 14,036,313 (render) bytes; the configured budget
+check passed. This is current-source local artifact evidence; hosted Windows and Swift 5.9
+checks and the alpha.6 facade compatibility decision remain open.
