@@ -208,3 +208,10 @@ an independent CI obligation. Next finish Linux/Windows and the remaining declar
 reconcile the final archive/profile records, then close
 the named candidate, public rollout and compatibility freeze. Browser portability qualification
 and unqualified preset breadth remain outside these application-smoke claims.
+
+At clean `6517f6b1f`, the [Linux archive record](../knowledge/engineering/verification/2026-09-15-c7a-linux-archive-verification.md)
+adds actual x86_64 CLI/LSP archives, runtime verification, all 18 archive-bound preset cells
+and complete record/catalog replay. The Linux execution used a macOS-hosted VM and Rosetta;
+it is not a native CI runner claim. The artifact-local companion retains HostDependent
+admission and leaves seven presets unqualified. Continue installed Linux profiles and the
+remaining native host/compiler lanes before the final same-source candidate/rollout/freeze.
