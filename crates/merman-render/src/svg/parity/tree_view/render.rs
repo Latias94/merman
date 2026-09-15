@@ -100,6 +100,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         theme.begin_terminal_receipt(layout.nodes.len(), emitted_icon_count);
     push_tree_view_css(
         &mut out,
+        super::super::util::css_selector_diagram_id(diagram_id),
         effective_config_value,
         theme,
         &mut tree_view_receipt,
@@ -270,6 +271,7 @@ fn push_tree_view_node(
 
 fn push_tree_view_css(
     out: &mut impl SvgOutput,
+    diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
     theme_plan: &TreeViewThemePlan,
     receipt: &mut TreeViewThemeReceipt,
@@ -283,7 +285,7 @@ fn push_tree_view_css(
 
     let _ = write!(
         out,
-        ".treeView-node-label {{ font-family: {}; font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: {}; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-family: {}; font-size: {}; fill: {}; font-style: {}; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        "#{diagram_id} .treeView-node-label {{ font-family: {}; font-size: {}; fill: {}; white-space: pre; }} #{diagram_id} .treeView-node-dir {{ font-weight: {}; }} #{diagram_id} .treeView-node-line {{ stroke: {}; }} #{diagram_id} .treeView-node-icon {{ color: {}; }} #{diagram_id} .treeView-node-description {{ font-family: {}; font-size: {}; fill: {}; font-style: {}; white-space: pre; }} #{diagram_id} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
         font_family,
         theme.label_font_size_css,
         label_color,

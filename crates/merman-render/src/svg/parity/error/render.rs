@@ -39,7 +39,7 @@ fn render_error_diagram_svg_inner(
         diagram_id.semantic_str(),
     )
     .write_open(&mut out, root_spec, root_chrome)?;
-    out.push_str(r#"<style xmlns="http://www.w3.org/1999/xhtml">"#);
+    out.push_str(r#"<style>"#);
     let css_write = write_info_css_with_font_family(
         &mut out,
         diagram_id,
