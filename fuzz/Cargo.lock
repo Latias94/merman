@@ -1030,8 +1030,9 @@ dependencies = [
  "merman-core",
  "merman-export",
  "merman-render",
- "quick-xml",
+ "merman-theme-contract",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.19",
 ]
 
@@ -1064,9 +1065,9 @@ dependencies = [
 name = "merman-bindings-core"
 version = "0.8.0-alpha.6"
 dependencies = [
- "base64",
  "merman",
  "merman-analysis",
+ "merman-theme-contract",
  "serde",
  "serde_json",
 ]
@@ -1116,6 +1117,7 @@ dependencies = [
  "merman-render",
  "quick-xml",
  "resvg",
+ "sha2 0.10.9",
  "svgtypes",
  "thiserror 2.0.19",
  "tiny-skia",
@@ -1171,6 +1173,7 @@ dependencies = [
  "manatee",
  "merman-core",
  "merman-layout-elk",
+ "merman-theme-contract",
  "pulldown-cmark",
  "quick-xml",
  "ratex-layout",
@@ -1193,6 +1196,16 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "wuff",
+]
+
+[[package]]
+name = "merman-theme-contract"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -1923,6 +1936,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_json_canonicalizer"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe52319a927259afbfa5180c5157cd8167edfd3e8c254f9558c7fef44c5649f2"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
