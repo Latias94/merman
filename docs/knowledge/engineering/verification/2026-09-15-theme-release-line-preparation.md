@@ -229,3 +229,9 @@ Logs and review artifacts:
 - Experiment driver: `/tmp/merman-alpha7-boundary-assessment.py`; diagnostic scaffolding, not a new repository release tool.
 - Combined owner check: `/tmp/merman-alpha7-combined-compatibility.log`.
 - Focused unit/workflow checks: `/tmp/merman-alpha7-boundary-unit-tests.log`.
+
+## Current alpha.7 candidate rerun at `26e566f5b`
+
+The current candidate reran the repository script suite with `python3 -m unittest discover -s scripts -p 'test_*.py'`: 607 tests passed. The alpha.7 version projection check and release changelog check passed for `0.8.0-alpha.7`. Legal projections passed with `scripts/sync-release-legal-materials.py --check` (382 files), and governed Cargo package legal materials passed for 24 packages. `git diff --check` passed.
+
+The real prerelease checker was then run offline for `0.8.0-alpha.7` against published `0.8.0-alpha.6`. The fresh alpha.7 consumer compiled. The `previous-with-candidate-siblings` lane failed again with the same nine SVG compilation errors in the published alpha.6 facade: removed `merman_render::presentation`, `RenderFamilyKind`, `prepare_with_render_policy`, `plan_render_with_policy`, and public `math` exports. This confirms the compatibility result at the current candidate and keeps the release-contract decision open; no checker weakening or compatibility exception was applied.
