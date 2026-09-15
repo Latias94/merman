@@ -1,6 +1,6 @@
 ---
 type: Verification Evidence
-title: C7a Linux archive qualification and replay
+title: C7a Linux archives and installed Python wheel verification
 timestamp: 2026-09-15
 related_plan: docs/plans/2026-09-15-theme-c7a-c7b-replan.md
 git_branch: refactor/presentation-theme-model
@@ -82,9 +82,54 @@ the unchanged development package number and not the bytes of the published rele
 Logs are `/tmp/merman-c7a-6517f6b1f-linux-{plan,dist,lsp,qualification,replay}.log`.
 Environment/tool downloads are separately logged as `/tmp/merman-c7a-linux-{environment,toolchain,dist-tool,build-tools}.log`.
 
+# Installed Python wheel follow-up
+
+The same clean source built the exact `python-uniffi-native` recipe for
+`x86_64-unknown-linux-gnu`, using the `native-distribution` profile and
+`analysis,ascii,layout-cytoscape,layout-elk,svg` features. The initial attempts recorded cgroup
+OOM kills; increasing only the container ceiling could not overcome the 4 GiB VM limit.
+With this task VM increased to 8 GiB and the container to 7 GiB, the build passed using one
+Cargo job. The observed cgroup peak was 5082787840 bytes. Native compilation took 4m18s;
+the separately compiled binding generator then produced the Python projection without
+changing tracked scaffold files. These are build-environment observations, not a regression
+benchmark or a reason to alter the artifact recipe.
+
+`scripts/build-python-uniffi-wheel.py --run-smoke` built and installed the original Linux
+wheel successfully. Auditwheel 6.8.2 repaired it into
+`merman-0.8.0a6-py3-none-manylinux_2_35_x86_64.whl`; Twine 7.0.0 and the existing
+target-specific wheel-license verifier both passed. A second, fresh Python 3.12 virtual
+environment installed the repaired wheel with `--no-deps` and ran
+`platforms/python/merman/examples/smoke.py`. The imported module came from that venv's
+`site-packages`, not the source tree. The smoke passed shared authoring/error/catalog vectors,
+three-family light/dark isolation, rule editing, cold-start complete specs, preset export,
+22 support vectors, and all three budgeted authoring operations through one-shot and reusable
+consumers. The checkout remained clean.
+
+The repaired wheel is 10089565 bytes, SHA-256
+`50d4774a9b66273add7f1aa1daef68a9d25eca2a9d14d4e8132c2473dfede7ae`.
+Its bundled `merman/libmerman_uniffi.so` is 25613616 bytes, SHA-256
+`c1d879149d14792728d32dc04aee6bee8dcfe8142e4dafbb5d3ae079bf2d20af`.
+A host copy is under `/tmp/merman-c7a-6517f6b1f-linux-artifacts/python-wheels/`.
+The manylinux tag reflects the ABI requirements inferred by auditwheel; execution was on
+glibc 2.39, not a separate test on glibc 2.35. This default SVG SDK profile does not acquire
+CLI PNG qualification cells.
+
+Logs are `/tmp/merman-c7a-6517f6b1f-linux-python-wheel-8g.log` and
+`/tmp/merman-c7a-6517f6b1f-linux-python-final-wheel.log`. No wheel was published.
+
+This execution also exposed a preflight gap: the preflight owner smoked the original wheel
+before Linux repair, whereas the release owner smoked the final repaired artifact. Commit
+`a6b9f9ae5` moves preflight smoke after repair, using the same isolated install sequence and
+removing the redundant earlier smoke. All 37 workflow contract tests, Python compilation,
+actionlint on both owners and diff checks passed. A clean candidate checkout at
+`a6b9f9ae57b627a92fe2940454a2ac6b6de5a022` additionally passed 67 combined workflow,
+qualification-replay and release-bundle tests. Its log is
+`/tmp/merman-c7a-a6b9f9ae5-release-contracts.log`. That source check does not relabel the
+wheel built from `6517f6b1f` as a newer artifact or claim a GitHub preflight run.
+
 # Remaining scope
 
-Linux installed Python/Node profiles, native Linux ARM64 and Windows owner execution,
+Linux installed Node profiles, native Linux ARM64 and Windows owner execution,
 Apple compiler-floor verification, and the final clean same-source candidate/rollout/freeze
 remain separate gates. The actual Linux companion is now available for final bundle
 verification; earlier macOS records keep their own source and host identities.

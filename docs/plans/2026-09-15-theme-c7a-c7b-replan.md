@@ -213,5 +213,10 @@ At clean `6517f6b1f`, the [Linux archive record](../knowledge/engineering/verifi
 adds actual x86_64 CLI/LSP archives, runtime verification, all 18 archive-bound preset cells
 and complete record/catalog replay. The Linux execution used a macOS-hosted VM and Rosetta;
 it is not a native CI runner claim. The artifact-local companion retains HostDependent
-admission and leaves seven presets unqualified. Continue installed Linux profiles and the
-remaining native host/compiler lanes before the final same-source candidate/rollout/freeze.
+admission and leaves seven presets unqualified. The same record now includes a repaired,
+installed Linux Python wheel with shared authoring/catalog/support/resource smokes passing;
+its default SVG SDK profile gains no CLI PNG qualification. Commit `a6b9f9ae5` closes the
+preflight smoke-before-repair gap, and its clean checkout passed 67 release/qualification
+contract tests. Continue Linux Node and the remaining native host/compiler lanes, then bind
+the final same-source candidate/rollout/freeze. `/tmp/merman-c7a-a6b9f9ae5` is the clean
+integration candidate for that work, not a declared frozen contract.
