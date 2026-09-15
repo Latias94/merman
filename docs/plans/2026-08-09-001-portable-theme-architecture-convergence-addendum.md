@@ -362,8 +362,11 @@ never folded into authoring precedence.
 
 Serialized or cached definitions must bind both `authoring_schema_version` and `expansion_version`.
 A Rust-only ephemeral builder may default the current expansion before serialization, but a persisted
-definition cannot silently select `latest`. An expansion-table semantic change creates a new version;
-unknown versions fail closed or enter an explicit migration operation. Omitted token fields use that
+definition cannot silently select `latest`. Before the first publication, the expansion version
+remains 1 and source commits distinguish development iterations. After publication, an expansion-table
+semantic change advances the version relative to the last published contract; multiple unreleased
+changes share that successor version. Unknown versions fail closed or enter an explicit migration
+operation. Omitted token fields use that
 expansion version's documented defaults. Token `null` is rejected rather than overloaded as clear;
 explicit clear remains the existing typed `Specified::Clear` behavior inside `ThemeRuleSet`. Empty
 required collections such as `series` are validation errors, and fatal authoring errors return no
@@ -469,9 +472,12 @@ recipe against its declared family/target cells and binds its recipe, document/r
 artifact, residual, font-source, and mechanism evidence. Preset qualification reuses production
 target receipts and shared observers but does not add cells to the fixed 18-cell C6a ledger.
 
-A preset descriptor also binds an immutable recipe revision and recipe/resource fingerprint. Any
-recipe or bundled-resource change creates a new revision, invalidates the prior qualification for
-that revision, and returns the changed entry to alpha until its declared cells are requalified. The
+A preset descriptor binds a recipe revision and recipe/resource fingerprint. Published recipe
+revisions are immutable. Before the first publication, the recipe revision remains 1; subsequent
+unreleased changes share one successor to the last published revision. Every recipe or bundled-resource
+change still invalidates prior qualification through its fingerprint, regardless of whether the
+revision changes, and returns the entry to alpha until its declared cells are requalified. Historical
+receipts retain their original identities and must not be relabeled as current evidence. The
 catalog may retain an older revision only under an explicit compatibility/deprecation policy; a
 stable ID never silently points at an unqualified recipe. Catalog construction and generated-copy
 freshness checks compare every qualification receipt with the exact current descriptor, recipe,
