@@ -59,7 +59,10 @@ The existing release owners ran in this order:
 
 Host copies, checksum sidecars, plan/build manifests and the local observation JSON are in
 `/tmp/merman-c7a-7e9c613fa-arm64-artifacts/`. Both host archive copies matched the observed
-sizes and SHA-256 digests. The complete owner log is
+sizes and SHA-256 digests. After the archive run, the focused catalog/archive and package-group
+contract suite passed 91/91 (`scripts.test_theme_preset_catalog_contract`,
+`scripts.test_verify_cli_release_archive`, `scripts.test_web_package_group`, and
+`scripts.test_node_package_group`). The complete owner log is
 `/tmp/merman-c7a-7e9c613fa-arm64-archives.log`; setup logs are
 `/tmp/merman-c7a-arm64-{image,apt-update,build-tools,prepare}.log`.
 
