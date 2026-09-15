@@ -26,6 +26,9 @@ through both consumers; each Node transport performed 44 support queries and 23 
 See the [installed consumer verification](../knowledge/engineering/verification/2026-09-14-theme-consumers-revision90.md)
 for artifact identities, size observations and the remaining platform/rollout scope.
 Public qualification cells and C7a contract status are unchanged.
+The [Android consumer verification](../knowledge/engineering/verification/2026-09-15-android-theme-consumer.md)
+now compiles instrumentation smoke with one-shot and reusable theme authoring diagnostics;
+device execution remains owned by the CI emulator job.
 
 At `83c640598`, a clean macOS ARM64 checkout built and verified the canonical CLI/LSP
 archives. The CLI passed all 18 scoped preset observations and archive-bound replay, plus
