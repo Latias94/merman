@@ -33,6 +33,8 @@ The [platform binding rollout record](../knowledge/engineering/verification/2026
 links the current host verifier and clean APK build to source `9cb958b8f`.
 The [acceptance target coverage](../knowledge/engineering/verification/2026-09-15-theme-acceptance-target-coverage.md)
 confirms every theme acceptance integration target is explicitly selected by CI and Release Preflight.
+The [current Release retirement check](../knowledge/engineering/verification/2026-09-15-theme-retirement-release-head.md)
+re-runs all four retirement targets at HEAD `9ab7e8e84`; Block, Class, Flowchart marker and historical authority checks pass with no skipped tests.
 
 At `83c640598`, a clean macOS ARM64 checkout built and verified the canonical CLI/LSP
 archives. The CLI passed all 18 scoped preset observations and archive-bound replay, plus
