@@ -359,7 +359,7 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
     let mut compiled = 0usize;
     let mut expected_failures = 0usize;
     for fixture in fixtures {
-        if let Err(error) = compile_typst_fixture(&typst, &root, &package_path, &fixture) {
+        if let Err(error) = compile_typst_fixture(&typst, &smoke_root, &package_path, &fixture) {
             let kept_root = smoke_run.keep();
             println!(
                 "typst-package-smoke artifacts kept at {} after failure",
