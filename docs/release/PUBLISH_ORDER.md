@@ -8,7 +8,8 @@ Last updated: 2026-09-15
 Published workspace prerelease baseline: `0.8.0-alpha.6`.
 
 Selected next workspace candidate: `0.8.0-alpha.7`. Preparation is open: the previous-facade
-compatibility lane fails with E0004 against the candidate core error enum. Do not publish
+compatibility lane fails against the candidate core error enum and retired renderer APIs.
+The bounded ASCII/SVG assessment requires a release-contract decision; an error-only fix is insufficient. Do not publish
 the candidate until that gate and the final immutable preflight pass. See the
 [release-line preparation record](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md).
 

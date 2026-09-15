@@ -16,6 +16,17 @@ this first release. Source commits and artifact digests distinguish development 
 Existing published contracts advance once when the upcoming release changes them incompatibly;
 internal migration batches and historical receipts keep their original identities.
 
+## Candidate dependency-resolution limitation
+
+The selected alpha.7 candidate still fails the repository's previous-facade compatibility gate.
+The published alpha.6 facade can resolve alpha.7 siblings through its non-exact requirements,
+then fail to compile against the new core error enum and removed renderer presentation APIs.
+Pinning only the top-level facade to `=0.8.0-alpha.6` does not constrain those transitive
+requirements. Candidate alpha.7 ASCII and SVG consumers compile with their matching siblings.
+See the [assessment and pending release decision](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md#bounded-compatibility-assessment-at-be2d12d20).
+This limitation is unresolved release admission; the migration table below is not a compatibility
+claim for mixing old and new package generations.
+
 ## Rust analysis and editor migration
 
 Migrate source and generated bindings together. Removed development-only APIs do not gain compatibility shims.

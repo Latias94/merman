@@ -151,3 +151,81 @@ changelog test now reads the workspace version rather than hard-coding alpha.6; 
 alpha.6 fixtures remain unchanged. Version, changelog, CLI asset, static surface, formatting
 and whitespace checks passed. These successful preparation checks do not override the failed
 published-facade compatibility lane or substitute for immutable release preflight.
+
+
+## Bounded compatibility assessment at `be2d12d20`
+
+This assessment uses tracked source `be2d12d205b49acf6bb868301467870285eee6f0` with the
+selected alpha.7 projections. It does not change the published alpha.6 package, candidate
+error semantics, retired production APIs, or the selected release version.
+
+The cached crates.io `merman-0.8.0-alpha.6/Cargo.toml` declares `0.8.0-alpha.6`, without `=`,
+for `merman-core` and each optional coupled sibling. Fresh consumer metadata confirms that
+Cargo can select registry `merman` alpha.6 together with local candidate alpha.7 siblings.
+The experiment uses the existing owner's manifest generator and candidate-package discovery,
+with `default-features = false`, separate `ascii` and `svg` recipes, and no copied lockfile.
+Cargo runs offline against its existing registry cache with one build job and the shared target.
+Local `[patch.crates-io]` entries make the unpublished candidate available; this is a prospective
+package combination, not a claim that alpha.7 is currently published.
+
+| Consumer recipe | Resolved relevant packages | Actual compile result |
+| --- | --- | --- |
+| Candidate, ASCII | `merman`, `merman-core`, `merman-ascii` alpha.7 | Passed |
+| Previous facade, ASCII | Registry `merman` alpha.6; core and ASCII alpha.7 | Failed: three E0004 errors in old diagnostic matches |
+| Candidate, SVG | `merman`, core, renderer and theme contract alpha.7 | Passed |
+| Previous facade, SVG | Registry `merman` alpha.6; core, renderer and theme contract alpha.7 | Failed: nine E0432/E0425/E0603 errors |
+| Previous facade, ASCII; isolated removal of `Error`'s `non_exhaustive` attribute | Same versions, one-line experimental core change | Failed: three E0004 errors explicitly naming `Internal` and `ThemeEvaluationLimit` |
+
+The SVG failure broadens the required compatibility decision beyond the core error enum.
+The old facade imports `merman_render::presentation`, `RenderFamilyKind`, public math types,
+`prepare_with_render_policy` and `plan_render_with_policy`. The candidate has deliberately
+removed or restricted those APIs. Repairing only `Error`, or isolating only the core package
+version, cannot restore this facade/renderer boundary. Nine emitted errors are the observed
+compiler result, not an exhaustive count of every incompatible API.
+
+The one-line experiment lives only in a detached worktree; the primary implementation retains
+`#[non_exhaustive]` and the accurate internal/resource error variants. Adding feature-dependent
+variants would still leave the independent renderer API failures. Reintroducing the complete
+presentation surface would preserve a superseded product contract and add compatibility work
+outside the chosen convergence direction. Neither approach is accepted as a closure fix.
+
+### Existing checker coverage repair
+
+Commit `2ed72b4cf982dd49d930456731d4c61dfeba2b33` enables both `ascii` and `svg` in the existing
+fresh-consumer check. It adds no second checker or new resolution policy. The focused prerelease
+and release-workflow unit tests pass 45/45, including propagation of a previous-facade compile
+failure. The real owner `verify(...)` function was then run with both features, offline, using
+the shared target: the alpha.7 candidate passes and the old facade fails with the same nine
+renderer-boundary errors. This is a correct rejection of the selected candidate under the
+existing policy, not a green release gate. These checks are not an all-feature or artifact matrix.
+
+### Decision required before candidate freeze
+
+| Option | Effect on the product and consumers | Disposition |
+| --- | --- | --- |
+| Restore the old sibling API surface in alpha.7 | Requires more than an error-enum adjustment, including the retired presentation and rendering API | Rejected for this convergence plan; retain the new product contract |
+| Isolate the incompatible coupled packages on a new Cargo version line | Lets old facade requirements retain compatible old packages; the earlier 0.9 candidate experiment passed its fresh-consumer lane | Technically coherent alternative; changing the selected version needs a maintainer decision and regenerated projections |
+| Keep alpha.7 and explicitly accept the previous-consumer resolution break | Preserves the selected number and new APIs; some users remaining on alpha.6 can fail after dependency resolution selects new siblings | Requires explicit acceptance of this impact and a scoped release-policy amendment before proceeding |
+
+The last option is not merely permission for alpha.7 adopters to change source code. The affected
+case also includes a consumer retaining `merman = "=0.8.0-alpha.6"` while its non-exact transitive
+requirements resolve candidate siblings. Exact sibling requirements in the new release do not
+repair the already-published facade. A preserved compatible lockfile can avoid that particular
+upgrade, but is not a general compatibility guarantee or sufficient release admission evidence.
+
+If the maintainer chooses the alpha.7 exception, amend the release instructions and owner gate
+explicitly for that transition, preserve the failing result as known impact, require the new
+candidate's coherent graph to compile, and publish migration guidance with the release. The
+exception must not silently become the policy for future releases. Do not build a generic waiver
+framework. No exception, version-line change, tag or publication is authorized by this assessment.
+
+The bounded assessment is complete. The compatibility decision and C7a freeze remain open.
+Final immutable artifact rebuilding should follow that decision, since a different package line
+would change the candidate's manifests, generated projections and artifact identities.
+
+Logs and review artifacts:
+
+- Experiment directory: `/var/folders/zk/87rg5ff15mlfnplph83p5ntm0000gn/T/merman-alpha7-boundary-lsz_43dx`; contains fresh consumer manifests, resolved package metadata, compile logs, `results.json`, and the isolated one-line patch.
+- Experiment driver: `/tmp/merman-alpha7-boundary-assessment.py`; diagnostic scaffolding, not a new repository release tool.
+- Combined owner check: `/tmp/merman-alpha7-combined-compatibility.log`.
+- Focused unit/workflow checks: `/tmp/merman-alpha7-boundary-unit-tests.log`.

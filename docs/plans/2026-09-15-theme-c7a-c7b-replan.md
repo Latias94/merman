@@ -16,8 +16,8 @@ On 2026-09-15 the maintainer selected **`v0.8.0-alpha.7`**. This supersedes the 
 Prepare the workspace and coupled packages for alpha.7; keep new theme protocol identities
 at v1. Preserve native `render/batch -e` during 0.8.x, as previously documented.
 The fresh alpha.7 consumer compiles, but published alpha.6 with candidate siblings still
-fails the prerelease compatibility gate. This remains a release blocker; version selection
-does not waive it. Final artifact validation, catalog rollout and C7a freeze remain open.
+fails the prerelease compatibility gate on both the core error enum and retired renderer APIs.
+This remains a release blocker; version selection does not waive it. Final artifact validation, catalog rollout and C7a freeze remain open.
 
 ## Current status and execution baseline
 
@@ -43,7 +43,7 @@ platform was rebuilt at `72980c2fe`.
 | --- | --- | --- |
 | Core model and production provider retirement | Implemented and revalidated | Preserve the boundary in final candidate regressions |
 | Alpha.7 version projection and theme v1 consolidation | Prepared | Keep generated projections current after implementation changes |
-| Published alpha.6 with candidate siblings | Fresh Cargo consumer fails | Resolve the compile boundary or obtain an explicit release-policy decision |
+| Published alpha.6 with candidate siblings | Bounded assessment complete; ASCII and SVG consumers fail | Obtain an explicit release-contract decision; a core-only fix is insufficient |
 | Discovery, authoring golden and catalog/profile delivery | Implemented with source-specific evidence | Close demonstrated gaps through final owner-built consumers |
 | C7a candidate and contract freeze | Open | Complete the declared same-source release matrix and archive/catalog binding |
 | C7b family breadth | Separate continuing work | Evaluate mechanisms independently of the empty Legacy inventory |
@@ -93,6 +93,19 @@ Exit: the candidate and required previous-consumer checks pass with preserved er
 or the maintainer explicitly approves a documented alternative release contract. An unresolved
 decision keeps C7a open. Complete the bounded assessment and present the decision rather than
 repeatedly running the same failing build.
+
+### Assessment outcome
+
+The [bounded assessment](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md#bounded-compatibility-assessment-at-be2d12d20)
+compiled the alpha.7 ASCII and SVG consumers and reproduced failures in both old-facade recipes.
+SVG additionally depends on the retired presentation/rendering API, so changing only the error
+enum cannot close this boundary. The existing checker now includes both features (`2ed72b4cf`),
+and correctly rejects the old/new combination. Its 45 focused unit/workflow tests pass.
+
+The next action is a maintainer decision between an isolated package version line and retaining
+alpha.7 with explicit acceptance of the old-consumer resolution break. Keep the current product
+model and selected alpha.7 preparation while that decision is pending. Do not restore the retired
+presentation API, repeat the same failed build, or claim that compatibility assessment closes C7a.
 
 ## C7a: release-facing closure
 
