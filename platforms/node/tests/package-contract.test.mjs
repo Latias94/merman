@@ -156,6 +156,25 @@ test("packed ownership allows no native binary in root and exactly one in a targ
   );
 });
 
+test("Node CI uses the release toolchain required by npm pack contracts", async () => {
+  const repositoryRoot = path.resolve(nodeRoot, "..", "..");
+  const ci = await readFile(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+  const release = await readFile(path.join(repositoryRoot, ".github/workflows/release-node.yml"), "utf8");
+  const nodeJob = ci.split("\n  node-contracts:\n")[1]?.split(/\n  [a-z][a-z0-9-]*:\n/)[0];
+  assert.ok(nodeJob, "Node contract owner must exist in ordinary CI");
+  const packageManager = JSON.parse(
+    await readFile(path.join(repositoryRoot, "playground/package.json"), "utf8"),
+  ).packageManager;
+  assert.match(packageManager, /^npm@[0-9]+\.[0-9]+\.[0-9]+$/);
+  assert.deepEqual([...nodeJob.matchAll(/npm@[0-9.]+/g)].map(([pin]) => pin), [packageManager]);
+  assert.deepEqual(new Set([...release.matchAll(/npm@[0-9.]+/g)].map(([pin]) => pin)),
+    new Set([packageManager]));
+  const releaseNode = new Set([...release.matchAll(/node-version: "([^"]+)"/g)].map(([, pin]) => pin));
+  assert.equal(releaseNode.size, 1);
+  assert.deepEqual(new Set([...nodeJob.matchAll(/node-version: "([^"]+)"/g)].map(([, pin]) => pin)),
+    releaseNode);
+});
+
 test("candidate recipes pin the approved napi baseline and an explicit Node WASM target", async () => {
   const recipes = JSON.parse(
     await readFile(path.join(nodeRoot, "candidate-builds.json"), "utf8"),
