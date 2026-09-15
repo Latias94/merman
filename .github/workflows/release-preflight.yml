@@ -422,7 +422,13 @@ jobs:
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
 
-      - name: Build and execute final native archives
+      - name: Install native qualification fonts
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes fonts-dejavu-core
+
+      - name: Build final native archives
         run: |
           set -euo pipefail
           mkdir -p target/distrib
@@ -431,13 +437,24 @@ jobs:
             --artifacts=local \
             --target="$TARGET" \
             --output-format=json > native-dist-manifest.json
-          python3 scripts/verify_cli_release_archive.py \
-            "target/distrib/merman-cli-$TARGET.tar.xz" \
-            --checksum "target/distrib/merman-cli-$TARGET.tar.xz.sha256" \
-            --target "$TARGET" \
-            --version "$VERSION" \
-            --repo-root . \
-            --execute
+
+      - name: Execute final native archives
+        run: |
+          set -euo pipefail
+          archive="target/distrib/merman-cli-$TARGET.tar.xz"
+          verification_args=(
+            "$archive" --checksum "$archive.sha256"
+            --target "$TARGET" --version "$VERSION"
+            --repo-root . --execute
+          )
+          if [[ "$TARGET" == x86_64-unknown-linux-gnu ]]; then
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
+              --preset-qualification-output target/preset-qualification.json
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
+              --preset-qualification-check target/preset-qualification.json
+          else
+            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}"
+          fi
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \
@@ -445,6 +462,16 @@ jobs:
             --version "$VERSION" \
             --repo-root . \
             --execute
+
+      - name: Upload scoped native preset qualification
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preset-qualification-${{ needs.validate-inputs.outputs.source_sha }}-${{ matrix.target }}
+          path: |
+            target/preset-qualification.json
+            target/preset-qualification.catalog.json
+          if-no-files-found: error
 
       - name: Upload native archive evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -54,8 +54,10 @@ not as self-updating checked-in source fixtures.
 
 ## Release preflight
 
-`versions-and-packages` in Release Preflight qualifies the CLI extracted from its verified host
-cargo-dist archive. Its Ubuntu host installs DejaVu system fonts for the native profile. Archive
+The `x86_64-unknown-linux-gnu` row of `cli-and-lsp-archives` in Release Preflight qualifies
+the CLI extracted from its verified cargo-dist archive. Its Ubuntu host installs DejaVu
+system fonts for the native profile. The ARM64 row executes normal CLI/LSP archive checks
+without claiming the x86_64 qualification profile. Archive
 checksum, tracked package contents, runtime capabilities, and normal CLI smoke checks must pass
 before `--preset-qualification-output target/preset-qualification.json` runs qualification. The
 record additionally binds `cli_archive.sha256`, `target`, and `version` to that exact archive.
@@ -64,8 +66,10 @@ A second archive verification uses `--preset-qualification-check` to rebuild and
 Rust and extracted-CLI paths and compare the complete record. Both flags require `--execute` and
 the existing host-target check. Use these archive flags to replay an archive record; standalone
 `--check --cli` deliberately cannot reproduce its archive provenance. The job archives the result
-as `preset-qualification-<source_sha>-linux`. Qualification does not edit the source catalog or
-embed a binary's own digest into that binary.
+as `preset-qualification-<source_sha>-x86_64-unknown-linux-gnu`, including both the execution
+record and the archive-bound catalog companion. Generation, replay, and missing-file upload
+failures fail the job. Qualification does not edit the source catalog or embed a binary's
+own digest into that binary.
 
 This job owns a native Linux host observation. It does not qualify Web, Flutter, another host font
 environment, or every shipped artifact profile. Those consumers still use final target admission.

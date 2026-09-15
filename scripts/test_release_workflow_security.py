@@ -541,6 +541,61 @@ jobs:
         self.assertNotIn("dist host", native)
         self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
 
+    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires bash")
+    def test_preflight_native_qualification_replays_and_propagates_failures(self) -> None:
+        native = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives")
+        step = native.split("      - name: Execute final native archives\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        upload = native.split("      - name: Upload scoped native preset qualification\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", upload)
+        self.assertIn("target/preset-qualification.json", upload)
+        self.assertIn("target/preset-qualification.catalog.json", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertIn("fonts-dejavu-core", native)
+        with tempfile.TemporaryDirectory(prefix="merman preflight qualification ") as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            # Execute the actual workflow shell with recording boundary programs.
+            verifier = (
+                "import json, os, sys\n"
+                "with open(os.environ['ARGUMENT_LOG'], 'a') as log:\n"
+                "    log.write(json.dumps(sys.argv) + '\\n')\n"
+                "sys.exit(7 if os.environ['FAIL_ARGUMENT'] in sys.argv else 0)\n"
+            )
+            for product in ("cli", "lsp"):
+                (scripts / f"verify_{product}_release_archive.py").write_text(verifier, encoding="utf-8")
+            for target, failure in (
+                ("x86_64-unknown-linux-gnu", ""),
+                ("aarch64-unknown-linux-gnu", ""),
+                ("x86_64-unknown-linux-gnu", "--preset-qualification-output"),
+                ("x86_64-unknown-linux-gnu", "--preset-qualification-check"),
+                ("aarch64-unknown-linux-gnu", "scripts/verify_lsp_release_archive.py"),
+            ):
+                with self.subTest(target=target, failure=failure):
+                    log = root / f"calls-{target}-{Path(failure).name}.jsonl"
+                    result = subprocess.run(
+                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        env={**os.environ, "TARGET": target, "VERSION": "1.2.3",
+                             "ARGUMENT_LOG": str(log), "FAIL_ARGUMENT": failure},
+                    )
+                    self.assertEqual(result.returncode, 7 if failure else 0, result.stderr)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    def expected_call(product: str, extra: list[str]) -> list[str]:
+                        archive = f"target/distrib/merman-{product}-{target}.tar.xz"
+                        return [f"scripts/verify_{product}_release_archive.py", archive,
+                                "--checksum", archive + ".sha256", "--target", target,
+                                "--version", "1.2.3", "--repo-root", ".", "--execute", *extra]
+                    if target == "x86_64-unknown-linux-gnu":
+                        expected = [expected_call("cli", ["--preset-qualification-output", "target/preset-qualification.json"])]
+                        if failure != "--preset-qualification-output":
+                            expected.append(expected_call("cli", ["--preset-qualification-check", "target/preset-qualification.json"]))
+                    else:
+                        expected = [expected_call("cli", [])]
+                    if not failure.startswith("--preset-qualification-"):
+                        expected.append(expected_call("lsp", []))
+                    self.assertEqual(calls, expected)
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",
