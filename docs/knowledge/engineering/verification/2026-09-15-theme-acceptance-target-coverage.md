@@ -4,6 +4,7 @@ title: Theme acceptance integration target coverage
 timestamp: 2026-09-15
 related_plan: docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md
 git_branch: refactor/presentation-theme-model
+git_commit: 3b0eab876
 tags: theme,ci,acceptance,verification
 ---
 
@@ -23,7 +24,9 @@ for visual retirement targets:
 - `native_export_smoke`
 
 The Flowchart marker target was added to both CI and Release Preflight by `5fe83ef17` after the
-coverage audit found it was present but not selected.
+coverage audit found it was present but not selected. The renderer-owned `theme_support_discovery_test`
+(49 tests) is now also explicitly run in both workflows by `3b0eab876`, so support classification
+does not depend on the Linux full-workspace test alone.
 
 # Validation
 
