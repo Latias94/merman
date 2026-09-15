@@ -8,6 +8,26 @@ Keep the current presentation-theme architecture and treat the merged `origin/ma
 
 C7a is the release-facing track. C7b is the long-tail migration track and does not block the C7a contract freeze unless it exposes a shared public-model defect.
 
+## Verified starting point
+
+The merge commit is `3e71378be` (remote main `4c2ac7817`); post-merge follow-ups
+through `15e8ecbd5` are not full-platform release evidence. Before freezing, audit the
+conflict resolutions against both parents, including binding generations, public docs,
+SVG pipeline behavior, dependency changes, and generated license projections.
+
+Block generic Text cutover and production provider retirement already landed before the
+merge. KTD17 v89 records 506 routes and 814 route-profile witnesses; the executable Legacy
+inventory is empty. The bridge, historical probes, and tombstones are restricted to unit
+tests or internal acceptance cfg. The [coverage snapshot](../rendering/diagram-theme-coverage.md)
+and [provider retirement verification](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md)
+distinguish this completed migration from remaining family breadth. Revalidate the
+retirement after integration; do not implement it again.
+
+Shared authoring errors, support discovery, and qualification-cell vectors already exist
+under `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/`. Installed consumer
+records cover earlier source revisions. Check their current transport consumers and
+fill demonstrated gaps rather than creating another golden format.
+
 ## C7a: release-facing closure
 
 1. **Post-merge regression gate**
@@ -20,7 +40,7 @@ C7a is the release-facing track. C7b is the long-tail migration track and does n
    - Keep unknown `profile_id` and `admission_status` values fail-closed.
 
 3. **Cross-transport authoring contract**
-   - Add one shared invalid-input golden case covering Web, Node, Typst, UniFFI, and Native C ABI.
+   - Re-run existing shared invalid-input golden cases through Web, Node, Typst, UniFFI, and Native C ABI; add cases only for uncovered contract behavior.
    - Compare error envelope, path, details, and admission status; do not create a second validation framework.
 
 4. **Budget decision**
@@ -29,17 +49,17 @@ C7a is the release-facing track. C7b is the long-tail migration track and does n
    - Do not embed Inter or another product font merely to satisfy visual fixtures. Use host or consumer-provided fonts unless a product requirement establishes a distributable font obligation.
 
 5. **Freeze criteria**
-   - All C7a qualification cells are non-empty and tied to current artifacts.
+   - Each declared C7a candidate scenario has qualification cells bound to its actual artifact. Unqualified presets and targets keep empty cells; host-dependent evidence never implies Portable admission.
    - Public support discovery agrees across transports.
    - Release preflight and package-content checks pass from a clean checkout.
    - No open P1 correctness or CI coverage gap remains.
 
 ## C7b: long-tail migration
 
-1. Migrate the remaining Block legacy routes and verify the provider, historical probe, and migration ledger entries have no production consumers.
-2. Retire only the runtime compatibility code. Preserve the independent historical retirement authority as audit evidence until the migration record is finalized.
-3. Reconcile the coverage document so historical Class cutover failures are clearly separated from completed Class retirement.
-4. Reassess remaining family breadth after Block. Do not create new family bridges to improve route counts.
+1. Revalidate the completed Block route/provider retirement against the merged code, including the independent retirement authority and production cfg boundary.
+2. Preserve historical probes and migration records in acceptance-only code; remove a helper only after confirming it has no remaining consumer or audit obligation.
+3. Keep historical Class cutover failures separate from completed Class retirement, as the current coverage snapshot does.
+4. Inventory remaining family mechanism breadth independently of the zero Legacy route count. Do not create new family bridges to improve route counts.
 
 ## Deferred unless measured
 
@@ -55,5 +75,26 @@ These are optimization candidates. Each requires a workload, a before/after meas
 1. Finish post-merge regression evidence.
 2. Close C7a discovery, catalog, cross-transport golden, and profile matrix gaps.
 3. Freeze the C7a contract and publish the evidence record.
-4. Complete Block retirement as the first C7b tranche.
+4. Close the Block retirement audit and continue the remaining C7b family breadth work.
 5. Revisit deferred performance work only when a benchmark shows material impact.
+
+## Integration verification and next repair
+
+On the working tree based on `15e8ecbd5`, the following checks ran after restoring
+preflight qualification generation, replay, and catalog-companion upload:
+
+- Workflow contracts: 87 tests passed (`test_ci_plan`, `test_release_workflow_security`,
+  `test_ci_workflow_android_emulator`, `test_fuzz_config`); actionlint passed for
+  `release-preflight.yml`. The added shell test uses recording verifiers to exercise
+  x86_64 qualification, ARM64 smoke, and failure propagation; it does not build archives.
+- Internal acceptance manifest digest: one test passed (121 excluded by the filter).
+- Release retirement: 10 tests passed across all four integration targets, with no skips.
+
+The Rust commands used `scripts/run_theme_acceptance.py` to enable the internal cfg.
+Direct Cargo invocations without that cfg ran zero tests and supply no acceptance evidence.
+
+The next confirmed integration defect is the UniFFI mismatch: Rust exposes API 8 while
+checked-in Apple bindings expose API 7. Reconcile main's ASCII changes with the theme API,
+regenerate bindings from the reconciled library, and test a real consumer. Also review
+post-merge lockfile churn and regenerate legal projections before qualifying final packages.
+Linux archive execution, the full platform matrix, and C7a contract freeze remain open.
