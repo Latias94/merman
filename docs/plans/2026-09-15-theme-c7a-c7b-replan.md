@@ -220,3 +220,31 @@ preflight smoke-before-repair gap, and its clean checkout passed 67 release/qual
 contract tests. Continue Linux Node and the remaining native host/compiler lanes, then bind
 the final same-source candidate/rollout/freeze. `/tmp/merman-c7a-a6b9f9ae5` is the clean
 integration candidate for that work, not a declared frozen contract.
+
+## Post-merge audit and Linux Node follow-up
+
+The audit against `6be5b63c7..a6b9f9ae5` was rechecked at `b7246bbe4`. Its five actionable findings
+were repaired: host npm preflight setup (`19ada22e1`), Markdown prefix allocation and repeated
+negative include scanning (`92bcdf026`), and conditional rustdoc order/facade helper resolution
+(`ff0cd48e6`). The [repair verification](../knowledge/engineering/verification/2026-09-15-post-merge-rustdoc-audit-fixes.md)
+records 51 doc/macro tests, 44 CLI tests, 88 workflow contracts, the npm 11/12 reproduction,
+scoped Clippy, and the same-toolchain structural resource comparison. This closes those findings,
+not the full C7a candidate gate. The headless plan and shared Markdown ADR now use current
+contracts and valid, unique ADR identities.
+
+The [Linux Node installed-package record](../knowledge/engineering/verification/2026-09-15-c7a-linux-node-verification.md)
+adds successful GNU/glibc-2.31 and musl consumers built from clean `a6b9f9ae5` clones. Both ran the
+shared authoring vectors after installing the actual loader and native tarballs. The record names
+source and archive hashes; newer README, workflow, and doc-runtime changes still require fresh
+owner-built artifacts. Do not reuse these receipts under a newer source label.
+
+The [version audit](../release/UNRELEASED_CONTRACT_VERSIONS.md) remains the numbering policy: new,
+unpublished theme schemas, recipes, catalogs, support claims and qualification contracts start at
+1. Existing public interfaces compare with their last published artifact and receive one candidate
+compatibility bump. Migration batches, historical acceptance records, hash domains and ADR IDs
+remain independent identities. Alpha.6 history is unchanged; new source behavior stays Unreleased.
+
+Next, assemble the final candidate from one selected clean source revision and execute its owner
+preflight/profile matrix, including refreshed package contents and receipts. The formal release
+version/date, catalog/artifact rollout and C7a contract freeze remain open. Avoid adding another
+proof framework or restoring retired production providers while closing these gates.
