@@ -36,3 +36,15 @@ BUILD SUCCESSFUL
 These are host and build validations. They do not claim Android emulator execution, Linux/Windows
 artifact identity, public preset-cell promotion, or C7a contract freeze. Cross-host rollout still
 requires the owner CI/release jobs to produce same-source artifact evidence.
+
+The Android canonical release artifact was subsequently built with the local NDK 29.0.14206865:
+
+```text
+python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
+python3 scripts/verify-platform-bindings.py --verify-android-aar \
+  --android-ndk-home "$HOME/Library/Android/sdk/ndk/29.0.14206865"
+Android AAR contract verified
+```
+
+Both `arm64-v8a` and `x86_64` JNI slices were built from the locked Rust recipe. The build left no
+tracked generated-file changes; packaged binaries remain ignored build artifacts.
