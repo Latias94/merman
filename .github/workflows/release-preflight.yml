@@ -284,6 +284,9 @@ jobs:
             playground/package-lock.json
             tools/mermaid-cli/package-lock.json
 
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
@@ -690,6 +693,9 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
       - name: Install wasm-tools
         uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2.87.0
         with:
@@ -767,6 +773,9 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
       - name: Verify Node package contracts
         run: |
           npm ci --prefix platforms/node
@@ -823,6 +832,9 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Node build dependencies
         run: npm ci --prefix platforms/node
@@ -1005,6 +1017,10 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
+      - name: Install npm toolchain
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
       - name: Install Node build dependencies
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         run: npm ci --prefix platforms/node
@@ -1144,6 +1160,9 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install extension dependencies
         working-directory: tools/vscode-extension

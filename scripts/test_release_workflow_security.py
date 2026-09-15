@@ -610,6 +610,25 @@ jobs:
                 with self.subTest(path=path.relative_to(ROOT).as_posix()):
                     assert_no_npm_provenance_disable(self, read(path))
 
+    def test_preflight_installs_npm_before_host_package_commands(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-preflight.yml")
+        for name in (
+            "mermaid-reference-materialized", "web-npm-dry-run", "node-loader-package",
+            "node-wasm-package", "node-platform-package", "vscode-extension-dry-run",
+        ):
+            with self.subTest(job=name):
+                job = workflow_job(text, name)
+                steps = re.split(r"(?m)^      - name: ", job)
+                setup = next(i for i, step in enumerate(steps) if step.startswith("Setup Node"))
+                install = steps[setup + 1]
+                self.assertTrue(install.startswith("Install npm toolchain\n"))
+                self.assertIn(
+                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2",
+                    install,
+                )
+                setup_if = re.findall(r"(?m)^        if: (.+)$", steps[setup])
+                self.assertEqual(re.findall(r"(?m)^        if: (.+)$", install), setup_if)
+
     def test_release_package_workflows_pin_node_toolchain(self) -> None:
         expected = 'node-version: "24.21.0"'
         for path in (
