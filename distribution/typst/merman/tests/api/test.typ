@@ -237,7 +237,7 @@
 
 #let capabilities = merman-capabilities()
 #assert.eq(capabilities.schema_version, 1)
-#assert.eq(capabilities.transport_api_version, 4)
+#assert.eq(capabilities.transport_api_version, 3)
 #assert(
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",
@@ -281,12 +281,12 @@
 )
 
 #let theme-support = describe-theme-support((
-  schema_version: 2,
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   subject: (kind: "base-typography", property: "font-stack"),
 ))
-#assert.eq(theme-support.schema_version, 2)
+#assert.eq(theme-support.schema_version, 1)
 #assert.eq(theme-support.query.family, "sequence")
 
 #let preset-export = export-theme-preset("editor-light")
@@ -356,8 +356,7 @@
   schema_version: 1,
   family: "future-family",
   output: "standalone-svg",
-  target: "node",
-  facet: "fill",
+  subject: (kind: "rule", target: "node", facet: "fill"),
 ))
 #assert.eq(unknown-support.state, "unverified")
 #assert(unknown-support.reason_ids.contains("theme-support.unknown-family"))
@@ -429,7 +428,7 @@ flowchart LR
 API fixture passed.
 
 #let catalog = theme-catalog()
-#assert.eq(catalog.schema_version, 3)
+#assert.eq(catalog.schema_version, 1)
 #assert(catalog.structured_spec_available)
 #assert.eq(catalog.supported_output_ids, ("svg",))
 #assert.eq(catalog.presets.len(), 10)

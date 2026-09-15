@@ -90,7 +90,7 @@ pub(crate) fn validate_typst_plugin_with_input(
     if theme_catalog
         .get("schema_version")
         .and_then(JsonValue::as_u64)
-        != Some(3)
+        != Some(1)
         || theme_catalog
             .get("structured_spec_available")
             .and_then(JsonValue::as_bool)

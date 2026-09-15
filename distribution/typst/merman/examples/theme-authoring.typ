@@ -17,7 +17,7 @@
 )
 
 #let support = describe-theme-support((
-  schema_version: 2,
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   subject: (kind: "base-typography", property: "font-stack"),
