@@ -4,7 +4,7 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-14
+## Snapshot: 2026-09-15
 
 Compiled themes no longer install a family Legacy overlay provider. The former bridge/cache is
 compiled only for unit tests and the internal acceptance configuration; independent KTD23 probes
