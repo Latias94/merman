@@ -223,7 +223,9 @@ The gate discovers workspace members and validates their inherited package versi
 
 `cargo check --locked` is not sufficient evidence for a prerelease. The release gates also create
 fresh consumers without a copied lockfile and compile the candidate graph plus the previous facade
-against candidate sibling packages when both versions are on the same Cargo compatibility line. A
+against candidate sibling packages with both `ascii` and `svg` enabled when both versions are on the
+same Cargo compatibility line. These features exercise the facade/core and facade/renderer boundaries;
+this check does not replace the complete release feature and artifact matrix. A
 failure in that same-line previous-facade lane means the release must restore compatibility or start
 a new release line; do not rely on downstream lockfiles to hide the mixed graph. Published registry
 tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this

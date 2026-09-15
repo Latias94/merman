@@ -25,7 +25,7 @@ class PrereleaseCompatibilityTests(unittest.TestCase):
 
         self.assertIn(
             'merman = { version = "=0.9.0-alpha.1", default-features = false, '
-            'features = ["ascii"] }',
+            'features = ["ascii", "svg"] }',
             manifest,
         )
         self.assertIn(
@@ -66,6 +66,31 @@ class PrereleaseCompatibilityTests(unittest.TestCase):
         self.assertIn(f'"merman" = {{ path = {merman_path} }}', candidate_manifest)
         self.assertNotIn(f'"merman" = {{ path = {merman_path} }}', previous_manifest)
         self.assertIn(f'"merman-core" = {{ path = {core_path} }}', previous_manifest)
+
+    def test_previous_facade_compile_failure_rejects_the_candidate(self) -> None:
+        calls = []
+
+        def fake_check(command, *, cwd, env):
+            calls.append(cwd.name)
+            if cwd.name == "previous-with-candidate-siblings":
+                return subprocess.CompletedProcess(
+                    command, 101, "", "unresolved import `merman_render::presentation`"
+                )
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(verify, "candidate_packages", return_value=()):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with self.assertRaisesRegex(
+                    verify.PrereleaseCompatibilityError,
+                    "previous-with-candidate-siblings.*merman_render::presentation",
+                ):
+                    verify.verify(
+                        Path(temp_dir),
+                        "0.8.0-alpha.7",
+                        "0.8.0-alpha.6",
+                        run_check=fake_check,
+                    )
+        self.assertEqual(calls, ["candidate", "previous-with-candidate-siblings"])
 
     def test_stable_releases_skip_without_loading_candidate_packages(self) -> None:
         with mock.patch.object(verify, "candidate_packages") as packages:

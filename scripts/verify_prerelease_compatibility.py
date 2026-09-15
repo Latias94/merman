@@ -23,7 +23,7 @@ from tools.publish import cargo_metadata, publish_field_allows_crates_io
 
 TOP_LEVEL_PACKAGE = "merman"
 PACKAGE_EDITION = "2024"
-FEATURES = ("ascii",)
+FEATURES = ("ascii", "svg")
 PROJECT_PREFIX = "merman-prerelease-compatibility"
 
 
