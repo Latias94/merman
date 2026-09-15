@@ -1,6 +1,6 @@
 # Unreleased contract version audit
 
-Checked on 2026-09-15, starting from `c306fa698`. This is a development decision, not a
+Checked on 2026-09-16 at candidate source `646ac9228`. This is a development decision, not a
 release or a C7a freeze record. The release baseline is the latest artifact for each surface,
 not the largest number found on the development branch.
 
@@ -116,7 +116,9 @@ examples in the Options guide. Restore the pre-merge compiled-theme sections whi
 main's newer ASCII Auto and SVG-pipeline guidance; the guide must describe the actual Options 3
 grammar, not just put a new number on an old example.
 
-These results are local validation, not installed-package coverage for every platform. Packed
-Node, complete browser/WASM builds, final Typst package assembly, Android devices and the full
+These results are local validation, not installed-package coverage for every platform. The
+current candidate now also has installed Node N-API and Node WASM witnesses plus macOS ARM64
+CLI/LSP archive replay; their source identities and commands are recorded in the transport
+verification record. Linux/Windows hosts, Apple Swift 5.9, Android devices and the complete
 release archive/profile matrix remain part of C7a's candidate gate. Existing historical artifact
 records retain their original source, profile and numbering and are not evidence for this tree.
