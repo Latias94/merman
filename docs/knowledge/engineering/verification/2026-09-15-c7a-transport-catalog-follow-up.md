@@ -225,3 +225,15 @@ checks, 23 JSON operations and 23 SVG renders.
 This closes the local Node WASM installation tranche. It does not close other native hosts,
 CLI/LSP archives, hosted compiler floors, or the unresolved alpha.6 facade compatibility
 contract. No package was published.
+
+# Local alpha.7 CLI/LSP archives at `6beea1497`
+
+`cargo-dist 0.32.0` built the `aarch64-apple-darwin` CLI and LSP archives for
+`v0.8.0-alpha.7` from the current workspace. `verify_cli_release_archive.py --execute`
+passed archive structure, checksum, version, capability, completion, SVG, PNG, JPEG, PDF and
+rustdoc checks. `verify_lsp_release_archive.py --execute` passed archive structure, checksum,
+version and the native stdio initialize/shutdown lifecycle. Verified copies were written under
+a temporary directory with archive names preserved.
+
+This is a local macOS ARM64 archive witness. It does not establish Linux/Windows execution or
+replace the unresolved alpha.6 facade compatibility decision.
