@@ -175,3 +175,11 @@ The Web prepack fix exposed two Node assembled-package contract tests that used 
 `allowNpm11: true`, matching the production Node verifier and Web prepack verifier. The complete
 current Web/Node script set (all Web tests, Node platform-command and package-contract tests)
 then passed 153/153 under npm 11.18.0. No package contract or runtime behavior was weakened.
+
+# Current release/workflow contract rerun at `1ad432247`
+
+After the npm 11 metadata fixes, the current Web/Node focused suite passed 16/16 (Web prepack
+and all selected Node package/platform contract tests). The broader release workflow, CI-plan,
+release-surface and artifact-bundle contract suite passed 97/97. Historical alpha.6 and
+“version not selected” statements in the replanning document remain confined to explicitly
+labeled historical evidence sections and were not relabeled as current candidate evidence.
