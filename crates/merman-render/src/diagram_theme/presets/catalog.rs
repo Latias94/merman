@@ -23,25 +23,25 @@ const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-const EDITOR_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
     "a98b7a6e93bbbc17832c6be11ebe09008c5382a38d2a27fc5ca52f5abb2e5411";
-const EDITOR_DARK_RECIPE_V4_FINGERPRINT: &str =
+const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
     "49a46a985abe9a53194f8aa6d5c95f79383eb562f63097a684992ff001829aa0";
-const ONE_DARK_RECIPE_V4_FINGERPRINT: &str =
+const ONE_DARK_RECIPE_FINGERPRINT: &str =
     "c94f5100f62f6664da322275127c4f60556c3339ef3ba03d0c9ace84a44230da";
-const GRUVBOX_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
     "fe8ac082387f78aeaa7ae198d57b358991b395e2b212de4eb03d0c62151c6b90";
-const GRUVBOX_DARK_RECIPE_V4_FINGERPRINT: &str =
+const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
     "d0cd109708af411f35fee3a6e8e2c8c133280942f855af97e706efaf3b05dd42";
-const AYU_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
     "e62e3c175ac47801ec2fe2a631fe253aeaf60dc58f00917920ce1c0ccd45ea00";
-const AYU_DARK_RECIPE_V4_FINGERPRINT: &str =
+const AYU_DARK_RECIPE_FINGERPRINT: &str =
     "3ebcce80dfe68ee9fd312ddd4fdc6e0f556eb46e74d1ebd84e835bc039a64c87";
-const BRUTALIST_RECIPE_V5_FINGERPRINT: &str =
+const BRUTALIST_RECIPE_FINGERPRINT: &str =
     "cff2165b390d27fe5dd03bb60cefb18489dd9375fd37f1167036e427f452c30a";
-const SPOTLESS_RECIPE_V5_FINGERPRINT: &str =
+const SPOTLESS_RECIPE_FINGERPRINT: &str =
     "c177e9885bb2ad7ccaf59f83702c43a01b913b6a4964f24abdc00c1c6b2a346b";
-const CYBERPUNK_RECIPE_V5_FINGERPRINT: &str =
+const CYBERPUNK_RECIPE_FINGERPRINT: &str =
     "50f78a13cd0e939271b1d33480df8d2b3cc5cac667b23990560ad5a819f28336";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
@@ -225,10 +225,8 @@ const fn entry(
         authoring_schema_version: AUTHORING_SCHEMA_VERSION,
         expansion_version: EXPANSION_VERSION,
         spec_schema_version: SPEC_SCHEMA_VERSION,
-        recipe_revision: match profile {
-            PresetRecipeProfile::RetainedMermaidCompatibility => 4,
-            PresetRecipeProfile::Native => 5,
-        },
+        // Unpublished recipes share revision 1; fingerprints identify content changes.
+        recipe_revision: 1,
         recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: build_cross_family_recipe,
@@ -252,7 +250,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Editor Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        EDITOR_LIGHT_RECIPE_V4_FINGERPRINT,
+        EDITOR_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -289,7 +287,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Editor Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        EDITOR_DARK_RECIPE_V4_FINGERPRINT,
+        EDITOR_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -326,7 +324,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "One Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        ONE_DARK_RECIPE_V4_FINGERPRINT,
+        ONE_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -366,7 +364,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Gruvbox Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        GRUVBOX_LIGHT_RECIPE_V4_FINGERPRINT,
+        GRUVBOX_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -403,7 +401,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Gruvbox Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        GRUVBOX_DARK_RECIPE_V4_FINGERPRINT,
+        GRUVBOX_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -443,7 +441,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Ayu Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        AYU_LIGHT_RECIPE_V4_FINGERPRINT,
+        AYU_LIGHT_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -480,7 +478,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Ayu Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        AYU_DARK_RECIPE_V4_FINGERPRINT,
+        AYU_DARK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -517,7 +515,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Brutalist",
         false,
         PresetRecipeProfile::Native,
-        BRUTALIST_RECIPE_V5_FINGERPRINT,
+        BRUTALIST_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -557,7 +555,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Spotless",
         false,
         PresetRecipeProfile::Native,
-        SPOTLESS_RECIPE_V5_FINGERPRINT,
+        SPOTLESS_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -594,7 +592,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "Cyberpunk",
         true,
         PresetRecipeProfile::Native,
-        CYBERPUNK_RECIPE_V5_FINGERPRINT,
+        CYBERPUNK_RECIPE_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",

@@ -470,14 +470,7 @@ mod tests {
             assert_eq!(entry.authoring_schema_version(), 1);
             assert_eq!(entry.expansion_version(), 1);
             assert_eq!(entry.spec_schema_version(), 1);
-            assert_eq!(
-                entry.recipe_revision(),
-                if is_native_candidate(descriptor.preset()) {
-                    5
-                } else {
-                    4
-                }
-            );
+            assert_eq!(entry.recipe_revision(), 1);
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
             assert_eq!(descriptor.export_kind(), "complete_spec");

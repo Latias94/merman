@@ -34,7 +34,7 @@ The branch's claim that published Typst 0.3.0 used ABI 3 was incorrect.
 | Theme support query and descriptor | Absent | One subject-based v1. Remove the earlier flat target/facet shape and its decoder; no V2 alias. |
 | Renderer support claim revision | Absent | Consolidate 90 to 1. Git source identity distinguishes development builds. |
 | Binding theme catalog | Absent | Consolidate 3 to 1, including Web, Flutter, Python and Node consumers. |
-| Preset catalog / preset recipe revision / public qualified cells | Absent | Keep 1. Empty cells remain empty unless qualified for the actual artifact. |
+| Preset catalog / preset recipe revision / public qualified cells | Absent | Keep schemas at 1; consolidate recipe revisions 4/5 to 1 for all ten entries. Empty cells remain empty unless qualified for the actual artifact. |
 | Preset qualification receipt and candidate record | Absent | Consolidate 3 to 1 and name the host profile `native-flowchart-state-sequence-system-fonts-v1`. Old build records require fresh execution and cannot be relabeled. |
 | Theme execution evidence / text-layout request and projection contracts | Absent | Keep 1. |
 | Artifact/resource descriptors and independently versioned package releases | Separate owners | Keep their published compatibility boundaries and existing version decisions; do not reset them merely because themes changed. |
@@ -67,6 +67,27 @@ Future public version changes follow the release guide: compare with the last pu
 contract, consolidate one unreleased compatibility change once, and leave a new contract at 1.
 Source SHA, artifact digest and existing replay checks identify development iterations. Do not
 add another version registry or migration framework for this policy.
+
+## Preset revision follow-up
+
+A follow-up at `cad8b2051` found one implementation mismatch with this policy: the preset
+entry factory still assigned recipe revision 4 to retained compatibility recipes and 5 to
+native recipes, and its metadata test expected those values. All ten unpublished recipes
+now use revision 1. Fingerprint constant names no longer contain development revision
+suffixes. Their hash values, the canonical hash domain, recipe contents and qualification
+scope remain unchanged. Existing archive records keep their original source identity.
+
+The follow-up checked theme contract and renderer version owners, binding projections,
+qualification metadata, current theme plans and coverage documentation. Authoring, expansion,
+complete spec, materialization, support, catalog, claim, text-layout and qualification versions
+are already 1. Version 2 and higher in rejection fixtures remain intentional invalid input;
+KTD/C6/reference evidence and hash domains retain the identities listed above. The pre-existing
+Mermaid theme artifact schema 2 is the successor of published schema 1, not an additional
+version of the new compiled-theme format.
+
+Validation for this follow-up: all 13 renderer preset tests passed, including the all-entry
+metadata check, exact compiled fingerprints and complete-spec round trips. `cargo fmt --all
+-- --check` and `git diff --check` passed. No platform artifacts were rebuilt for this change.
 
 ## Local validation
 
