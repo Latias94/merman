@@ -168,3 +168,24 @@ contracts pass 29 tests, its real consumer passes all 22 support vectors and thr
 budgeted authoring operations through both consumer modes, and the rebuilt Swift
 module passes the Apple consumer smoke. This is macOS ARM64 host evidence, not a
 complete platform rebuild or a C7a freeze.
+
+## Post-merge artifact execution
+
+The [artifact verification record](../knowledge/engineering/verification/2026-09-15-c7a-post-merge-artifacts.md)
+tracks the clean candidate through `835d1a8c4`. The actual Node native tarballs were installed
+and exercised; five Web package/WASM smokes passed; Typst 0.15.0 compiled 22 documents and
+rejected nine negative fixtures. All 24 Web/Typst size checks passed within the existing
+budgets. The final candidate's CLI archive matched 18 qualified outputs and passed fresh
+record replay, retaining only the declared host-dependent cells.
+
+This execution found and fixed the ordinary Node CI npm mismatch, old qualification/Web/Typst
+version expectations, unmigrated Typst authoring examples, and the Typst smoke's assumption
+that Cargo output lives inside the checkout. The shared-target `xtask` was explicitly rebuilt
+for the candidate before accepting independent-checkout evidence. No production theme model
+or qualification framework was added.
+
+Next run the full workspace regression and optimized retirement owners, then the installed
+Node-WASM and Python wheel consumers and the remaining platform/browser owners. Keep each
+artifact's actual source identity in the record; earlier macOS observations do not substitute
+for Linux/Windows owner execution. Close the named candidate, public rollout and compatibility
+freeze only after those remaining gates pass.
