@@ -342,6 +342,14 @@ jobs:
                         features = command.split("--features ", 1)[1].split()[0].split(",")
                         self.assertIn("png", features)
 
+    def test_support_discovery_runs_explicitly_in_ci_and_preflight(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = " ".join(read(WORKFLOW_ROOT / name).split())
+                self.assertIn("python3 scripts/run_theme_acceptance.py", text)
+                self.assertIn("nextest run --locked -p merman-render", text)
+                self.assertIn("--test theme_support_discovery_test", text)
+
     def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
         native = workflow_job(text, "verify-release-archives-native")
