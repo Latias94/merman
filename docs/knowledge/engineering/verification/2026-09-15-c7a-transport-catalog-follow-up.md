@@ -67,3 +67,13 @@ configuration; tests within each invocation used nextest's default concurrency. 
 Log: `/tmp/merman-c7a-current-retirement.log`. These results revalidate the merged Block/provider
 retirement and support-discovery behavior at the named source. They do not replace the final
 same-source platform matrix, selected release line, immutable preflight, or C7a contract freeze.
+
+# C6 leak-marker recheck
+
+The passing C6 test that received a nextest `LEAK` marker in the ten-target run was isolated twice.
+The acceptance-configured `cargo test` invocation passed the test in 4.92 seconds with `png`; the
+same acceptance-configured nextest invocation with the original `png,layout-cytoscape` feature set
+passed in 5.00 seconds without a `LEAK` marker. The first direct `cargo test` attempt was not used
+as evidence because it omitted the workspace acceptance cfg and consequently ran zero tests.
+Logs: `/tmp/merman-c7a-c6-cargo-test-acceptance.log` and
+`/tmp/merman-c7a-c6-original-features-recheck.log`.

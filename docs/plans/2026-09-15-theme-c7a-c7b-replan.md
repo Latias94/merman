@@ -335,6 +335,7 @@ gate; the final same-source owner matrix and contract freeze remain open.
 At `5980cc9ec`, the acceptance targets passed again: retirement and representative
 qualification 10/10, KTD23 retirement 4/4, route cutover 1/1, and renderer support discovery 48/48,
 all with zero skips. The route authorization test took 334.152 seconds; one passing C6 test received
-a nextest `LEAK` marker whose cause was not investigated in this run. Log:
+a nextest `LEAK` marker; an isolated acceptance-configured rerun with the original feature set
+passed without the marker. The recheck is recorded in the transport verification note. Log:
 `/tmp/merman-c7a-current-retirement.log`. This revalidates current Block/provider retirement and
 support discovery but does not close release-version, final platform/profile rollout, or C7a freeze.
