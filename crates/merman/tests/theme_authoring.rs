@@ -1712,7 +1712,7 @@ fn representative_family_shapes_reach_terminal_writers() {
 
 #[test]
 fn rust_facade_exposes_the_versioned_support_discovery_operation() {
-    let support = describe_theme_support(&ThemeSupportQueryV1::known(
+    let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
         DiagramFamilyId::FLOWCHART.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Node.id(),

@@ -1,9 +1,7 @@
 use merman::diagram_theme::{
     ThemeDefinitionCompileError, ThemeMaterializationErrorV1, ThemeSupportQueryV1,
-    ThemeSupportQueryV2,
     compile_theme_definition_json as compile_theme_definition_json_with_renderer,
     describe_theme_support as describe_theme_support_with_renderer,
-    describe_theme_support_v2 as describe_theme_support_v2_with_renderer,
     materialize_theme_json_with_resource_policy as materialize_theme_json_with_renderer_policy,
 };
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy};
@@ -53,13 +51,7 @@ pub fn describe_theme_support_json_with_resource_policy(
     let version = serde_json::from_slice::<SupportQueryVersion>(bytes).map_err(|error| {
         BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
     })?;
-    if version.schema_version == merman::diagram_theme::THEME_SUPPORT_SCHEMA_VERSION_V2 {
-        let query = serde_json::from_slice::<ThemeSupportQueryV2>(bytes).map_err(|error| {
-            BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
-        })?;
-        let descriptor = describe_theme_support_v2_with_renderer(&query);
-        serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
-    } else if version.schema_version == merman::diagram_theme::THEME_SUPPORT_SCHEMA_VERSION_V1 {
+    if version.schema_version == merman::diagram_theme::THEME_SUPPORT_SCHEMA_VERSION_V1 {
         let query = serde_json::from_slice::<ThemeSupportQueryV1>(bytes).map_err(|error| {
             BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
         })?;
@@ -180,9 +172,8 @@ mod tests {
     use crate::BindingError;
     use merman::diagram_theme::{
         MaterializedThemeWireV1, PresetExportV1, ThemeDefinitionV1, ThemeRuleFacetV1,
-        ThemeSupportBaseTypographyPropertyV2, ThemeSupportOutputV1, ThemeSupportQueryV1,
-        ThemeSupportQueryV2, ThemeTokensV1, describe_theme_support, describe_theme_support_v2,
-        materialize_theme_with_resource_policy,
+        ThemeSupportBaseTypographyPropertyV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+        ThemeTokensV1, describe_theme_support, materialize_theme_with_resource_policy,
     };
     use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
     use merman_theme_authoring_fixtures::THEME_AUTHORING_GOLDEN_VECTORS_V1;
@@ -495,7 +486,7 @@ mod tests {
 
     #[test]
     fn support_query_round_trips_known_and_unknown_identifiers() {
-        let known = ThemeSupportQueryV1::known(
+        let known = ThemeSupportQueryV1::for_target(
             "flowchart",
             ThemeSupportOutputV1::StandaloneSvg,
             "node",
@@ -510,19 +501,19 @@ mod tests {
                 .expect("known descriptor should serialize")
         );
 
-        let known_v2 = ThemeSupportQueryV2::base_typography(
+        let known_base = ThemeSupportQueryV1::base_typography(
             "railroad",
             ThemeSupportOutputV1::StandaloneSvg,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
         );
-        let known_v2_input =
-            serde_json::to_vec(&known_v2).expect("known V2 query should serialize");
-        let known_v2_output = crate::describe_theme_support_json(&known_v2_input)
-            .expect("known V2 query should succeed");
+        let known_base_input =
+            serde_json::to_vec(&known_base).expect("known subject query should serialize");
+        let known_base_output = crate::describe_theme_support_json(&known_base_input)
+            .expect("known subject query should succeed");
         assert_eq!(
-            known_v2_output,
-            serde_json::to_vec(&describe_theme_support_v2(&known_v2))
-                .expect("known V2 descriptor should serialize")
+            known_base_output,
+            serde_json::to_vec(&describe_theme_support(&known_base))
+                .expect("known subject descriptor should serialize")
         );
 
         for (field, value, reason_id) in [
@@ -534,10 +525,13 @@ mod tests {
                 "schema_version": 1,
                 "family": "flowchart",
                 "output": "standalone-svg",
-                "target": "node",
-                "facet": "radius"
+                "subject": {"kind": "rule", "target": "node", "facet": "radius"}
             });
-            query[field] = Value::String(value.to_owned());
+            if field == "family" {
+                query[field] = Value::String(value.to_owned());
+            } else {
+                query["subject"][field] = Value::String(value.to_owned());
+            }
             let input = serde_json::to_vec(&query).unwrap();
             let output = crate::describe_theme_support_json(&input)
                 .expect("unknown catalog identifiers remain valid discovery input");
@@ -548,8 +542,8 @@ mod tests {
             assert_eq!(descriptor["reason_ids"], json!([reason_id]));
         }
 
-        let unknown_v2_property = json!({
-            "schema_version": 2,
+        let unknown_base_property = json!({
+            "schema_version": 1,
             "family": "railroad",
             "output": "standalone-svg",
             "subject": {
@@ -557,19 +551,20 @@ mod tests {
                 "property": "future-property"
             }
         });
-        let output =
-            crate::describe_theme_support_json(&serde_json::to_vec(&unknown_v2_property).unwrap())
-                .expect("unknown V2 properties remain valid discovery input");
+        let output = crate::describe_theme_support_json(
+            &serde_json::to_vec(&unknown_base_property).unwrap(),
+        )
+        .expect("unknown properties remain valid discovery input");
         let descriptor: Value = serde_json::from_slice(&output).unwrap();
-        assert_eq!(descriptor["query"], unknown_v2_property);
+        assert_eq!(descriptor["query"], unknown_base_property);
         assert_eq!(descriptor["state"], "unverified");
         assert_eq!(
             descriptor["reason_ids"],
             json!(["theme-support.unknown-base-typography-property"])
         );
 
-        let unknown_v2_subject = json!({
-            "schema_version": 2,
+        let unknown_base_subject = json!({
+            "schema_version": 1,
             "family": "flowchart",
             "output": "standalone-svg",
             "subject": {
@@ -582,10 +577,10 @@ mod tests {
             }
         });
         let output =
-            crate::describe_theme_support_json(&serde_json::to_vec(&unknown_v2_subject).unwrap())
-                .expect("bounded unknown V2 subjects remain valid discovery input");
+            crate::describe_theme_support_json(&serde_json::to_vec(&unknown_base_subject).unwrap())
+                .expect("bounded unknown subjects remain valid discovery input");
         let descriptor: Value = serde_json::from_slice(&output).unwrap();
-        assert_eq!(descriptor["query"], unknown_v2_subject);
+        assert_eq!(descriptor["query"], unknown_base_subject);
         assert_eq!(descriptor["state"], "unverified");
         assert_eq!(
             descriptor["reason_ids"],
@@ -627,11 +622,11 @@ mod tests {
     }
 
     #[test]
-    fn support_query_rejects_duplicate_v2_subject_fields_as_options_json() {
+    fn support_query_rejects_duplicate_subject_fields_as_options_json() {
         let error = crate::describe_theme_support_json(
-            br#"{"schema_version":2,"family":"flowchart","output":"standalone-svg","subject":{"kind":"rule","target":"node","target":"edge","facet":"fill"}}"#,
+            br#"{"schema_version":1,"family":"flowchart","output":"standalone-svg","subject":{"kind":"rule","target":"node","target":"edge","facet":"fill"}}"#,
         )
-        .expect_err("duplicate V2 subject fields must fail before support projection");
+        .expect_err("duplicate subject fields must fail before support projection");
 
         assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
         assert!(
@@ -643,13 +638,15 @@ mod tests {
     }
 
     #[test]
-    fn support_query_rejects_unknown_schema_versions_instead_of_decoding_as_v1() {
-        let error = crate::describe_theme_support_json(
-            br#"{"schema_version":99,"family":"flowchart","output":"standalone-svg","target":"node","facet":"fill"}"#,
-        )
-        .expect_err("unknown support schema must fail closed");
-
-        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
-        assert!(error.message().contains("schema version 99"));
+    fn support_query_rejects_unpublished_shapes_and_unknown_versions() {
+        for input in [
+            br#"{"schema_version":1,"family":"flowchart","output":"standalone-svg","target":"node","facet":"fill"}"#.as_slice(),
+            br#"{"schema_version":2,"family":"flowchart","output":"standalone-svg","subject":{"kind":"rule","target":"node","facet":"fill"}}"#.as_slice(),
+            br#"{"schema_version":99,"family":"flowchart","output":"standalone-svg","subject":{"kind":"rule","target":"node","facet":"fill"}}"#.as_slice(),
+        ] {
+            let error = crate::describe_theme_support_json(input)
+                .expect_err("only the first-release subject-based v1 contract is accepted");
+            assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        }
     }
 }

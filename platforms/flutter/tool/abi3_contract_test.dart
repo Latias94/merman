@@ -403,7 +403,7 @@ void decodesTypedMetadataCatalogs() {
     'fixable': false,
   });
   final theme = MermanThemeCatalog.fromJson({
-    'schema_version': 3,
+    'schema_version': 1,
     'structured_spec_available': true,
     'supported_output_ids': ['svg'],
     'presets': [
@@ -503,7 +503,7 @@ void acceptsAdditiveTypedMetadataFields() {
     'future_field': 1,
   });
   final theme = MermanThemeCatalog.fromJson({
-    'schema_version': 3,
+    'schema_version': 1,
     'structured_spec_available': true,
     'supported_output_ids': ['future-output'],
     'presets': [
@@ -577,7 +577,7 @@ void rejectsMalformedThemePresetMaturity() {
   };
 
   Map<String, Object?> catalog(Map<String, Object?> preset) => {
-    'schema_version': 3,
+    'schema_version': 1,
     'structured_spec_available': true,
     'supported_output_ids': ['svg'],
     'presets': [preset],

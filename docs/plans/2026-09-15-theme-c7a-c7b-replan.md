@@ -78,7 +78,7 @@ These are optimization candidates. Each requires a workload, a before/after meas
 4. Close the Block retirement audit and continue the remaining C7b family breadth work.
 5. Revisit deferred performance work only when a benchmark shows material impact.
 
-## Integration verification and next repair
+## Historical integration verification before version consolidation
 
 On the working tree based on `15e8ecbd5`, the following checks ran after restoring
 preflight qualification generation, replay, and catalog-companion upload:
@@ -125,3 +125,14 @@ Audit the remaining version axes against that published baseline before the C7a 
 New theme formats start at 1; remove superseded unpublished support-query shapes rather
 than carrying a compatibility branch. Keep published formats and historical migration
 batch identities distinct from this first-release numbering.
+
+The [version audit](../release/UNRELEASED_CONTRACT_VERSIONS.md) records each public and internal
+axis against actual published artifacts. Before C7a freeze, use the consolidated first-release
+theme v1 contracts, UniFFI API 7 and Typst ABI 3. Preserve the identity of earlier migration and
+verification records; their historical numbers are not product versions. Regenerate candidate
+records and final artifact profiles from the resulting source rather than editing old receipts.
+
+Version consolidation has passed the scoped checks listed in that audit, including the real
+published Typst ABI probe, shared transport support vectors, native preset qualification and
+rebuilt local Python/Swift consumers. C7a remains unfrozen. Next resume the post-merge lockfile
+and legal-projection audit, then rebuild the final artifact/profile candidate matrix.

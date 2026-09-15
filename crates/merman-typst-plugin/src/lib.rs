@@ -459,9 +459,9 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 4);
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"4");
-        assert_eq!(abi_version(), b"4");
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 3);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"3");
+        assert_eq!(abi_version(), b"3");
     }
 
     #[test]
@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(payload["operation"], "theme-catalog");
         assert_eq!(payload["ok"], true, "{payload}");
         let catalog = &payload["data"]["result"];
-        assert_eq!(catalog["schema_version"], 3);
+        assert_eq!(catalog["schema_version"], 1);
         assert_eq!(catalog["structured_spec_available"], cfg!(feature = "svg"));
         let runtime: Value = serde_json::from_slice(&capabilities_json()).unwrap();
         assert_eq!(runtime["metadata_ids"], json!(["theme-catalog"]));

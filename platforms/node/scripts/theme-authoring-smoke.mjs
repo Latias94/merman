@@ -152,7 +152,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     const expectedPresets = JSON.parse(await readFile(new URL("preset-catalog.json", FIXTURES), "utf8"));
     for (const client of [engine, fresh]) {
       const catalog = JSON.parse(client.metadataJson("theme-catalog"));
-      assert.equal(catalog.schema_version, 3);
+      assert.equal(catalog.schema_version, 1);
       assert.equal(catalog.structured_spec_available, true);
       assert.deepEqual(catalog.presets, expectedPresets);
       counts.catalog_checks += 1;

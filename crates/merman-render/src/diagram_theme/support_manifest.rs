@@ -4,13 +4,13 @@
 //! referenced below only by the C6 drift test and is never a production dependency.
 
 use crate::DiagramFamilyId;
-use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2};
+use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1};
 
 /// Renderer-owned support-claim manifest revision.
 ///
-/// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
-/// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 90;
+/// Version against the last published claim manifest. Unreleased claim changes share revision 1;
+/// source identities distinguish development builds.
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -1533,7 +1533,7 @@ fn ordinal_claim_for_ids(family: &str, target: &str) -> SupportClaimKind {
 /// Returns the manifest claim for one family-wide base typography property.
 pub(super) fn base_typography_claim(
     family: DiagramFamilyId,
-    property: ThemeSupportBaseTypographyPropertyV2,
+    property: ThemeSupportBaseTypographyPropertyV1,
 ) -> SupportClaimKind {
     base_typography_claim_for_ids(family.as_str(), property.id())
 }
@@ -1565,7 +1565,7 @@ mod tests {
         FamilyThemeSupportSummary, summarize_base_typography_support, summarize_theme_support,
     };
     use crate::diagram_theme::semantic::ThemeTarget;
-    use merman_theme_contract::{ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1};
+    use merman_theme_contract::{ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1};
 
     #[test]
     fn manifest_surface_covers_current_contract_catalogs() {
@@ -1586,7 +1586,7 @@ mod tests {
                 facet.id()
             );
         }
-        for &property in ThemeSupportBaseTypographyPropertyV2::ALL {
+        for &property in ThemeSupportBaseTypographyPropertyV1::ALL {
             assert!(
                 MANIFEST_BASE_PROPERTY_IDS.contains(&property.id()),
                 "base property missing from support manifest: {}",
@@ -1701,7 +1701,7 @@ mod tests {
                 );
             }
 
-            for &property in ThemeSupportBaseTypographyPropertyV2::ALL {
+            for &property in ThemeSupportBaseTypographyPropertyV1::ALL {
                 let expected = summarize_base_typography_support(family, property);
                 assert_eq!(
                     base_typography_claim(family, property),

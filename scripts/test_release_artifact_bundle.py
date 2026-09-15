@@ -576,7 +576,7 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                     "render_config": {"htmlLabels": False}, "svg_pipeline": "resvg-safe"},
             "qualification": {"presets": [{
                 "preset": "brutalist", "profile": "native-test-host",
-                "qualification_schema_revision": 3, "recipe_fingerprint": "c" * 64,
+                "qualification_schema_revision": 1, "recipe_fingerprint": "c" * 64,
                 "resource_fingerprint": "d" * 64,
                 "cells": [{"family": "state", "output": "svg", "source_id": "state",
                            "source_digest": "e" * 64, "png_scale": 1.0, "font_source": "system",

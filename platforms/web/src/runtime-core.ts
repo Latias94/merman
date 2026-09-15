@@ -744,7 +744,7 @@ function validateRuntimeConstructorServiceProviders(
 }
 
 function normalizeThemeCatalog(value: unknown): ThemeCatalog {
-  if (!isRecord(value) || value.schema_version !== 3) {
+  if (!isRecord(value) || value.schema_version !== 1) {
     throw new Error("Merman WASM returned an unsupported theme catalog schema.");
   }
   assertRequiredRecordKeys(
@@ -768,7 +768,7 @@ function normalizeThemeCatalog(value: unknown): ThemeCatalog {
     throw new Error("Merman WASM returned an invalid theme catalog.");
   }
   return {
-    schema_version: 3,
+    schema_version: 1,
     structured_spec_available: assertBooleanField(
       value.structured_spec_available,
       "theme structured spec availability"

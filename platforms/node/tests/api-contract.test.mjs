@@ -951,7 +951,7 @@ test("theme catalog metadata preserves the shared open qualification IDs verbati
   for (const { id, cell } of vectors) {
     const entries = structuredClone(presets);
     entries[0].qualified_cells = [cell];
-    const payload = JSON.stringify({ schema_version: 3, presets: entries });
+    const payload = JSON.stringify({ schema_version: 1, presets: entries });
     const calls = [];
     const factory = transportFactory({
       metadataJson(metadataId) {

@@ -1,10 +1,8 @@
 use merman_render::DiagramFamilyId;
-use merman_render::diagram_theme::{
-    ThemeSupportStateV1, ThemeTarget, describe_theme_support, describe_theme_support_v2,
-};
+use merman_render::diagram_theme::{ThemeSupportStateV1, ThemeTarget, describe_theme_support};
 use merman_theme_contract::{
-    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1,
-    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportQueryV2,
+    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1,
+    ThemeSupportOutputV1, ThemeSupportQueryV1,
 };
 
 #[test]
@@ -14,15 +12,14 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
             "schema_version": 1,
             "family": "future-family",
             "output": "standalone-svg",
-            "target": "future-target",
-            "facet": "future-facet"
+            "subject": {"kind": "rule", "target": "future-target", "facet": "future-facet"}
         }"#,
     )
     .expect("unknown catalog ids remain valid discovery input");
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 90);
+    assert_eq!(support.claim_revision(), 1);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -30,7 +27,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
 #[test]
 fn known_target_outside_the_family_semantics_is_not_applicable() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::ER.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Requirement.id(),
@@ -53,8 +50,7 @@ fn unknown_facet_stays_unverified_even_when_the_known_target_is_not_applicable()
             "schema_version": 1,
             "family": "er",
             "output": "standalone-svg",
-            "target": "requirement",
-            "facet": "future-facet"
+            "subject": {"kind": "rule", "target": "requirement", "facet": "future-facet"}
         }"#,
     )
     .expect("unknown facet remains valid discovery input");
@@ -68,7 +64,7 @@ fn unknown_facet_stays_unverified_even_when_the_known_target_is_not_applicable()
 
 #[test]
 fn family_owned_partial_route_is_reported_as_conditional() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::FLOWCHART.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Node.id(),
@@ -241,7 +237,7 @@ fn direct_only_family_slices_are_reported_as_conditional() {
             ThemeRuleFacetV1::StrokePaint,
         ),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -272,7 +268,7 @@ fn final_five_family_owned_paint_slices_are_reported_as_conditional() {
         (DiagramFamilyId::VENN, ThemeTarget::Text),
         (DiagramFamilyId::ZENUML, ThemeTarget::Title),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -297,7 +293,7 @@ fn final_five_family_owned_paint_slices_are_reported_as_conditional() {
 #[test]
 fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
     for target in [ThemeTarget::Text, ThemeTarget::Title] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::SEQUENCE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -305,14 +301,14 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 90);
+        assert_eq!(support.claim_revision(), 1);
     }
 }
 
 #[test]
 fn wardley_generic_text_paint_routes_are_unsupported() {
     for target in [ThemeTarget::Text, ThemeTarget::Title] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::WARDLEY.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -338,7 +334,7 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
         DiagramFamilyId::SANKEY,
         DiagramFamilyId::TIMELINE,
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::Title.id(),
@@ -362,7 +358,7 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
 
 #[test]
 fn railroad_title_paint_is_a_conditional_typed_surface() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::RAILROAD.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Title.id(),
@@ -389,7 +385,7 @@ fn relation_and_branch_edge_stroke_slices_are_reported_as_conditional() {
         (DiagramFamilyId::MINDMAP, ThemeTarget::Edge),
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -418,7 +414,7 @@ fn final_four_terminal_less_paint_claims_are_unsupported() {
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Title),
         (DiagramFamilyId::ZENUML, ThemeTarget::Text),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -440,7 +436,7 @@ fn class_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Table, ThemeRuleFacetV1::Fill),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::CLASS.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -466,7 +462,7 @@ fn class_terminal_less_paint_claims_are_unsupported() {
 
 #[test]
 fn class_namespace_title_reports_a_conditional_typed_surface() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::CLASS.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Title.id(),
@@ -519,7 +515,7 @@ fn state_support_discovery_uses_the_family_consumer_instead_of_route_ownership()
             ][..],
         ),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::STATE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -547,7 +543,7 @@ fn family_owned_ordinal_palettes_are_reported_without_exposing_private_routes() 
         (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
         (DiagramFamilyId::RADAR, ThemeTarget::ChartSeries),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -569,7 +565,7 @@ fn family_owned_ordinal_palettes_are_reported_without_exposing_private_routes() 
 
 #[test]
 fn compatibility_only_route_is_conditional_without_claiming_direct_support() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::SEQUENCE.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Message.id(),
@@ -601,7 +597,7 @@ fn mindmap_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::MINDMAP.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -628,7 +624,7 @@ fn mindmap_terminal_less_paint_claims_are_unsupported() {
 #[test]
 fn mindmap_node_paint_is_reported_as_a_family_owned_partial_surface() {
     for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::MINDMAP.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::Node.id(),
@@ -652,7 +648,7 @@ fn mindmap_node_paint_is_reported_as_a_family_owned_partial_surface() {
 #[test]
 fn tree_view_marker_paint_is_reported_as_a_family_owned_partial_surface() {
     for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::TREE_VIEW.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::Marker.id(),
@@ -684,7 +680,7 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::TREE_VIEW.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -718,7 +714,7 @@ fn gitgraph_node_paint_edge_and_label_fill_are_typed_partial_surfaces() {
         (ThemeTarget::EdgeLabel, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Edge, ThemeRuleFacetV1::Fill),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::GIT_GRAPH.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -740,7 +736,7 @@ fn gitgraph_node_paint_edge_and_label_fill_are_typed_partial_surfaces() {
 
 #[test]
 fn gitgraph_edge_label_background_fill_is_a_typed_partial_surface() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::GIT_GRAPH.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::EdgeLabelBackground.id(),
@@ -769,7 +765,7 @@ fn gitgraph_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::GIT_GRAPH.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -795,7 +791,7 @@ fn gitgraph_terminal_less_paint_claims_are_unsupported() {
 
 #[test]
 fn fully_rejected_known_domain_is_unsupported() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::SEQUENCE.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Loop.id(),
@@ -810,7 +806,7 @@ fn fully_rejected_known_domain_is_unsupported() {
 
 #[test]
 fn browser_svg_stays_unverified_until_terminal_qualification_exists() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::FLOWCHART.as_str(),
         ThemeSupportOutputV1::BrowserSvg,
         ThemeTarget::Node.id(),
@@ -833,7 +829,7 @@ fn native_exports_stay_unverified_until_their_target_owner_qualifies_them() {
         ThemeSupportOutputV1::Jpeg,
         ThemeSupportOutputV1::Pdf,
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::FLOWCHART.as_str(),
             output,
             ThemeTarget::Node.id(),
@@ -856,7 +852,7 @@ fn support_discovery_respects_required_family_render_capabilities() {
         (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Edge, ThemeRuleFacetV1::StrokePaint),
     ] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::ARCHITECTURE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
@@ -886,7 +882,7 @@ fn support_discovery_respects_required_family_render_capabilities() {
 
 #[test]
 fn ascii_has_a_separate_non_visual_theme_contract() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::FLOWCHART.as_str(),
         ThemeSupportOutputV1::Ascii,
         ThemeTarget::Node.id(),
@@ -903,11 +899,11 @@ fn ascii_has_a_separate_non_visual_theme_contract() {
 }
 
 #[test]
-fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
+fn subject_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
     for (family, property, expected_state, expected_reasons) in [
         (
             DiagramFamilyId::FLOWCHART,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -916,7 +912,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::FLOWCHART,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -925,7 +921,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::SWIMLANE,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -934,7 +930,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::SWIMLANE,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -943,7 +939,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::SEQUENCE,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -952,7 +948,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::SEQUENCE,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -961,7 +957,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::PACKET,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -970,13 +966,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::PACKET,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::PIE,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -985,13 +981,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::PIE,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::REQUIREMENT,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1000,7 +996,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::REQUIREMENT,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1009,7 +1005,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::RAILROAD,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1018,7 +1014,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::RAILROAD,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1027,7 +1023,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::INFO,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1036,13 +1032,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::INFO,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::ERROR,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1051,13 +1047,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ERROR,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::CYNEFIN,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1066,13 +1062,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::CYNEFIN,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::WARDLEY,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1081,13 +1077,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::WARDLEY,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::EVENT_MODELING,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1096,7 +1092,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::EVENT_MODELING,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1105,7 +1101,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ISHIKAWA,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1114,7 +1110,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ISHIKAWA,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1123,7 +1119,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::RADAR,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1132,7 +1128,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::RADAR,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1141,7 +1137,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::GIT_GRAPH,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1150,7 +1146,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::GIT_GRAPH,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1159,7 +1155,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::CLASS,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1168,7 +1164,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::CLASS,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1177,7 +1173,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ER,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1186,7 +1182,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::ER,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1195,7 +1191,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::JOURNEY,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1204,7 +1200,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::JOURNEY,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1213,7 +1209,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::KANBAN,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1222,7 +1218,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::KANBAN,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1231,7 +1227,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::QUADRANT_CHART,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1240,13 +1236,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::QUADRANT_CHART,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::TIMELINE,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1255,7 +1251,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::TIMELINE,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1264,7 +1260,7 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::VENN,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1273,13 +1269,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::VENN,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::SANKEY,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1288,13 +1284,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::SANKEY,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::XY_CHART,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1303,13 +1299,13 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::XY_CHART,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
         (
             DiagramFamilyId::TREEMAP,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
             ThemeSupportStateV1::Conditional,
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1318,17 +1314,17 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
         ),
         (
             DiagramFamilyId::TREEMAP,
-            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportBaseTypographyPropertyV1::FontSize,
             ThemeSupportStateV1::Unsupported,
             &["theme-support.no-supported-route"][..],
         ),
     ] {
-        let query = ThemeSupportQueryV2::base_typography(
+        let query = ThemeSupportQueryV1::base_typography(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             property,
         );
-        let support = describe_theme_support_v2(&query);
+        let support = describe_theme_support(&query);
 
         assert_eq!(
             support.state(),
@@ -1345,12 +1341,12 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
 
 #[cfg(feature = "layout-cytoscape")]
 #[test]
-fn v2_architecture_base_typography_reports_the_typed_surface_when_built() {
+fn subject_architecture_base_typography_reports_the_typed_surface_when_built() {
     for property in [
-        ThemeSupportBaseTypographyPropertyV2::FontStack,
-        ThemeSupportBaseTypographyPropertyV2::FontSize,
+        ThemeSupportBaseTypographyPropertyV1::FontStack,
+        ThemeSupportBaseTypographyPropertyV1::FontSize,
     ] {
-        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+        let support = describe_theme_support(&ThemeSupportQueryV1::base_typography(
             DiagramFamilyId::ARCHITECTURE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             property,
@@ -1369,22 +1365,22 @@ fn v2_architecture_base_typography_reports_the_typed_surface_when_built() {
 }
 
 #[test]
-fn v2_state_base_typography_reports_each_runtime_property_domain() {
-    for property in ThemeSupportBaseTypographyPropertyV2::ALL {
-        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+fn subject_state_base_typography_reports_each_runtime_property_domain() {
+    for property in ThemeSupportBaseTypographyPropertyV1::ALL {
+        let support = describe_theme_support(&ThemeSupportQueryV1::base_typography(
             DiagramFamilyId::STATE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             *property,
         ));
         let supported = matches!(
             property,
-            ThemeSupportBaseTypographyPropertyV2::FontStack
-                | ThemeSupportBaseTypographyPropertyV2::FontSize
-                | ThemeSupportBaseTypographyPropertyV2::FontWeight
-                | ThemeSupportBaseTypographyPropertyV2::FontStyle
-                | ThemeSupportBaseTypographyPropertyV2::LetterSpacing
-                | ThemeSupportBaseTypographyPropertyV2::WordSpacing
-                | ThemeSupportBaseTypographyPropertyV2::Transform
+            ThemeSupportBaseTypographyPropertyV1::FontStack
+                | ThemeSupportBaseTypographyPropertyV1::FontSize
+                | ThemeSupportBaseTypographyPropertyV1::FontWeight
+                | ThemeSupportBaseTypographyPropertyV1::FontStyle
+                | ThemeSupportBaseTypographyPropertyV1::LetterSpacing
+                | ThemeSupportBaseTypographyPropertyV1::WordSpacing
+                | ThemeSupportBaseTypographyPropertyV1::Transform
         );
 
         if supported {
@@ -1417,86 +1413,17 @@ fn v2_state_base_typography_reports_each_runtime_property_domain() {
 }
 
 #[test]
-fn v2_rule_and_ordinal_subjects_preserve_v1_support_decisions() {
-    let cases = [
-        (
-            ThemeSupportQueryV1::known(
-                DiagramFamilyId::JOURNEY.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Title.id(),
-                ThemeRuleFacetV1::Fill,
-            ),
-            ThemeSupportQueryV2::rule(
-                DiagramFamilyId::JOURNEY.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Title.id(),
-                ThemeRuleFacetV1::Fill,
-            ),
-        ),
-        (
-            ThemeSupportQueryV1::known(
-                DiagramFamilyId::KANBAN.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Title.id(),
-                ThemeRuleFacetV1::Fill,
-            ),
-            ThemeSupportQueryV2::rule(
-                DiagramFamilyId::KANBAN.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Title.id(),
-                ThemeRuleFacetV1::Fill,
-            ),
-        ),
-        (
-            ThemeSupportQueryV1::known(
-                DiagramFamilyId::FLOWCHART.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Node.id(),
-                ThemeRuleFacetV1::Radius,
-            ),
-            ThemeSupportQueryV2::rule(
-                DiagramFamilyId::FLOWCHART.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Node.id(),
-                ThemeRuleFacetV1::Radius,
-            ),
-        ),
-        (
-            ThemeSupportQueryV1::known(
-                DiagramFamilyId::MINDMAP.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Node.id(),
-                ThemeSupportFacetV1::OrdinalPalette,
-            ),
-            ThemeSupportQueryV2::ordinal_palette(
-                DiagramFamilyId::MINDMAP.as_str(),
-                ThemeSupportOutputV1::StandaloneSvg,
-                ThemeTarget::Node.id(),
-            ),
-        ),
-    ];
-
-    for (v1_query, v2_query) in cases {
-        let v1 = describe_theme_support(&v1_query);
-        let v2 = describe_theme_support_v2(&v2_query);
-
-        assert_eq!(v2.state(), v1.state());
-        assert_eq!(v2.reason_ids(), v1.reason_ids());
-    }
-}
-
-#[test]
-fn v2_base_typography_is_not_the_v1_text_font_stack_rule() {
-    let v1 = describe_theme_support(&ThemeSupportQueryV1::known(
+fn base_typography_is_distinct_from_text_font_stack_rule() {
+    let v1 = describe_theme_support(&ThemeSupportQueryV1::for_target(
         DiagramFamilyId::INFO.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Text.id(),
         ThemeRuleFacetV1::FontStack,
     ));
-    let v2 = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+    let v2 = describe_theme_support(&ThemeSupportQueryV1::base_typography(
         DiagramFamilyId::INFO.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
-        ThemeSupportBaseTypographyPropertyV2::FontStack,
+        ThemeSupportBaseTypographyPropertyV1::FontStack,
     ));
 
     assert_eq!(v1.state(), ThemeSupportStateV1::Unsupported);
@@ -1511,11 +1438,11 @@ fn v2_base_typography_is_not_the_v1_text_font_stack_rule() {
 }
 
 #[test]
-fn v2_unknown_subject_and_base_typography_property_are_unverified() {
+fn subject_unknown_subject_and_base_typography_property_are_unverified() {
     for (query, reason_id) in [
         (
             serde_json::json!({
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "railroad",
                 "output": "standalone-svg",
                 "subject": { "kind": "future-subject" }
@@ -1524,7 +1451,7 @@ fn v2_unknown_subject_and_base_typography_property_are_unverified() {
         ),
         (
             serde_json::json!({
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "railroad",
                 "output": "standalone-svg",
                 "subject": {
@@ -1535,9 +1462,9 @@ fn v2_unknown_subject_and_base_typography_property_are_unverified() {
             "theme-support.unknown-base-typography-property",
         ),
     ] {
-        let query: ThemeSupportQueryV2 =
+        let query: ThemeSupportQueryV1 =
             serde_json::from_value(query).expect("unknown V2 identifiers remain queryable");
-        let support = describe_theme_support_v2(&query);
+        let support = describe_theme_support(&query);
 
         assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
         assert_eq!(support.reason_ids(), [reason_id]);
@@ -1545,7 +1472,7 @@ fn v2_unknown_subject_and_base_typography_property_are_unverified() {
 }
 
 #[test]
-fn v2_preserves_the_v1_output_qualification_gates() {
+fn subjects_preserve_output_qualification_gates() {
     for (output, expected_state, expected_reason) in [
         (
             ThemeSupportOutputV1::BrowserSvg,
@@ -1573,10 +1500,10 @@ fn v2_preserves_the_v1_output_qualification_gates() {
             "theme-support.visual-theme-not-applicable-to-output",
         ),
     ] {
-        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+        let support = describe_theme_support(&ThemeSupportQueryV1::base_typography(
             DiagramFamilyId::RAILROAD.as_str(),
             output,
-            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportBaseTypographyPropertyV1::FontStack,
         ));
 
         assert_eq!(support.state(), expected_state, "output={output:?}");
@@ -1585,8 +1512,8 @@ fn v2_preserves_the_v1_output_qualification_gates() {
 }
 
 #[test]
-fn v2_preserves_target_and_family_capability_gates() {
-    let not_applicable = describe_theme_support_v2(&ThemeSupportQueryV2::rule(
+fn subject_preserves_target_and_family_capability_gates() {
+    let not_applicable = describe_theme_support(&ThemeSupportQueryV1::rule(
         DiagramFamilyId::ER.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Requirement.id(),
@@ -1598,20 +1525,20 @@ fn v2_preserves_target_and_family_capability_gates() {
         ["theme-support.target-not-applicable-to-family"]
     );
 
-    let root_query = ThemeSupportQueryV2::rule(
+    let root_query = ThemeSupportQueryV1::rule(
         DiagramFamilyId::FLOWCHART.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Canvas.id(),
         ThemeRuleFacetV1::Fill,
     );
-    let root_support = describe_theme_support_v2(&root_query);
+    let root_support = describe_theme_support(&root_query);
     assert_eq!(root_support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(
         root_support.reason_ids(),
         ["theme-support.root-support-query-not-yet-modeled"]
     );
 
-    let architecture = describe_theme_support_v2(&ThemeSupportQueryV2::rule(
+    let architecture = describe_theme_support(&ThemeSupportQueryV1::rule(
         DiagramFamilyId::ARCHITECTURE.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Cluster.id(),
@@ -1637,7 +1564,7 @@ fn v2_preserves_target_and_family_capability_gates() {
 
 #[test]
 fn er_table_fill_reports_a_partial_typed_consumer() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::ER.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Table.id(),
@@ -1656,7 +1583,7 @@ fn er_table_fill_reports_a_partial_typed_consumer() {
 
 #[test]
 fn er_relation_fill_reports_the_direct_stroke_fallback_consumer() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::ER.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Relation.id(),
@@ -1676,7 +1603,7 @@ fn er_relation_fill_reports_the_direct_stroke_fallback_consumer() {
 #[test]
 fn flowchart_and_swimlane_background_fill_is_a_typed_partial_surface() {
     for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::EdgeLabelBackground.id(),
@@ -1697,7 +1624,7 @@ fn flowchart_and_swimlane_background_fill_is_a_typed_partial_surface() {
 #[test]
 fn flowchart_and_swimlane_cluster_label_fill_is_a_typed_partial_surface() {
     for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::ClusterLabel.id(),
@@ -1718,7 +1645,7 @@ fn flowchart_and_swimlane_cluster_label_fill_is_a_typed_partial_surface() {
 #[test]
 fn flowchart_and_swimlane_edge_fill_is_a_typed_partial_surface() {
     for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             ThemeTarget::Edge.id(),
@@ -1740,7 +1667,7 @@ fn flowchart_and_swimlane_edge_fill_is_a_typed_partial_surface() {
 fn flowchart_and_swimlane_unused_marker_projection_claims_are_unsupported() {
     for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
         for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-            let query = ThemeSupportQueryV1::known(
+            let query = ThemeSupportQueryV1::for_target(
                 family.as_str(),
                 ThemeSupportOutputV1::StandaloneSvg,
                 ThemeTarget::Marker.id(),
@@ -1755,7 +1682,7 @@ fn flowchart_and_swimlane_unused_marker_projection_claims_are_unsupported() {
 
 #[test]
 fn block_title_discovery_reports_unsupported_after_projection_retirement() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::BLOCK.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::Title.id(),
@@ -1768,7 +1695,7 @@ fn block_title_discovery_reports_unsupported_after_projection_retirement() {
 
 #[test]
 fn block_cluster_label_discovery_reports_unsupported_after_projection_retirement() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::BLOCK.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
         ThemeTarget::ClusterLabel.id(),
@@ -1781,14 +1708,14 @@ fn block_cluster_label_discovery_reports_unsupported_after_projection_retirement
 
 #[test]
 fn block_background_discovery_reports_a_partial_typed_consumer() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         "block",
         ThemeSupportOutputV1::StandaloneSvg,
         "edge-label-background",
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.claim_revision(), 90);
+    assert_eq!(support.claim_revision(), 1);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),
@@ -1802,10 +1729,14 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
 #[test]
 fn block_edge_discovery_reports_partial_typed_fill_and_stroke() {
     for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-        let query =
-            ThemeSupportQueryV1::known("block", ThemeSupportOutputV1::StandaloneSvg, "edge", facet);
+        let query = ThemeSupportQueryV1::for_target(
+            "block",
+            ThemeSupportOutputV1::StandaloneSvg,
+            "edge",
+            facet,
+        );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 90);
+        assert_eq!(support.claim_revision(), 1);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1820,14 +1751,14 @@ fn block_edge_discovery_reports_partial_typed_fill_and_stroke() {
 #[test]
 fn block_cluster_discovery_reports_partial_typed_fill_and_stroke() {
     for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             "block",
             ThemeSupportOutputV1::StandaloneSvg,
             "cluster",
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 90);
+        assert_eq!(support.claim_revision(), 1);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1842,14 +1773,14 @@ fn block_cluster_discovery_reports_partial_typed_fill_and_stroke() {
 #[test]
 fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
     for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
-        let query = ThemeSupportQueryV1::known(
+        let query = ThemeSupportQueryV1::for_target(
             "block",
             ThemeSupportOutputV1::StandaloneSvg,
             "marker",
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 90);
+        assert_eq!(support.claim_revision(), 1);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1863,13 +1794,13 @@ fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
 
 #[test]
 fn block_generic_text_discovery_reports_partial_typed_fill() {
-    let support = describe_theme_support(&ThemeSupportQueryV1::known(
+    let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
         "block",
         ThemeSupportOutputV1::StandaloneSvg,
         "text",
         ThemeRuleFacetV1::Fill,
     ));
-    assert_eq!(support.claim_revision(), 90);
+    assert_eq!(support.claim_revision(), 1);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),

@@ -1,8 +1,7 @@
 use merman_theme_contract::{
-    THEME_SUPPORT_SCHEMA_VERSION_V1, THEME_SUPPORT_SCHEMA_VERSION_V2, ThemeCapabilityDescriptorV1,
-    ThemeCapabilityDescriptorV2, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2,
-    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportQueryV2,
-    ThemeSupportStateV1, ThemeSupportSubjectV2,
+    THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeCapabilityDescriptorV1, ThemeRuleFacetV1,
+    ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1, ThemeSupportOutputV1,
+    ThemeSupportQueryV1, ThemeSupportStateV1, ThemeSupportSubjectV1,
 };
 
 use crate::DiagramFamilyId;
@@ -12,10 +11,9 @@ use super::support_manifest::{self, SupportClaimKind};
 
 const THEME_SUPPORT_CLAIM_REVISION: u32 = super::support_manifest::SUPPORT_CLAIM_MANIFEST_REVISION;
 
-/// Describes the current build's coarse static support for one theme capability.
+/// Describes static support for a query subject.
 ///
-/// The result never claims that a concrete document applied the capability or that an output is
-/// portable. Those facts remain owned by render evidence and target admission.
+/// A support claim is not proof of document execution or portable output.
 pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDescriptorV1 {
     if query.schema_version() != THEME_SUPPORT_SCHEMA_VERSION_V1 {
         return descriptor(
@@ -38,56 +36,6 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
             ["theme-support.unknown-output"],
         );
     };
-    let Some(target) = ThemeTarget::from_id(query.target_id()) else {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.unknown-target"],
-        );
-    };
-    let Some(facet) = ThemeSupportFacetV1::from_id(query.facet_id()) else {
-        return descriptor(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.unknown-facet"],
-        );
-    };
-    if let Err(rejection) = qualify_common_support(family, output, Some(target)) {
-        let SupportRejection { state, reason_id } = rejection;
-        return descriptor(query, state, [reason_id]);
-    }
-
-    let claim = target_claim(family, target, facet);
-    descriptor_from_claim(query, claim)
-}
-
-/// Describes the current build's coarse static support for one unstable alpha V2 subject.
-///
-/// V2 separates family-wide base typography from semantic-target rules. Output qualification and
-/// family render-capability gates remain identical to V1. Its subject inventory and identifiers
-/// remain unfrozen until the C7a rollout gate closes.
-pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapabilityDescriptorV2 {
-    if query.schema_version() != THEME_SUPPORT_SCHEMA_VERSION_V2 {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.unknown-schema-version"],
-        );
-    }
-    let Some(family) = DiagramFamilyId::from_id(query.family_id()) else {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.unknown-family"],
-        );
-    };
-    let Some(output) = ThemeSupportOutputV1::from_id(query.output_id()) else {
-        return descriptor_v2(
-            query,
-            ThemeSupportStateV1::Unverified,
-            ["theme-support.unknown-output"],
-        );
-    };
 
     #[derive(Clone, Copy)]
     enum ResolvedSubject {
@@ -95,20 +43,20 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
             target: ThemeTarget,
             facet: ThemeSupportFacetV1,
         },
-        BaseTypography(ThemeSupportBaseTypographyPropertyV2),
+        BaseTypography(ThemeSupportBaseTypographyPropertyV1),
     }
 
     let subject = match query.subject() {
-        ThemeSupportSubjectV2::Rule { target, facet } => {
+        ThemeSupportSubjectV1::Rule { target, facet } => {
             let Some(target) = ThemeTarget::from_id(target) else {
-                return descriptor_v2(
+                return descriptor(
                     query,
                     ThemeSupportStateV1::Unverified,
                     ["theme-support.unknown-target"],
                 );
             };
             let Some(facet) = ThemeRuleFacetV1::from_id(facet) else {
-                return descriptor_v2(
+                return descriptor(
                     query,
                     ThemeSupportStateV1::Unverified,
                     ["theme-support.unknown-facet"],
@@ -119,9 +67,9 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
                 facet: ThemeSupportFacetV1::Rule(facet),
             }
         }
-        ThemeSupportSubjectV2::OrdinalPalette { target } => {
+        ThemeSupportSubjectV1::OrdinalPalette { target } => {
             let Some(target) = ThemeTarget::from_id(target) else {
-                return descriptor_v2(
+                return descriptor(
                     query,
                     ThemeSupportStateV1::Unverified,
                     ["theme-support.unknown-target"],
@@ -132,9 +80,9 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
                 facet: ThemeSupportFacetV1::OrdinalPalette,
             }
         }
-        ThemeSupportSubjectV2::BaseTypography { property } => {
-            let Some(property) = ThemeSupportBaseTypographyPropertyV2::from_id(property) else {
-                return descriptor_v2(
+        ThemeSupportSubjectV1::BaseTypography { property } => {
+            let Some(property) = ThemeSupportBaseTypographyPropertyV1::from_id(property) else {
+                return descriptor(
                     query,
                     ThemeSupportStateV1::Unverified,
                     ["theme-support.unknown-base-typography-property"],
@@ -142,15 +90,15 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
             };
             ResolvedSubject::BaseTypography(property)
         }
-        ThemeSupportSubjectV2::Unknown(_) => {
-            return descriptor_v2(
+        ThemeSupportSubjectV1::Unknown(_) => {
+            return descriptor(
                 query,
                 ThemeSupportStateV1::Unverified,
                 ["theme-support.unknown-subject"],
             );
         }
         _ => {
-            return descriptor_v2(
+            return descriptor(
                 query,
                 ThemeSupportStateV1::Unverified,
                 ["theme-support.unknown-subject"],
@@ -164,7 +112,7 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
     };
     if let Err(rejection) = qualify_common_support(family, output, target) {
         let SupportRejection { state, reason_id } = rejection;
-        return descriptor_v2(query, state, [reason_id]);
+        return descriptor(query, state, [reason_id]);
     }
 
     let claim = match subject {
@@ -173,7 +121,7 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
             support_manifest::base_typography_claim(family, property)
         }
     };
-    descriptor_v2_from_claim(query, claim)
+    descriptor_from_claim(query, claim)
 }
 
 fn target_claim(
@@ -258,20 +206,6 @@ fn descriptor_from_claim(
     }
 }
 
-fn descriptor_v2_from_claim(
-    query: &ThemeSupportQueryV2,
-    claim: SupportClaimKind,
-) -> ThemeCapabilityDescriptorV2 {
-    match project_claim(claim) {
-        SupportClaimProjection::OneReason { state, reason_id } => {
-            descriptor_v2(query, state, [reason_id])
-        }
-        SupportClaimProjection::TwoReasons { state, reason_ids } => {
-            descriptor_v2(query, state, reason_ids)
-        }
-    }
-}
-
 enum SupportClaimProjection {
     OneReason {
         state: ThemeSupportStateV1,
@@ -316,19 +250,6 @@ fn descriptor<const N: usize>(
     reason_ids: [&'static str; N],
 ) -> ThemeCapabilityDescriptorV1 {
     ThemeCapabilityDescriptorV1::from_renderer_claim(
-        THEME_SUPPORT_CLAIM_REVISION,
-        query.clone(),
-        state,
-        reason_ids,
-    )
-}
-
-fn descriptor_v2<const N: usize>(
-    query: &ThemeSupportQueryV2,
-    state: ThemeSupportStateV1,
-    reason_ids: [&'static str; N],
-) -> ThemeCapabilityDescriptorV2 {
-    ThemeCapabilityDescriptorV2::from_renderer_claim(
         THEME_SUPPORT_CLAIM_REVISION,
         query.clone(),
         state,

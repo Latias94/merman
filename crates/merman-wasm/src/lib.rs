@@ -965,13 +965,13 @@ mod tests {
 
         let support = execute_wasm_operation(
             "describe-theme-support-json",
-            br#"{"schema_version":2,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+            br#"{"schema_version":1,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
             b"",
             None,
         )
         .expect("WASM should expose theme support discovery");
         let support: serde_json::Value = serde_json::from_slice(&support).unwrap();
-        assert_eq!(support["schema_version"], 2);
+        assert_eq!(support["schema_version"], 1);
         assert_eq!(support["query"]["family"], "sequence");
 
         let preset = execute_wasm_operation("export-theme-preset-json", b"editor-light", b"", None)

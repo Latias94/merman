@@ -77,7 +77,7 @@ export interface RuntimeCatalog {
 }
 
 export interface ThemeCatalog {
-  schema_version: 3;
+  schema_version: 1;
   structured_spec_available: boolean;
   supported_output_ids: string[];
   presets: ThemePresetCatalogEntry[];
@@ -267,14 +267,6 @@ export type ThemeSupportOutputId =
   | "ascii"
   | (string & {});
 
-export interface ThemeSupportQueryV1 {
-  schema_version: 1;
-  family: string;
-  output: ThemeSupportOutputId;
-  target: string;
-  facet: string;
-}
-
 declare const themeSupportUnknownSubjectKind: unique symbol;
 
 /**
@@ -284,25 +276,25 @@ declare const themeSupportUnknownSubjectKind: unique symbol;
  * to the forward-compatible branch. Values decoded from a newer runtime can retain their unknown
  * kind, while authored known subjects remain checked against their exact required fields.
  */
-export type ThemeSupportUnknownSubjectKindV2 = string & {
+export type ThemeSupportUnknownSubjectKindV1 = string & {
   readonly [themeSupportUnknownSubjectKind]: "unknown-theme-support-subject";
 };
 
-export type ThemeSupportUnknownSubjectV2 = {
-  kind: ThemeSupportUnknownSubjectKindV2;
+export type ThemeSupportUnknownSubjectV1 = {
+  kind: ThemeSupportUnknownSubjectKindV1;
 } & Record<string, unknown>;
 
-export type ThemeSupportSubjectV2 =
+export type ThemeSupportSubjectV1 =
   | { kind: "rule"; target: string; facet: string }
   | { kind: "ordinal-palette"; target: string }
   | { kind: "base-typography"; property: string }
-  | ThemeSupportUnknownSubjectV2;
+  | ThemeSupportUnknownSubjectV1;
 
-export interface ThemeSupportQueryV2 {
-  schema_version: 2;
+export interface ThemeSupportQueryV1 {
+  schema_version: 1;
   family: string;
   output: ThemeSupportOutputId;
-  subject: ThemeSupportSubjectV2;
+  subject: ThemeSupportSubjectV1;
 }
 
 export type ThemeSupportState =
@@ -320,17 +312,7 @@ export interface ThemeCapabilityDescriptorV1 {
   reason_ids: string[];
 }
 
-export interface ThemeCapabilityDescriptorV2 {
-  schema_version: 2;
-  claim_revision: number;
-  query: ThemeSupportQueryV2;
-  state: ThemeSupportState;
-  reason_ids: string[];
-}
-
-export type ThemeCapabilityDescriptor =
-  | ThemeCapabilityDescriptorV1
-  | ThemeCapabilityDescriptorV2;
+export type ThemeCapabilityDescriptor = ThemeCapabilityDescriptorV1;
 
 export type PresetExportV1 =
   | { kind: "definition"; definition: ThemeDefinitionV1 }

@@ -1574,11 +1574,11 @@ mod tests {
 
         let support = engine
             .describe_theme_support(
-                br#"{"schema_version":2,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+                br#"{"schema_version":1,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
             )
             .expect("the reusable engine should expose support discovery");
         let support: Value = serde_json::from_slice(&support).unwrap();
-        assert_eq!(support["schema_version"], 2);
+        assert_eq!(support["schema_version"], 1);
         assert_eq!(support["query"]["family"], "sequence");
 
         let preset = engine

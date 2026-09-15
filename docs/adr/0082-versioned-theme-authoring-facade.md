@@ -491,7 +491,7 @@ The candidate authoring and discovery operations are:
 
 ```text
 materialize_theme(definition) -> MaterializedThemeWireV1
-describe_theme_support(query_v2) -> ThemeCapabilityDescriptorV2
+describe_theme_support(query_v1) -> ThemeCapabilityDescriptorV1
 ```
 
 First-party render facades may additionally accept an admitted `ThemeDefinitionV1` and compose
@@ -499,7 +499,7 @@ materialization, compilation, and rendering in one call. That orchestration is a
 the same authorities, not a new renderer input or materialization implementation.
 
 `describe_theme_support` returns a C5-owned static upper bound such as `Unconditional`,
-`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. The V2 query identifies family and
+`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. The V1 query identifies family and
 output plus one tagged subject:
 
 ```text
@@ -510,8 +510,8 @@ unknown { kind, bounded opaque fields }
 ```
 
 This subject union is necessary because palettes and family-wide typography are not rule facets.
-The older four-axis V1 query remains an unfrozen compatibility projection during the alpha window;
-it is not the candidate discovery authority and cannot describe every authoring output.
+The unpublished four-axis query has been removed. The subject-based query is the first public
+v1 contract; development revisions do not create additional public compatibility versions.
 
 `Unconditional` requires an exhaustive value-domain argument and shared runtime admission predicate
 owned by the family or target module; the representative C6a ledger validates end-to-end

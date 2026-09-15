@@ -2140,8 +2140,7 @@ mod tests {
                     "schema_version": 1,
                     "family": "flowchart",
                     "output": "standalone-svg",
-                    "target": "node",
-                    "facet": "fill"
+                    "subject": {"kind": "rule", "target": "node", "facet": "fill"}
                 }"#
                 .as_slice(),
                 "theme-preset-id" => b"editor-light".as_slice(),

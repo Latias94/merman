@@ -370,7 +370,7 @@ assert.equal(
 );
 assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
 assert.ok(runtimeCatalog.metadata_ids.includes("theme-catalog"));
-assert.equal(themeCatalog.schema_version, 3);
+assert.equal(themeCatalog.schema_version, 1);
 if (hasCapability("svg")) {
   assert.equal(themeCatalog.structured_spec_available, true);
   assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);

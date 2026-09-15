@@ -1,7 +1,6 @@
 use merman_theme_contract::{
-    ThemeCapabilityDescriptorV1, ThemeCapabilityDescriptorV2, ThemeRuleFacetV1,
-    ThemeSupportBaseTypographyPropertyV2, ThemeSupportOutputV1, ThemeSupportQueryV1,
-    ThemeSupportQueryV2, ThemeSupportStateV1, ThemeSupportSubjectV2,
+    ThemeCapabilityDescriptorV1, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1,
+    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1, ThemeSupportSubjectV1,
 };
 
 #[test]
@@ -11,8 +10,7 @@ fn support_query_preserves_unknown_ids_for_forward_compatible_discovery() {
             "schema_version": 1,
             "family": "future-family",
             "output": "browser-svg",
-            "target": "future-target",
-            "facet": "future-facet"
+            "subject": {"kind": "rule", "target": "future-target", "facet": "future-facet"}
         }"#,
     )
     .expect("unknown catalog ids remain valid discovery input");
@@ -20,17 +18,28 @@ fn support_query_preserves_unknown_ids_for_forward_compatible_discovery() {
     assert_eq!(query.schema_version(), 1);
     assert_eq!(query.family_id(), "future-family");
     assert_eq!(query.output_id(), "browser-svg");
-    assert_eq!(query.target_id(), "future-target");
-    assert_eq!(query.facet_id(), "future-facet");
+    assert_eq!(
+        query.subject(),
+        &ThemeSupportSubjectV1::Rule {
+            target: "future-target".into(),
+            facet: "future-facet".into()
+        }
+    );
 
-    let known = ThemeSupportQueryV1::known(
+    let known = ThemeSupportQueryV1::for_target(
         "flowchart",
         ThemeSupportOutputV1::Png,
         "node",
         ThemeRuleFacetV1::Radius,
     );
     assert_eq!(known.output_id(), "png");
-    assert_eq!(known.facet_id(), "radius");
+    assert_eq!(
+        known.subject(),
+        &ThemeSupportSubjectV1::Rule {
+            target: "node".into(),
+            facet: "radius".into()
+        }
+    );
 }
 
 #[test]
@@ -45,7 +54,7 @@ fn known_support_ids_round_trip_through_their_single_catalog_authority() {
 
 #[test]
 fn support_descriptor_serializes_a_versioned_bounded_result_envelope() {
-    let query = ThemeSupportQueryV1::known(
+    let query = ThemeSupportQueryV1::for_target(
         "flowchart",
         ThemeSupportOutputV1::StandaloneSvg,
         "node",
@@ -70,8 +79,7 @@ fn support_descriptor_serializes_a_versioned_bounded_result_envelope() {
                 "schema_version": 1,
                 "family": "flowchart",
                 "output": "standalone-svg",
-                "target": "node",
-                "facet": "radius"
+                "subject": {"kind": "rule", "target": "node", "facet": "radius"}
             },
             "state": "conditional",
             "reason_ids": [
@@ -83,17 +91,17 @@ fn support_descriptor_serializes_a_versioned_bounded_result_envelope() {
 }
 
 #[test]
-fn support_v2_subjects_serialize_as_one_stable_tagged_union() {
+fn support_subjects_serialize_as_one_stable_tagged_union() {
     let cases = [
         (
-            ThemeSupportQueryV2::rule(
+            ThemeSupportQueryV1::rule(
                 "flowchart",
                 ThemeSupportOutputV1::StandaloneSvg,
                 "node",
                 ThemeRuleFacetV1::Radius,
             ),
             serde_json::json!({
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "flowchart",
                 "output": "standalone-svg",
                 "subject": {
@@ -104,13 +112,13 @@ fn support_v2_subjects_serialize_as_one_stable_tagged_union() {
             }),
         ),
         (
-            ThemeSupportQueryV2::ordinal_palette(
+            ThemeSupportQueryV1::ordinal_palette(
                 "mindmap",
                 ThemeSupportOutputV1::StandaloneSvg,
                 "node",
             ),
             serde_json::json!({
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "mindmap",
                 "output": "standalone-svg",
                 "subject": {
@@ -120,13 +128,13 @@ fn support_v2_subjects_serialize_as_one_stable_tagged_union() {
             }),
         ),
         (
-            ThemeSupportQueryV2::base_typography(
+            ThemeSupportQueryV1::base_typography(
                 "railroad",
                 ThemeSupportOutputV1::StandaloneSvg,
-                ThemeSupportBaseTypographyPropertyV2::FontSize,
+                ThemeSupportBaseTypographyPropertyV1::FontSize,
             ),
             serde_json::json!({
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "railroad",
                 "output": "standalone-svg",
                 "subject": {
@@ -143,9 +151,9 @@ fn support_v2_subjects_serialize_as_one_stable_tagged_union() {
 }
 
 #[test]
-fn support_v2_preserves_forward_compatible_subject_and_property_ids() {
-    let unknown_subject: ThemeSupportQueryV2 = serde_json::from_value(serde_json::json!({
-        "schema_version": 2,
+fn support_preserves_forward_compatible_subject_and_property_ids() {
+    let unknown_subject: ThemeSupportQueryV1 = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
         "family": "flowchart",
         "output": "standalone-svg",
         "subject": {
@@ -153,14 +161,14 @@ fn support_v2_preserves_forward_compatible_subject_and_property_ids() {
         }
     }))
     .expect("unknown subject tags remain valid discovery input");
-    let ThemeSupportSubjectV2::Unknown(unknown) = unknown_subject.subject() else {
+    let ThemeSupportSubjectV1::Unknown(unknown) = unknown_subject.subject() else {
         panic!("unknown subject tag should remain an opaque subject");
     };
     assert_eq!(unknown.kind(), "future-subject");
     assert_eq!(unknown.field_count(), 0);
 
-    let unknown_property: ThemeSupportQueryV2 = serde_json::from_value(serde_json::json!({
-        "schema_version": 2,
+    let unknown_property: ThemeSupportQueryV1 = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
         "family": "railroad",
         "output": "standalone-svg",
         "subject": {
@@ -171,16 +179,16 @@ fn support_v2_preserves_forward_compatible_subject_and_property_ids() {
     .expect("unknown base typography properties remain valid discovery input");
     assert_eq!(
         unknown_property.subject(),
-        &ThemeSupportSubjectV2::BaseTypography {
+        &ThemeSupportSubjectV1::BaseTypography {
             property: "future-property".to_owned()
         }
     );
 }
 
 #[test]
-fn support_v2_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
+fn support_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
     let input = serde_json::json!({
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "future-family",
         "output": "standalone-svg",
         "subject": {
@@ -192,8 +200,8 @@ fn support_v2_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
             }
         }
     });
-    let query: ThemeSupportQueryV2 = serde_json::from_value(input.clone()).unwrap();
-    let ThemeSupportSubjectV2::Unknown(unknown) = query.subject() else {
+    let query: ThemeSupportQueryV1 = serde_json::from_value(input.clone()).unwrap();
+    let ThemeSupportSubjectV1::Unknown(unknown) = query.subject() else {
         panic!("future subject should remain opaque");
     };
     assert_eq!(unknown.kind(), "future-subject");
@@ -206,15 +214,15 @@ fn support_v2_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
 }
 
 #[test]
-fn support_v2_unknown_subject_rejects_unbounded_opaque_fields() {
+fn support_unknown_subject_rejects_unbounded_opaque_fields() {
     let fields = (0..17)
         .map(|index| (format!("field-{index}"), serde_json::json!(index)))
         .collect::<serde_json::Map<_, _>>();
     let mut subject = serde_json::Map::new();
     subject.insert("kind".to_owned(), serde_json::json!("future-subject"));
     subject.extend(fields);
-    let error = serde_json::from_value::<ThemeSupportQueryV2>(serde_json::json!({
-        "schema_version": 2,
+    let error = serde_json::from_value::<ThemeSupportQueryV1>(serde_json::json!({
+        "schema_version": 1,
         "family": "future-family",
         "output": "standalone-svg",
         "subject": subject
@@ -223,8 +231,8 @@ fn support_v2_unknown_subject_rejects_unbounded_opaque_fields() {
     assert!(error.to_string().contains("opaque field limit"));
 
     let oversized_kind = "x".repeat(65);
-    let error = serde_json::from_value::<ThemeSupportQueryV2>(serde_json::json!({
-        "schema_version": 2,
+    let error = serde_json::from_value::<ThemeSupportQueryV1>(serde_json::json!({
+        "schema_version": 1,
         "family": "future-family",
         "output": "standalone-svg",
         "subject": {
@@ -236,7 +244,7 @@ fn support_v2_unknown_subject_rejects_unbounded_opaque_fields() {
 }
 
 #[test]
-fn support_v2_subjects_reject_duplicate_fields_before_projection() {
+fn support_subjects_reject_duplicate_fields_before_projection() {
     let duplicate_subjects = [
         r#"{"kind":"rule","kind":"rule","target":"node","facet":"fill"}"#,
         r#"{"kind":"rule","target":"node","target":"edge","facet":"fill"}"#,
@@ -248,9 +256,9 @@ fn support_v2_subjects_reject_duplicate_fields_before_projection() {
 
     for subject in duplicate_subjects {
         let json = format!(
-            r#"{{"schema_version":2,"family":"flowchart","output":"standalone-svg","subject":{subject}}}"#
+            r#"{{"schema_version":1,"family":"flowchart","output":"standalone-svg","subject":{subject}}}"#
         );
-        let error = serde_json::from_str::<ThemeSupportQueryV2>(&json)
+        let error = serde_json::from_str::<ThemeSupportQueryV1>(&json)
             .expect_err("duplicate subject fields must fail closed");
         assert!(
             error
@@ -262,23 +270,23 @@ fn support_v2_subjects_reject_duplicate_fields_before_projection() {
 }
 
 #[test]
-fn support_v2_base_typography_property_catalog_round_trips() {
-    for property in ThemeSupportBaseTypographyPropertyV2::ALL {
+fn support_base_typography_property_catalog_round_trips() {
+    for property in ThemeSupportBaseTypographyPropertyV1::ALL {
         assert_eq!(
-            ThemeSupportBaseTypographyPropertyV2::from_id(property.id()),
+            ThemeSupportBaseTypographyPropertyV1::from_id(property.id()),
             Some(*property)
         );
     }
 }
 
 #[test]
-fn support_v2_descriptor_serializes_the_subject_based_query() {
-    let query = ThemeSupportQueryV2::base_typography(
+fn support_descriptor_serializes_the_subject_based_query() {
+    let query = ThemeSupportQueryV1::base_typography(
         "railroad",
         ThemeSupportOutputV1::StandaloneSvg,
-        ThemeSupportBaseTypographyPropertyV2::FontSize,
+        ThemeSupportBaseTypographyPropertyV1::FontSize,
     );
-    let descriptor = ThemeCapabilityDescriptorV2::from_renderer_claim(
+    let descriptor = ThemeCapabilityDescriptorV1::from_renderer_claim(
         1,
         query,
         ThemeSupportStateV1::Conditional,
@@ -286,12 +294,12 @@ fn support_v2_descriptor_serializes_the_subject_based_query() {
     );
 
     assert_eq!(
-        serde_json::to_value(descriptor).expect("V2 support descriptor serializes"),
+        serde_json::to_value(descriptor).expect("support descriptor serializes"),
         serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 1,
             "claim_revision": 1,
             "query": {
-                "schema_version": 2,
+                "schema_version": 1,
                 "family": "railroad",
                 "output": "standalone-svg",
                 "subject": {

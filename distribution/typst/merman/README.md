@@ -2,7 +2,7 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README covers the source tree, which requires Typst `0.15.0` or newer. Theme catalog discovery is an unreleased ABI 4 addition and requires a local package build; the published `0.3.0` package uses ABI 3.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README covers the source tree, which requires Typst `0.15.0` or newer. Theme catalog discovery is an unreleased ABI 3 addition and requires a local package build; the published `0.3.0` package uses ABI 2.
 
 ## Quick Start
 
@@ -29,12 +29,12 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| Development snapshot (package version pending) | `0.8.0-alpha.6` | `4` | Includes theme catalog discovery; requires a local build and Typst `--package-path`. |
-| `0.3.0` (Typst Universe) | `0.8.0-alpha.6` | `3` | Published package; does not expose theme catalog discovery. |
-| `0.2.0` | `0.8.0-alpha.6` | `3` | Previous development package API. |
+| Development snapshot (package version pending) | `0.8.0-alpha.6` | `3` | Includes theme catalog discovery; requires a local build and Typst `--package-path`. |
+| `0.3.0` (Typst Universe) | `0.8.0-alpha.6` | `2` | Published package; does not expose theme catalog discovery. |
+| `0.2.0` (Typst Universe) | `0.8.0-alpha.6` | `2` | Previous published package API. |
 | `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Previous package API. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 4 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
 
 The API and example sections below describe the source tree. Local builds retain the `0.3.0` import path until the next candidate version is assigned.
 
@@ -333,7 +333,7 @@ Like `mermaid`, it accepts `document-context: true` when the rendered diagram sh
 current Typst text style and available width.
 
 These functions remain Alpha while the C7a authoring qualification gate is open. Their presence in
-Typst plugin ABI 4 makes the callable transport explicit; it is not a stability commitment for the
+Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the
 theme authoring payloads.
 
 ```typst

@@ -18,13 +18,13 @@ import type {
   ThemeLinearGradientRepetition,
   ThemePaint,
   ThemeRadialGradientRepetition,
-  ThemeCapabilityDescriptorV2,
+  ThemeCapabilityDescriptorV1,
   ThemeAuthoringTypographyV1,
   ThemeAuthoringOptions,
   ThemeDefinitionV1,
   ThemeStylePatch,
-  ThemeSupportQueryV2,
-  ThemeSupportUnknownSubjectKindV2,
+  ThemeSupportQueryV1,
+  ThemeSupportUnknownSubjectKindV1,
 } from "../src/public-types.js";
 
 const asciiDiagnostic: BindingDiagnosticErrorDetails = {
@@ -129,47 +129,47 @@ const mixedThemeOptions: ThemeAuthoringOptions = { resources: {}, analysis: { re
 const ambiguousThemeOptions: ThemeAuthoringOptions = { analysis: {}, merman: {} };
 materializedTheme.spec.styles;
 
-const supportQuery: ThemeSupportQueryV2 = {
-  schema_version: 2,
+const supportQuery: ThemeSupportQueryV1 = {
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   subject: { kind: "base-typography", property: "font-stack" },
 };
-const supportDescriptor: ThemeCapabilityDescriptorV2 =
+const supportDescriptor: ThemeCapabilityDescriptorV1 =
   describeThemeSupport(supportQuery, themeAuthoringOptions);
 supportDescriptor.state;
 
-const futureSubjectKind = "future-subject" as ThemeSupportUnknownSubjectKindV2;
-const futureSupportQuery: ThemeSupportQueryV2 = {
-  schema_version: 2,
+const futureSubjectKind = "future-subject" as ThemeSupportUnknownSubjectKindV1;
+const futureSupportQuery: ThemeSupportQueryV1 = {
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   subject: { kind: futureSubjectKind, future_option: true },
 };
 
 const incompleteRuleSupportQuery = {
-  schema_version: 2,
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   // @ts-expect-error known rule subjects require both target and facet.
   subject: { kind: "rule" },
-} satisfies ThemeSupportQueryV2;
+} satisfies ThemeSupportQueryV1;
 
 const incompleteOrdinalSupportQuery = {
-  schema_version: 2,
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   // @ts-expect-error known ordinal-palette subjects require target.
   subject: { kind: "ordinal-palette" },
-} satisfies ThemeSupportQueryV2;
+} satisfies ThemeSupportQueryV1;
 
 const incompleteTypographySupportQuery = {
-  schema_version: 2,
+  schema_version: 1,
   family: "sequence",
   output: "standalone-svg",
   // @ts-expect-error known base-typography subjects require property.
   subject: { kind: "base-typography" },
-} satisfies ThemeSupportQueryV2;
+} satisfies ThemeSupportQueryV1;
 
 // @ts-expect-error the Rust authoring wire rejects null for the outer stroke patch.
 const nullOuterStroke = { stroke: null } satisfies ThemeStylePatch;

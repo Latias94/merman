@@ -98,9 +98,9 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
         assert!(receipt.is_current());
         assert_eq!(
             receipt.profile_id(),
-            "native-flowchart-state-sequence-system-fonts-v3"
+            "native-flowchart-state-sequence-system-fonts-v1"
         );
-        assert_eq!(receipt.schema_revision(), 3);
+        assert_eq!(receipt.schema_revision(), 1);
         assert_eq!(receipt.report().preset(), preset);
         assert_eq!(receipt.report().observations().len(), 6);
         for (observation, family) in receipt.report().observations().iter().zip([

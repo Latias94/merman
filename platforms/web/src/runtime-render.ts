@@ -18,10 +18,8 @@ import type {
   SvgPlanResult,
   ThemeCapabilityDescriptor,
   ThemeCapabilityDescriptorV1,
-  ThemeCapabilityDescriptorV2,
   ThemeDefinitionV1,
   ThemeSupportQueryV1,
-  ThemeSupportQueryV2,
 } from "./public-types.js";
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
@@ -46,19 +44,11 @@ export function materializeTheme(
 }
 
 export function describeThemeSupport(
-  query: ThemeSupportQueryV1,
-  options?: ThemeAuthoringOptions | string
-): ThemeCapabilityDescriptorV1;
-export function describeThemeSupport(
-  query: ThemeSupportQueryV2,
-  options?: ThemeAuthoringOptions | string
-): ThemeCapabilityDescriptorV2;
-export function describeThemeSupport(
-  query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  query: ThemeSupportQueryV1 | string,
   options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptor;
 export function describeThemeSupport(
-  query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  query: ThemeSupportQueryV1 | string,
   options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptor {
   return getMerman().describeThemeSupport(
@@ -75,7 +65,7 @@ export function exportThemePreset(
 }
 
 function encodeThemeAuthoringInput(
-  value: ThemeDefinitionV1 | ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  value: ThemeDefinitionV1 | ThemeSupportQueryV1 | string,
   label: string
 ): string {
   return typeof value === "string" ? value : encodeJsonInput(value, label);

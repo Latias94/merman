@@ -9,7 +9,7 @@ use crate::theme_route_cutover::{
 };
 #[cfg(test)]
 use merman_theme_contract::{
-    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1,
+    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1,
 };
 
 use super::canvas::CanvasPaint;
@@ -1104,23 +1104,23 @@ pub(super) fn summarize_theme_support(
 #[cfg(test)]
 pub(super) fn summarize_base_typography_support(
     family: DiagramFamilyId,
-    property: ThemeSupportBaseTypographyPropertyV2,
+    property: ThemeSupportBaseTypographyPropertyV1,
 ) -> FamilyThemeSupportSummary {
     let property = match property {
-        ThemeSupportBaseTypographyPropertyV2::FontStack => ThemeTypographyProperty::FontStack,
-        ThemeSupportBaseTypographyPropertyV2::FontSize => ThemeTypographyProperty::FontSize,
-        ThemeSupportBaseTypographyPropertyV2::FontWeight => ThemeTypographyProperty::FontWeight,
-        ThemeSupportBaseTypographyPropertyV2::FontStyle => ThemeTypographyProperty::FontStyle,
-        ThemeSupportBaseTypographyPropertyV2::LineHeight => ThemeTypographyProperty::LineHeight,
-        ThemeSupportBaseTypographyPropertyV2::LetterSpacing => {
+        ThemeSupportBaseTypographyPropertyV1::FontStack => ThemeTypographyProperty::FontStack,
+        ThemeSupportBaseTypographyPropertyV1::FontSize => ThemeTypographyProperty::FontSize,
+        ThemeSupportBaseTypographyPropertyV1::FontWeight => ThemeTypographyProperty::FontWeight,
+        ThemeSupportBaseTypographyPropertyV1::FontStyle => ThemeTypographyProperty::FontStyle,
+        ThemeSupportBaseTypographyPropertyV1::LineHeight => ThemeTypographyProperty::LineHeight,
+        ThemeSupportBaseTypographyPropertyV1::LetterSpacing => {
             ThemeTypographyProperty::LetterSpacing
         }
-        ThemeSupportBaseTypographyPropertyV2::WordSpacing => ThemeTypographyProperty::WordSpacing,
-        ThemeSupportBaseTypographyPropertyV2::Transform => ThemeTypographyProperty::Transform,
-        ThemeSupportBaseTypographyPropertyV2::Decoration => ThemeTypographyProperty::Decoration,
-        ThemeSupportBaseTypographyPropertyV2::TextAlign => ThemeTypographyProperty::TextAlign,
-        ThemeSupportBaseTypographyPropertyV2::WhiteSpace => ThemeTypographyProperty::WhiteSpace,
-        ThemeSupportBaseTypographyPropertyV2::Wrap => ThemeTypographyProperty::Wrap,
+        ThemeSupportBaseTypographyPropertyV1::WordSpacing => ThemeTypographyProperty::WordSpacing,
+        ThemeSupportBaseTypographyPropertyV1::Transform => ThemeTypographyProperty::Transform,
+        ThemeSupportBaseTypographyPropertyV1::Decoration => ThemeTypographyProperty::Decoration,
+        ThemeSupportBaseTypographyPropertyV1::TextAlign => ThemeTypographyProperty::TextAlign,
+        ThemeSupportBaseTypographyPropertyV1::WhiteSpace => ThemeTypographyProperty::WhiteSpace,
+        ThemeSupportBaseTypographyPropertyV1::Wrap => ThemeTypographyProperty::Wrap,
         _ => return FamilyThemeSupportSummary::default(),
     };
     let mut summary = FamilyThemeSupportSummary::default();

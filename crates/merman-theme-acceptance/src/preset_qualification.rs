@@ -23,8 +23,8 @@ mod state_proof;
 #[path = "support/preset_sequence_proof.rs"]
 mod sequence_proof;
 
-const QUALIFICATION_SCHEMA_REVISION: u32 = 3;
-const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v3";
+const QUALIFICATION_SCHEMA_REVISION: u32 = 1;
+const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v1";
 
 /// One frozen representative source used to inspect a catalog preset on both native targets.
 #[derive(Debug, Clone, Copy)]

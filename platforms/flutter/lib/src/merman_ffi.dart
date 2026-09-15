@@ -1131,7 +1131,7 @@ class MermanThemeCatalog {
 
   factory MermanThemeCatalog.fromJson(Map<String, Object?> json) {
     final schemaVersion = _requiredInt(json, 'schema_version');
-    if (schemaVersion != 3) {
+    if (schemaVersion != 1) {
       throw MermanException.contract(
         'unsupported theme catalog schema $schemaVersion',
       );

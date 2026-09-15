@@ -29,7 +29,7 @@ except ImportError:
     from release_process import CommandRunner, run_checked
 
 ROOT = Path(__file__).resolve().parents[1]
-QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v3"
+QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v1"
 QUALIFIED_ADMISSION = "host_dependent"
 QUALIFIED_FAMILIES = {"flowchart", "state", "sequence"}
 QUALIFIED_OUTPUTS = {"svg", "png"}
@@ -187,7 +187,7 @@ def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
             or sha256_file(executable) != executable_digest):
         raise RuntimeError("Candidate source, lockfile, or executable changed during qualification")
     return {
-        "schema_version": 3,
+        "schema_version": 1,
         "source_commit": revision,
         "lockfile_sha256": lock_digest,
         "executable_sha256": executable_digest,

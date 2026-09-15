@@ -1,13 +1,13 @@
 # Scoped preset qualification
 
 The workspace-only Rust runner executes the exact Brutalist, Spotless, and Cyberpunk catalog
-recipes on the declared `native-flowchart-state-sequence-system-fonts-v3` profile for
+recipes on the declared `native-flowchart-state-sequence-system-fonts-v1` profile for
 Flowchart/State/Sequence SVG and PNG. It checks terminal styles, raster coverage and label ink,
 admission reasons, residuals, and artifact/resource identity.
 State PNG uses 1x; Flowchart and Sequence use 4x so thin lines and label paint remain observable.
 Flowchart places its labeled edge inside a contrasting subgraph: a missing translucent label
-background must fail the raster check. Qualification schema 3 replaces the previous two-family
-profile; an older receipt cannot acquire the new Flowchart cells. Each observation records its
+background must fail the raster check. The first-release qualification schema is 1. Unpublished earlier receipts cannot acquire
+Flowchart cells: source, profile, and complete replayed record identities must match. Each observation records its
 scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
 inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md) for other families.
@@ -29,7 +29,7 @@ PNG scale and `resvg-safe` SVG pipeline, and requires exact output bytes. It reu
 release-process runner; it does not interpret SVG/CSS or reconstruct renderer receipts. A missing
 observation, changed source/output, or executable replacement rejects qualification.
 
-The schema-3 record contains:
+The schema-1 record contains:
 
 - The clean source commit and lockfile digest.
 - The actual executable digest identified by Cargo's artifact output, build command, Rust toolchain,
@@ -108,7 +108,7 @@ and resource conditions; admission is an open ID such as `portable` or `host_dep
 profiles or admission classes must not be interpreted as portable support. A family/output may have
 multiple profiles, ordered by `(family_id, output_id, profile_id)`; conflicting statuses under the
 same profile are invalid. Rust, Web, and Flutter expose these conditions; other transports preserve the shared JSON.
-This unpublished alpha correction stays within theme catalog schema 3. Rust and Dart cell
+This unpublished alpha correction stays within theme catalog schema 1. Rust and Dart cell
 constructors now require the profile and admission arguments; there is no implicit default.
 
 Constructing a Rust cell is only constructing metadata, not issuing proof. Built-in scopes remain
@@ -141,7 +141,7 @@ conditions. It excludes private target receipts and does not modify the binary o
 The archive `--preset-qualification-check` mode reruns qualification and checks both the execution
 record and its companion. Missing or stale companions reject verification. A standalone
 `qualify_theme_presets.py --cli` run keeps its artifact catalog inside the execution record; only
-archive verification emits the archive-bound companion. Qualification records use schema 3.
+archive verification emits the archive-bound companion. Qualification records use schema 1.
 
 Production Rust and SDK discovery continues to expose the shared unqualified catalog. A downloaded
 JSON file is not itself a qualification authority: consumers need its trusted release provenance

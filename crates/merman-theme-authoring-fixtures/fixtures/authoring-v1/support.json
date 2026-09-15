@@ -5,18 +5,16 @@
       "schema_version": 1,
       "family": "er",
       "output": "standalone-svg",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "standalone-svg",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "unsupported",
       "reason_ids": [
@@ -27,7 +25,7 @@
   {
     "id": "unsupported-rule-v2",
     "query": {
-      "schema_version": 2,
+      "schema_version": 1,
       "family": "er",
       "output": "standalone-svg",
       "subject": {
@@ -37,10 +35,10 @@
       }
     },
     "expected": {
-      "schema_version": 2,
-      "claim_revision": 90,
+      "schema_version": 1,
+      "claim_revision": 1,
       "query": {
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "er",
         "output": "standalone-svg",
         "subject": {
@@ -58,7 +56,7 @@
   {
     "id": "base-font-size",
     "query": {
-      "schema_version": 2,
+      "schema_version": 1,
       "family": "flowchart",
       "output": "standalone-svg",
       "subject": {
@@ -67,10 +65,10 @@
       }
     },
     "expected": {
-      "schema_version": 2,
-      "claim_revision": 90,
+      "schema_version": 1,
+      "claim_revision": 1,
       "query": {
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "flowchart",
         "output": "standalone-svg",
         "subject": {
@@ -88,7 +86,7 @@
   {
     "id": "ordinal-palette",
     "query": {
-      "schema_version": 2,
+      "schema_version": 1,
       "family": "flowchart",
       "output": "standalone-svg",
       "subject": {
@@ -97,10 +95,10 @@
       }
     },
     "expected": {
-      "schema_version": 2,
-      "claim_revision": 90,
+      "schema_version": 1,
+      "claim_revision": 1,
       "query": {
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "flowchart",
         "output": "standalone-svg",
         "subject": {
@@ -121,18 +119,16 @@
       "schema_version": 1,
       "family": "er",
       "output": "ascii",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "ascii",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "not-applicable",
       "reason_ids": [
@@ -146,18 +142,16 @@
       "schema_version": 1,
       "family": "er",
       "output": "browser-svg",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "browser-svg",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "unverified",
       "reason_ids": [
@@ -171,18 +165,16 @@
       "schema_version": 1,
       "family": "er",
       "output": "png",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "png",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "unverified",
       "reason_ids": [
@@ -196,18 +188,16 @@
       "schema_version": 1,
       "family": "future-family",
       "output": "standalone-svg",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "future-family",
         "output": "standalone-svg",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "unverified",
       "reason_ids": [
@@ -218,7 +208,7 @@
   {
     "id": "unknown-base-property",
     "query": {
-      "schema_version": 2,
+      "schema_version": 1,
       "family": "flowchart",
       "output": "standalone-svg",
       "subject": {
@@ -227,10 +217,10 @@
       }
     },
     "expected": {
-      "schema_version": 2,
-      "claim_revision": 90,
+      "schema_version": 1,
+      "claim_revision": 1,
       "query": {
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "flowchart",
         "output": "standalone-svg",
         "subject": {
@@ -247,7 +237,7 @@
   {
     "id": "retired-class-edge-label-background",
     "query": {
-      "schema_version": 2,
+      "schema_version": 1,
       "family": "class",
       "output": "standalone-svg",
       "subject": {
@@ -257,10 +247,10 @@
       }
     },
     "expected": {
-      "schema_version": 2,
-      "claim_revision": 90,
+      "schema_version": 1,
+      "claim_revision": 1,
       "query": {
-        "schema_version": 2,
+        "schema_version": 1,
         "family": "class",
         "output": "standalone-svg",
         "subject": {
@@ -281,18 +271,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "edge-label-background",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "edge-label-background", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "edge-label-background",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "edge-label-background", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -307,18 +295,16 @@
       "schema_version": 1,
       "family": "class",
       "output": "standalone-svg",
-      "target": "edge",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "class",
         "output": "standalone-svg",
-        "target": "edge",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -333,18 +319,16 @@
       "schema_version": 1,
       "family": "class",
       "output": "standalone-svg",
-      "target": "cluster",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "class",
         "output": "standalone-svg",
-        "target": "cluster",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -359,18 +343,16 @@
       "schema_version": 1,
       "family": "class",
       "output": "standalone-svg",
-      "target": "cluster",
-      "facet": "stroke-paint"
+      "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "class",
         "output": "standalone-svg",
-        "target": "cluster",
-        "facet": "stroke-paint"
+        "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -385,18 +367,16 @@
       "schema_version": 1,
       "family": "class",
       "output": "standalone-svg",
-      "target": "title",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "title", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "class",
         "output": "standalone-svg",
-        "target": "title",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "title", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -411,18 +391,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "edge",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "edge",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "edge", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -437,18 +415,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "edge",
-      "facet": "stroke-paint"
+      "subject": {"kind": "rule", "target": "edge", "facet": "stroke-paint"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "edge",
-        "facet": "stroke-paint"
+        "subject": {"kind": "rule", "target": "edge", "facet": "stroke-paint"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -463,18 +439,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "cluster",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "cluster",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "cluster", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -489,18 +463,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "cluster",
-      "facet": "stroke-paint"
+      "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "cluster",
-        "facet": "stroke-paint"
+        "subject": {"kind": "rule", "target": "cluster", "facet": "stroke-paint"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -515,18 +487,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "marker",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "marker", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "marker",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "marker", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -541,18 +511,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "marker",
-      "facet": "stroke-paint"
+      "subject": {"kind": "rule", "target": "marker", "facet": "stroke-paint"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "marker",
-        "facet": "stroke-paint"
+        "subject": {"kind": "rule", "target": "marker", "facet": "stroke-paint"}
       },
       "state": "conditional",
       "reason_ids": [
@@ -567,18 +535,16 @@
       "schema_version": 1,
       "family": "block",
       "output": "standalone-svg",
-      "target": "text",
-      "facet": "fill"
+      "subject": {"kind": "rule", "target": "text", "facet": "fill"}
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 90,
+      "claim_revision": 1,
       "query": {
         "schema_version": 1,
         "family": "block",
         "output": "standalone-svg",
-        "target": "text",
-        "facet": "fill"
+        "subject": {"kind": "rule", "target": "text", "facet": "fill"}
       },
       "state": "conditional",
       "reason_ids": [

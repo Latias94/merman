@@ -224,7 +224,7 @@ library-size evidence.
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
-| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 4, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
+| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 | Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, packed tarballs, five native install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix

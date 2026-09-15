@@ -10,7 +10,7 @@ Compiled themes no longer install a family Legacy overlay provider. The former b
 compiled only for unit tests and the internal acceptance configuration; independent KTD23 probes
 and historical authority remain available. Root compatibility configuration and family-owned
 parse-default eligibility are retained. Parsing alone no longer compiles family theme programs;
-typed consumers prepare the selected program on demand. Support revision 90 corrects Block
+typed consumers prepare the selected program on demand. First-release support revision 1 includes the correction to Block
 generic Text fill discovery to partial typed support, matching its existing writer. Text stroke
 remains Unsupported; mixed fill/stroke requests retain a residual and fail strict rendering.
 Source `1c37f8096` passed 4899 Release owner tests in both the main worktree and an independent
@@ -580,13 +580,13 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
-Support discovery now has an independent nineteen-case golden in
+Support discovery now has an independent twenty-two-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest
-revision 88 and checks V1/V2 rule, base-typography, and ordinal queries across Conditional,
+first-release revision 1 and checks subject-based rule, base-typography, and ordinal queries across Conditional,
 Unsupported, NotApplicable, and Unverified states, including unknown identifiers and outputs that
 are not renderer-qualified. Consumer tests share this fixture across the native C ABI, reusable and
 one-shot UniFFI engines, Typst JSON, installed Node, installed Python, and both Web API/WASM
-surfaces. Revision 82 added the retired Class background query; revision 83 adds the typed Block
+surfaces. The following development revisions are historical, not public release versions. Revision 82 added the retired Class background query; revision 83 adds the typed Block
 background query. Revisions 84 and 85 add typed Class Edge.fill and Cluster fill/stroke queries.
 Revision 86 added the typed Class namespace Title query; revision 87 adds Block Edge fill
 and stroke-paint queries. Revision 89 adds typed Block Marker fill and stroke-paint queries alongside the Cluster queries.
@@ -620,8 +620,8 @@ inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
 
 The separate `run_preset_qualification` runner now issues an opaque, execution-local receipt for
-Brutalist, Spotless, and Cyberpunk on the declared `native-flowchart-state-sequence-system-fonts-v3` profile only.
-Qualification schema 3 dispatches the exact catalog recipe through Flowchart/State/Sequence SVG
+Brutalist, Spotless, and Cyberpunk on the declared `native-flowchart-state-sequence-system-fonts-v1` profile only.
+Qualification schema 1 dispatches the exact catalog recipe through Flowchart/State/Sequence SVG
 and PNG. Flowchart checks a titled subgraph containing two nodes and a labeled directed edge:
 actual surfaces, borders, labels, marker and translucent background must reach SVG and PNG.
 The edge label lies over the contrasting cluster fill so a missing background remains observable.

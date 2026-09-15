@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 /// First public schema for the artifact-owned runtime catalog.
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
-pub const THEME_CATALOG_SCHEMA_VERSION: u32 = 3;
+pub const THEME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC: &str = "deterministic";
 

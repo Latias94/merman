@@ -9,101 +9,47 @@ use serde_json::Value;
 use crate::ThemeRuleFacetV1;
 use crate::canonical_json::canonical_json_bytes;
 
-/// Schema version used by the version 1 theme-support discovery query.
+/// Schema version used by the version 1 subject-based theme-support discovery query.
 pub const THEME_SUPPORT_SCHEMA_VERSION_V1: u32 = 1;
-
-/// Schema version used by the version 2 subject-based theme-support discovery query.
-pub const THEME_SUPPORT_SCHEMA_VERSION_V2: u32 = 2;
 
 /// Maximum number of stable reason identifiers in one coarse support descriptor.
 pub const MAX_THEME_SUPPORT_REASON_IDS_V1: usize = 8;
 
-const MAX_UNKNOWN_SUBJECT_FIELDS_V2: usize = 16;
-const MAX_UNKNOWN_SUBJECT_KIND_BYTES_V2: usize = 64;
-const MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2: usize = 64;
-const MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2: usize = 32;
-const MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V2: usize = 4;
-const MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V2: usize = 4 * 1024;
+const MAX_UNKNOWN_SUBJECT_FIELDS_V1: usize = 16;
+const MAX_UNKNOWN_SUBJECT_KIND_BYTES_V1: usize = 64;
+const MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V1: usize = 64;
+const MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V1: usize = 32;
+const MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V1: usize = 4;
+const MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V1: usize = 4 * 1024;
 
-/// A versioned, forward-compatible query for coarse theme support.
+/// A versioned theme-support query with an explicit tagged subject.
 ///
-/// Catalog identifiers remain strings so older consumers can preserve and inspect identifiers
-/// added by newer Merman releases. Unknown identifiers are valid discovery input and resolve to an
-/// unverified descriptor rather than becoming executable theme identifiers.
+/// Family-wide base typography is separate from semantic-target rules. Unknown identifiers
+/// remain decodable discovery input and resolve to an unverified renderer claim.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeSupportQueryV1 {
     schema_version: u32,
     family: String,
     output: String,
-    target: String,
-    facet: String,
+    subject: ThemeSupportSubjectV1,
 }
 
 impl ThemeSupportQueryV1 {
-    /// Builds a query from known output and facet identifiers.
-    pub fn known<F>(
+    /// Builds a subject query from a known target facet or ordinal palette.
+    pub fn for_target<F: Into<ThemeSupportFacetV1>>(
         family: impl Into<String>,
         output: ThemeSupportOutputV1,
         target: impl Into<String>,
         facet: F,
-    ) -> Self
-    where
-        F: Into<ThemeSupportFacetV1>,
-    {
-        let facet = facet.into();
-        Self {
-            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V1,
-            family: family.into(),
-            output: output.id().to_owned(),
-            target: target.into(),
-            facet: facet.id().to_owned(),
+    ) -> Self {
+        match facet.into() {
+            ThemeSupportFacetV1::Rule(facet) => Self::rule(family, output, target, facet),
+            ThemeSupportFacetV1::OrdinalPalette => Self::ordinal_palette(family, output, target),
         }
     }
 
-    /// Returns the query schema version.
-    pub const fn schema_version(&self) -> u32 {
-        self.schema_version
-    }
-
-    /// Returns the preserved diagram-family identifier.
-    pub fn family_id(&self) -> &str {
-        &self.family
-    }
-
-    /// Returns the preserved output-target identifier.
-    pub fn output_id(&self) -> &str {
-        &self.output
-    }
-
-    /// Returns the preserved semantic-target identifier.
-    pub fn target_id(&self) -> &str {
-        &self.target
-    }
-
-    /// Returns the preserved facet identifier.
-    pub fn facet_id(&self) -> &str {
-        &self.facet
-    }
-}
-
-/// An unstable alpha version 2 theme-support query with an explicit tagged subject.
-///
-/// Unlike V1, family-wide base typography is not projected through a synthetic semantic target.
-/// Unknown subject and property identifiers remain decodable discovery input and resolve to an
-/// unverified renderer claim. The V2 subject inventory remains explicitly unfrozen until the C7a
-/// rollout gate closes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ThemeSupportQueryV2 {
-    schema_version: u32,
-    family: String,
-    output: String,
-    subject: ThemeSupportSubjectV2,
-}
-
-impl ThemeSupportQueryV2 {
-    /// Builds a V2 query for one semantic-target rule facet.
+    /// Builds a query for one semantic-target rule facet.
     pub fn rule(
         family: impl Into<String>,
         output: ThemeSupportOutputV1,
@@ -111,43 +57,43 @@ impl ThemeSupportQueryV2 {
         facet: ThemeRuleFacetV1,
     ) -> Self {
         Self {
-            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V2,
+            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V1,
             family: family.into(),
             output: output.id().to_owned(),
-            subject: ThemeSupportSubjectV2::Rule {
+            subject: ThemeSupportSubjectV1::Rule {
                 target: target.into(),
                 facet: facet.id().to_owned(),
             },
         }
     }
 
-    /// Builds a V2 query for one semantic target's ordinal palette.
+    /// Builds a query for one semantic target's ordinal palette.
     pub fn ordinal_palette(
         family: impl Into<String>,
         output: ThemeSupportOutputV1,
         target: impl Into<String>,
     ) -> Self {
         Self {
-            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V2,
+            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V1,
             family: family.into(),
             output: output.id().to_owned(),
-            subject: ThemeSupportSubjectV2::OrdinalPalette {
+            subject: ThemeSupportSubjectV1::OrdinalPalette {
                 target: target.into(),
             },
         }
     }
 
-    /// Builds a V2 query for one family-wide base typography property.
+    /// Builds a query for one family-wide base typography property.
     pub fn base_typography(
         family: impl Into<String>,
         output: ThemeSupportOutputV1,
-        property: ThemeSupportBaseTypographyPropertyV2,
+        property: ThemeSupportBaseTypographyPropertyV1,
     ) -> Self {
         Self {
-            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V2,
+            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V1,
             family: family.into(),
             output: output.id().to_owned(),
-            subject: ThemeSupportSubjectV2::BaseTypography {
+            subject: ThemeSupportSubjectV1::BaseTypography {
                 property: property.id().to_owned(),
             },
         }
@@ -169,19 +115,19 @@ impl ThemeSupportQueryV2 {
     }
 
     /// Returns the explicit discovery subject.
-    pub const fn subject(&self) -> &ThemeSupportSubjectV2 {
+    pub const fn subject(&self) -> &ThemeSupportSubjectV1 {
         &self.subject
     }
 }
 
-/// The subject of an unstable alpha version 2 theme-support query.
+/// The subject of a version 1 theme-support query.
 ///
 /// The wire representation is tagged by `kind`. Known subjects preserve unknown target, facet,
 /// and property identifiers as strings so the renderer can return `Unverified` instead of
 /// rejecting forward-compatible discovery input.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum ThemeSupportSubjectV2 {
+pub enum ThemeSupportSubjectV1 {
     /// One rule facet on a semantic target.
     Rule {
         /// Preserved semantic-target identifier.
@@ -200,7 +146,7 @@ pub enum ThemeSupportSubjectV2 {
         property: String,
     },
     /// A subject tag unknown to this contract version.
-    Unknown(ThemeSupportUnknownSubjectV2),
+    Unknown(ThemeSupportUnknownSubjectV1),
 }
 
 /// A bounded, forward-compatible subject payload unknown to this contract version.
@@ -208,12 +154,12 @@ pub enum ThemeSupportSubjectV2 {
 /// Opaque values are stored as canonical JSON so decoding and re-encoding preserves additive
 /// fields without exposing an unbounded arbitrary-value tree as part of the Rust API.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ThemeSupportUnknownSubjectV2 {
+pub struct ThemeSupportUnknownSubjectV1 {
     kind: String,
     fields: BTreeMap<String, String>,
 }
 
-impl ThemeSupportUnknownSubjectV2 {
+impl ThemeSupportUnknownSubjectV1 {
     /// Returns the preserved unknown subject tag.
     pub fn kind(&self) -> &str {
         &self.kind
@@ -230,7 +176,7 @@ impl ThemeSupportUnknownSubjectV2 {
     }
 }
 
-impl Serialize for ThemeSupportSubjectV2 {
+impl Serialize for ThemeSupportSubjectV1 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -271,7 +217,7 @@ impl Serialize for ThemeSupportSubjectV2 {
     }
 }
 
-impl<'de> Deserialize<'de> for ThemeSupportSubjectV2 {
+impl<'de> Deserialize<'de> for ThemeSupportSubjectV1 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -300,7 +246,7 @@ impl<'de> Deserialize<'de> for ThemeSupportSubjectV2 {
             }
             _ => {
                 let fields = preserve_unknown_subject_fields::<D>(&kind, fields)?;
-                Ok(Self::Unknown(ThemeSupportUnknownSubjectV2 { kind, fields }))
+                Ok(Self::Unknown(ThemeSupportUnknownSubjectV1 { kind, fields }))
             }
         }
     }
@@ -377,12 +323,12 @@ fn preserve_unknown_subject_fields<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    if kind.is_empty() || kind.len() > MAX_UNKNOWN_SUBJECT_KIND_BYTES_V2 {
+    if kind.is_empty() || kind.len() > MAX_UNKNOWN_SUBJECT_KIND_BYTES_V1 {
         return Err(D::Error::custom(
             "theme support subject has an invalid opaque kind",
         ));
     }
-    if fields.len() > MAX_UNKNOWN_SUBJECT_FIELDS_V2 {
+    if fields.len() > MAX_UNKNOWN_SUBJECT_FIELDS_V1 {
         return Err(D::Error::custom(format!(
             "theme support subject `{kind}` exceeds the opaque field limit"
         )));
@@ -390,7 +336,7 @@ where
     let mut encoded_bytes = kind.len();
     let mut preserved = BTreeMap::new();
     for (key, value) in fields {
-        if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2 {
+        if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V1 {
             return Err(D::Error::custom(format!(
                 "theme support subject `{kind}` has an oversized opaque field key"
             )));
@@ -405,7 +351,7 @@ where
             .checked_add(key.len())
             .and_then(|bytes| bytes.checked_add(encoded.len()))
             .ok_or_else(|| D::Error::custom("theme support subject opaque payload overflow"))?;
-        if encoded_bytes > MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V2 {
+        if encoded_bytes > MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V1 {
             return Err(D::Error::custom(format!(
                 "theme support subject `{kind}` exceeds the opaque byte limit"
             )));
@@ -425,14 +371,14 @@ fn validate_unknown_subject_value<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    if depth > MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V2 {
+    if depth > MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V1 {
         return Err(D::Error::custom(format!(
             "theme support subject `{kind}` exceeds the opaque nesting limit"
         )));
     }
     match value {
         Value::Array(values) => {
-            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2 {
+            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V1 {
                 return Err(D::Error::custom(format!(
                     "theme support subject `{kind}` exceeds the opaque array item limit"
                 )));
@@ -442,13 +388,13 @@ where
             }
         }
         Value::Object(values) => {
-            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2 {
+            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V1 {
                 return Err(D::Error::custom(format!(
                     "theme support subject `{kind}` exceeds the opaque object field limit"
                 )));
             }
             for (key, value) in values {
-                if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2 {
+                if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V1 {
                     return Err(D::Error::custom(format!(
                         "theme support subject `{kind}` has an oversized nested field key"
                     )));
@@ -461,11 +407,11 @@ where
     Ok(())
 }
 
-/// An alpha family-wide typography property available to V2 support discovery.
+/// A family-wide typography property available to support discovery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
-pub enum ThemeSupportBaseTypographyPropertyV2 {
+pub enum ThemeSupportBaseTypographyPropertyV1 {
     /// Font-family stack.
     FontStack,
     /// Font size.
@@ -492,7 +438,7 @@ pub enum ThemeSupportBaseTypographyPropertyV2 {
     Wrap,
 }
 
-impl ThemeSupportBaseTypographyPropertyV2 {
+impl ThemeSupportBaseTypographyPropertyV1 {
     /// Current alpha enumeration view for catalogs and contract round-trip checks.
     pub const ALL: &'static [Self] = &[
         Self::FontStack,
@@ -509,7 +455,7 @@ impl ThemeSupportBaseTypographyPropertyV2 {
         Self::Wrap,
     ];
 
-    /// Current V2 wire identifier for this base typography property.
+    /// Version 1 wire identifier for this base typography property.
     ///
     /// These identifiers remain unfrozen until the C7a rollout gate closes.
     pub const fn id(self) -> &'static str {
@@ -561,8 +507,7 @@ pub enum ThemeSupportStateV1 {
 
 /// A versioned coarse theme-support result envelope.
 ///
-/// V1 is an output-only renderer report. Persisted or untrusted decoding remains deferred until a
-/// bounded consumer owns the forward-compatibility policy for result fields and reason IDs.
+/// Preserves the query subject, coarse state, and bounded stable reason identifiers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ThemeCapabilityDescriptorV1 {
     schema_version: u32,
@@ -606,71 +551,8 @@ impl ThemeCapabilityDescriptorV1 {
         self.claim_revision
     }
 
-    /// Returns the original, identifier-preserving query.
+    /// Returns the original query.
     pub const fn query(&self) -> &ThemeSupportQueryV1 {
-        &self.query
-    }
-
-    /// Returns the coarse support state.
-    pub const fn state(&self) -> ThemeSupportStateV1 {
-        self.state
-    }
-
-    /// Returns the stable reason identifiers in deterministic priority order.
-    pub fn reason_ids(&self) -> &[String] {
-        &self.reason_ids
-    }
-}
-
-/// An unstable alpha version 2 coarse theme-support result envelope.
-///
-/// V2 preserves the explicit subject from [`ThemeSupportQueryV2`] while retaining the same coarse
-/// state and bounded stable-reason contract as V1.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ThemeCapabilityDescriptorV2 {
-    schema_version: u32,
-    claim_revision: u32,
-    query: ThemeSupportQueryV2,
-    state: ThemeSupportStateV1,
-    reason_ids: Vec<String>,
-}
-
-impl ThemeCapabilityDescriptorV2 {
-    /// Builds a descriptor from one renderer-owned V2 support claim.
-    ///
-    /// The renderer must pass a deterministic, bounded list of stable reason identifiers.
-    #[doc(hidden)]
-    pub fn from_renderer_claim<const N: usize>(
-        claim_revision: u32,
-        query: ThemeSupportQueryV2,
-        state: ThemeSupportStateV1,
-        reason_ids: [&'static str; N],
-    ) -> Self {
-        assert!(
-            N <= MAX_THEME_SUPPORT_REASON_IDS_V1,
-            "renderer theme-support reasons must remain bounded"
-        );
-        Self {
-            schema_version: THEME_SUPPORT_SCHEMA_VERSION_V2,
-            claim_revision,
-            query,
-            state,
-            reason_ids: reason_ids.into_iter().map(str::to_owned).collect(),
-        }
-    }
-
-    /// Returns the result schema version.
-    pub const fn schema_version(&self) -> u32 {
-        self.schema_version
-    }
-
-    /// Returns the renderer-owned support-claim revision.
-    pub const fn claim_revision(&self) -> u32 {
-        self.claim_revision
-    }
-
-    /// Returns the original V2 query.
-    pub const fn query(&self) -> &ThemeSupportQueryV2 {
         &self.query
     }
 

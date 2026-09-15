@@ -26,7 +26,7 @@ function themeResourceLimit(overrides = {}) {
 
 function themeCatalogFixture(overrides = {}) {
   return {
-    schema_version: 3,
+    schema_version: 1,
     structured_spec_available: true,
     supported_output_ids: ["future-output", "svg"],
     presets: [
@@ -212,7 +212,7 @@ test("theme catalog validates preset availability, export kind, and qualified ce
 });
 
 test("theme catalog rejects unsupported schemas", async () => {
-  const runtime = await runtimeReturning(themeCatalogFixture({ schema_version: 1 }));
+  const runtime = await runtimeReturning(themeCatalogFixture({ schema_version: 2 }));
 
   assert.throws(
     () => runtime.themeCatalog(),

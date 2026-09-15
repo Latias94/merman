@@ -1,5 +1,9 @@
 # Presentation Themes and Output
 
+Historical guide for the published Options 2 presentation API. The unreleased compiled-theme
+replacement uses Options 3; see [diagram themes](diagram-theme-coverage.md) and
+[Options JSON](../bindings/OPTIONS_JSON.md).
+
 Merman keeps four independent choices separate: host theme values, Merman presentation behavior, Mermaid configuration, and SVG output policy. A caller can combine them, but selecting one never silently selects another.
 
 | Owner | Public input | Use it for |
