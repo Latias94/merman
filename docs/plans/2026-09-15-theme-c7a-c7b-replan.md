@@ -1,6 +1,7 @@
 # Presentation Theme C7a/C7b Replan
 
 Date: 2026-09-15
+Updated: 2026-09-16
 
 ## Decision
 
@@ -18,36 +19,94 @@ The fresh alpha.7 consumer compiles, but published alpha.6 with candidate siblin
 fails the prerelease compatibility gate. This remains a release blocker; version selection
 does not waive it. Final artifact validation, catalog rollout and C7a freeze remain open.
 
-## Verified starting point
+## Current status and execution baseline
 
-The merge commit is `3e71378be` (remote main `4c2ac7817`); post-merge follow-ups
-through `15e8ecbd5` are not full-platform release evidence. Before freezing, audit the
-conflict resolutions against both parents, including binding generations, public docs,
-SVG pipeline behavior, dependency changes, and generated license projections.
+The implementation baseline for this revision is `72980c2fe`, which prepares the workspace
+and coupled packages for `v0.8.0-alpha.7`. Version and changelog checks pass. Theme contracts
+remain v1. The recorded 606 script passes validate local preparation, not installed artifacts
+on every release host.
 
-Block generic Text cutover and production provider retirement already landed before the
-merge. KTD17 v89 records 506 routes and 814 route-profile witnesses; the executable Legacy
-inventory is empty. The bridge, historical probes, and tombstones are restricted to unit
-tests or internal acceptance cfg. The [coverage snapshot](../rendering/diagram-theme-coverage.md)
-and [provider retirement verification](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md)
-distinguish this completed migration from remaining family breadth. Revalidate the
-retirement after integration; do not implement it again.
+C5 and representative C6a are complete. All 33 families have typed consumption paths, and
+the production Legacy route inventory is empty, including Block. Post-merge retirement,
+public acceptance isolation and representative native qualification have been revalidated.
+Block migration is completed work; retain its regression coverage rather than scheduling a
+second migration. Remaining family mechanism breadth belongs to C7b. See the
+[coverage snapshot](../rendering/diagram-theme-coverage.md) and
+[provider retirement record](../knowledge/engineering/verification/2026-09-14-theme-provider-retirement.md).
 
-Shared authoring errors, support discovery, and qualification-cell vectors already exist
-under `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/`. Installed consumer
-records cover earlier source revisions. Check their current transport consumers and
-fill demonstrated gaps rather than creating another golden format.
+`origin/main` at `4c2ac7817` was merged by `3e71378be` and was verified as an ancestor during
+the September 15 preparation. The historical records below describe the merge audit, fixes,
+platform builds and tests at their actual source revisions. They are not evidence that every
+platform was rebuilt at `72980c2fe`.
+
+| Workstream | Current status | Remaining exit condition |
+| --- | --- | --- |
+| Core model and production provider retirement | Implemented and revalidated | Preserve the boundary in final candidate regressions |
+| Alpha.7 version projection and theme v1 consolidation | Prepared | Keep generated projections current after implementation changes |
+| Published alpha.6 with candidate siblings | Fresh Cargo consumer fails | Resolve the compile boundary or obtain an explicit release-policy decision |
+| Discovery, authoring golden and catalog/profile delivery | Implemented with source-specific evidence | Close demonstrated gaps through final owner-built consumers |
+| C7a candidate and contract freeze | Open | Complete the declared same-source release matrix and archive/catalog binding |
+| C7b family breadth | Separate continuing work | Evaluate mechanisms independently of the empty Legacy inventory |
+
+## Refactoring policy
+
+Converge unpublished theme APIs, schemas and consumers on one v1 contract. Remove superseded
+unpublished shapes and adapters once their consumers migrate. Preserve published contract
+history and migration identities; they are not development version counters to reset.
+
+Keep accurate error classification, resource admission, source ownership and writer-owned
+terminal evidence. A refactor must preserve these semantics or document and test a deliberate
+public contract change. Do not encode an internal failure as an unrelated old error merely to
+satisfy an exhaustive match in a published dependency.
+
+Use existing production owners and the shared authoring/support vectors under
+`crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/`. Delete transitional helpers only after
+checking their consumers and audit obligations. Keep historical retirement authority within
+acceptance-only code, and consolidate duplicate facts into projections of their existing owner.
+Do not introduce a general proof engine, feature-dependent error taxonomy, package rename or
+new version coordinator solely to bypass this release failure.
+
+## First task: alpha.7 compatibility boundary
+
+Treat an intentional API migration by an alpha.7 adopter separately from an existing alpha.6
+consumer failing after fresh dependency resolution. The recorded failure is the latter:
+alpha.6 has non-exact sibling requirements and exhaustively matches `merman_core::Error`;
+the candidate adds variants and makes the enum non-exhaustive. New exact requirements in
+alpha.7 do not amend the published alpha.6 manifest.
+
+1. Inspect the published requirements and actual resolved package graph using the existing
+   fresh-consumer checker. Identify the smallest real contract boundary responsible for the
+   failure; the current ASCII lane is not an all-feature compatibility proof.
+2. Evaluate a compile-compatible implementation only if it preserves the new diagnostic
+   semantics and has a simple, durable API. Verify any proposed fix with the real previous
+   facade, the candidate consumer, and focused diagnostic/transport regressions.
+3. If that requires misleading error classifications or a compatibility subsystem, document
+   the rejected design and compare an isolated Cargo version boundary with explicitly accepting
+   the old-consumer resolution break. Keep alpha.7 selected while presenting the decision.
+   Neither changing the release line nor accepting that break is implicit in refactoring consent.
+4. Record the decision, affected consumers, migration guidance and actual check results in the
+   existing release-line verification document. A policy exception requires explicit maintainer
+   approval and corresponding release-instruction updates; never turn a failed check into a
+   success or silently skip the lane.
+
+Exit: the candidate and required previous-consumer checks pass with preserved error semantics,
+or the maintainer explicitly approves a documented alternative release contract. An unresolved
+decision keeps C7a open. Complete the bounded assessment and present the decision rather than
+repeatedly running the same failing build.
 
 ## C7a: release-facing closure
 
-1. **Post-merge regression gate**
+1. **Final candidate regression gate**
    - Run formatting, CI workflow contract tests, theme acceptance, support discovery, retirement tests, and the representative native export checks from the same commit.
-   - Record the exact source SHA and artifact profile in the acceptance receipt.
+   - Record the exact source SHA and artifact profile in existing owner receipts.
+   - Keep prior passes at their original source identities. Pin one clean candidate after the
+     compatibility decision and cleanup; rerun affected gates when candidate inputs change.
 
 2. **Public discovery and catalog promotion**
    - Complete first-party discovery for Rust, Web, Node, Typst, UniFFI, and Native C ABI.
    - Bind each qualified catalog cell to the artifact profile actually built and tested.
-   - Keep unknown `profile_id` and `admission_status` values fail-closed.
+   - Unknown `profile_id` and `admission_status` values must never establish Portable or Verified
+     admission. Transports may preserve open metadata where their public contract permits it.
 
 3. **Cross-transport authoring contract**
    - Re-run existing shared invalid-input golden cases through Web, Node, Typst, UniFFI, and Native C ABI; add cases only for uncovered contract behavior.
@@ -59,14 +118,21 @@ fill demonstrated gaps rather than creating another golden format.
    - Do not embed Inter or another product font merely to satisfy visual fixtures. Use host or consumer-provided fonts unless a product requirement establishes a distributable font obligation.
 
 5. **Freeze criteria**
+   - The compatibility boundary has the passing evidence or explicitly approved release contract
+     described above. Version selection alone does not satisfy this condition.
    - Each declared C7a candidate scenario has qualification cells bound to its actual artifact. Unqualified presets and targets keep empty cells; host-dependent evidence never implies Portable admission.
    - Public support discovery agrees across transports.
-   - Release preflight and package-content checks pass from a clean checkout.
+   - Release preflight and package-content checks pass for the declared candidate from a clean
+     checkout. Use the existing owner workflows and artifact profiles; enumerate required hosts
+     and compiler floors before execution, including Windows and the Apple Swift 5.9 floor.
+   - Package installation, shared authoring/support vectors, qualification cells and archive
+     replay refer to the tested artifact. Unsupported and unqualified scopes remain explicit.
+   - Missing host execution remains an open gate, not a local test substitute.
    - No open P1 correctness or CI coverage gap remains.
 
 ## C7b: long-tail migration
 
-1. Revalidate the completed Block route/provider retirement against the merged code, including the independent retirement authority and production cfg boundary.
+1. Keep the completed Block route/provider retirement closed. Include its independent authority and production cfg boundary in final regressions; reopen implementation only for a reproduced regression.
 2. Preserve historical probes and migration records in acceptance-only code; remove a helper only after confirming it has no remaining consumer or audit obligation.
 3. Keep historical Class cutover failures separate from completed Class retirement, as the current coverage snapshot does.
 4. Inventory remaining family mechanism breadth independently of the zero Legacy route count. Do not create new family bridges to improve route counts.
@@ -76,17 +142,38 @@ fill demonstrated gaps rather than creating another golden format.
 - XY Chart terminal-cache copies and receipt escaping.
 - Block marker/edge XML receipt cost.
 - SystemOnly font database cloning.
-- Any broad proof-engine or family-trait rewrite.
 
-These are optimization candidates. Each requires a workload, a before/after measurement, and a semantics-preserving change before entering the release critical path.
+Each optimization requires a workload, a before/after measurement, and a semantics-preserving
+change before entering the release critical path. A broad proof-engine or family-trait rewrite
+is outside this closure plan; it requires a separately demonstrated design need.
 
-## Working sequence
+## Working sequence and completion
 
-1. Finish post-merge regression evidence.
-2. Close C7a discovery, catalog, cross-transport golden, and profile matrix gaps.
-3. Freeze the C7a contract and publish the evidence record.
-4. Close the Block retirement audit and continue the remaining C7b family breadth work.
-5. Revisit deferred performance work only when a benchmark shows material impact.
+1. Resolve the alpha.7 compatibility boundary through the bounded assessment above.
+2. Complete demonstrated first-party contract gaps and remove verified obsolete transitional
+   code. Refresh version, legal and generated projections through their existing owners.
+3. Pin the clean candidate and execute the required owner preflight/profile matrix. Exercise
+   public discovery and shared authoring vectors through real installed consumers; bind catalog
+   cells and archive replay to the actual artifacts. Keep Block retirement in this regression gate.
+4. Reconcile outcomes in the existing verification records and close C7a only when all declared
+   freeze criteria pass. Record the candidate SHA, version, profiles, qualifications, host limits
+   and migration contract, then prepare the concrete release handoff.
+5. Continue C7b family breadth separately. Revisit deferred optimization only when measurements
+   justify it; neither task is an implicit requirement to freeze the bounded C7a candidate.
+
+The execution goal is a reviewable, validated alpha.7 C7a release candidate, with explicit scope
+and no unresolved required gate. A plan update, version bump, successful subset of tests, or
+compatibility decision by itself does not complete that goal. Publication, tag creation and
+publishing workflow dispatch remain outside preparation and require explicit shipping authority.
+Request a maintainer decision when the required release contract changes; report unavailable
+host/toolchain evidence precisely rather than weakening the gate.
+
+## Historical evidence boundary
+
+The sections below retain their original source identities and describe earlier work. Statements
+that version selection, Block revalidation or a particular follow-up was pending are historical;
+the current status and working sequence above govern execution. Do not relabel old artifact
+receipts as evidence for the selected alpha.7 candidate.
 
 ## Historical integration verification before version consolidation
 
