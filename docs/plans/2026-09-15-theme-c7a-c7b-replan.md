@@ -309,3 +309,14 @@ The version choice is a prerequisite to immutable release preflight, not the onl
 C7a requirement. Final cross-host/profile execution, catalog rollout and explicit contract freeze
 still need the evidence described above. Preserve the current error classification and retired
 API boundaries; do not undo them just to make an old registry facade accept a new sibling.
+
+
+## Linux ARM64 archive follow-up
+
+At clean `7e9c613fa`, the [ARM64 archive record](../knowledge/engineering/verification/2026-09-15-c7a-linux-arm64-archive-verification.md)
+adds actual native CLI/LSP archive builds and successful execution through both existing archive
+verifiers. The task ran under macOS-hosted ARM64 virtualization; it is not a hosted CI result.
+Both archive digests were rechecked after copying to the host. No preset cells were promoted:
+this lane validates archive contents and runtime behavior, while the named preset qualification
+profile remains Linux x86_64-specific. The next release line is still unselected, and the final
+same-source platform matrix, public rollout and C7a contract freeze remain open.
