@@ -167,3 +167,11 @@ The final Web matrix measured stripped artifacts of 3,674,593 (analysis), 5,201,
 3,785,732 (editor), 15,937,402 (full), and 14,036,313 (render) bytes; the configured budget
 check passed. This is current-source local artifact evidence; hosted Windows and Swift 5.9
 checks and the alpha.6 facade compatibility decision remain open.
+
+# npm 11 package-contract follow-up at `bfd4634f0`
+
+The Web prepack fix exposed two Node assembled-package contract tests that used the same shared
+`npmPackRecord` helper without opting into npm 11 array metadata. The Node test helper now passes
+`allowNpm11: true`, matching the production Node verifier and Web prepack verifier. The complete
+current Web/Node script set (all Web tests, Node platform-command and package-contract tests)
+then passed 153/153 under npm 11.18.0. No package contract or runtime behavior was weakened.

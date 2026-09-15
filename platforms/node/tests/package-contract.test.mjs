@@ -337,5 +337,5 @@ function npmPackDryRun(packageRoot) {
   });
   assertSuccessfulNpmSpawn(result, "npm pack for assembled native package test");
   const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
-  return npmPackRecord(result.stdout, manifest.name);
+  return npmPackRecord(result.stdout, manifest.name, { allowNpm11: true });
 }
