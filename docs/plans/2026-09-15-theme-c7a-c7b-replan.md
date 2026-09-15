@@ -21,11 +21,20 @@ This remains a release blocker; version selection does not waive it. Final artif
 
 ## Current status and execution baseline
 
-The implementation baseline for this revision is `a6b5d75e2`, which includes the alpha.7
-version projection, the SVG prerelease compatibility lane, and the test-only helper boundary
-cleanup. Version and changelog checks pass, the full SVG structure comparison passes, and the
-focused helper regression is 72/72. Theme contracts remain v1. The recorded 606 script passes
-validate local preparation, not installed artifacts on every release host.
+The execution baseline for this revision is `7b60b00fb`. It includes the alpha.7 version
+projection, the SVG prerelease compatibility lane, the test-only helper boundary cleanup, and
+the npm 11 package-metadata fixes. Version and changelog checks pass, the full SVG structure
+comparison passes, and theme contracts remain v1. The latest recorded script run passed 607/607.
+Release-mode theme acceptance passed 15/15, and the Web/Node script suite passed 153/153.
+These results retain their individual source identities; they are not a single final-candidate
+all-host run.
+
+Local alpha.7 Web and Typst artifacts have been rebuilt and passed their existing size budgets.
+The macOS ARM64 Node N-API package has been rebuilt, packed, installed into an empty project,
+and exercised through its public authoring API. Node WASM installation, other native hosts,
+CLI/LSP archives and final same-source preflight remain open. Detailed commands, source
+identities and limits are in the
+[transport and artifact evidence](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md).
 
 C5 and representative C6a are complete. All 33 families have typed consumption paths, and
 the production Legacy route inventory is empty, including Block. Post-merge retirement,
@@ -124,6 +133,26 @@ alpha.7 with explicit acceptance of the old-consumer resolution break. Keep the 
 model and selected alpha.7 preparation while that decision is pending. Do not restore the retired
 presentation API, repeat the same failed build, or claim that compatibility assessment closes C7a.
 The decision cannot be replaced by a version bump or by weakening the checker.
+
+## Execution order and goal completion
+
+The active goal is C7a candidate preparation for `v0.8.0-alpha.7`, without tagging or publishing.
+Keep this goal active while any required gate below remains unresolved; progress counts and
+local witnesses do not establish completion.
+
+1. Finish independent local artifact witnesses with the existing owner commands: Node WASM
+   first, then available CLI/LSP archive builds and replay. Record missing hosts explicitly.
+2. Resolve the published alpha.6 dependency-resolution contract with the maintainer. The
+   assessment is complete; do not spend more iterations reproducing the same known failure.
+3. Pin a clean candidate after the decision and any resulting changes. Run its declared
+   host/compiler/profile matrix, installed consumers and shared transport vectors. Preserve
+   unknown-status rejection and bind catalog qualification to the artifacts actually tested.
+4. Close C7a only when required gates pass under the approved contract and the release handoff
+   identifies the source, artifacts, qualification scope and any explicitly deferred C7b work.
+
+No new proof framework, unmeasured cache rewrite or historical-ledger deletion is required by
+this sequence. Keep measured size growth separate from correctness; amend budgets only when
+an actual candidate measurement and attribution justify the change.
 
 ## C7a: release-facing closure
 

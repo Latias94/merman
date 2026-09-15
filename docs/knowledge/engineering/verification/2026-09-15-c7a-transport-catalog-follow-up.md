@@ -210,3 +210,18 @@ The installed project is retained at
 This closes the local macOS ARM64 N-API installation tranche at the named source. Node WASM,
 other native targets, CLI/LSP archives and final same-source release preflight remain separate
 checks. The alpha.6 facade compatibility decision is still pending; no package was published.
+
+# Installed alpha.7 Node WASM consumer at `7b60b00fb`
+
+The owner command `npm run build:candidate --prefix platforms/node -- --candidate node-wasm`
+rebuilt the Node WASM candidate from the current alpha.7 source. The assembled
+`@mermanjs/node-wasm@0.8.0-alpha.7` package passed packed-root verification, was installed
+offline into an empty ESM project, and passed `smoke-installed-package.mjs` through its public
+entrypoint. The witness rendered SVG and completed the same authoring checks as the native
+Node consumer: 2 shared vectors, 2 catalog checks, 3 family isolation checks, 1 rule override,
+1 cold spec, 3 preset exports, 44 support queries, 6 authoring diagnostics, 2 resource limit
+checks, 23 JSON operations and 23 SVG renders.
+
+This closes the local Node WASM installation tranche. It does not close other native hosts,
+CLI/LSP archives, hosted compiler floors, or the unresolved alpha.6 facade compatibility
+contract. No package was published.
