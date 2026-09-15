@@ -69,7 +69,34 @@ export async function observeMountedThemeTextSurfaces(
   const browserObservations = await svgLocator.evaluate(
     (svg, requestedProbes): BrowserTextSurfaceObservation[] => {
       const bounds = (element: Element): ThemeTextSurfaceBounds => {
-        const rect = element.getBoundingClientRect();
+        let rect = element.getBoundingClientRect();
+        if (element instanceof SVGTextContentElement) {
+          // Measure laid-out glyph cells instead of browser-dependent whole-element bounds.
+          // SVG 2 defines getExtentOfChar in the element's user coordinate system.
+          const transform = element.getScreenCTM();
+          const count = element.getNumberOfChars();
+          if (!transform || count === 0) {
+            throw new Error("Terminal text requires visible character geometry.");
+          }
+          let left = Infinity;
+          let top = Infinity;
+          let right = -Infinity;
+          let bottom = -Infinity;
+          for (let index = 0; index < count; index += 1) {
+            const cell = element.getExtentOfChar(index);
+            for (const [x, y] of [
+              [cell.x, cell.y], [cell.x + cell.width, cell.y],
+              [cell.x, cell.y + cell.height], [cell.x + cell.width, cell.y + cell.height],
+            ]) {
+              const point = new DOMPoint(x, y).matrixTransform(transform);
+              left = Math.min(left, point.x);
+              top = Math.min(top, point.y);
+              right = Math.max(right, point.x);
+              bottom = Math.max(bottom, point.y);
+            }
+          }
+          rect = new DOMRect(left, top, right - left, bottom - top);
+        }
         return {
           xMilliPx: Math.round(rect.x * 1_000),
           yMilliPx: Math.round(rect.y * 1_000),

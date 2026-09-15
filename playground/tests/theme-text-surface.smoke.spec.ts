@@ -255,6 +255,21 @@ test("terminal observation exposes a tspan moved outside its owning surface", as
   expect(containsTextBounds(observation, 1_000)).toBe(false);
 });
 
+test("terminal text geometry includes a displaced child tspan", async ({ page }) => {
+  const [observation] = await observeThemeTextSurfaces(
+    page, fixtureSvg({ tspanDy: "4em" }), [PROBE],
+  );
+  expect(containsTextBounds(observation, 1_000)).toBe(false);
+});
+
+test("terminal text geometry follows the surface transform", async ({ page }) => {
+  const svg = fixtureSvg({}).replace(
+    '<g class="legacy-note">', '<g class="legacy-note" transform="translate(80,30) scale(0.5)">',
+  );
+  const [observation] = await observeThemeTextSurfaces(page, svg, [PROBE]);
+  expect(containsTextBounds(observation, 1_000), JSON.stringify(observation)).toBe(true);
+});
+
 for (const [name, extraCss] of [
   ["hidden text", `${NOTE_TEXT}{visibility:hidden}`],
   ["transparent text", `${NOTE_TEXT}{opacity:0}`],
@@ -404,6 +419,6 @@ function expectReadableProductionSurface(
   expect(observation.backgroundPaint).toEqual(expectedBackgroundPaint);
   expect(observation.finalFontIdentity.length).toBeGreaterThan(0);
   expect(textSurfaceContrastRatio(observation)).toBeGreaterThanOrEqual(4.5);
-  expect(containsTextBounds(observation, 1_000)).toBe(true);
+  expect(containsTextBounds(observation, 1_000), JSON.stringify(observation)).toBe(true);
   expect(observation.artifactDigest).toMatch(/^[0-9a-f]{64}$/u);
 }
