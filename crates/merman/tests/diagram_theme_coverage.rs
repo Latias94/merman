@@ -575,10 +575,10 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
         (
             "diagram-theme-block",
             "block\n  block:Core\n    A[\"Alpha\"]\n    B[\"Beta\"]\n  end\n  A --> B",
-            &["#e5e7eb", "rgba(30, 41, 59, 0.5)", "#475569", "#94a3b8"],
+            &["#e5e7eb", "#111827", "#475569", "#94a3b8"],
             &[
                 "class=\"edge-thickness-normal edge-pattern-solid",
-                ".node .cluster{fill:rgba(30, 41, 59, 0.5);stroke:rgba(71, 85, 105, 0.2);",
+                "class=\"basic cluster composite label-container\" rx=\"0\" ry=\"0\" style=\"fill:#111827;stroke:#475569\"",
             ],
         ),
         (
