@@ -139,3 +139,17 @@ The artifact and archive contract suites passed 148/148 with
 This covers descriptor validation, dependency-closure checks, bundle contracts, and CLI/LSP
 archive verifier positive and negative cases. It validates the owner tooling; it is not a
 substitute for building and executing every final alpha.7 archive on its declared host.
+
+# Current Typst artifact rebuild at `9e692c3c4`
+
+The existing Typst publish artifact initially failed smoke because its manifest still carried
+`0.8.0-alpha.6`. It was rebuilt through the owner command
+`cargo run --locked -p xtask -- build-typst-package --profile publish`, then verified with the
+Typst dependency-closure checker and `typst-package-smoke --profile publish --skip-wasm-build`.
+The rebuilt package passed 22 shared support vectors, 2 materialization vectors, 3 structured
+error vectors, all positive Typst examples, and all expected compile-fail examples. The size
+matrix passed with raw 18,784,145 bytes, stripped 11,612,278, gzip 4,454,338, and Brotli
+3,287,112 bytes. The runtime dependency closure contained 115 packages and passed.
+
+The generated artifact is local release evidence only; it does not establish the missing Windows,
+Swift 5.9, or alpha.6 facade compatibility gates.
