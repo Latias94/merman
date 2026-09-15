@@ -93,8 +93,20 @@ preflight qualification generation, replay, and catalog-companion upload:
 The Rust commands used `scripts/run_theme_acceptance.py` to enable the internal cfg.
 Direct Cargo invocations without that cfg ran zero tests and supply no acceptance evidence.
 
-The next confirmed integration defect is the UniFFI mismatch: Rust exposes API 8 while
-checked-in Apple bindings expose API 7. Reconcile main's ASCII changes with the theme API,
-regenerate bindings from the reconciled library, and test a real consumer. Also review
-post-merge lockfile churn and regenerate legal projections before qualifying final packages.
-Linux archive execution, the full platform matrix, and C7a contract freeze remain open.
+The UniFFI mismatch found at `acffcfe1b` is repaired by `a1a8e407d` in the API 9 integration tranche:
+ASCII requested/effective layout metadata and the theme-authoring error envelope now coexist,
+and Apple/Python projections use the new probe. Old API 7/8 probes stay absent.
+The restored consumers exercise both Auto layout branches and theme errors. Local checks:
+60/60 Rust binding tests, 7/7 generator tests, 29/29 Python contracts, Swift and Python native
+smokes, native ABI and shared binding contracts, and Rust formatting. Swift 6.3.2 on macOS
+ARM64 compiled and linked the checked-in generated source against the `apple-uniffi-native`
+host library. Python used a freshly generated package from that same library; this is not
+an installed `python-uniffi-native` wheel or a full XCFramework/Swift 5.9 matrix claim.
+The repository platform verifier also passed: Android target clippy, Dart ABI checks and
+analysis, and rebuilt Flutter Native Assets authoring/support/resource smokes. The actual
+UniFFI native library exports API 9 and rejects API 7/8 symbol lookup. These checks do not
+claim Android device execution or all published platform packages.
+
+Next, review post-merge lockfile churn and regenerate legal projections, then finish auditing
+both merge parents and rebuild the final package profiles. Linux archive execution, the full
+platform matrix, and C7a contract freeze remain open.
