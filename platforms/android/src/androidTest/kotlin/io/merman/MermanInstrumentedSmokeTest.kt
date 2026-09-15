@@ -32,11 +32,12 @@ class MermanInstrumentedSmokeTest {
     @Test
     fun rejectsCoercedOrIncompatibleRuntimeCatalogHandshakeFields() {
         val canonical = Merman.runtimeCatalogJson()
+        val transportVersion = Merman.TRANSPORT_API_VERSION
         for ((expected, replacement) in listOf(
             "\"schema_version\":1" to "\"schema_version\":\"1\"",
             "\"schema_version\":1" to "\"schema_version\":1.0",
-            "\"transport_api_version\":1" to "\"transport_api_version\":\"1\"",
-            "\"transport_api_version\":1" to "\"transport_api_version\":1.0",
+            "\"transport_api_version\":$transportVersion" to "\"transport_api_version\":\"$transportVersion\"",
+            "\"transport_api_version\":$transportVersion" to "\"transport_api_version\":$transportVersion.0",
         )) {
             val catalog = canonical.replaceFirst(expected, replacement)
             check(catalog != canonical) {
