@@ -293,3 +293,19 @@ The catalog companion binds the exact archive and executable bytes and retains o
 native alpha preset entries with six HostDependent cells each. It does not promote shared SDK
 catalog cells. The formal preflight remains intentionally pending while the changelog is
 `Unreleased` and no next workspace version/date has been selected.
+
+## Release-line decision discovered during candidate preparation
+
+`origin/main` was fetched again and remains `4c2ac7817`, already an ancestor of this branch.
+The [release-line experiment](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md)
+found and repaired stale theme dependency edges in `fuzz/Cargo.lock` (`753cdc1c2`). It then
+successfully prepared all 29 version projections for both alpha.7 and a new 0.9 alpha.1 line.
+Alpha.7's fresh candidate compiled, but the real published alpha.6 facade failed against its
+candidate siblings because of the evolved core error enum. The new `0.9.0-alpha.1` candidate
+compiled and remains outside that published 0.8 compatibility line. Recommend the new line;
+keep the main worktree's package version unchanged until the maintainer selects it.
+
+The version choice is a prerequisite to immutable release preflight, not the only remaining
+C7a requirement. Final cross-host/profile execution, catalog rollout and explicit contract freeze
+still need the evidence described above. Preserve the current error classification and retired
+API boundaries; do not undo them just to make an old registry facade accept a new sibling.
