@@ -5,7 +5,7 @@
 
 Alpha.6 is intentionally breaking across the Rust rendering, analysis/editor, and native transport surfaces. The migration is organized by contract owner so a host can update one boundary at a time without relying on compatibility aliases that no longer exist.
 
-For a symbol-by-symbol compatibility table and longer Rust examples, see the [detailed alpha.6 migration reference](UNRELEASED_UPGRADE_GUIDE.md).
+For changes after the alpha.6 tag, see the [Unreleased migration reference](UNRELEASED_UPGRADE_GUIDE.md). Its candidate theme and binding contracts do not describe the published alpha.6 artifacts.
 
 ## Rust rendering and ASCII API
 

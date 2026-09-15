@@ -1,20 +1,33 @@
-# Alpha.6 Detailed Migration Reference
+# Unreleased Migration Reference
 
-> This guide applies to the published `0.8.0-alpha.6` workspace release after `v0.8.0-alpha.5`. It covers the workspace crates and CLI/LSP archives from the immutable alpha.6 tag; Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent channels with separate publication evidence.
+This guide describes the development source after published workspace `v0.8.0-alpha.6`.
+The theme contracts below have not been released or frozen. A working-tree package version
+of `0.8.0-alpha.6` does not make its artifacts identical to that immutable release.
+Web, Node.js, Flutter, Python, Apple, Android and Typst have independent publication tracks.
 
-Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference.
+For the published alpha.5-to-alpha.6 changes, use the
+[release upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). The mappings below describe the
+current source, including retained migration advice for callers still using older APIs;
+they are not all changes introduced after alpha.6. The
+[contract version audit](UNRELEASED_CONTRACT_VERSIONS.md) records each published baseline.
+
+New theme authoring/spec/support/catalog/qualification contracts stay at version 1 through
+this first release. Source commits and artifact digests distinguish development iterations.
+Existing published contracts advance once when the upcoming release changes them incompatibly;
+internal migration batches and historical receipts keep their original identities.
 
 ## Rust analysis and editor migration
 
-The alpha.6 release deliberately removes prerelease compatibility shims. Migrate source and generated bindings together.
+Migrate source and generated bindings together. Removed development-only APIs do not gain compatibility shims.
 
-| Alpha.5 or development-snapshot API | Alpha.6 replacement |
+| Earlier release or development-snapshot API | Current replacement |
 | --- | --- |
 | Options JSON schema `2` with `presentation`, `raster.background`, `pdf.background`, or general-binding raw CSS | Options JSON schema `3`; use top-level typed `theme`, `raster.matte`, and `pdf.page_paint`. Trusted Rust/native CLI hosts keep explicit postprocessing/CSS escape hatches outside the general binding contract. Regenerate SDK projections and deploy them with a runtime catalog that advertises schema `3`; schema `2` is rejected rather than partially translated. |
 | Development-snapshot public `FilterRegion`, `EffectGraph::region()`, `EffectGraph::new(id, region, primitives)`, or `theme.spec.effects[].region` | `FilterRegion` and `EffectGraph::region()` are removed. Use `EffectGraph::new(id, primitives)` and omit `region` from binding JSON. The consuming family derives each terminal filter region from final paint geometry and admits it against the effective session theme-resource policy. The closed schema rejects the removed field; there is no compatibility decoder. Filter-region magnitude rejections now report phase `effect_materialize` instead of the former compile-time `effect_compile`, because the final geometry is not known until family materialization. |
 | `RenderEnvironment::begin_session*` returning only `RuntimePolicyError`, or an in-context overload returning `RenderSession` directly | Every session constructor now returns `Result<RenderSession, RenderEnvironmentError>`. Handle runtime-policy failures, cooperative cancellation/deadline expiry, and retained theme-resource rejection; in-context callers must propagate or classify the new error instead of assuming session creation is infallible. Caller-owned cancellation is checked before retained-resource validation and again before text-layout preparation. |
-| CLI capability contract `4` and human-only failures from `--ascii-report` requests | CLI contract `5`; read the schema-1 `ascii` subcontract before rendering, and parse schema-1 Plain error JSON from stderr when report-mode invocation or rendering fails |
-| Direct UniFFI binding API `3`, `4`, `5`, `6`, or `7` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `8`, replace the old version probe with `binding_api_version_v8` / `bindingApiVersionV8`, keep generic requests on `MermanOperationRequestV4`, and deploy the generated projection and native library together. API 8 preserves the prior capability/output-plan contracts and adds `details_json` to error values so theme-authoring diagnostics survive the generated boundary. |
+| Published CLI contract `5` | Candidate CLI contract `6`; discover theme authoring/catalog operations and the schema-3 ASCII output plan from the actual binary. Existing report-mode error envelopes remain schema 1. |
+| Published UniFFI API `6` projections or unreleased development API `8`/`9` projections | Regenerate against candidate UniFFI API `7` and use `binding_api_version_v7` / `bindingApiVersionV7`. Keep generic requests on the already-published `MermanOperationRequestV4`. Deploy the projection and native library together: API 7 includes ASCII requested/effective layout metadata and the theme-authoring `details_json` error envelope. |
+| Published Typst plugin ABI `2` | Candidate Typst ABI `3`; use the generated constants and deploy the package with its matching plugin. Theme materialization, support queries and catalog payloads are first-release schema 1. |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
 | `HeadlessAsciiError` | Match the canonical `RenderError`; use target-neutral `TerminalDiagnostic` for parser display, `TerminalRuntimePolicyError` for runtime-policy display, and `ascii::AsciiDiagnostic` only for ASCII target-local failures |
 | `RenderError::Parse(merman::Error)` or raw `merman::Error` display in a terminal host | `RenderError::Parse(TerminalDiagnostic)`; direct parser hosts should wrap an error with `TerminalDiagnostic::from(error)` and read `terminal_diagnostic_details()` for bounded code/span/field/diagram-type context |
