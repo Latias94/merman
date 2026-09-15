@@ -4,6 +4,17 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Kotlin helpers and replace presentation discovery with `themeCatalogJson()`.
+
+### Added
+
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching Android AAR was attached to the GitHub Release on 2026-09-04.
@@ -17,17 +28,11 @@ This section describes alpha.6, whose matching Android AAR was attached to the G
 ### Breaking changes
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
-- Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `themeCatalogJson()` for open-ended compiled-theme discovery.
-- Advanced Options JSON to schema `3`; regenerate Kotlin helpers and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
 - Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
 - ASCII capability records now expose independent semantic coverage and primary projection fields,
   and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
   diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
   native slices together.
-
-### Changed
-
-- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

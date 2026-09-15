@@ -2,6 +2,17 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advance binding Options JSON from schema `2` to `3` for both native and Node-WASM consumers. Move styling from `presentation.theme` to the closed top-level `theme` preset-or-spec group and replace `presentation-catalog` discovery with `theme-catalog`. Removed presentation-profile and host-owned CSS/security fields are rejected.
+
+### Added
+
+- Added `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json` through `executeOperation()` and its synchronous counterpart. Errors retain structured `theme_authoring` diagnostics, and theme-specific resource ceilings apply before decoding.
+- Added artifact-aware discovery for ten alpha presets, including Brutalist, Spotless and Cyberpunk. Their shared catalog remains unqualified; successful compilation or an unknown profile/admission ID must not be interpreted as Portable support.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes the published alpha.6 package group. All seven packages, including `@mermanjs/node-wasm`, were manually bootstrapped from the verified package-group artifact. The immutable alpha.6 npm tarballs have no npm provenance; later releases use Trusted Publishing.

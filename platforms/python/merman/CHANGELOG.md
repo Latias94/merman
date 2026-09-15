@@ -12,6 +12,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 - Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 
+- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
 ## [0.8.0a6] - 2026-09-02
 
 This section describes alpha.6, published to PyPI on 2026-09-04 with matching macOS arm64, manylinux x86_64, and Windows x86_64 wheels.

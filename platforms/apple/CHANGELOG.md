@@ -12,6 +12,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 - Replace `presentationCatalogJson()` with `themeCatalogJson()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 
+- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching XCFramework archive and checksum were attached to the GitHub Release on 2026-09-04.

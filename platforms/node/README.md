@@ -68,7 +68,7 @@ serve the SVG recipe; it does not expose the ASCII/agent-log or PNG recipe. Use 
 CLI build for those outputs instead of inferring package support from workspace capabilities.
 The host owns semantic theme selection, caching, scheduling, persistence, and viewer or clipboard
 actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
-artifacts; see [presentation themes](../../docs/rendering/presentation-themes.md).
+artifacts. The unreleased compiled-theme API uses [Options JSON 3](../../docs/bindings/OPTIONS_JSON.md); see the [package guide](packages/node/README.md#compiled-themes-unreleased) for preset selection and discovery. Published alpha.6 remains on Options 2.
 
 ## Package layout
 
