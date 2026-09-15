@@ -33,6 +33,8 @@ The [platform binding rollout record](../knowledge/engineering/verification/2026
 links the current host verifier and clean APK build to source `9cb958b8f`.
 The [acceptance target coverage](../knowledge/engineering/verification/2026-09-15-theme-acceptance-target-coverage.md)
 confirms every theme acceptance integration target is explicitly selected by CI and Release Preflight.
+The [full Release owner regression](../knowledge/engineering/verification/2026-09-15-theme-owner-release-regression.md)
+records 2942/2942 passing tests across the renderer, exporter, facade and acceptance owner libraries at the latest checked HEAD.
 The [current Release retirement check](../knowledge/engineering/verification/2026-09-15-theme-retirement-release-head.md)
 re-runs all four retirement targets at HEAD `9ab7e8e84`; Block, Class, Flowchart marker and historical authority checks pass with no skipped tests.
 
