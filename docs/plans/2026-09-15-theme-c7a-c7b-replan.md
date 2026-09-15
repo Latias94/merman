@@ -325,7 +325,16 @@ same-source platform matrix, public rollout and C7a contract freeze remain open.
 ## Transport catalog contract follow-up
 
 At clean `3fe3b1b97`, the [transport catalog follow-up](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md)
-passed the focused Rust/Python qualification, Node/Web catalog, and Flutter ABI 3 contract checks.
+passed the focused Python qualification, Node/Web catalog, and Flutter ABI 3 contract checks.
 Unknown qualification identifiers remain fail-closed at the CLI projection boundary, while Node/Web
 keep their documented open metadata behavior. This closes no packaged-artifact or release-preflight
 gate; the final same-source owner matrix and contract freeze remain open.
+
+## Theme acceptance rerun at `5980cc9ec`
+
+At `5980cc9ec`, the acceptance targets passed again: retirement and representative
+qualification 10/10, KTD23 retirement 4/4, route cutover 1/1, and renderer support discovery 48/48,
+all with zero skips. The route authorization test took 334.152 seconds; one passing C6 test received
+a nextest `LEAK` marker whose cause was not investigated in this run. Log:
+`/tmp/merman-c7a-current-retirement.log`. This revalidates current Block/provider retirement and
+support discovery but does not close release-version, final platform/profile rollout, or C7a freeze.

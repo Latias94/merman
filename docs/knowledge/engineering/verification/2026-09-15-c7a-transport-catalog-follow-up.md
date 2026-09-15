@@ -25,10 +25,45 @@ not a claim that every packaged platform artifact has been rebuilt, and it does 
 The qualification tests reject unknown profile, family, output, and admission identifiers before
 projecting a qualified catalog. Node and Web retain open metadata where their transport contract
 allows future identifiers while preserving known profile behavior. Flutter's ABI 3 consumer
-contract also exercises future profile/admission catalog cells and remains fail-closed for usable
-support claims.
+contract also preserves future profile/admission catalog cells and rejects malformed or conflicting
+conditions. These transport tests cover metadata handling, not an end-user portability decision.
 
-These checks strengthen the cross-transport evidence for qualified catalog binding. Packaged Web,
+These checks confirm the existing transport metadata and qualification-projection contracts. Packaged Web,
 Node, Flutter, Typst, UniFFI and Native C ABI artifacts still require their final same-source owner
 matrix and release-preflight receipts before C7a contract freeze. The next workspace version/date
 also remains unselected.
+
+
+# Execution limits
+
+Logs: `/tmp/merman-c7a-qualification-contracts.log`,
+`/tmp/merman-c7a-transport-catalog.log`, and `/tmp/merman-c7a-flutter-abi3.log`.
+Initial Flutter attempts used `dart test`, which is not this repository's runner and failed
+before executing tests. The documented `dart run` command above succeeded; no test dependency
+was added. No Rust test execution is attributed to these Python/JavaScript/Dart commands.
+
+The local machine has Xcode 26.5 and Swift 6.3.2, with no additional Xcode installation or Swift
+toolchain under the inspected standard application/toolchain directories. It cannot establish
+the required Swift 5.9/Xcode 15.2 floor. A read-only GitHub run query for
+`3fe3b1b970a1d5ae211a1f05510adb7f03efa4ba` returned no runs; there is no current-source hosted
+preflight result to consume. Formal release preparation still needs the maintainer's version
+selection and the subsequent immutable-source platform jobs.
+
+# Theme acceptance rerun at `5980cc9ec`
+
+At `5980cc9ec71b0a1c5181cde0f7816c7c8d935b24`, the four Cargo invocations ran sequentially with the workspace acceptance
+configuration; tests within each invocation used nextest's default concurrency. Results were:
+
+- C6 runtime, preset qualification, Block title retirement, Class edge-label-background retirement
+  and Flowchart marker retirement: 10/10 passed, zero skips. Nextest marked one passing C6 test as
+  `LEAK`; its cause was not investigated in this run. Passing assertions do not resolve that
+  marker, and the marker alone does not establish a production memory leak.
+- KTD23 legacy projection retirement: 4/4 passed, zero skips.
+- KTD17 route-cutover runtime: 1/1 passed in 334.152 seconds. This is a slow existing authorization
+  test, not a timeout or a failure.
+- Renderer support discovery: 48/48 passed, zero skips, including unknown catalog identifiers
+  remaining visible and resolving to `Unverified`.
+
+Log: `/tmp/merman-c7a-current-retirement.log`. These results revalidate the merged Block/provider
+retirement and support-discovery behavior at the named source. They do not replace the final
+same-source platform matrix, selected release line, immutable preflight, or C7a contract freeze.
