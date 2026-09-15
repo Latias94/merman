@@ -427,19 +427,21 @@ fn assert_unique_svg_ids(svgs: &[&str]) {
 }
 
 #[test]
-fn strict_mode_rejects_html_resources_and_escaped_css_urls() {
-    for (name, source, evidence) in [
+fn strict_mode_rejects_html_resources_and_preserves_css_resource_filtering() {
+    for (name, source, evidence, reaches_svg) in [
         (
             "html_resource",
             "flowchart TD\nA[<img src='https://example.invalid/image.png'>]",
             "https://example.invalid/image.png",
+            true,
         ),
         (
             "escaped_css",
             r#"flowchart TD
 A-->B
 style A fill:u\72l(https://example.invalid/image.svg)"#,
-            r#"u\72l(https://example.invalid/image.svg)"#,
+            "https://example.invalid/image.svg",
+            false,
         ),
     ] {
         let temp = TempDir::new();
@@ -458,12 +460,23 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
         let html = read_page(&temp.0, &format!("fn.{name}.html"));
         let svgs = diagram_svgs(&html);
         assert_eq!(svgs.len(), 1);
-        assert!(
+        assert_eq!(
             svgs[0].contains(evidence),
-            "fixture must reach SVG output: {name}"
+            reaches_svg,
+            "unexpected renderer resource filtering: {name}"
         );
 
         let strict = rustdoc(&temp.0, &fixture("strict"));
+        if !reaches_svg {
+            // Mermaid style admission already rejects resource functions, including
+            // escaped URLs. Strict embedding must preserve that safe output.
+            assert_success(&strict);
+            let html = read_page(&temp.0, &format!("fn.{name}.html"));
+            let svgs = diagram_svgs(&html);
+            assert_eq!(svgs.len(), 1);
+            assert!(!svgs[0].contains(evidence));
+            continue;
+        }
         assert!(!strict.status.success(), "strict mode accepted {name}");
         let stderr = String::from_utf8_lossy(&strict.stderr);
         assert!(
