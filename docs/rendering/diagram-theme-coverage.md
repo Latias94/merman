@@ -31,6 +31,8 @@ now compiles instrumentation smoke with one-shot and reusable theme authoring di
 device execution remains owned by the CI emulator job.
 The [platform binding rollout record](../knowledge/engineering/verification/2026-09-15-platform-binding-theme-rollout.md)
 links the current host verifier and clean APK build to source `9cb958b8f`.
+The [acceptance target coverage](../knowledge/engineering/verification/2026-09-15-theme-acceptance-target-coverage.md)
+confirms every theme acceptance integration target is explicitly selected by CI and Release Preflight.
 
 At `83c640598`, a clean macOS ARM64 checkout built and verified the canonical CLI/LSP
 archives. The CLI passed all 18 scoped preset observations and archive-bound replay, plus
