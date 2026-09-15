@@ -28,6 +28,10 @@ platforms/android/gradlew -p platforms/android assembleDebug assembleDebugAndroi
 BUILD SUCCESSFUL
 ```
 
+An independent clean checkout at `0cbf62d06` also ran
+`platforms/android/gradlew -p platforms/android assembleDebugAndroidTest --stacktrace` successfully
+(47 Gradle tasks, clean status before and after).
+
 The CI Android emulator job runs `connectedAndroidTest` through
 `python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke`. This local
 host does not have an Android emulator, so device execution remains CI-owned evidence.
