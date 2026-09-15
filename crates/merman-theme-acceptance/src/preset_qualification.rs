@@ -451,7 +451,7 @@ mod tests {
         stale.report.resource_fingerprint[0] ^= 1;
         assert!(!stale.is_current());
         assert!(stale.catalog_entry().is_err());
-        for revision in [1, 2, QUALIFICATION_SCHEMA_REVISION + 1] {
+        for revision in [0, QUALIFICATION_SCHEMA_REVISION + 1] {
             let mut stale = original.clone();
             stale.schema_revision = revision;
             assert!(!stale.is_current());
