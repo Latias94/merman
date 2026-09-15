@@ -109,3 +109,12 @@ not evidence of a new hosted run.
 
 The release-contract decision recorded in the release-line assessment remains pending.
 No compatibility exception, package-line change or C7a freeze was applied by this cleanup.
+
+# Current candidate acceptance rerun at `88b23ad77`
+
+The release-mode theme acceptance targets were rerun sequentially with the workspace acceptance
+configuration and `png,layout-cytoscape`: C6 runtime, preset qualification, legacy projection
+retirement, Block title retirement, Class edge-label-background retirement, Flowchart marker
+retirement and route-cutover runtime. Nextest ran 15 tests across 7 binaries; all 15 passed with
+zero skips. This revalidates the completed Block/provider retirement and current manifest digest;
+it does not close the alpha.6 compatibility decision or the missing hosted artifact matrix.
