@@ -71,6 +71,33 @@ fun runMermanSmoke() {
             }
         }
     }
+    val encodedBudgetOptions = """
+        {"resources":{"profile":"constrained","limits":{"max_theme_encoded_bytes":1}}}
+    """.trimIndent()
+    listOf(
+        "one-shot-budget" to {
+            Merman.execute("materialize-theme-json", "{}", encodedBudgetOptions)
+        },
+        "reusable-budget" to {
+            engine.execute("materialize-theme-json", "{}", encodedBudgetOptions)
+        },
+    ).forEach { (consumer, operation) ->
+        try {
+            operation()
+            error("$consumer accepted a theme input over its encoded-byte budget")
+        } catch (error: io.merman.MermanException) {
+            val resource = error.resourceDetails ?: error("$consumer lost resource details")
+            check(
+                error.codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED" &&
+                    resource.limitId == "max_theme_encoded_bytes" &&
+                    resource.phase == "theme_input" &&
+                    resource.max == 1L && resource.actual >= 2L &&
+                    org.json.JSONObject(error.detailsJson ?: "{}").has("theme_authoring"),
+            ) {
+                "$consumer used the wrong admission path for theme resource limits"
+            }
+        }
+    }
     listOf(
         "png" to { engine.renderPng("flowchart TD\nA --> B") },
         "jpeg" to { engine.renderJpeg("flowchart TD\nA --> B") },

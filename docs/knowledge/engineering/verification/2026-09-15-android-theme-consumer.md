@@ -12,7 +12,8 @@ tags: theme,android,authoring,verification
 The Android public consumer smoke now exercises `materialize-theme-json` through both the static
 one-shot API and a reusable `MermanEngine`. Each path must return the structured
 `theme_authoring` envelope for an invalid empty font stack, including schema version, diagnostic
-code, and JSON path.
+code, and JSON path. The smoke also applies a one-byte `max_theme_encoded_bytes` limit through
+both consumers and requires the theme-specific resource error with authoring details.
 
 The instrumentation test source also uses the current static runtime-catalog validator API. It
 builds successfully with the Android debug test artifact.
