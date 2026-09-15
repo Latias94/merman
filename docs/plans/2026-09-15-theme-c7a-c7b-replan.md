@@ -248,3 +248,41 @@ Next, assemble the final candidate from one selected clean source revision and e
 preflight/profile matrix, including refreshed package contents and receipts. The formal release
 version/date, catalog/artifact rollout and C7a contract freeze remain open. Avoid adding another
 proof framework or restoring retired production providers while closing these gates.
+
+## Candidate regression and release acceptance follow-up
+
+A clean checkout at `8232bfbace80e99faff341aefb4352327d705404` passed the full default
+workspace nextest run: **11,106/11,106 tests, 12 skips**. One ASCII Mindmap test was reported
+as leaky by nextest despite passing; its isolated recheck at `57ec788c0` passed without that
+marker. This is not evidence of a production memory leak, and no timeout or test policy was
+relaxed. The clean Node contract run at `8232bfbac` passed **108/108**, including actual npm
+pack checks with npm 12.0.2. Its host Node was 26.6.0; pinned Node 24.21.0 remains the owner
+workflow environment.
+
+The combined release package tests found one stale npm-11 response in the Web pack-path test.
+Commit `57ec788c0a4b49227cf8226d4e0df43686ac6a1e` corrects that fixture to the npm-12 named
+record without changing the production decoder or path assertion. This is the only change
+from `8232bfbac`; no Rust source, Cargo input or generated contract changed. The clean checkout
+was then advanced to `57ec788c0`, where all **102** Node/Web package-group, release workflow,
+qualification and archive-bundle contract tests passed.
+
+At clean `57ec788c0`, Release acceptance with the internal cfg and explicit
+`png,jpeg,pdf,layout-cytoscape` features passed **16/16 tests across eight integration targets,
+zero skips**: C6 runtime, exact preset qualification, KTD17 cutover, KTD23 retirement, Block
+and Class projections, Flowchart markers, and native exports. The independent public Cargo
+consumer also compiled the production APIs with every advertised producer feature enabled,
+while all four private receipt imports and six retired theme imports failed as required.
+This revalidates the production Block/provider retirement and public acceptance boundary.
+
+Logs are `/tmp/merman-c7a-8232bfbac-workspace.log`,
+`/tmp/merman-c7a-8232bfbac-node-contracts-canonical.log`, and
+`/tmp/merman-c7a-57ec788c0-{release-contracts,release-acceptance,public-boundary,ascii-leak-recheck}.log`.
+The checkout remains at `/tmp/merman-c7a-8232bfbac`; its actual HEAD is `57ec788c0` after the
+fixture-only follow-up, so the directory name must not be treated as source authority.
+
+The Linux container is also clean at `57ec788c0`. Its non-publishing cargo-dist plan passed,
+and the existing sequential archive-build/runtime/qualification/replay owner is running with
+logs at `/tmp/merman-c7a-57ec788c0-linux-archives.log`. Until that command completes, the older
+archive records remain the only completed Linux artifact evidence. The workspace version is
+still the development `0.8.0-alpha.6` and changelogs remain Unreleased; selecting the actual next
+release version/date and passing its immutable preflight are still required before C7a freeze.
