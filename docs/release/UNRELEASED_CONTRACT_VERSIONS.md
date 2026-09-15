@@ -1,6 +1,6 @@
 # Unreleased contract version audit
 
-Checked on 2026-09-16 at candidate source `646ac9228`. This is a development decision, not a
+Checked on 2026-09-15 at candidate source `646ac9228`. This is a development decision, not a
 release or a C7a freeze record. The release baseline is the latest artifact for each surface,
 not the largest number found on the development branch.
 
