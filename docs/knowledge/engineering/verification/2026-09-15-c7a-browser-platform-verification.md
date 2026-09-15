@@ -83,3 +83,7 @@ Linux/Windows artifact owners, archive/profile publication binding and formal C7
 rollout and contract decisions remain open. Browser smoke proves the application paths above;
 it does not create Browser SVG portability qualification. Keep the existing host-dependent
 native preset cells and empty cells for unqualified artifact profiles.
+
+The subsequent [Android artifact/device record](2026-09-15-c7a-android-artifact-verification.md)
+closes the local AAR/Maven/API 36 ARM64 tranche at its own source revisions. It does not
+change the scope or source identity of the browser/platform observations above.
