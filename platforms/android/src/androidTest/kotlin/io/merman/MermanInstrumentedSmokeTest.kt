@@ -31,7 +31,7 @@ class MermanInstrumentedSmokeTest {
 
     @Test
     fun rejectsCoercedOrIncompatibleRuntimeCatalogHandshakeFields() {
-        val canonical = MermanEngine.runtimeCatalogJson()
+        val canonical = Merman.runtimeCatalogJson()
         for ((expected, replacement) in listOf(
             "\"schema_version\":1" to "\"schema_version\":\"1\"",
             "\"schema_version\":1" to "\"schema_version\":1.0",
@@ -77,17 +77,17 @@ class MermanInstrumentedSmokeTest {
 
     @Test
     fun acceptsAdditiveRuntimeCatalogFields() {
-        val catalog = JSONObject(MermanEngine.runtimeCatalogJson())
+        val catalog = JSONObject(Merman.runtimeCatalogJson())
         catalog.put("future_catalog_field", JSONObject().put("version", 1))
         catalog.getJSONObject("resources").put("future_resource_field", true)
         catalog.getJSONArray("options_schema_versions").put(99)
 
-        check(MermanEngine.validateRuntimeCatalogPayload(catalog.toString()) == catalog.toString())
+        check(Merman.validateRuntimeCatalogPayload(catalog.toString()) == catalog.toString())
     }
 
     private fun checkCatalogRejected(catalog: String) {
         val error = runCatching {
-            MermanEngine.validateRuntimeCatalogPayload(catalog)
+            Merman.validateRuntimeCatalogPayload(catalog)
         }.exceptionOrNull()
         check(error is MermanException) {
             "malformed runtime catalog was accepted: $catalog"
