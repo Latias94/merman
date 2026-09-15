@@ -4,7 +4,7 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> **Alpha:** the development direct UniFFI binding API is `7`; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
+> **Alpha:** the development direct UniFFI binding API is `9`; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
 
 ## Use A Published Wrapper
 
@@ -47,15 +47,15 @@ Normally use `bash scripts/build-apple-xcframework.sh`, which performs both step
 
 ## Exposed Capabilities
 
-Generated bindings provide `Merman` for discovery and one-shot calls and `MermanEngine` for reusable calls that share options or constructor-owned services. They expose semantic JSON and, when the matching output capability is selected, SVG, PNG, JPEG, PDF, terminal rendering, layout JSON, validation, diagram/document analysis, parser facts, Mermaid themes, the open-ended presentation catalog, lint metadata, ASCII support grades, and diagram-family capability discovery.
+Generated bindings provide `Merman` for discovery and one-shot calls and `MermanEngine` for reusable calls that share options or constructor-owned services. They expose semantic JSON and, when the matching output capability is selected, SVG, PNG, JPEG, PDF, terminal rendering, layout JSON, validation, diagram/document analysis, parser facts, Mermaid themes, the versioned theme catalog, lint metadata, ASCII support grades, and diagram-family capability discovery.
 
 The generated API shape remains stable for smaller feature profiles. Lint catalog calls return a structured `analysis` missing-capability error when analysis is absent. `MermanTextMeasurer` and its reusable-engine entrypoints remain generated when SVG is absent and return a structured `svg` missing-capability error when called.
 
-`MermanOperationRequestV4` and `execute()` are the transport-neutral path for every output. Named methods such as `render_svg()` and `render_png()` are convenience wrappers over that same descriptor-owned dispatch. Generic request options live in `MermanOperationRequestV4.options_json`; `execute()` has no parallel options argument. Set `MermanOperationRequestV4.control` to a `MermanOperationControl` when the host needs to cancel or deadline one operation. Construct the control with an optional relative `timeout_ms`, retain another reference, and call `cancel()` from a worker or callback thread; the request clones the shared control before synchronous execution and does not hold a registry lock while rendering. Cancellation is cooperative, so an opaque callback may finish before the next checkpoint. One-shot requests construct a fresh engine and may select `runtime_policy`. Reusable request options deeply merge over the construction baseline without mutating it and cannot change its constructor-owned runtime policy. The package uses the same versioned options as the C ABI. Diagnostics remain schema `1` and parser facts use schema `2`, independently of UniFFI binding API `7`; other facts versions are rejected at the boundary, the removed TextScan shape is not retained, and the Flowchart-only rich graph is no longer part of the facts payload.
+`MermanOperationRequestV4` and `execute()` are the transport-neutral path for every output. Named methods such as `render_svg()` and `render_png()` are convenience wrappers over that same descriptor-owned dispatch. Generic request options live in `MermanOperationRequestV4.options_json`; `execute()` has no parallel options argument. Set `MermanOperationRequestV4.control` to a `MermanOperationControl` when the host needs to cancel or deadline one operation. Construct the control with an optional relative `timeout_ms`, retain another reference, and call `cancel()` from a worker or callback thread; the request clones the shared control before synchronous execution and does not hold a registry lock while rendering. Cancellation is cooperative, so an opaque callback may finish before the next checkpoint. One-shot requests construct a fresh engine and may select `runtime_policy`. Reusable request options deeply merge over the construction baseline without mutating it and cannot change its constructor-owned runtime policy. The package uses the same versioned options as the C ABI. Diagnostics remain schema `1` and parser facts use schema `2`, independently of UniFFI binding API `9`; other facts versions are rejected at the boundary, the removed TextScan shape is not retained, and the Flowchart-only rich graph is no longer part of the facts payload.
 
-API 7 adds `requested_layout_profile` and `compact_attempted` to `MermanAsciiOutputPlan`,
+API 9 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,
 which uses ASCII output schema `3`. `layout_profile` reports the effective Canonical or Compact
-layout, while the requested profile may be Auto. Use `binding_api_version_v7()` and regenerate
+layout, while the requested profile may be Auto. Use `binding_api_version_v9()` and regenerate
 the complete language projection with its native library.
 
 API 6 added `layout_profiles`, `width_profiles`, `encodings`, and `fallback_encodings` to
@@ -70,8 +70,8 @@ diagnostic details.
 
 API 5 replaced the API 4 `transport_api_version()` probe with
 `binding_api_version_v5()` for its capability and structured-error record changes. API 6 replaces
-that probe with `binding_api_version_v6()`, and API 7 replaces it with
-`binding_api_version_v7()` for the new ASCII selection fields. UniFFI 0.32 method checksums include a record's type name
+that probe with `binding_api_version_v6()`, and API 9 replaces it with
+`binding_api_version_v9()` for the new ASCII selection fields. UniFFI 0.32 method checksums include a record's type name
 but not its fields, so each symbol change forces stale generated bindings to fail before
 decoding changed record layouts.
 
@@ -89,6 +89,12 @@ while `raw_json` preserves every current or future plan without a closed foreign
 The ASCII payload records projection, encoding, emitted dimensions, and viewport fallback outcome.
 
 Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, optional `MermanDiagnosticErrorDetails`, and optional `MermanCancelledDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Parser and ASCII failures may preserve a stable diagnostic code, optional source span, and bounded field or diagram context without retaining complete source text; ASCII width failures also expose requested/actual widths, width profile, and fallback reason when available. Cancellation remains a separate terminal class with `reason` (`requested` or `deadline_exceeded`) and the observed `phase`; none of these cases should be inferred from display text.
+
+Theme authoring operations (`materialize-theme-json`, `describe-theme-support-json`, and
+`export-theme-preset-json`) use the same generic `execute()` path for one-shot and reusable
+consumers. Read the schema-3 catalog through `theme_catalog_json()`; the old
+`presentation_catalog_json()` method is removed. `MermanError.Binding.details_json` preserves
+the shared `theme_authoring` envelope with diagnostic code, path, and details.
 
 ## Text Measurement Ownership
 

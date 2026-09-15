@@ -70,11 +70,11 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version_v7() == 7
+assert api.binding_api_version_v9() == 9
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version_v7()
+assert catalog["transport_api_version"] == api.binding_api_version_v9()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -95,7 +95,7 @@ validation = api.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = api.supported_diagrams()
 ascii_capabilities = api.ascii_capabilities()
 themes = api.supported_themes()
-presentation_catalog = json.loads(api.presentation_catalog_json())
+theme_catalog = json.loads(api.theme_catalog_json())
 family_capabilities = api.diagram_family_capabilities()
 lint_rules = api.lint_rule_catalog()
 
@@ -163,15 +163,15 @@ The optional `options_json` argument uses the shared contract documented in
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
 
-The direct UniFFI binding API is `7`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `9`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
 
-When migrating from API 6, replace `binding_api_version_v6()` with
-`binding_api_version_v7()` and regenerate the complete package with its matching native library.
-API 7 adds `requested_layout_profile` and `compact_attempted` to the schema-3
+When migrating from API 6/7/8, replace the old version probe with
+`binding_api_version_v9()` and regenerate the complete package with its matching native library.
+API 9 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3
 `MermanAsciiOutputPlan`; `layout_profile` is the selected Canonical or Compact geometry. The symbol
 change makes stale generated bindings fail before decoding the revised record. API 6 introduced
 the capability admission arrays and output encoding; older consumers must also regenerate the
@@ -230,7 +230,7 @@ mutation lifecycle.
   `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
   takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
-- Move API 6 or older generated modules and native libraries together to API 7 before consuming
+- Move API 8 or older generated modules and native libraries together to API 9 before consuming
   schema-3 ASCII selection metadata. Generic request constructors require `control`;
   pass `None` until the host adopts `MermanOperationControl`.
 - Use the result-returning binary methods when callers need typed operation metadata or the

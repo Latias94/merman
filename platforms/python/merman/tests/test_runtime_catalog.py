@@ -3,6 +3,7 @@ import unittest
 
 import merman
 from merman._binding_contract import CONSTRUCTOR_SERVICE_SPECS
+from merman._resource_options import BINDING_OPTIONS_SCHEMA_VERSION
 
 
 CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
@@ -13,9 +14,9 @@ CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
 def valid_catalog():
     return {
         "schema_version": 1,
-        "transport_api_version": 7,
+        "transport_api_version": 9,
         "package_version": "test",
-        "options_schema_versions": [2],
+        "options_schema_versions": [BINDING_OPTIONS_SCHEMA_VERSION],
         "payload_schemas": [
             {"id": "binding-result", "version": 1},
             {"id": "operation-metadata", "version": 1},
@@ -24,9 +25,9 @@ def valid_catalog():
             "ascii-capabilities",
             "diagram-family-capabilities",
             "lint-rule-catalog",
-            "presentation-catalog",
             "supported-diagrams",
             "supported-themes",
+            "theme-catalog",
         ],
         "option_group_ids": [
             "ascii",
@@ -36,11 +37,11 @@ def valid_catalog():
             "layout",
             "lint",
             "parse",
-            "presentation",
             "resources",
             "runtime_policy",
             "site_config",
             "svg",
+            "theme",
             "version",
         ],
         "constructor_service_ids": ["host-text-measurement", "icon-registry"],
@@ -139,8 +140,8 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def binding_api_version_v7(self):
-        return 7
+    def binding_api_version_v9(self):
+        return 9
 
     def package_version(self):
         return "test"
@@ -158,7 +159,9 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
-        self.assertEqual(catalog["options_schema_versions"], [2])
+        self.assertEqual(
+            catalog["options_schema_versions"], [BINDING_OPTIONS_SCHEMA_VERSION]
+        )
         self.assertEqual(
             parsed["resources"]["limits"][0]["operation_ids"],
             ["analysis-json", "ascii", "semantic-json", "svg"],
@@ -246,9 +249,9 @@ class RuntimeCatalogTest(unittest.TestCase):
         }
         catalog["metadata_ids"] = [
             "diagram-family-capabilities",
-            "presentation-catalog",
             "supported-diagrams",
             "supported-themes",
+            "theme-catalog",
         ]
         catalog["option_group_ids"] = [
             "environment",
@@ -256,12 +259,12 @@ class RuntimeCatalogTest(unittest.TestCase):
             "fixed_today",
             "layout",
             "parse",
-            "presentation",
             "raster",
             "resources",
             "runtime_policy",
             "site_config",
             "svg",
+            "theme",
             "version",
         ]
         catalog["output_contracts"] = [
@@ -680,7 +683,7 @@ class RuntimeCatalogTest(unittest.TestCase):
                     "limits": {"max_source_bytes": 4096},
                     "profile": "constrained",
                 },
-                "version": 2,
+                "version": BINDING_OPTIONS_SCHEMA_VERSION,
             },
         )
 

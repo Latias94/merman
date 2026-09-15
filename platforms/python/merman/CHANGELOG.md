@@ -8,7 +8,9 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Advance the direct UniFFI binding API to `7`. Schema-3 ASCII output plans add the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `binding_api_version_v7()` to reject stale record layouts.
+- Advance the direct UniFFI binding API to `9`. The merged interface preserves theme-authoring diagnostics and schema-3 ASCII output plans with the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `binding_api_version_v9()` to reject stale record layouts.
+
+- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
 
 ## [0.8.0a6] - 2026-09-02
 

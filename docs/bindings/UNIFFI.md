@@ -5,18 +5,22 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `9`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
-API 7 adds `requested_layout_profile` and `compact_attempted` to `MermanAsciiOutputPlan`,
+API 9 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,
 whose ASCII result schema is now `3`. The effective `layout_profile` identifies Canonical or
 Compact; the requested profile can be Auto. Regenerate the language projection and native library
-together, and replace the API 6 version probe with `binding_api_version_v7()`.
+together, and replace older version probes with `binding_api_version_v9()`.
 
 API 6 expanded `MermanAsciiCapability` with `layout_profiles`, `width_profiles`, `encodings`, and
 `fallback_encodings`. It also introduced ASCII result schema `2`, adding `encoding` to
 `MermanAsciiOutputPlan`. Those record changes required regenerating Swift and Python projections
 with the matching native library; API 5 generated source could not decode them.
+
+Theme authoring errors preserve `details_json` with the versioned `theme_authoring`
+diagnostic envelope (`code`, `path`, and `details`). Use `theme_catalog_json()` for
+the shared catalog; authoring operations remain available through `execute()`.
 
 ## Public Model
 
@@ -30,9 +34,9 @@ The generated API exposes:
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, details_json, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
 
-`Merman::binding_api_version_v7()` reports `7`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v9()` reports `9`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -54,9 +58,9 @@ limitation applies to the newly expanded `MermanAsciiCapability` and `MermanAsci
 so API `5` generated source fails before decoding an API `6` value. The version probe, generated
 projection, and native library are one deployment unit.
 
-API `7` replaces `binding_api_version_v6()` with `binding_api_version_v7()` for the added
-ASCII selection fields. Stale API `6` bindings fail before decoding the schema-3 output-plan
-record; the generic request record remains `MermanOperationRequestV4`.
+API `9` replaces the API 7/8 probes with `binding_api_version_v9()` for the merged
+ASCII selection and theme-authoring diagnostic records. Old generated bindings fail before decoding
+these records; the generic request record remains `MermanOperationRequestV4`.
 
 Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
@@ -198,7 +202,7 @@ contract.
   and viewport fallback outcome.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
-- Move generated API 6 or older wrappers and libraries together to API 7 before consuming
+- Move generated API 8 or older wrappers and libraries together to API 9 before consuming
   schema-3 ASCII selection metadata. API 6 introduced the capability admission arrays and encoding. Older prerelease wrappers must also be fully
   regenerated; do not pair source generated for one API version with a library whose runtime catalog
   reports another.
