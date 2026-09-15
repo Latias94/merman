@@ -320,3 +320,12 @@ Both archive digests were rechecked after copying to the host. No preset cells w
 this lane validates archive contents and runtime behavior, while the named preset qualification
 profile remains Linux x86_64-specific. The next release line is still unselected, and the final
 same-source platform matrix, public rollout and C7a contract freeze remain open.
+
+
+## Transport catalog contract follow-up
+
+At clean `3fe3b1b97`, the [transport catalog follow-up](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md)
+passed the focused Rust/Python qualification, Node/Web catalog, and Flutter ABI 3 contract checks.
+Unknown qualification identifiers remain fail-closed at the CLI projection boundary, while Node/Web
+keep their documented open metadata behavior. This closes no packaged-artifact or release-preflight
+gate; the final same-source owner matrix and contract freeze remain open.
