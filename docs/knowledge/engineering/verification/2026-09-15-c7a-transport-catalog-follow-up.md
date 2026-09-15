@@ -183,3 +183,30 @@ and all selected Node package/platform contract tests). The broader release work
 release-surface and artifact-bundle contract suite passed 97/97. Historical alpha.6 and
 “version not selected” statements in the replanning document remain confined to explicitly
 labeled historical evidence sections and were not relabeled as current candidate evidence.
+
+# Installed alpha.7 Node N-API consumer at `29ebca68f`
+
+The owner build command `npm run build:candidate --prefix platforms/node -- --candidate napi
+--target darwin-arm64` rebuilt the addon from
+`29ebca68f457d0a66b194aa83fa93750c79e3c4b`. The recorded source digest is
+`sha256:f673e61afe2c36cfca890987ff4fd7f9e839b229836accc81291e123a2b1ec25`.
+The 24,548,080-byte `merman.node` has SHA-256
+`b91c13fb5df1a190adbf58c857fe067f57801e3d319866172fe6bd4762058d78`.
+Its build receipt has SHA-256
+`6e17eaed6a3b1635900cf79fff7d0daaf2f24d987570296ab1ec14d6deeb08c5`.
+The host used Node 26.6.0, npm 11.18.0, Rust 1.95.0 and N-API CLI 3.7.4.
+
+The existing assembly owner validated the receipt and assembled the loader plus darwin-arm64
+package into a temporary directory. The packed-root verifier passed. Both packages were packed
+with npm and installed offline with lifecycle scripts disabled into an empty ESM project.
+`smoke-installed-package.mjs` resolved the installed public entrypoint and confirmed both package
+and runtime versions were `0.8.0-alpha.7`. Rendering and the authoring witness passed: 2 shared
+vectors, 2 catalog checks, 3 family isolation checks, 1 rule override, 1 cold spec, 3 preset exports,
+44 support queries, 6 authoring diagnostic checks, 2 resource limit checks, 23 JSON operations and
+23 SVG renders. These counters describe this witness, not independently qualified catalog cells.
+
+The installed project is retained at
+`/var/folders/zk/87rg5ff15mlfnplph83p5ntm0000gn/T/merman-alpha7-node-installed-o5sook8z/project`.
+This closes the local macOS ARM64 N-API installation tranche at the named source. Node WASM,
+other native targets, CLI/LSP archives and final same-source release preflight remain separate
+checks. The alpha.6 facade compatibility decision is still pending; no package was published.
