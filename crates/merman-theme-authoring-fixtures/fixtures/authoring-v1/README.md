@@ -26,8 +26,10 @@ that every final package or host has been executed. These vectors do not qualify
 profiles, admission states, public catalog cells, or the C7a release candidate.
 
 `support.json` pins complete successful `describe-theme-support-json` responses to the reviewed
-support-claim revision. It covers V1/V2 rules, base typography, ordinal palettes, unsupported
-routes, ASCII applicability, unqualified browser/native outputs, and unknown identifiers. Compare
+support-claim revision. It covers rule facets, base typography, ordinal palettes, unsupported
+routes, ASCII applicability, unqualified browser/native outputs, and unknown identifiers. All
+successful queries use schema 1 and its single `rule` subject shape; suffixes in historical
+fixture IDs identify test cases, not additional supported protocol versions. Compare
 all fields, including the echoed query, claim revision, and ordered reason IDs. An Unverified or
 Unsupported descriptor is a successful query, not a transport error. Review semantic changes
 against the renderer-owned support manifest before updating these independent expectations.
