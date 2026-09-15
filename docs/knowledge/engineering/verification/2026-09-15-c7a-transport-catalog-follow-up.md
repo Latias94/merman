@@ -131,3 +131,11 @@ The current source reran the cross-transport contract lanes without changing fix
 These are current-source contract and golden checks. They do not establish installed package
 provenance, Windows execution, Apple Swift 5.9 execution, or the unresolved alpha.6 facade
 compatibility contract.
+
+# Current artifact/profile contract rerun at `9e692c3c4`
+
+The artifact and archive contract suites passed 148/148 with
+`python3 -m unittest scripts.test_artifact_profile_recipe scripts.test_verify_artifact_dependency_closures scripts.test_release_artifact_bundle scripts.test_verify_cli_release_archive scripts.test_verify_lsp_release_archive`.
+This covers descriptor validation, dependency-closure checks, bundle contracts, and CLI/LSP
+archive verifier positive and negative cases. It validates the owner tooling; it is not a
+substitute for building and executing every final alpha.7 archive on its declared host.
