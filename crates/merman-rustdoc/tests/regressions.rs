@@ -10,6 +10,112 @@ mod support;
 use support::proc_macro_artifact;
 
 #[test]
+fn conditional_documentation_retains_source_order() {
+    let temp = TempDir::new();
+    let output = rustdoc(
+        &temp.0,
+        r#"
+#[merman_rustdoc::merman(scope = "tree")]
+pub mod ordered {
+    /// First
+    #[cfg_attr(all(), doc = "Second")]
+    /// Third
+    #[cfg_attr(any(), doc = "Absent")]
+    /// Fourth
+    #[cfg_attr(all(), cfg_attr(all(), doc = "Fifth"))]
+    /// Sixth
+    pub struct Example;
+}
+"#,
+    );
+    assert_success(&output);
+    let html = fs::read_to_string(
+        temp.0
+            .join("doc/merman_regressions/ordered/struct.Example.html"),
+    )
+    .unwrap();
+    let positions: Vec<_> = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
+        .map(|text| html.find(text).expect(text))
+        .into();
+    assert!(
+        positions.windows(2).all(|pair| pair[0] < pair[1]),
+        "conditional doc order changed"
+    );
+    assert!(!html.contains("Absent"));
+}
+
+#[test]
+fn facade_reexport_works_without_a_direct_macro_dependency() {
+    let temp = TempDir::new();
+    let (deps_dir, macro_artifact) = proc_macro_artifact();
+    let facade = temp.0.join("facade.rs");
+    fs::write(&facade, "pub use merman_rustdoc::{merman, __render_doc};").unwrap();
+    let facade_artifact = temp.0.join("libfacade.rlib");
+    let output = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+        .args(["--edition=2024", "--crate-type=rlib", "--crate-name=facade"])
+        .arg("--extern")
+        .arg(format!("merman_rustdoc={}", macro_artifact.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", deps_dir.display()))
+        .arg("-o")
+        .arg(&facade_artifact)
+        .arg(facade)
+        .output()
+        .unwrap();
+    assert_success(&output);
+    fs::write(
+        temp.0.join("Cargo.toml"),
+        r#"[package]
+name = "merman-regressions"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+facade = "*"
+"#,
+    )
+    .unwrap();
+    let input = temp.0.join("lib.rs");
+    fs::write(
+        &input,
+        r#"
+#[facade::merman(crate_path = "::facade", scope = "tree")]
+/// Facade documentation.
+pub mod example {
+    /// ```mermaid
+    /// flowchart LR
+    /// A-->B
+    /// ```
+    pub struct Diagram;
+}
+"#,
+    )
+    .unwrap();
+    let output = Command::new(std::env::var_os("RUSTDOC").unwrap_or_else(|| "rustdoc".into()))
+        .env("CARGO_MANIFEST_DIR", &temp.0)
+        .env("CARGO_PKG_NAME", "merman-regressions")
+        .args(["--edition=2024", "--crate-name=merman_regressions"])
+        .arg("--extern")
+        .arg(format!("facade={}", facade_artifact.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", deps_dir.display()))
+        .arg("-o")
+        .arg(temp.0.join("doc"))
+        .arg(input)
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let page =
+        fs::read_to_string(temp.0.join("doc/merman_regressions/example/index.html")).unwrap();
+    assert!(page.contains("Facade documentation."));
+    let diagram = fs::read_to_string(
+        temp.0
+            .join("doc/merman_regressions/example/struct.Diagram.html"),
+    )
+    .unwrap();
+    assert!(diagram.contains("<svg"));
+}
+
+#[test]
 fn rustdoc_preserves_markdown_and_scopes_diagrams_to_their_embedding() {
     let temp = TempDir::new();
     let output = rustdoc(

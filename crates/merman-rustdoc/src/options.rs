@@ -59,6 +59,7 @@ pub(crate) struct Options {
     pub(crate) background: String,
     pub(crate) id_prefix: Option<String>,
     pub(crate) inherit: bool,
+    pub(crate) crate_path: Option<String>,
     pub(crate) explicit: std::collections::HashSet<String>,
 }
 
@@ -76,6 +77,7 @@ impl Default for Options {
             background: "transparent".to_string(),
             id_prefix: None,
             inherit: true,
+            crate_path: None,
             explicit: std::collections::HashSet::new(),
         }
     }
@@ -95,7 +97,7 @@ impl Options {
         for pair in pairs {
             let Some(ident) = pair.path.get_ident() else {
                 return Err(Error::new(
-                    "unsupported merman_rustdoc option path; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, or inherit",
+                    "unsupported merman_rustdoc option path; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, crate_path, or inherit",
                 ));
             };
             let key = ident.to_string();
@@ -106,6 +108,10 @@ impl Options {
             }
             let value = literal_string(&pair.value)?;
             match ident.to_string().as_str() {
+                "crate_path" => {
+                    syn::parse_str::<syn::Path>(&value)?;
+                    options.crate_path = Some(value);
+                }
                 "scope" => options.scope = ScopeMode::parse(&value)?,
                 "pipeline" => options.pipeline = PipelineMode::parse(&value)?,
                 "fail" => options.fail = FailMode::parse(&value)?,
@@ -139,7 +145,7 @@ impl Options {
                 }
                 other => {
                     return Err(Error::new(format!(
-                        "unsupported merman_rustdoc option `{other}`; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, or inherit"
+                        "unsupported merman_rustdoc option `{other}`; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, crate_path, or inherit"
                     )));
                 }
             }
@@ -154,6 +160,8 @@ impl Options {
             return self.clone();
         }
         let mut merged = parent.clone();
+        // Helper resolution belongs to this macro invocation, not inherited render policy.
+        merged.crate_path.clone_from(&self.crate_path);
         merged.scope = self.scope;
         merged.inherit = self.inherit;
         merged.explicit = self.explicit.clone();
@@ -208,13 +216,17 @@ impl Options {
             ThemeMode::Mermaid => "mermaid",
             ThemeMode::Fixed(theme) => theme,
         };
+        let crate_path = self
+            .crate_path
+            .as_ref()
+            .map(|path| quote! { crate_path = #path, });
         let background = &self.background;
         let id_prefix = self
             .id_prefix
             .as_ref()
             .map(|id| quote! { id_prefix = #id, });
         quote! { scope = #scope, pipeline = #pipeline, fail = #fail, source = #source,
-        sanitize = #sanitize, theme = #theme, background = #background, #id_prefix }
+        sanitize = #sanitize, theme = #theme, background = #background, #id_prefix #crate_path }
     }
 }
 
@@ -406,7 +418,7 @@ mod embedding_tests {
     use super::*;
     #[test]
     fn options_round_trip_without_losing_explicit_values() {
-        let options = Options::parse(quote! { background = "#123456", id_prefix = "overview", scope = "tree", theme = "dark" }).unwrap();
+        let options = Options::parse(quote! { background = "#123456", id_prefix = "overview", scope = "tree", theme = "dark", crate_path = "::facade" }).unwrap();
         assert_eq!(
             Options::parse(options.tokens())
                 .unwrap()
@@ -422,6 +434,8 @@ mod embedding_tests {
             quote! { background = " " },
             quote! { id_prefix = "bad id" },
             quote! { inherit = "sometimes" },
+            quote! { crate_path = "not a path" },
+            quote! { crate_path = "" },
         ] {
             assert!(Options::parse(tokens).is_err());
         }

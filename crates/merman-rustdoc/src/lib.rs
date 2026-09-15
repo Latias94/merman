@@ -10,7 +10,7 @@
 //! # Install
 //!
 //! This checkout is ahead of published `0.8.0-alpha.6`. The dependency examples install alpha.6
-//! for the basic workflow. New `background`, `id_prefix`, and `inherit` options, Markdown container
+//! for the basic workflow. New `background`, `id_prefix`, `inherit`, and `crate_path` options, Markdown container
 //! support, and the refactored behavior described here require this source checkout until the
 //! next workspace release; they are not available in alpha.6. This checkout also makes math
 //! opt-in. The quick-start recipe explicitly selects the smaller feature set because alpha.6
@@ -127,6 +127,15 @@
 //! on lazy continuation lines without those prefixes report an error; add the required prefix or
 //! use `fail = "keep-source"`. Dynamic `#[doc = include_str!(...)]` remains outside this macro.
 //!
+//! # Facade re-exports (unreleased)
+//!
+//! If an application depends only on a facade, re-export both `merman` and `__render_doc` from
+//! that facade and write `#[facade::merman(crate_path = "::facade")]` on the application item.
+//! The explicit path locates the deferred helper without a direct `merman-rustdoc` dependency.
+//! It applies to this invocation and is not inherited as a rendering option. Renamed direct
+//! Cargo dependencies continue to be detected automatically. Rust owns `cfg_attr` expansion;
+//! conditional documentation retains its position between neighboring literal doc attributes.
+//!
 //! # Options
 //!
 //! The attribute accepts string options:
@@ -153,6 +162,7 @@
 //! | Option | Values | Default | Meaning |
 //! | --- | --- | --- | --- |
 //! | `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
+//! | `crate_path` | Rust path string, e.g. `::facade` | direct dependency | Locates a facade's re-exported deferred helper. |
 //! | `inherit` | `on`, `off` | `on` | Inherits parent tree rendering options, or starts from defaults before local overrides. |
 //! | `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Selects the SVG output pipeline. |
 //! | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
@@ -297,12 +307,16 @@ pub fn merman(args: TokenStream, input: TokenStream) -> TokenStream {
         Err(err) => return compile_error_with_input(input, &err.to_string()),
     };
 
-    let helper_name = match proc_macro_crate::crate_name("merman-rustdoc") {
-        Ok(proc_macro_crate::FoundCrate::Name(name)) => name,
-        _ => "merman_rustdoc".to_string(),
+    let helper = if let Some(path) = &options.crate_path {
+        syn::parse_str(path).expect("crate_path was validated with the macro options")
+    } else {
+        let helper_name = match proc_macro_crate::crate_name("merman-rustdoc") {
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => name,
+            _ => "merman_rustdoc".to_string(),
+        };
+        let helper_ident = syn::Ident::new(&helper_name, proc_macro2::Span::call_site());
+        syn::parse_quote!(::#helper_ident)
     };
-    let helper_ident = syn::Ident::new(&helper_name, proc_macro2::Span::call_site());
-    let helper = syn::parse_quote!(::#helper_ident);
     match expand::expand(input.clone(), &options, &namespace, &helper) {
         Ok(output) => output.into(),
         Err(err) => compile_error_with_input(input, &err.to_string()),
