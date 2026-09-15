@@ -65,3 +65,21 @@ migration promises, installation examples and package-local changelogs, stamp th
 date, then run immutable preflight. Windows and remaining host/compiler-floor lanes, final
 artifact/catalog rollout and C7a contract freeze still need their owner evidence. Selecting a
 version alone does not complete those gates, and no tag or publishing workflow was triggered.
+
+## Independent checks while release selection is pending
+
+At source `d444a6e1f`, the complete ordinary CI script test command passed 606/606 tests:
+`python3 -m unittest discover -s scripts -p 'test_*.py'`. Simulated platform runs printed by those
+unit tests are not actual platform builds. The exact CI-pinned nightly lockfile command also
+passed: `cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --locked`, with one Cargo
+build job. This closes the missing nightly compile observation for the repaired fuzz lockfile;
+it does not run libFuzzer, ASan or the randomized corpus campaign.
+
+The generated legal owners passed without changing files: 13 Rust dependency reports,
+382 release legal projections and the third-party license contract. Logs are
+`/tmp/merman-c7a-d444a6e1f-{script-contracts,legal-freshness,nightly-fuzz-check}.log`.
+No release version or date was assigned by these checks.
+
+A 0.9 selection also needs the existing native CLI `render/batch -e` retirement commitment
+reviewed: its current warning promises removal in v0.9.0. Keep that migration separate from the
+permanent root/mmdc compatibility surface. The version proposal has not yet changed this behavior.
