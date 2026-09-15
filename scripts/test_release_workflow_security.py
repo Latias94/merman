@@ -683,16 +683,29 @@ jobs:
             build.index("- name: Build wheel"),
         )
 
-    def test_python_release_isolates_and_bootstraps_the_final_smoke_venv(self) -> None:
-        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
-        self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
-        self.assertIn('python -m venv "$VENV_DIR"', build)
-        self.assertNotIn("target/python-final-wheel-smoke", build)
-        self.assertIn('"$PYTHON" -m ensurepip --upgrade', build)
-        self.assertLess(
-            build.index('"$PYTHON" -m ensurepip --upgrade'),
-            build.index('"$PYTHON" -m pip install --no-deps'),
-        )
+    def test_python_owners_smoke_the_final_wheel_after_repair(self) -> None:
+        for filename, job in [
+            ("release-python.yml", "build"),
+            ("release-preflight.yml", "python-wheel"),
+        ]:
+            with self.subTest(workflow=filename):
+                build = workflow_job(read(WORKFLOW_ROOT / filename), job)
+                self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
+                self.assertIn('python -m venv "$VENV_DIR"', build)
+                self.assertNotIn("target/python-final-wheel-smoke", build)
+                self.assertNotIn("build-python-uniffi-wheel.py --run-smoke", build)
+                commands = [
+                    "id: repair-linux-wheel",
+                    "python -m auditwheel repair",
+                    "mv target/python-wheels/repaired/merman-*.whl target/python-wheels/",
+                    "id: smoke-final-wheel",
+                    '"$PYTHON" -m ensurepip --upgrade',
+                    '"$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl',
+                    '"$PYTHON" platforms/python/merman/examples/smoke.py',
+                    "path: target/python-wheels/merman-*.whl",
+                ]
+                positions = [build.index(command) for command in commands]
+                self.assertEqual(positions, sorted(positions))
 
     def test_web_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-web.yml")

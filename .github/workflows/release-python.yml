@@ -160,6 +160,7 @@ jobs:
         run: python scripts/build-python-uniffi-wheel.py
 
       - name: Repair Linux wheel
+        id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -172,6 +173,7 @@ jobs:
           rmdir target/python-wheels/repaired
 
       - name: Run final wheel install smoke
+        id: smoke-final-wheel
         run: |
           VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
           python -m venv "$VENV_DIR"

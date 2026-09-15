@@ -522,10 +522,11 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: Build and smoke wheel
-        run: python scripts/build-python-uniffi-wheel.py --run-smoke
+      - name: Build wheel
+        run: python scripts/build-python-uniffi-wheel.py
 
       - name: Repair Linux wheel
+        id: repair-linux-wheel
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -536,6 +537,20 @@ jobs:
           rm target/python-wheels/merman-*.whl
           mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
           rmdir target/python-wheels/repaired
+
+      - name: Run final wheel install smoke
+        id: smoke-final-wheel
+        run: |
+          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+            PYTHON="$VENV_DIR/Scripts/python.exe"
+          else
+            PYTHON="$VENV_DIR/bin/python"
+          fi
+          "$PYTHON" -m ensurepip --upgrade
+          "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
+          "$PYTHON" platforms/python/merman/examples/smoke.py
 
       - name: Check wheel metadata
         run: |
