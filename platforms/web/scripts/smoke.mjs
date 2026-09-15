@@ -1617,7 +1617,7 @@ async function runSameProcessPackageSmoke() {
     false
   );
   assert.deepEqual(analysis.themeCatalog(), {
-    schema_version: 3,
+    schema_version: 1,
     structured_spec_available: false,
     supported_output_ids: [],
     presets: [],
