@@ -187,8 +187,9 @@ KTD20, or KTD21 product decisions:
   versioned renderer-owned table, not a projection of the private C5 matrix. Runtime admission and
   discovery share normalized predicate/value-domain code, while claim rows, revision, unknown-ID
   normalization, and cross-surface projections are checked against the independent manifest.
-  `claim_revision` remains alpha-only until C7a-contract; every semantic row change increments it,
-  and unknown combinations fail closed as `Unverified`.
+  The first-release `claim_revision` stays at 1 through the unpublished C7a cycle. Subsequent
+  compatibility revisions compare against the last published manifest; source identities distinguish
+  development rows. Unknown combinations fail closed as `Unverified`.
 - **Typst document context is an explicit facade contract.** `mermaid-theme-definition` must either
   forward the same `document-context` semantics as the ordinary Mermaid facade or reject the
   combination before materialization with a bounded diagnostic. The chosen behavior and its
