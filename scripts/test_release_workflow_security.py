@@ -330,7 +330,8 @@ jobs:
         for name in ("ci.yml", "release-preflight.yml"):
             commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()
             for test in ("block_title_legacy_projection",
-                         "class_edge_label_background_legacy_projection"):
+                         "class_edge_label_background_legacy_projection",
+                         "flowchart_marker_legacy_projection"):
                 with self.subTest(workflow=name, test=test):
                     selected = [command for command in commands
                                 if f"--test {test}" in command]
