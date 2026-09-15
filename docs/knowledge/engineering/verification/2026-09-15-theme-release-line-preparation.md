@@ -82,4 +82,36 @@ No release version or date was assigned by these checks.
 
 A 0.9 selection also needs the existing native CLI `render/batch -e` retirement commitment
 reviewed: its current warning promises removal in v0.9.0. Keep that migration separate from the
-permanent root/mmdc compatibility surface. The version proposal has not yet changed this behavior.
+permanent root/mmdc compatibility surface. The original version-only proposal did not change
+this behavior; the supplementary isolated proposal below now covers that migration.
+
+## Isolated 0.9 CLI migration proposal
+
+The linked candidate at `/tmp/merman-alpha9-linked` now supplements the version proposal with
+removal of the native `render/batch -e` aliases, their warning state and argument scanner. Parsing
+returns `Cli` directly. Native `-f/--format`, explicit `mmdc -e` and the permanent hidden root
+mmdc interface remain supported. README and Unreleased migration text describe that boundary.
+The maintainer worktree still has its existing version and native alias behavior; this preparation
+does not select the release line.
+
+Actual CLI process and distribution-asset tests passed 30/30, with zero skips, using the candidate
+version and the CLI default features plus `layout-elk`. Coverage includes both native format
+spellings, rejection of separated and attached `-e` before input acquisition, duplicate-format
+rejection, and SVG output through root/mmdc compatibility entry points. The first concurrent
+nextest run marked two read-only distribution-document tests `LEAK`; after asset regeneration,
+the serial rerun passed all 30 without those markers. This is a test-runner observation, not a
+production heap-leak measurement.
+
+The existing `generate_cli_assets.py --write` owner regenerated the 15 manual pages for the
+candidate version, checked freshness under both configured timezone/epoch environments, and
+verified their Cargo source-package inclusion. Completions did not change. Formatting and
+`git diff --check` passed. Logs are `/tmp/merman-alpha9-cli-retirement.log`,
+`/tmp/merman-alpha9-cli-assets.log` and `/tmp/merman-alpha9-cli-final.log`.
+
+The full supplementary proposal contains 49 files, 230 additions and 307 deletions, including
+the 29 version projections and 15 generated manual pages. Review patch:
+`/tmp/merman-alpha9-cli-version-proposal.patch` (57,554 bytes), SHA-256
+`e3fd5bbb03796c176fd04a8081ecfe544f156016c6e5f3ed05be7a1783cd94af`.
+It remains based on `753cdc1c2`; regenerate version-owned files from the selected clean source
+when applying the release decision. These CLI checks do not replace final platform/archive
+validation or C7a contract freeze.
