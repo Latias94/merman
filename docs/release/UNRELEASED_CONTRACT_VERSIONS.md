@@ -4,6 +4,10 @@ Checked on 2026-09-15, starting from `c306fa698`. This is a development decision
 release or a C7a freeze record. The release baseline is the latest artifact for each surface,
 not the largest number found on the development branch.
 
+The maintainer selected `v0.8.0-alpha.7` as the next workspace release on 2026-09-15.
+New theme schemas, recipes, catalogs and qualification formats remain version 1.
+The package release number does not change those independent protocol identities.
+
 ## Published baseline
 
 GitHub Releases and crates.io identify `v0.8.0-alpha.6`, published on 2026-09-02, as the

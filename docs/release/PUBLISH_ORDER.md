@@ -1,11 +1,16 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-06
+Last updated: 2026-09-15
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.6`.
+
+Selected next workspace candidate: `0.8.0-alpha.7`. Preparation is open: the previous-facade
+compatibility lane fails with E0004 against the candidate core error enum. Do not publish
+the candidate until that gate and the final immutable preflight pass. See the
+[release-line preparation record](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md).
 
 The workspace release is published from immutable tag `v0.8.0-alpha.6` at commit
 `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. The crates.io workflow published all 20 workspace

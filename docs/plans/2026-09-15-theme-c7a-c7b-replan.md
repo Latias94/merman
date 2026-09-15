@@ -8,6 +8,16 @@ Keep the current presentation-theme architecture and treat the merged `origin/ma
 
 C7a is the release-facing track. C7b is the long-tail migration track and does not block the C7a contract freeze unless it exposes a shared public-model defect.
 
+## Selected release candidate
+
+On 2026-09-15 the maintainer selected **`v0.8.0-alpha.7`**. This supersedes the earlier
+0.9 recommendation and all historical statements below that version selection is pending.
+Prepare the workspace and coupled packages for alpha.7; keep new theme protocol identities
+at v1. Preserve native `render/batch -e` during 0.8.x, as previously documented.
+The fresh alpha.7 consumer compiles, but published alpha.6 with candidate siblings still
+fails the prerelease compatibility gate. This remains a release blocker; version selection
+does not waive it. Final artifact validation, catalog rollout and C7a freeze remain open.
+
 ## Verified starting point
 
 The merge commit is `3e71378be` (remote main `4c2ac7817`); post-merge follow-ups
@@ -302,8 +312,8 @@ found and repaired stale theme dependency edges in `fuzz/Cargo.lock` (`753cdc1c2
 successfully prepared all 29 version projections for both alpha.7 and a new 0.9 alpha.1 line.
 Alpha.7's fresh candidate compiled, but the real published alpha.6 facade failed against its
 candidate siblings because of the evolved core error enum. The new `0.9.0-alpha.1` candidate
-compiled and remains outside that published 0.8 compatibility line. Recommend the new line;
-keep the main worktree's package version unchanged until the maintainer selects it.
+compiled and remains outside that published 0.8 compatibility line. That experiment recommended
+a new line; the subsequent maintainer decision selects alpha.7 instead, as recorded above.
 
 The version choice is a prerequisite to immutable release preflight, not the only remaining
 C7a requirement. Final cross-host/profile execution, catalog rollout and explicit contract freeze

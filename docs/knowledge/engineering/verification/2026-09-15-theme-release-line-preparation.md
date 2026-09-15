@@ -115,3 +115,39 @@ the 29 version projections and 15 generated manual pages. Review patch:
 It remains based on `753cdc1c2`; regenerate version-owned files from the selected clean source
 when applying the release decision. These CLI checks do not replace final platform/archive
 validation or C7a contract freeze.
+
+
+## Maintainer selection: v0.8.0-alpha.7
+
+On 2026-09-15 the maintainer selected `v0.8.0-alpha.7` for the upcoming theme release. This
+supersedes the earlier 0.9 recommendation. The unpublished theme contracts remain v1, and
+the isolated 0.9 CLI alias-removal proposal is not part of alpha.7.
+
+A fresh linked worktree `/tmp/merman-alpha7-final` at source
+`0d58624868ebf327f324388d92c0906d7021daf5` ran the existing transactional version owner with
+Node 24.21.0 and npm 12.0.2. All 29 version projections were generated successfully and passed
+the version and static release-surface checks. Root and coupled package changelogs name the
+selected candidate with `Unreleased` status; no publication date has been asserted.
+
+The real `verify_prerelease_compatibility.py --version 0.8.0-alpha.7 --previous-version
+0.8.0-alpha.6` run compiled the fresh candidate, then failed the previous-with-candidate-siblings
+lane with three E0004 errors in the published facade's `diagnostic.rs`. The current core enum
+is non-exhaustive and has additional `Internal` and `ThemeEvaluationLimit` variants. Removing
+only the attribute cannot restore the old exhaustive match. The old published manifest has
+non-exact sibling requirements, so exact requirements in the new workspace do not repair it.
+The error classification, compatibility checker and original published artifacts were not altered.
+This preparation does not resolve compatibility admission or authorize publication.
+
+Logs: `/tmp/merman-alpha7-final-version-check.log`,
+`/tmp/merman-alpha7-final-surface.log`, and `/tmp/merman-alpha7-final-compatibility.log`.
+
+
+Alpha.7 preparation then regenerated the 15 CLI manual pages and the 13 Rust license reports
+through their existing owners. Legal synchronization refreshed the four affected copies;
+all 382 legal projections passed freshness checks. The first full script run exposed only
+the stale license input digest; after regeneration, all 606 tests passed in the linked worktree
+and again in the primary worktree (`/tmp/merman-alpha7-primary-script-tests.log`). The repository
+changelog test now reads the workspace version rather than hard-coding alpha.6; historical
+alpha.6 fixtures remain unchanged. Version, changelog, CLI asset, static surface, formatting
+and whitespace checks passed. These successful preparation checks do not override the failed
+published-facade compatibility lane or substitute for immutable release preflight.

@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "dugong"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "criterion",
  "dugong-graphlib",
@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "hashbrown 0.17.1",
  "rustc-hash",
@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "manatee"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "indexmap",
  "libm",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "merman"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -2420,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "merman-analysis"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "jsonschema",
  "merman-core",
@@ -2432,7 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "merman-android-jni"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "jni",
  "merman-bindings-core",
@@ -2441,7 +2441,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ascii"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "dugong",
  "merman-core",
@@ -2456,7 +2456,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ascii-test-contracts"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -2464,7 +2464,7 @@ dependencies = [
 
 [[package]]
 name = "merman-bindings-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "criterion",
  "merman",
@@ -2482,7 +2482,7 @@ dependencies = [
 
 [[package]]
 name = "merman-cli"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "assert_cmd",
  "atomic-write-file",
@@ -2519,7 +2519,7 @@ dependencies = [
 
 [[package]]
 name = "merman-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "euclid",
  "futures",
@@ -2548,7 +2548,7 @@ dependencies = [
 
 [[package]]
 name = "merman-doc"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "pulldown-cmark",
  "quick-xml",
@@ -2558,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "merman-editor-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-analysis",
  "merman-core",
@@ -2567,14 +2567,14 @@ dependencies = [
 
 [[package]]
 name = "merman-elk-layered"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "merman-export"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "base64 0.22.1",
  "cssparser",
@@ -2598,7 +2598,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ffi"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "cc",
  "libloading",
@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "merman-fixture-render-context"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "json5",
  "serde",
@@ -2622,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "merman-layout-elk"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-elk-layered",
  "thiserror 2.0.20",
@@ -2630,7 +2630,7 @@ dependencies = [
 
 [[package]]
 name = "merman-lsp"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "futures",
  "merman-analysis",
@@ -2651,7 +2651,7 @@ dependencies = [
 
 [[package]]
 name = "merman-render"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "base64 0.22.1",
  "brotli-decompressor",
@@ -2694,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "merman-rustdoc"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman",
  "merman-doc",
@@ -2708,7 +2708,7 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-acceptance"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "flate2",
  "image",
@@ -2726,11 +2726,11 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-authoring-fixtures"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 
 [[package]]
 name = "merman-theme-contract"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-theme-authoring-fixtures",
  "serde",
@@ -2741,7 +2741,7 @@ dependencies = [
 
 [[package]]
 name = "merman-theme-fixtures"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "cssparser",
  "json5",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "merman-typst-plugin"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-bindings-core",
  "serde_json",
@@ -2765,7 +2765,7 @@ dependencies = [
 
 [[package]]
 name = "merman-uniffi"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman",
  "merman-ascii-test-contracts",
@@ -2778,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "merman-wasm"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -5808,7 +5808,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "base64 0.22.1",
  "brotli",

@@ -2,7 +2,7 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [Unreleased]
+## [0.8.0-alpha.7] - Unreleased
 
 ### Breaking changes
 

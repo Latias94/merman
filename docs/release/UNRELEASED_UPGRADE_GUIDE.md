@@ -1,8 +1,8 @@
 # Unreleased Migration Reference
 
-This guide describes the development source after published workspace `v0.8.0-alpha.6`.
-The theme contracts below have not been released or frozen. A working-tree package version
-of `0.8.0-alpha.6` does not make its artifacts identical to that immutable release.
+This guide describes the selected `v0.8.0-alpha.7` candidate after published workspace
+`v0.8.0-alpha.6`. The theme contracts below have not been released or frozen. The candidate
+version is a preparation target, not a publication or compatibility-admission claim.
 Web, Node.js, Flutter, Python, Apple, Android and Typst have independent publication tracks.
 
 For the published alpha.5-to-alpha.6 changes, use the
