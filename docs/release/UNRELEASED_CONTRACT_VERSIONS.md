@@ -20,6 +20,7 @@ The branch's claim that published Typst 0.3.0 used ABI 3 was incorrect.
 
 | Axis / owner | Published baseline | Unreleased decision |
 | --- | --- | --- |
+| UniFFI operation request record, `MermanOperationRequestV4` | V4 | Keep V4; this type name already occurs in the published API 6 source. |
 | UniFFI binding API, `merman-uniffi` | 6 | Consolidate 9 to 7. ASCII selection fields and theme errors ship together. Regenerate Swift/Python with the native library. |
 | Typst plugin ABI, `wasm-profiles.json` | 2 | Consolidate 4 to 3. Theme authoring and catalog exports are one unreleased change. |
 | Web/WASM transport API | 5 | Keep 5; it was already published. |

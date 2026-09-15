@@ -136,3 +136,35 @@ Version consolidation has passed the scoped checks listed in that audit, includi
 published Typst ABI probe, shared transport support vectors, native preset qualification and
 rebuilt local Python/Swift consumers. C7a remains unfrozen. Next resume the post-merge lockfile
 and legal-projection audit, then rebuild the final artifact/profile candidate matrix.
+
+## Post-merge dependency and embedding repair
+
+The lockfile audit uses theme parent `239fbed0b`, main parent `4c2ac7817`, and merge base
+`b381b842f`. Main adds `merman-doc`, `proc-macro-crate 3.5.0`,
+`pulldown-cmark-escape 0.11.0`, and `toml_edit 0.25.13+spec-1.1.0`. Re-resolving those
+additions against the theme parent's lock succeeds offline without broad upgrades.
+Keep two targeted updates: `rustls 0.23.45` addresses RUSTSEC-2026-0285 dated 2026-09-14,
+and `chacha20 0.10.2` replaces the yanked 0.10.1 lock entry. Cargo-deny passes advisories,
+bans, licenses and sources with that graph. Generated legal reports and projections follow
+the existing owner scripts: 13 source reports and 382 release material projections pass freshness
+checks, the third-party contract passes, and the contract unit tests pass (18 tests). The old
+platform reports omitted theme dependencies such as font decoding, shaping and hashing; the
+regenerated reports include them without introducing another license kind.
+
+The shared-source audit also found main's embedding contract disconnected from the theme
+pipeline. Rustdoc calls `with_browser_inline_contract` and `with_rebased_ids`, which the
+merged pipeline omitted. Restore those entry points and Mindmap's renderer-owned duplicate-ID
+normalization using `DiagramFamilyId`; preserve prepared-math occurrence checks before
+publication. Restore Error's SVG style namespace and scope TreeView/ZenUML styles without
+replacing their typed writers. Event Modeling and Ishikawa already have scoped typed writers.
+The combined pipeline, prepared-math, shared document and Rustdoc checks pass all 265 tests,
+including both Rustdoc end-to-end consumers. The full structure comparison passes all 35
+family dispatches with the existing diagnostic browser-text-layout receipts. All 34
+representative artifact dependency-closure checks and the curated feature matrix pass.
+The 16 font asset tests pass, including duplicate WOFF2 table rejection and canonicalization
+with the restored decoder version. The native-sdk Apple host library rebuild passes;
+UniFFI 0.32.0 regenerates the checked-in Swift/Python source without a diff. Python
+contracts pass 29 tests, its real consumer passes all 22 support vectors and three
+budgeted authoring operations through both consumer modes, and the rebuilt Swift
+module passes the Apple consumer smoke. This is macOS ARM64 host evidence, not a
+complete platform rebuild or a C7a freeze.
