@@ -128,6 +128,56 @@ The raw queries, reasons, artifact source and summary are retained in
 `target/bench/experiments/c7a-a5e3cd2d6/support-inventory.json`. Use these responses to select
 terminal probes. Do not convert the response counts into a theme support percentage.
 
+# Published alpha.6 footprint comparison
+
+GitHub's alpha.6 release metadata records publication on September 2, 2026. The named macOS
+ARM64 CLI/LSP archives were downloaded and matched their published SHA-256 sidecars. All eight
+corresponding npm package versions and the macOS Python wheel were downloaded from their
+registries and matched the registry integrity/hash metadata. These are actual published
+artifacts, compared with the local clean alpha.7 candidate; they are not matched-toolchain
+rebuilds or isolated theme-only experiments.
+
+| Artifact | Published alpha.6 packed bytes | Local alpha.7 packed bytes | Delta |
+| --- | ---: | ---: | ---: |
+| CLI macOS ARM64 tar.xz | 11470900 | 13499304 | +17.68% |
+| LSP macOS ARM64 tar.xz | 3974632 | 4054316 | +2.00% |
+| `@mermanjs/web` | 4828999 | 6171330 | +27.80% |
+| `@mermanjs/web-analysis` | 1456578 | 1526589 | +4.81% |
+| `@mermanjs/web-render` | 4144575 | 5503311 | +32.78% |
+| `@mermanjs/web-editor` | 1507960 | 1577497 | +4.61% |
+| `@mermanjs/web-ascii` | 1973171 | 2034515 | +3.11% |
+| `@mermanjs/node` | 111060 | 113593 | +2.28% |
+| `@mermanjs/node-darwin-arm64` | 7785834 | 11068461 | +42.16% |
+| `@mermanjs/node-wasm` | 4958170 | 7290115 | +47.03% |
+| `merman-python` | 6883138 | 9228164 | +34.07% |
+
+The CLI binary increased from 43330528 to 51398256 bytes (+18.62%); LSP from 17503072 to
+17828544 (+1.86%). The CLI's default feature names are unchanged. The published CLI reports
+alpha.6 when invoked with `--version`; LSP has no such version output, so its version identity
+here comes from the release and verified archive checksum, not that invocation.
+
+For `web-render`, the WASM itself increased from 10420901 to 14053324 bytes. `wasm-tools
+objdump` locates 3073883 additional bytes in the code section and 548039 in data; the function
+count increased from 16211 to 22916. Final packages omit function-name sections, so this
+section-level observation cannot assign individual bytes to the theme compiler, shaping or font
+decoding. It does establish that the increase is primarily executable code rather than npm
+wrapper files. Renderer manifest changes add the theme contract, font shaping/parsing,
+WOFF2/Brotli decoding, Unicode-script handling and digests. These have production consumers,
+but their presence alone does not establish that all growth is necessary or optimally compiled.
+
+The retained metadata, verified archives, component sizes/hashes and section dumps are under
+`target/bench/experiments/theme-alpha6-impact/`: `published-release.json`,
+`published-native-artifacts.json`, `published-package-artifacts.json`,
+`package-size-comparison.json` and `wasm-attribution/`. Both published and candidate Node native packages were also installed and queried. Their
+capability IDs remain `layout-cytoscape`, `layout-elk` and `svg`, and both expose only SVG
+output. The candidate adds materialization, preset export and theme-support operations plus
+the theme catalog. Thus the size comparison is not explained by adding PNG/PDF or math to
+Node; it includes substantial new theme/font behavior inside the existing SVG capability.
+`node-runtime-capabilities.json` retains both actual runtime responses. Node transport and
+Python growth warrants further attribution despite passing the current artifact gates. Passing the September 14 WASM
+budgets does not mean there was no increase from the published release. No additional budget
+relaxation follows from this comparison.
+
 # Cost and architecture audit still open
 
 The baseline record retains exact local file sizes and withdraws the incorrect MiB conversion.
@@ -135,15 +185,18 @@ The [candidate record](2026-09-16-c7a-native-candidate-a5e3cd2d6.md) now adds sa
 Typst, native SDK, Flutter and Node artifact sizes, plus final Web/Typst strip/compression
 measurements. All 24 current WASM budget checks pass without changing their limits, and all
 61 exact-profile dependency observations pass. These results establish current artifacts and
-registered boundaries, not an alpha.6-to-alpha.7 delta or minimum possible size.
+registered boundaries. The published-artifact comparison above supplies release footprint
+deltas; neither result establishes minimum possible size.
 
 The first release-range experiment is registered under
 `target/bench/experiments/theme-alpha6-impact/experiment.yaml`: local tag `v0.8.0-alpha.6`
 (`d529f858ea3d337a1bdc8fe12e44e1403ededf2e`) versus `a5e3cd2d6`, Rust 1.95.0, the unchanged
 complete-SVG pipeline harness and 35 byte-identical standard fixtures. Each checkout retains
 its own lockfile; any eventual delta includes dependency changes and cannot be attributed solely
-to theme implementation. The diagnostic uses two AB/BA pairs with the long preset. Results
-are pending; the coarse historical CLI smoke timings remain insufficient for performance claims.
+to theme implementation. The diagnostic uses two AB/BA pairs with the long preset. Initial discovery failed on both
+versions because the shared list also preflights ELK fixtures. The corrected experiment enables
+`svg,layout-elk` on both sides; it retains the initial failure and does not bypass preflight.
+Results remain pending; the coarse historical CLI timings remain insufficient for performance claims.
 
 Manifest inspection finds five added workspace crates: production `merman-doc` and
 `merman-theme-contract`, and publish-false `merman-theme-fixtures`,
@@ -151,7 +204,7 @@ Manifest inspection finds five added workspace crates: production `merman-doc` a
 manifests declare Rust 1.95. This is a manifest comparison, not runtime dependency reachability
 or byte attribution; the exact-profile verifier remains the owner of dependency boundaries.
 Cold start, stage attribution, throughput, large-diagram memory, theme compilation/discovery
-and equivalent alpha.6 artifact size comparisons remain outstanding.
+and same-host alpha.6 artifact rebuild comparisons remain outstanding.
 
 Keep production family ownership and acceptance-only historical authority. No new generic proof
 engine, bundled Inter resource, or budget increase is justified by the observations above.
