@@ -41,7 +41,9 @@ The release-impact audit now compares verified published alpha.6 packages with c
 artifacts. Render-capable npm and Python packages grew substantially despite passing current
 budgets. The same-host default SVG diagnostic also signals a broad latency increase on the
 17 fixtures with byte-identical output; 18 changed-output fixtures remain excluded. Independent
-confirmation and stage attribution are in progress. Treat these as open impact-review items,
+confirmation now reports default-render regressions for Class tiny/medium and XY Chart medium
+after noise calibration and eight fresh AB/BA pairs; stage attribution is in progress. Treat
+these as open impact-review items,
 not accepted overhead or a reason to relax budgets. See the
 [impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md).
 

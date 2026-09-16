@@ -97,7 +97,25 @@ Visual inspection of `01-editor-dark.png` (Chinese login Flowchart) and `05-cybe
 (Chinese payment Sequence) found visible Chinese labels on dark canvases. Arrowheads appear
 considerably darker than the corresponding lines, making direction harder to see. This is a
 usability concern requiring terminal-color and pixel/contrast investigation, not yet a quantified
-contrast failure or a proven new regression. Only these two images were inspected visually.
+contrast failure or a proven new regression. Only these two images were inspected visually in that earlier pass.
+
+The follow-up inspected candidate example 01's native PNG for all ten presets at its original
+503 x 955 size. The Chinese labels fit their nodes in this sample, and all ten distinguish the
+main text from their canvases. The five dark variants (Editor Dark, One Dark, Gruvbox Dark,
+Ayu Dark and Cyberpunk) retain visibly dark arrowheads against their dark canvas; Ayu Dark's
+direction markers are particularly hard to distinguish. Light variants expose the marker color
+mismatch more clearly without the same dark-on-dark visibility problem. This supports the
+already computed-style-confirmed Flowchart gap; it is not an accessibility certification,
+quantified contrast result, or all-family visual pass. Retained files are
+`c7a-a5e3cd2d6/reference-matrix/01-<preset>.png`.
+
+Additional native PNG spot checks covered Editor Dark Pie (19) and Gantt (17), Cyberpunk
+Mindmap (26), and Spotless Timeline (28). The inspected Pie title/legend and Gantt task labels
+are visible, and Timeline text fits the displayed boxes. The Mindmap's bright green branch
+uses white labels, which merits a computed-color/contrast follow-up before calling Cyberpunk
+consistently readable across families. This is a visual concern, not a measured threshold
+failure or proof that the refactor introduced it. No new preset is needed to investigate these
+existing palette/terminal issues.
 
 | Question | Current evidence | Still needed |
 | --- | --- | --- |
@@ -212,19 +230,38 @@ per-operation estimates are:
 
 These operations do not select an explicit theme. Their output hashes match and both versions
 use the same harness, toolchain and capability recipe. This therefore concerns the ordinary
-rendering path, not just explicit theme authoring. The two diagnostic AB/BA pairs are insufficient
-to declare confirmed regressions. An independent confirmation on these three fixtures is running
-through the existing owner's balanced A/A calibration and power-sized AB/BA procedure, with the
-registered +10% **and** +50 us thresholds. Raw diagnostic evidence is `end-to-end-elk.json`;
-confirmation belongs to `end-to-end-confirmation.json`. Stage attribution and causal profiling
-must precede any optimization or assertion that the added cost is necessary. The coarse
-historical CLI timings remain insufficient for performance claims.
+rendering path, not just explicit theme authoring. The two diagnostic AB/BA pairs alone were insufficient
+to declare confirmed regressions. Independent confirmation has now completed: eight balanced A/A
+calibration pairs per executable and eight fresh AB/BA confirmation pairs per fixture. All three
+operations are **confirmed regressions** under the registered +10% **and** +50 us thresholds.
+The owner reports decision-grade evidence with 95% simultaneous confidence and Bonferroni
+adjustment across the six metric components.
+
+| Confirmed operation | Alpha.6 | Candidate | Relative bounds | Absolute bounds |
+| --- | ---: | ---: | ---: | ---: |
+| Class tiny | 50.59 us | 188.28 us | +270.28% to +274.05% | +136.33 to +139.31 us |
+| Class medium | 600.31 us | 1353.40 us | +124.58% to +126.60% | +744.88 to +765.38 us |
+| XY Chart medium | 92.76 us | 244.62 us | +162.04% to +165.64% | +150.03 to +154.03 us |
+
+Raw diagnostic evidence is `end-to-end-elk.json`; independent confirmation is
+`end-to-end-confirmation.json`. Stage attribution is running separately. It must precede any
+optimization or assertion that the added cost is necessary. These results are release-range
+regressions, not isolated theme-only causal effects. The coarse historical CLI timings remain
+insufficient for performance claims.
 
 Manifest inspection finds five added workspace crates: production `merman-doc` and
 `merman-theme-contract`, and publish-false `merman-theme-fixtures`,
 `merman-theme-authoring-fixtures` and `merman-theme-acceptance`. Both compared workspace
 manifests declare Rust 1.95. This is a manifest comparison, not runtime dependency reachability
 or byte attribution; the exact-profile verifier remains the owner of dependency boundaries.
+A path-grouped release-range diff covers 1,898 changed files, 423,657 added lines and 37,798
+removed lines. Of these, 127 integration-test/benchmark/example files account for 86,642 added
+lines, and 68 private theme acceptance/fixture files account for 38,234. The 652 remaining crate
+files contain 253,851 added lines, including inline tests; this is not a production-only count.
+`source-delta.json` retains the complete grouping. These counts include other mainline changes
+between releases and cannot establish theme-only cost, binary size or code quality. They do
+identify maintenance surface that should be evaluated independently of shipped dependencies.
+
 Cold start, stage attribution, throughput, large-diagram memory, theme compilation/discovery
 and same-host alpha.6 artifact rebuild comparisons remain outstanding.
 
