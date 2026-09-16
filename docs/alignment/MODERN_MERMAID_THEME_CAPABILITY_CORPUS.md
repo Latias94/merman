@@ -67,6 +67,13 @@ Canvas evidence composes `bgClass` and `bgStyle` because Preview applies both to
 Consequently, a solid class background remains part of the canvas contract even when one or more
 inline gradients or patterns are layered above it.
 
+## Product Portfolio and Family Application
+
+The [September 16 portfolio review](../knowledge/engineering/verification/2026-09-16-theme-portfolio-and-application-boundaries.md) examines all 24 themes and separates shared identity, dedicated family styling, typography-only coverage and host-owned presentation.
+Its 72 reference browser captures are compatibility probes, not implementation qualification.
+A theme need not be appropriate for every family: use shared defaults plus explicit family recipes, preserve diagram semantics, and report design scope separately from technical support and artifact qualification.
+The [current product boundary plan](../plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md) carries those application requirements; Cyberpunk is its first effect-rich scene, not the whole portfolio.
+
 ## Licensed Font Tranche
 
 The corpus vendors two minimum WOFF2 slices from Excalidraw commit
