@@ -196,7 +196,29 @@ its own lockfile; any eventual delta includes dependency changes and cannot be a
 to theme implementation. The diagnostic uses two AB/BA pairs with the long preset. Initial discovery failed on both
 versions because the shared list also preflights ELK fixtures. The corrected experiment enables
 `svg,layout-elk` on both sides; it retains the initial failure and does not bypass preflight.
-Results remain pending; the coarse historical CLI timings remain insufficient for performance claims.
+The corrected diagnostic completed 68 timing invocations across 17 byte-identical SVG-output
+fixtures. The other 18 fixtures have changed output hashes and were excluded from timing, so the
+whole report correctly exits with `contract_failure`; it is not a passing 35-fixture comparison.
+No output normalization or admission relaxation was applied.
+
+The comparable subset raises a broad default-rendering regression signal. Representative
+per-operation estimates are:
+
+| Complete SVG operation | Published alpha.6 source | Candidate source | Diagnostic change |
+| --- | ---: | ---: | ---: |
+| Class tiny | 50.29 us | 187.71 us | +273% |
+| Class medium | 597.67 us | 1341.20 us | +124% |
+| XY Chart medium | 93.38 us | 244.12 us | +161% |
+
+These operations do not select an explicit theme. Their output hashes match and both versions
+use the same harness, toolchain and capability recipe. This therefore concerns the ordinary
+rendering path, not just explicit theme authoring. The two diagnostic AB/BA pairs are insufficient
+to declare confirmed regressions. An independent confirmation on these three fixtures is running
+through the existing owner's balanced A/A calibration and power-sized AB/BA procedure, with the
+registered +10% **and** +50 us thresholds. Raw diagnostic evidence is `end-to-end-elk.json`;
+confirmation belongs to `end-to-end-confirmation.json`. Stage attribution and causal profiling
+must precede any optimization or assertion that the added cost is necessary. The coarse
+historical CLI timings remain insufficient for performance claims.
 
 Manifest inspection finds five added workspace crates: production `merman-doc` and
 `merman-theme-contract`, and publish-false `merman-theme-fixtures`,

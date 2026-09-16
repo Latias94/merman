@@ -37,6 +37,14 @@ Flowchart parser gap was repaired. Browser computed styles exposed a separate Fl
 arrow-color usability gap, recorded for bounded investigation before declaring presets ready.
 These execution counts do not establish complete theme support or portable qualification.
 
+The release-impact audit now compares verified published alpha.6 packages with candidate
+artifacts. Render-capable npm and Python packages grew substantially despite passing current
+budgets. The same-host default SVG diagnostic also signals a broad latency increase on the
+17 fixtures with byte-identical output; 18 changed-output fixtures remain excluded. Independent
+confirmation and stage attribution are in progress. Treat these as open impact-review items,
+not accepted overhead or a reason to relax budgets. See the
+[impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md).
+
 The same candidate now has installed Python wheel, Node N-API/WASM and all five Web browser
 package witnesses,
 including shared support/error vectors and public catalog checks. A directory-alias entrypoint
