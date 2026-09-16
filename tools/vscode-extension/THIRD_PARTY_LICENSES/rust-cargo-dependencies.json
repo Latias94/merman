@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "5e3f3a221df105badb50f89aa5684df21bade8c77e81e362c74641de9d3e38fb",
+    "cargo_lock_sha256": "a910ef1851947cbfe6b1c8e3ed97bb7f35e35efbfe2b074427779be9bb9b581a",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -150,7 +150,7 @@
         },
         {
           "name": "aws-lc-sys",
-          "version": "0.43.0",
+          "version": "0.45.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
           "authors": [
@@ -2188,7 +2188,7 @@
         },
         {
           "name": "rustls",
-          "version": "0.23.43",
+          "version": "0.23.45",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR ISC OR MIT",
           "authors": [],
@@ -3395,7 +3395,7 @@
         },
         {
           "name": "aws-lc-sys",
-          "version": "0.43.0",
+          "version": "0.45.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
           "authors": [
@@ -3552,7 +3552,7 @@
       "packages": [
         {
           "name": "rustls-webpki",
-          "version": "0.103.13",
+          "version": "0.103.15",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC",
           "authors": [],
@@ -3586,7 +3586,7 @@
       "packages": [
         {
           "name": "aws-lc-rs",
-          "version": "1.17.3",
+          "version": "1.18.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC AND (Apache-2.0 OR ISC)",
           "authors": [
@@ -3596,7 +3596,7 @@
         },
         {
           "name": "aws-lc-sys",
-          "version": "0.43.0",
+          "version": "0.45.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
           "authors": [
@@ -4206,7 +4206,7 @@
       "packages": [
         {
           "name": "aws-lc-sys",
-          "version": "0.43.0",
+          "version": "0.45.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
           "authors": [

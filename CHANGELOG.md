@@ -28,6 +28,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Updated the CLI TLS dependency to `rustls 0.23.45` to fix TLS 1.3 handshake encryption-level validation (RUSTSEC-2026-0285).
+
 - Fixed `base` theme overrides leaving derived Sequence, State, Gantt, and Pie colors at their default values. The base palette now follows Mermaid's complete ordered theme calculation, including intermediate and explicit derived overrides.
 
 - Preserved visible line segments on both sides of horizontal ASCII/Unicode edge labels, including bidirectional arrows, and corrected cell centering for even-width labels (#132).
