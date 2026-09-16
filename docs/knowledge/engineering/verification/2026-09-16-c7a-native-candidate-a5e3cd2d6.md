@@ -174,6 +174,34 @@ The complete profile-specific nextest run passed 66/66, zero skipped, across lib
 and the C/header consumer integrations. It includes the shared support and authoring goldens
 and the retained alpha.5 C consumer. Logs are in `c-abi-build-smoke.log`.
 
+# Flutter macOS Native Assets consumer
+
+The `flutter-desktop-native` recipe built the ARM64 dylib, verified its exported symbol
+contract and packaged it into the checkout's Flutter Native Assets directory. Dart 3.12.2
+then passed the ABI 3 contract tests, public example and theme authoring smoke. Both one-shot
+and reusable consumers each passed two materializations, 22 support queries, five error cases
+and all three budgeted authoring operations. The example produced SVG and ASCII through the
+actual native asset. The clean checkout remained unchanged.
+
+The asset is 21893296 bytes, SHA-256
+`f46769ac1f3f5107e817be3a79bb2af4706f25a543b3c035fabd5fdd636c4e09`.
+Commands, results and toolchain are retained in `flutter-command.json`,
+`flutter-build-smoke.log` and `flutter-artifact.json`. This is a macOS Dart/Native Assets
+consumer witness. It does not establish Android/iOS execution, an installed Flutter app,
+a pub.dev publication, or the complete Flutter framework test matrix.
+
+# Artifact dependency boundaries
+
+The existing exact-profile dependency verifier passed all 61 selected profile/target
+observations with no representative-target reduction. This covers resolved runtime dependency
+closures, including the explicit Linux reference used for host recipes. It does not turn a
+Linux/Windows/Android/iOS metadata resolution into a binary build or execution claim.
+
+The Web analysis, ASCII and editor closures contain 86, 85 and 87 packages respectively;
+full/render contain 171/165, and Typst contains 115. Counts are metadata, not byte attribution.
+The verifier enforces the checked-in forbidden dependency and capability boundaries. Full
+observations and source are retained in `artifact-dependency-closures.json` and its log.
+
 # Literal reference inputs, all ten presets
 
 The same CLI binary rendered all 34 unmodified fences in Modern Mermaid's
@@ -214,9 +242,9 @@ python3 scripts/verify_lsp_release_archive.py <lsp.tar.xz> --target aarch64-appl
 python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --no-default-features --features png,jpeg,pdf,layout-cytoscape --lib --tests --test-threads 2 --no-fail-fast
 ```
 
-The remaining native binding witnesses and their shared transport vectors are still being
-refreshed. Python UniFFI, Node native/WASM, Web browser and Typst package evidence is recorded
-above. Linux, Windows, the Swift 5.9 floor and other host-specific
+Python UniFFI, Node native/WASM, Web browser, Typst, C SDK and macOS Dart/Native Assets
+consumer evidence is recorded above. The remaining host-specific binding builds and execution
+retain their own open gates. Linux, Windows, the Swift 5.9 floor and other host-specific
 claims remain unverified here. Preserve older records at their original source identities.
 The preset marker gap, wider visual/semantic coverage, matched alpha.6 size/performance
 comparisons, theme compilation/discovery and large-diagram memory remain audit work.
