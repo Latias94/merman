@@ -24,6 +24,15 @@ mechanisms must be checked against that owner and runtime admission; they must n
 as host-only simply because the reference implements them through CSS. A direct typed family
 surface also does not establish full support for every facet.
 
+# Latest native follow-up
+
+The clean `a5e3cd2d6` production build now exercises all ten presets: 990/1020 literal-input
+outputs succeeded; only the upstream-invalid GitGraph example failed. The Japanese Flowchart
+passes all 30 combinations. Archive-bound qualification and replay passed for the existing
+18 host-dependent cells. Browser computed styles confirmed a Flowchart arrow-color usability
+gap. See the [native candidate record](2026-09-16-c7a-native-candidate-a5e3cd2d6.md) for hashes,
+checks and remaining boundaries. The five-preset matrix below is the earlier baseline.
+
 # Literal reference matrix
 
 Source: Modern Mermaid `a021cbce37fc0b07a9f4791c28e983101ea06f2d`, all 34 Mermaid fences
@@ -95,7 +104,7 @@ contrast failure or a proven new regression. Only these two images were inspecte
 | Do representative Merman presets execute on real diagrams? | 480 successful SVG/PNG/PDF outputs; two input-specific failures classified above | Final release-profile replay after the parser correction |
 | Do reference theme mechanisms map to typed public behavior? | Existing hash-bound 24-theme corpus | Compare recipe facets with emitted terminals and actual admission |
 | Are default, dark, presentation and high-contrast presets usable? | Five presets executed; two dark images inspected | Broader visual checks, arrows/labels, long text and expected palette assertions |
-| Do all ten presets satisfy product needs? | Ten catalog entries exist | Exercise remaining five; explicit use-case criteria and artifact qualification |
+| Do all ten presets satisfy product needs? | All ten executed in the native follow-up | Resolve the arrow-color gap; explicit use-case criteria, broader visual checks and qualification |
 | Are clear, transparent and ordinal semantics correct here? | Historical focused tests, not this matrix | Actual authoring specs and negative terminal/admission observations |
 | Is arbitrary reference CSS portable? | No such claim is made | Typed mechanism translation and explicitly bounded host CSS residuals |
 

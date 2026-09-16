@@ -17,24 +17,31 @@ Prepare the workspace and coupled packages for alpha.7; keep new theme protocol 
 at v1. Preserve native `render/batch -e` during 0.8.x, as previously documented.
 The fresh alpha.7 consumer compiles, but published alpha.6 with candidate siblings still
 fails the prerelease compatibility gate on both the core error enum and retired renderer APIs.
-This remains a release blocker; version selection does not waive it. Final artifact validation, catalog rollout and C7a freeze remain open.
+The maintainer accepted that bounded transition on 2026-09-16. The explicit alpha.6-to-alpha.7
+gate mode records the known incompatibility and still requires candidate compilation. The
+release-contract decision is closed; final artifact validation, catalog rollout and C7a freeze
+remain open.
 
 ## Current status and execution baseline
 
-The execution baseline for this revision is `7b60b00fb`. It includes the alpha.7 version
-projection, the SVG prerelease compatibility lane, the test-only helper boundary cleanup, and
-the npm 11 package-metadata fixes. Version and changelog checks pass, the full SVG structure
-comparison passes, and theme contracts remain v1. The latest recorded script run passed 607/607.
-Release-mode theme acceptance passed 15/15, and the Web/Node script suite passed 153/153.
-These results retain their individual source identities; they are not a single final-candidate
-all-host run.
+The fixed native candidate is `a5e3cd2d6`. Its clean macOS ARM64 checkout built CLI/LSP
+archives, passed archive execution and complete preset-qualification replay, and passed all
+146 optimized theme acceptance tests plus 135 archive/release Python contracts. Three
+presets each have six artifact-bound, host-dependent cells; the other seven remain unqualified.
+Version, preparation changelog and license checks pass. See the
+[native candidate record](../knowledge/engineering/verification/2026-09-16-c7a-native-candidate-a5e3cd2d6.md).
 
-Local alpha.7 Web and Typst artifacts have been rebuilt and passed their existing size budgets.
-The macOS ARM64 Node N-API package has been rebuilt, packed, installed into an empty project,
-and exercised through its public authoring API. Node WASM installation, other native hosts,
-CLI/LSP archives and final same-source preflight remain open. Detailed commands, source
-identities and limits are in the
-[transport and artifact evidence](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md).
+The same CLI ran 34 literal reference diagrams through ten presets and SVG/PNG/PDF: 990/1020
+outputs succeeded; all failures belong to one upstream-invalid GitGraph example. The Japanese
+Flowchart parser gap was repaired. Browser computed styles exposed a separate Flowchart
+arrow-color usability gap, recorded for bounded investigation before declaring presets ready.
+These execution counts do not establish complete theme support or portable qualification.
+
+Earlier local Web/Typst budgets and installed Node N-API/WASM consumers passed at the revisions
+named in the [transport evidence](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md).
+Refresh the remaining installed consumers and shared transport vectors against the selected
+candidate. Linux/Windows, the Swift compiler floor and final same-source preflight retain their
+own open gates. Historical checks are not a final-candidate all-host run.
 
 C5 and representative C6a are complete. All 33 families have typed consumption paths, and
 the production Legacy route inventory is empty, including Block. Post-merge retirement,
@@ -49,10 +56,10 @@ the September 15 preparation. The historical records below describe the merge au
 platform builds and tests at their actual source revisions. They are not evidence that every
 platform was rebuilt at `72980c2fe`.
 
-The current branch does not need another main merge: `origin/main` remains an ancestor of the
-candidate. The maintainer has accepted the bounded alpha.6 previous-facade transition impact;
-this does not waive candidate-owned exact dependency, artifact or host checks. Any later main changes must be reviewed as a new integration input and must not be
-silently folded into the alpha.7 evidence already recorded here.
+At the recorded ancestry check in `b10576aae`, tracked `origin/main` remained an ancestor.
+That observation is not a claim about subsequent remote changes. Refresh the remote before a
+future integration and review any new main changes as a separate source input. The accepted
+alpha.6 transition does not waive candidate-owned dependency, artifact or host checks.
 
 ### Version policy for the remaining work
 
@@ -70,7 +77,7 @@ identities and are not product version counters. The complete per-owner audit is
 | --- | --- | --- |
 | Core model and production provider retirement | Implemented and revalidated | Preserve the boundary in final candidate regressions |
 | Alpha.7 version projection and theme v1 consolidation | Prepared | Keep generated projections current after implementation changes |
-| Published alpha.6 with candidate siblings | Bounded assessment complete; ASCII and SVG consumers fail | Obtain an explicit release-contract decision; a core-only fix is insufficient |
+| Published alpha.6 with candidate siblings | Known incompatibility accepted; bounded gate mode implemented | Preserve exact candidate siblings and the explicit known-impact record |
 | Discovery, authoring golden and catalog/profile delivery | Implemented with source-specific evidence | Close demonstrated gaps through final owner-built consumers |
 | C7a candidate and contract freeze | Open | Complete the declared same-source release matrix and archive/catalog binding |
 | C7b family breadth | Separate continuing work | Evaluate mechanisms independently of the empty Legacy inventory |
@@ -150,10 +157,11 @@ The active goal is C7a candidate preparation for `v0.8.0-alpha.7`, without taggi
 Keep this goal active while any required gate below remains unresolved; progress counts and
 local witnesses do not establish completion.
 
-1. Finish independent local artifact witnesses with the existing owner commands: Node WASM
-   first, then available CLI/LSP archive builds and replay. Record missing hosts explicitly.
-2. Resolve the published alpha.6 dependency-resolution contract with the maintainer. The
-   assessment is complete; do not spend more iterations reproducing the same known failure.
+1. Refresh remaining installed consumers and shared transport vectors with their owner commands.
+   Preserve the completed `a5e3cd2d6` native archive/qualification record; rebuild affected artifacts
+   if implementation changes. Record missing hosts explicitly.
+2. Apply the approved alpha.6 transition contract through the bounded checker mode. The decision
+   is complete; preserve its known-impact record.
 3. Pin a clean candidate after the decision and any resulting changes. Run its declared
    host/compiler/profile matrix, installed consumers and shared transport vectors. Preserve
    unknown-status rejection and bind catalog qualification to the artifacts actually tested.
