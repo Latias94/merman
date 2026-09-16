@@ -15,8 +15,8 @@ folders were untouched. Cargo builds ran serially and reused the existing target
 Tools: Rust/Cargo 1.95.0, cargo-dist 0.32.0, Python 3.14.6; macOS 26.6.2.
 
 This closes the local CLI/LSP archive and qualification tranche at this source. C7a contract
-freeze remains open: other installed consumers, host/compiler floors and final preflight do
-not inherit this result. No tag, publication, font bundle or budget change was made.
+freeze remains open: the remaining installed consumers, host/compiler floors and final preflight
+do not inherit this result. No tag, publication, font bundle or budget change was made.
 
 # Verified owner checks
 
@@ -53,6 +53,43 @@ SVG and PNG, under `native-flowchart-state-sequence-system-fonts-v1`. All cells 
 `host_dependent`. The other seven presets retain empty qualification cells. PDF execution in
 the separate reference matrix does not grant PDF qualification. C6 observations are a separate
 owner and must not be added to these 18 cells.
+
+# Installed Python and Node consumers
+
+The same clean source built a Python UniFFI wheel, a Node native package group for Darwin
+ARM64 and a Node WASM package. Each was installed into a separate consumer environment.
+The Python module resolved inside the wheel smoke virtual environment; both Node consumers
+resolved the installed public package entrypoint. Node used 24.21.0 and npm 12.0.2.
+
+| Installed artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `merman-0.8.0a7-py3-none-macosx_11_0_arm64.whl` | 9228164 | `0984c5540f9470ba9c0c64d15a31b3ddca6cbf842aa9dd5d7a334b6fdd8c0ad3` |
+| `mermanjs-node-0.8.0-alpha.7.tgz` | 113593 | `db68b2ffb558051fdd8cd1795daed2f42704973753b25d541b3182af14d6e464` |
+| `mermanjs-node-darwin-arm64-0.8.0-alpha.7.tgz` | 11068461 | `37749b16ba589b4c8a9d12a1210b3a4d2c739adabcf485d162f56724cfbb0bb8` |
+| `mermanjs-node-wasm-0.8.0-alpha.7.tgz` | 7290115 | `d03a2e00acc9a6128f6dea10702412350a8e45956183a2b3e2eed590dc34f63b` |
+
+The wheel owner passed generated-support and legal checks, shared definitions, three-family
+isolation, rule overrides, cold complete specs, preset export/catalog, 22 support vectors and
+all three authoring budget operations through one-shot and reusable consumers. An additional
+installed-wheel render of the exact Japanese reference example produced 107776 SVG bytes.
+
+Each Node consumer passed two shared definition vectors, two catalog checks, three family
+isolation checks, one rule override, one cold-spec roundtrip, three preset exports, 44 support
+queries, six diagnostic checks, two resource-limit checks, 23 JSON operations and 23 SVG
+renders. Native and WASM results were parsed from actual nonempty smoke JSON, retained as
+`node-native-smoke.json` and `node-wasm-smoke.json`. These witnesses do not promote additional
+preset qualification cells or prove browser execution.
+
+A validation defect was found during collection: Node canonicalizes `/var` to `/private/var`
+on this host, but several script entry guards compared it to the uncanonicalized invocation
+path. The first native smoke invocation therefore exited successfully without executing its
+body. That empty run is excluded. Both frozen-candidate smoke scripts were then invoked by
+canonical absolute paths and their result counters checked. The separate tooling repair
+`39b6acee5` compares real paths and tests directory aliases for build, assembly, verification,
+installed smoke and benchmark commands. Its Node contracts passed 109/109 and Web script
+contracts passed 143/143; these are validator checks, not a claim that the candidate artifacts
+were rebuilt at that later commit. The repaired alias invocation also executed the native
+installed consumer successfully.
 
 # Literal reference inputs, all ten presets
 
@@ -94,8 +131,9 @@ python3 scripts/verify_lsp_release_archive.py <lsp.tar.xz> --target aarch64-appl
 python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --no-default-features --features png,jpeg,pdf,layout-cytoscape --lib --tests --test-threads 2 --no-fail-fast
 ```
 
-Same-candidate installed Node/Web/Python/Typst/native binding witnesses and shared transport
-vectors remain to be refreshed. Linux, Windows, the Swift 5.9 floor and other host-specific
+Same-candidate Web, Typst and the remaining native binding witnesses and their shared transport
+vectors remain to be refreshed. Python UniFFI and Node native/WASM installation evidence is
+recorded above. Linux, Windows, the Swift 5.9 floor and other host-specific
 claims remain unverified here. Preserve older records at their original source identities.
 The preset marker gap, wider visual/semantic coverage, matched alpha.6 size/performance
 comparisons, theme compilation/discovery and large-diagram memory remain audit work.
