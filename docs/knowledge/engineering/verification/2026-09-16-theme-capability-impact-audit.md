@@ -244,7 +244,11 @@ adjustment across the six metric components.
 | XY Chart medium | 92.76 us | 244.62 us | +162.04% to +165.64% | +150.03 to +154.03 us |
 
 Raw diagnostic evidence is `end-to-end-elk.json`; independent confirmation is
-`end-to-end-confirmation.json`. Stage attribution is running separately. It must precede any
+`end-to-end-confirmation.json`. Stage diagnostics completed separately: parse differences are
+approximately +0.4/+1.6/+0.4 us (Class tiny/medium, XY Chart), layout +4.5/+50.3/+3.4 us, and
+SVG emission +40.5/+227.5/+53.4 us. These batched stage boundaries exclude setup and cannot
+be summed as a complete-operation decomposition. The changes point beyond parsing toward
+emission and public-operation finalization; causal profiling remains necessary. It must precede any
 optimization or assertion that the added cost is necessary. These results are release-range
 regressions, not isolated theme-only causal effects. The coarse historical CLI timings remain
 insufficient for performance claims.
