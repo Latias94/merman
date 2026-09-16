@@ -50,7 +50,8 @@ platform builds and tests at their actual source revisions. They are not evidenc
 platform was rebuilt at `72980c2fe`.
 
 The current branch does not need another main merge: `origin/main` remains an ancestor of the
-candidate. Any later main changes must be reviewed as a new integration input and must not be
+candidate. The maintainer has accepted the bounded alpha.6 previous-facade transition impact;
+this does not waive candidate-owned exact dependency, artifact or host checks. Any later main changes must be reviewed as a new integration input and must not be
 silently folded into the alpha.7 evidence already recorded here.
 
 ### Version policy for the remaining work
@@ -128,11 +129,11 @@ SVG additionally depends on the retired presentation/rendering API, so changing 
 enum cannot close this boundary. The existing checker now includes both features (`2ed72b4cf`),
 and correctly rejects the old/new combination. Its 45 focused unit/workflow tests pass.
 
-The next action is a maintainer decision between an isolated package version line and retaining
-alpha.7 with explicit acceptance of the old-consumer resolution break. Keep the current product
-model and selected alpha.7 preparation while that decision is pending. Do not restore the retired
-presentation API, repeat the same failed build, or claim that compatibility assessment closes C7a.
-The decision cannot be replaced by a version bump or by weakening the checker.
+On 2026-09-16 the maintainer accepted alpha.7 with an explicit, bounded acceptance of the
+old-consumer resolution break. Keep the current product model, exact alpha.7 sibling requirements
+and accurate error semantics. Do not restore the retired presentation API or weaken the checker.
+The failed alpha.6 lane remains known-impact evidence; it is not relabeled as a pass. Rebuild and
+rerun the candidate-owned matrix after this policy decision.
 
 ## Execution order and goal completion
 

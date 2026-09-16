@@ -1,17 +1,19 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.6`.
 
-Selected next workspace candidate: `0.8.0-alpha.7`. Preparation is open: the previous-facade
-compatibility lane fails against the candidate core error enum and retired renderer APIs.
-The bounded ASCII/SVG assessment requires a release-contract decision; an error-only fix is insufficient. Do not publish
-the candidate until that gate and the final immutable preflight pass. See the
-[release-line preparation record](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md).
+Selected next workspace candidate: `0.8.0-alpha.7`. On 2026-09-16 the maintainer accepted the
+bounded alpha.6 previous-facade resolution break for this transition. The published alpha.6
+manifest cannot be repaired; alpha.7 keeps exact `=0.8.0-alpha.7` sibling requirements and
+retains the accurate new error and renderer APIs. The failed previous-facade result remains a
+recorded known impact and is not converted into a passing compatibility check. Do not publish
+the candidate until the remaining immutable preflight and host matrix pass. See the [release-line
+preparation record](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md).
 
 The workspace release is published from immutable tag `v0.8.0-alpha.6` at commit
 `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. The crates.io workflow published all 20 workspace
