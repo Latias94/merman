@@ -246,3 +246,9 @@ retired renderer boundary, and all coupled workspace dependencies remain exact
 failure; candidate-owned alpha.7 graphs and artifacts still require independent passing checks.
 Consumers should keep a coherent alpha.6 lockfile or migrate the facade and coupled siblings
 together. No compatibility shim, error reclassification or checker weakening is authorized.
+
+The candidate-only compatibility gate was rerun after the decision with
+`verify_prerelease_compatibility.py --version 0.8.0-alpha.7 --allow-missing-previous` and
+passed the fresh alpha.7 Cargo resolution. The previous-facade lane remains intentionally
+recorded as a known-impact failure and is not run as a required passing lane under the accepted
+transition policy.
