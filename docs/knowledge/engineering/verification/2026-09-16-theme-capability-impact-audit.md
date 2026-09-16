@@ -126,6 +126,45 @@ existing palette/terminal issues.
 | Are clear, transparent and ordinal semantics correct here? | Historical focused tests, not this matrix | Actual authoring specs and negative terminal/admission observations |
 | Is arbitrary reference CSS portable? | No such claim is made | Typed mechanism translation and explicitly bounded host CSS residuals |
 
+# Class relation-label readability follow-up
+
+The maintainer identified nearly invisible relation labels in candidate
+`reference-matrix/09-cyberpunk.png`. The exact source contains Chinese Class names and four
+relation labels (`拥有`, `包含`). Real Chromium inspection of the original SVG reproduces the
+problem before PNG export: text is `rgb(224, 242, 254)` while the HTML label background remains
+`rgb(236, 236, 255)`. A minimal `classDiagram / A --> B : owns` reproduces the same colors,
+excluding Chinese font fallback and rasterization as the root cause.
+
+The preset requests `EdgeLabelBackground.fill`, but Class classified that surface as Unsupported
+and retained the default `mainBkg` on the real label elements while applying theme Text.fill.
+The old retired projection targeted an unused selector; restoring it would not paint those
+terminals. The working repair adds direct static solid/transparent fill on the actual HTML div
+and span and native SVG background rect, with existing source/config precedence and completed
+writer checkpoints. Unsupported ordinal/value/sibling facets retain residuals. The public support
+vector changes to Conditional without increasing the unpublished v1 contract number. The
+historical KTD23 retirement record and baseline digest remain intact. The current receipt gate
+continues to reject compatibility routing and any compatibility assignments, but allows a later
+direct writer; the old permanent-Unsupported assumption incorrectly froze future capability.
+Native transparency checks follow the converter: transparent HTML backgrounds omit the fallback
+rect, whereas SVG labels retain an explicitly transparent rect.
+
+The new regression first failed on the missing HTML background style and then passed all three
+looks with both label modes. The expanded Release run passed all 345 selected Class, mechanism
+matrix and support-manifest tests (2,313 unrelated tests filtered out). This includes negative
+receipt cases for missing, duplicate, wrong-color and unknown terminals. The original Class input
+now exports through all ten presets to SVG, PNG and PDF (30/30), and real Chromium label-color
+checks pass for all ten. Cyberpunk now computes `rgb(2, 6, 23)` on both HTML background surfaces;
+the four original PNG regions contain dark backgrounds and visible light glyph pixels. These
+bounded checks do not establish general accessibility or qualify the entire Class family.
+The five native/historical acceptance tests pass without skips, including five base schemes,
+three looks, both label modes, static/Default qualifiers and solid/transparent fills. The current
+receipt digest was refreshed for the changed live disposition; historical witness and inventory
+digests remain unchanged. The C ABI shared support golden also passes all 22 vectors through
+the public function table (one selected Release test; 61 unrelated tests filtered out). Formatting
+and diff-whitespace checks pass. The old installed candidate remains source-specific and has
+not been rebuilt. Diagnostic commands, logs and
+artifacts are retained under `target/bench/experiments/class-label-readability/`.
+
 # Candidate public discovery inventory
 
 The installed Node native package built from `a5e3cd2d6` was queried through its public
@@ -266,8 +305,9 @@ files contain 253,851 added lines, including inline tests; this is not a product
 between releases and cannot establish theme-only cost, binary size or code quality. They do
 identify maintenance surface that should be evaluated independently of shipped dependencies.
 
-Cold start, stage attribution, throughput, large-diagram memory, theme compilation/discovery
-and same-host alpha.6 artifact rebuild comparisons remain outstanding.
+Cold start, causal CPU profiling, PNG/PDF throughput, large-diagram memory, theme
+compilation/discovery and same-host alpha.6 artifact rebuild comparisons remain outstanding.
+The completed SVG stage diagnostics above are preliminary attribution, not a full causal profile.
 
 Keep production family ownership and acceptance-only historical authority. No new generic proof
 engine, bundled Inter resource, or budget increase is justified by the observations above.

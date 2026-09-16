@@ -876,13 +876,15 @@ pub(crate) fn legacy_projection_retirement_receipts() -> Result<
                     ),
                 );
             }
-            if probe.disposition() != ThemeLegacyProjectionDisposition::Unsupported {
+            // Retirement forbids the former projection, not a later direct writer.
+            // Its actual support is verified separately by terminal and native-output tests.
+            if probe.disposition() == ThemeLegacyProjectionDisposition::LegacyCompatibility {
                 return Err(
                     ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
                         descriptor,
                         Some(value),
                         format!(
-                            "expected unsupported disposition, observed {}",
+                            "retired route returned to compatibility disposition: {}",
                             probe.disposition().id()
                         ),
                     ),

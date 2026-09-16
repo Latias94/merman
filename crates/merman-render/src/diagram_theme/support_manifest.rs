@@ -985,7 +985,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "class",
         target: "edge-label-background",
-        kind: SupportClaimKind::Unsupported,
+        kind: SupportClaimKind::TypedPartial,
         facets: &["fill"],
     },
     RuleClaim {

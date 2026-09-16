@@ -76,6 +76,29 @@ impl ClassThemeEvidenceRecorder {
             .map(ClassRelationThemeReceipt::expected_node_count)
             .unwrap_or(self.node_count);
         let mut rules = BTreeMap::<(usize, ThemeTarget), ClassRuleObservation>::new();
+        let background_count =
+            receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count);
+        let mut background_winners = BTreeSet::new();
+        if let Some(count) = background_count.filter(|count| *count > 0) {
+            let has_ordinals = theme.family_rules().any(|(_, rule)| {
+                rule.target() == ThemeTarget::EdgeLabelBackground && rule.ordinal().is_some()
+            });
+            for ordinal in 1..=if has_ordinals { count } else { 1 } {
+                let style = theme.style_with_work_meter(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeVariant::Default,
+                    has_ordinals.then_some(ordinal),
+                    work_meter,
+                )?;
+                background_winners.extend(style.winner_rule_properties().filter_map(
+                    |(property, origin)| {
+                        (!(property == ResolvedStyleProperty::Fill
+                            && plan.mermaid_owns_edge_label_background))
+                            .then_some((origin.rule_index(), property))
+                    },
+                ));
+            }
+        }
 
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -91,11 +114,20 @@ impl ClassThemeEvidenceRecorder {
                         | ThemeTarget::NodeLabel
                         | ThemeTarget::Cluster
                         | ThemeTarget::Title
+                        | ThemeTarget::EdgeLabelBackground
                 ) =>
                 {
                     let observation = rules.entry((rule_index, target)).or_default();
                     let property = resolved_style_property_for_facet(facet);
                     let route_applies = match target {
+                        ThemeTarget::EdgeLabelBackground => {
+                            if background_count.is_none() {
+                                observation.applicable = true;
+                                observation.incomplete = true;
+                                continue;
+                            }
+                            background_winners.contains(&(rule_index, property))
+                        }
                         ThemeTarget::Edge => {
                             let has_static_note_paint = self.expected_note_paths != 0
                                 && matches!(selector, FamilyThemeSelectorShape::Static { .. })
@@ -138,7 +170,12 @@ impl ClassThemeEvidenceRecorder {
                         continue;
                     }
                     observation.applicable = true;
-                    if matches!(target, ThemeTarget::Cluster | ThemeTarget::Title) {
+                    if matches!(
+                        target,
+                        ThemeTarget::Cluster
+                            | ThemeTarget::Title
+                            | ThemeTarget::EdgeLabelBackground
+                    ) {
                         match (route.disposition(), facet) {
                             (
                                 FamilyThemeDisposition::TypedAdapter,
@@ -150,7 +187,10 @@ impl ClassThemeEvidenceRecorder {
                                 ),
                             ) => {
                                 if receipt.is_some_and(|receipt| {
-                                    if target == ThemeTarget::Title {
+                                    if target == ThemeTarget::EdgeLabelBackground {
+                                        property == ResolvedStyleProperty::Fill
+                                            && receipt.proves_edge_label_background(rule_index)
+                                    } else if target == ThemeTarget::Title {
                                         property == ResolvedStyleProperty::Fill
                                             && receipt.proves_typed_namespace_title(rule_index)
                                     } else {
@@ -327,7 +367,7 @@ impl ClassThemeEvidenceRecorder {
             receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count)
         {
             unsupported_domains.push(
-                UnsupportedTerminalDomain::direct(
+                UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::EdgeLabelBackground,
                     TerminalVariantDomain::uniform(count, ThemeVariant::Default),
                 )

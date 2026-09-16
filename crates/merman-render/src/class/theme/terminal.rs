@@ -236,6 +236,8 @@ pub(crate) struct ClassRelationThemeReceipt {
     marker_events: Vec<ClassMarkerTerminalEvent>,
     checkpointed_typed_width_paths: usize,
     edge_label_background_events: Option<BTreeMap<usize, bool>>,
+    expected_edge_label_background: Option<ExpectedPaint>,
+    edge_label_background_paints: BTreeMap<usize, bool>,
     duplicate_edge_label_background_event: bool,
 }
 
@@ -270,6 +272,8 @@ impl ClassRelationThemeReceipt {
             marker_events: Vec::new(),
             checkpointed_typed_width_paths: 0,
             edge_label_background_events: None,
+            expected_edge_label_background: None,
+            edge_label_background_paints: BTreeMap::new(),
             duplicate_edge_label_background_event: false,
         }
     }
@@ -442,6 +446,55 @@ impl ClassRelationThemeReceipt {
         {
             self.duplicate_edge_label_background_event = true;
         }
+    }
+
+    pub(super) fn with_edge_label_background_paint(mut self, paint: Option<ExpectedPaint>) -> Self {
+        self.expected_edge_label_background = paint;
+        self
+    }
+
+    pub(crate) fn record_edge_label_background_paint(
+        &mut self,
+        relation_index: usize,
+        rule: Option<usize>,
+        styles: &[(&str, &str)],
+    ) {
+        if self.expected_edge_label_background.is_none() && rule.is_none() {
+            return;
+        }
+        let valid = !styles.is_empty()
+            && styles.iter().all(|(style, property)| {
+                cluster_paint_event_matches(
+                    self.expected_edge_label_background.as_ref(),
+                    rule,
+                    style,
+                    property,
+                )
+            });
+        if self
+            .edge_label_background_paints
+            .insert(relation_index, valid)
+            .is_some()
+        {
+            self.duplicate_edge_label_background_event = true;
+        }
+    }
+
+    pub(super) fn proves_edge_label_background(&self, rule_index: usize) -> bool {
+        self.expected_edge_label_background
+            .as_ref()
+            .is_some_and(|paint| paint.rule_index == rule_index)
+            && self
+                .edge_label_background_count()
+                .is_some_and(|count| count > 0 && self.edge_label_background_paints.len() == count)
+            && self
+                .edge_label_background_events
+                .as_ref()
+                .is_some_and(|events| {
+                    events.iter().all(|(index, visible)| {
+                        !visible || self.edge_label_background_paints.get(index) == Some(&true)
+                    })
+                })
     }
 
     pub(super) fn edge_label_background_count(&self) -> Option<usize> {
@@ -710,6 +763,7 @@ impl ClassRelationThemeReceipt {
                         .as_ref()
                         .map_or(0, BTreeMap::len),
                 )
+                .saturating_add(self.edge_label_background_paints.len())
                 .max(1),
         }
     }
@@ -1576,6 +1630,58 @@ mod tests {
                 .edge_label_background_count(),
             Some(0)
         );
+    }
+
+    #[test]
+    fn background_paint_requires_every_visible_terminal_and_both_html_surfaces() {
+        let mut baseline = ClassRelationThemeReceipt::new(
+            vec![ClassRelationTerminalExpectation::new(0, None, None)],
+            Vec::new(),
+            None,
+            false,
+        )
+        .with_edge_label_backgrounds(true)
+        .with_edge_label_background_paint(Some(ExpectedPaint {
+            target: ThemeTarget::EdgeLabelBackground,
+            rule_index: 7,
+            css: "#020617".to_owned(),
+        }));
+        baseline.record_relation(0, None, None, None, "", None, false);
+        baseline.record_edge_label_background(0, true);
+        assert!(!baseline.proves_edge_label_background(7));
+        let mut extra = baseline.clone();
+        extra.record_edge_label_background_paint(0, Some(7), &[("fill:#020617;", "fill")]);
+        assert!(extra.proves_edge_label_background(7));
+        extra.record_edge_label_background_paint(99, Some(7), &[("fill:#020617;", "fill")]);
+        assert!(!extra.proves_edge_label_background(7));
+        for (rule, styles, expected) in [
+            (
+                Some(7),
+                vec![("background-color:#020617 !important;", "background-color"); 2],
+                true,
+            ),
+            (
+                Some(7),
+                vec![
+                    ("background-color:#020617 !important;", "background-color"),
+                    ("", "background-color"),
+                ],
+                false,
+            ),
+            (Some(7), vec![("fill:#ffffff;", "fill")], false),
+            (Some(8), vec![("fill:#020617;", "fill")], false),
+            (None, vec![("fill:#020617;", "fill")], false),
+            (Some(7), vec![], false),
+        ] {
+            let mut receipt = baseline.clone();
+            receipt.record_edge_label_background_paint(0, rule, &styles);
+            assert_eq!(receipt.proves_edge_label_background(7), expected);
+            receipt.record_edge_label_background_paint(0, rule, &styles);
+            assert!(
+                !receipt.proves_edge_label_background(7),
+                "duplicate checkpoint must invalidate evidence"
+            );
+        }
     }
 
     #[test]

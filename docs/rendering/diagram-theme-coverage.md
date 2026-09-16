@@ -248,13 +248,23 @@ use `.labelBkg`/`.edgeLabel .label` selectors across Classic, Neo, HandDrawn, HT
 runs. KTD23 v9 now retires Class's unqualified/Default EdgeLabelBackground.fill identities
 (two historical identities, four solid/transparent matrix routes). The
 [native pre-retirement baseline](../knowledge/engineering/verification/2026-09-13-class-background-baseline.md)
-is fixed at `9babbfa248ea505053d24d8314b09d8e25a529b6`. After removal, all SVG bytes and decoded
-PNG pixels match the unthemed scenes across five schemes, three looks, and both input label modes.
+is fixed at `9babbfa248ea505053d24d8314b09d8e25a529b6`. At that retirement revision, all SVG bytes and decoded
+PNG pixels matched the unthemed scenes across five schemes, three looks, and both input label modes.
 Unsupported background requests reconcile against completed visible label backgrounds; absent,
 shadowed, and source-owned fills are NotApplicable. Missing label checkpoints stay incomplete.
-This adds no typed background support. The later Edge scalar cutover leaves Class with 16 legacy routes. The
+That retirement added no typed background support. The later Edge scalar cutover left Class with 16 legacy routes at its historical revision. The
 [retirement record](../knowledge/engineering/verification/2026-09-13-class-background-retirement.md)
 separates current checks from the independent pre-removal baseline.
+
+The September 16 readability audit found that the current Cyberpunk Class preset combines typed
+light text with the untouched light background. A direct static solid/transparent background
+consumer now paints both HTML background surfaces and native SVG label rects. Source-owned fills
+retain precedence; unsupported values and selectors retain residuals. This work does not revive
+the retired CSS projection or alter the historical inventory. Retirement now permits a later
+direct consumer while still rejecting compatibility routes and assignments; its current-probe
+digest reflects the new disposition. See the
+[capability audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
+for current verification status; the earlier no-consumer result is source-specific.
 
 KTD23 v7 retires Block's two static unqualified/Default Title.fill identities
 (four solid/transparent matrix routes). The pinned renderer has no diagram-title

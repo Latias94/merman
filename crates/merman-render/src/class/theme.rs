@@ -65,6 +65,7 @@ pub(crate) struct ClassRelationThemePlan {
     namespace_title_plan: ClassNamespaceTitleThemePlan,
     track_edge_label_backgrounds: bool,
     mermaid_owns_edge_label_background: bool,
+    edge_label_background: Option<terminal::ExpectedPaint>,
 }
 
 impl ClassRelationThemePlan {
@@ -127,6 +128,30 @@ impl ClassRelationThemePlan {
                         path,
                     )
                 });
+        let edge_label_background = if mermaid_owns_edge_label_background {
+            None
+        } else {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeVariant::Default,
+                None,
+                work_meter,
+            )?;
+            resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::EdgeLabelBackground],
+                DirectStaticSelectorDomain::Default,
+            )
+            .map(|paint| {
+                let (css, rule_index, _) = paint.into_parts();
+                terminal::ExpectedPaint {
+                    target: ThemeTarget::EdgeLabelBackground,
+                    rule_index,
+                    css: css.into_string(),
+                }
+            })
+        };
         let style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
@@ -218,7 +243,14 @@ impl ClassRelationThemePlan {
             namespace_title_plan: ClassNamespaceTitleThemePlan::default(),
             track_edge_label_backgrounds,
             mermaid_owns_edge_label_background,
+            edge_label_background,
         })
+    }
+
+    pub(crate) fn edge_label_background(&self) -> Option<(usize, &str)> {
+        self.edge_label_background
+            .as_ref()
+            .map(|paint| (paint.rule_index, paint.css.as_str()))
     }
 
     pub(crate) fn with_cluster_domain(
@@ -314,6 +346,7 @@ impl ClassRelationThemePlan {
         )
         .with_note_attachments(self.note_attachment_indices.clone())
         .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
+        .with_edge_label_background_paint(self.edge_label_background.clone())
     }
 
     pub(crate) fn begin_terminal_receipt_with_nodes(

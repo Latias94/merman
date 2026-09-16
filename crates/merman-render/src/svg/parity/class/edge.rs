@@ -527,6 +527,11 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             label_center.as_ref().map(|center| center.x).unwrap_or(0.0),
             label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
             ctx,
+            theme_receipt,
+            ctx.relation_index_by_id
+                .get(e.id.as_str())
+                .copied()
+                .and_then(|index| index.checked_sub(1)),
         );
         out.checkpoint()?;
         if let Some(&index) = ctx.relation_index_by_id.get(e.id.as_str()) {
@@ -668,6 +673,8 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
+    receipt: &mut crate::class::ClassRelationThemeReceipt,
+    relation_index: Option<usize>,
 ) -> (crate::class::ClassTextTerminalFacts, bool) {
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
@@ -675,6 +682,15 @@ fn render_class_edge_label_group(
         !trimmed.is_empty() && label.is_some_and(|label| label.width > 0.0 && label.height > 0.0);
     let use_html_labels = ctx.edge_use_html_labels || crate::math::contains_delimited_math(trimmed);
     let mut emitted_style = None;
+    let background = ctx.relation_theme.edge_label_background();
+    let html_background_style =
+        background.map(|(_, css)| format!("background-color:{css} !important;"));
+    let span_style = html_background_style.as_ref().map(|background| {
+        format!(
+            "{}{background}",
+            ctx.text_paint.map(|paint| paint.style()).unwrap_or("")
+        )
+    });
     if use_html_labels {
         let empty_div_style =
             class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
@@ -686,10 +702,13 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         } else if let Some(lbl) = label {
-            let div_style = class_html_div_style(
+            let mut div_style = class_html_div_style(
                 lbl.width.max(0.0),
                 MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64,
             );
+            if let Some(style) = &html_background_style {
+                div_style.push_str(style);
+            }
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}">"#,
@@ -709,13 +728,25 @@ fn render_class_edge_label_group(
                     text: trimmed,
                     include_p: true,
                     extra_span_class: None,
-                    span_style: ctx.text_paint.map(|paint| paint.style()),
+                    span_style: span_style
+                        .as_deref()
+                        .or_else(|| ctx.text_paint.map(|paint| paint.style())),
                     prepared_xhtml: None,
                     mermaid_config: ctx.mermaid_config,
                     math_renderer: ctx.math_renderer,
                 },
             );
             out.push_str("</div></foreignObject></g></g>");
+            if let Some(index) = relation_index.filter(|_| background_visible) {
+                receipt.record_edge_label_background_paint(
+                    index,
+                    background.map(|(rule, _)| rule),
+                    &[
+                        (&div_style, "background-color"),
+                        (emitted_style.unwrap_or(""), "background-color"),
+                    ],
+                );
+            }
         } else {
             let _ = write!(
                 out,
@@ -748,14 +779,18 @@ fn render_class_edge_label_group(
         write_class_svg_edge_text(out, "", false);
         out.push_str("</g></g>");
     } else if let Some(lbl) = label {
+        let background_style = background
+            .map(|(_, css)| format!("fill:{css} !important;"))
+            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="-1" width="{}" height="{}"/>"#,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="{}" x="-2" y="-1" width="{}" height="{}"/>"#,
             fmt(center_x),
             fmt(center_y),
             escape_attr_display(dom_id),
             fmt(-lbl.width / 2.0),
             fmt(-lbl.height / 2.0),
+            escape_attr_display(&background_style),
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
@@ -765,6 +800,13 @@ fn render_class_edge_label_group(
             ctx.text_paint.map(|paint| paint.style()),
         );
         out.push_str("</g></g></g>");
+        if let Some(index) = relation_index.filter(|_| background_visible) {
+            receipt.record_edge_label_background_paint(
+                index,
+                background.map(|(rule, _)| rule),
+                &[(&background_style, "fill")],
+            );
+        }
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
         let _ = write!(

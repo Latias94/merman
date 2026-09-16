@@ -1,4 +1,4 @@
-//! Compare the unused Class edge-label background projection with real visible paint controls.
+//! Keep the retired CSS projection inert while direct Class label backgrounds reach native output.
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
@@ -62,7 +62,7 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
 }
 
 #[test]
-fn class_edge_label_background_projection_has_no_native_consumer() {
+fn class_direct_background_reaches_native_output_without_reviving_the_retired_css_projection() {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
         for look in ["classic", "neo", "handDrawn"] {
             for html_labels in [false, true] {
@@ -107,12 +107,71 @@ fn class_edge_label_background_projection_has_no_native_consumer() {
                             &renderer,
                             theme(ThemeTarget::EdgeLabelBackground, variant, transparent),
                         );
+                        let stylesheet = |svg: &str| {
+                            svg.split_once("<style>")
+                                .unwrap()
+                                .1
+                                .split_once("</style>")
+                                .unwrap()
+                                .0
+                                .to_owned()
+                        };
                         assert_eq!(
-                            document.svg(),
-                            baseline.svg(),
-                            "retired Class background paint must not alter even the unused CSS"
+                            stylesheet(document.svg()),
+                            stylesheet(baseline.svg()),
+                            "direct paint must leave the retired and parity CSS projections unchanged"
                         );
-                        assert_eq!(
+                        let view = TargetArtifactView::from_rendered_document(&document);
+                        let receipt = view.svg_artifact_receipt().unwrap();
+                        let expected = if transparent {
+                            "transparent"
+                        } else {
+                            "#b316cd"
+                        };
+                        let label_groups = receipt
+                            .elements()
+                            .iter()
+                            .filter(|element| {
+                                if html_labels {
+                                    element.attribute("data-merman-foreignobject")
+                                        == Some("fallback")
+                                        && element
+                                            .attribute("data-merman-source-classes")
+                                            .is_some_and(|classes| {
+                                                classes
+                                                    .split_ascii_whitespace()
+                                                    .any(|class| class == "edgeLabel")
+                                            })
+                                } else {
+                                    element.has_class("edgeLabel")
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(label_groups.len(), 1);
+                        let backgrounds = receipt
+                            .descendants_of(label_groups[0].index())
+                            .filter(|element| element.tag_name() == "rect")
+                            .collect::<Vec<_>>();
+                        if html_labels && transparent {
+                            // Transparent HTML backgrounds intentionally produce no fallback rect.
+                            assert!(backgrounds.is_empty());
+                        } else {
+                            assert_eq!(
+                                backgrounds.len(),
+                                1,
+                                "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}"
+                            );
+                            let background = backgrounds[0];
+                            assert!(
+                                background
+                                    .attribute("style")
+                                    .unwrap_or("")
+                                    .contains(expected)
+                                    || background.attribute("fill") == Some(expected),
+                                "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}: native label background paint"
+                            );
+                        }
+                        assert_ne!(
                             raster(&document),
                             pixels,
                             "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}"

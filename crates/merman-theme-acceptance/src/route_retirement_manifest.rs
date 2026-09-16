@@ -93,9 +93,11 @@ const EXPECTED_PRODUCTION_INVENTORY_DIGEST: [u8; 32] = [
     3, 201, 63, 133, 62, 106, 243, 96, 223, 151, 56, 19, 93, 84, 163, 71, 182, 162, 239, 179, 70,
     41, 64, 81, 92, 19, 54, 85, 19, 50, 22, 42,
 ];
+// Current probes include the post-retirement direct Class label-background writer.
+// Historical inventory and baseline witness digests remain unchanged.
 const EXPECTED_RECEIPT_REPORT_DIGEST: [u8; 32] = [
-    19, 228, 247, 210, 39, 76, 225, 240, 194, 53, 152, 24, 155, 119, 215, 5, 211, 213, 95, 162, 29,
-    103, 45, 110, 213, 226, 45, 153, 113, 81, 191, 49,
+    8, 221, 238, 122, 1, 188, 75, 79, 226, 5, 226, 79, 242, 121, 218, 112, 51, 143, 81, 177, 26,
+    148, 57, 101, 102, 184, 164, 254, 249, 193, 213, 38,
 ];
 
 /// Successful authorization of the independently frozen KTD23 retirement boundary.

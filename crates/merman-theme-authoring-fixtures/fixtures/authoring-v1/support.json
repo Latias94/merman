@@ -235,7 +235,7 @@
     }
   },
   {
-    "id": "retired-class-edge-label-background",
+    "id": "class-typed-edge-label-background",
     "query": {
       "schema_version": 1,
       "family": "class",
@@ -259,9 +259,10 @@
           "facet": "fill"
         }
       },
-      "state": "unsupported",
+      "state": "conditional",
       "reason_ids": [
-        "theme-support.no-supported-route"
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
       ]
     }
   },

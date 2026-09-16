@@ -3885,6 +3885,100 @@ classDiagram
 }
 
 #[test]
+fn class_theme_background_reaches_both_html_and_svg_relation_labels() {
+    for look in ["classic", "neo", "handDrawn"] {
+        for html_labels in [true, false] {
+            let theme = class_edge_rules_theme([ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#020617").unwrap()),
+            )]);
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "look": look, "htmlLabels": html_labels,
+            })));
+            let rendered = try_render_class_svg_with_theme_requirement(
+                "classDiagram\nA --> B : owns\n",
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let backgrounds = document
+                .descendants()
+                .filter(|node| {
+                    if html_labels {
+                        node.has_tag_name("div") && node.attribute("class") == Some("labelBkg")
+                            || node.has_tag_name("span")
+                                && node.attribute("class") == Some("edgeLabel")
+                    } else {
+                        node.has_tag_name("rect")
+                            && node.attribute("class") == Some("background")
+                            && node.attribute("width").is_some()
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(backgrounds.len(), if html_labels { 2 } else { 1 });
+            for node in backgrounds {
+                assert!(
+                    node.attribute("style").unwrap_or("").contains("#020617"),
+                    "{look}/html={html_labels}: theme background missing from {:?}",
+                    node
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_background_transparent_clear_and_mixed_facets_keep_their_own_outcomes() {
+    let source = "classDiagram\nA --> B : owns\n";
+    let rule = |patch| ThemeRule::new(ThemeTarget::EdgeLabelBackground, patch);
+    let solid = rule(ThemeStylePatch::default().with_fill(CanvasPaint::solid("#020617").unwrap()));
+    let transparent = rule(ThemeStylePatch::default().with_fill(CanvasPaint::Transparent));
+    let mut clear_patch = ThemeStylePatch::default();
+    clear_patch.paint.fill = Specified::Clear;
+    let clear = rule(clear_patch);
+    let mixed = rule(
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#020617").unwrap())
+            .with_stroke(CanvasPaint::solid("#fedcba").unwrap()),
+    );
+    for (rules, applied, absent, residual) in [
+        (vec![solid.clone(), transparent], 1, 1, 0),
+        (vec![solid.clone(), clear], 0, 1, 1),
+        (vec![mixed], 0, 0, 1),
+        (
+            vec![solid.clone(), solid.with_variant(ThemeVariant::Active)],
+            1,
+            1,
+            0,
+        ),
+    ] {
+        let theme = class_edge_rules_theme(rules);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), absent);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        assert_eq!(
+            try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()).is_err(),
+            residual != 0
+        );
+    }
+}
+
+#[test]
 fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
     let source = r#"classDiagram
   namespace Alpha {
@@ -3930,7 +4024,7 @@ fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
 }
 
 #[test]
-fn class_background_retirement_accounts_for_visible_empty_shadowed_and_source_owned_rules() {
+fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules() {
     use merman_render::diagram_theme::OrdinalSelector;
     let source = "classDiagram\nA --> B : first\nB --> C\nC --> D : second\n";
     let rule = |ordinal| {
@@ -3956,7 +4050,7 @@ fn class_background_retirement_accounts_for_visible_empty_shadowed_and_source_ow
             )
             .unwrap()
     };
-    for (ordinal, residual, not_applicable) in [(None, 1, 0), (Some(2), 1, 0), (Some(3), 0, 1)] {
+    for (ordinal, residual, not_applicable) in [(None, 0, 0), (Some(2), 1, 0), (Some(3), 0, 1)] {
         let theme = compile(vec![rule(ordinal)]);
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
@@ -3969,7 +4063,7 @@ fn class_background_retirement_accounts_for_visible_empty_shadowed_and_source_ow
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.applied_count(), usize::from(ordinal.is_none()));
         assert_eq!(evidence.theme_residual_count(), residual);
         assert_eq!(evidence.not_applicable_count(), not_applicable);
         assert_eq!(
@@ -3988,7 +4082,8 @@ fn class_background_retirement_accounts_for_visible_empty_shadowed_and_source_ow
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.applied_count(), 1);
 
     let theme = compile(vec![rule(None)]);
     for config in [
@@ -4449,7 +4544,7 @@ fn class_extracted_namespace_receipts_follow_source_relations() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
 
-        // Retired label backgrounds still reconcile against all visible source relations.
+        // Direct label backgrounds still reconcile against all visible source relations.
         for (ordinal, residual) in [(1, 1), (2, 1), (3, 0)] {
             let background = class_edge_rules_theme([ThemeRule::new(
                 ThemeTarget::EdgeLabelBackground,

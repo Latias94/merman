@@ -321,6 +321,11 @@ pub(crate) fn legacy_replacing_typed_routes()
     let mut routes = Vec::new();
     for &family in DiagramFamilyId::all() {
         for &target in ThemeTarget::ALL {
+            // This direct consumer was added after KTD23 retired the unused Class CSS projection.
+            // It does not replace an active bridge and must not acquire a new cutover authority.
+            if family == DiagramFamilyId::CLASS && target == ThemeTarget::EdgeLabelBackground {
+                continue;
+            }
             for (facet, channel) in [
                 (ThemeRouteCutoverFacet::Fill, PaintChannel::Fill),
                 (ThemeRouteCutoverFacet::Stroke, PaintChannel::Stroke),
@@ -1386,11 +1391,7 @@ fn legacy_paint_route_without_writer_consumer(
         }
         DiagramFamilyId::CLASS => {
             (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
-                || (matches!(
-                    target,
-                    ThemeTarget::ClusterLabel | ThemeTarget::EdgeLabelBackground
-                ) && unqualified_or_default
-                    && fill)
+                || (matches!(target, ThemeTarget::ClusterLabel) && unqualified_or_default && fill)
                 || (target == ThemeTarget::Table
                     && fill
                     && matches!(variant, None | Some(ThemeVariant::Odd | ThemeVariant::Even)))
@@ -1863,7 +1864,10 @@ pub(super) fn classify_rule_facet(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
             ) | (
-                ThemeTarget::NodeLabel | ThemeTarget::Title | ThemeTarget::Text,
+                ThemeTarget::NodeLabel
+                    | ThemeTarget::Title
+                    | ThemeTarget::Text
+                    | ThemeTarget::EdgeLabelBackground,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
