@@ -108,6 +108,26 @@ contrast failure or a proven new regression. Only these two images were inspecte
 | Are clear, transparent and ordinal semantics correct here? | Historical focused tests, not this matrix | Actual authoring specs and negative terminal/admission observations |
 | Is arbitrary reference CSS portable? | No such claim is made | Typed mechanism translation and explicitly bounded host CSS residuals |
 
+# Candidate public discovery inventory
+
+The installed Node native package built from `a5e3cd2d6` was queried through its public
+operation API, using the family IDs and 47 semantic target IDs returned by its own catalogs.
+For each pair, the diagnostic asked about fill, stroke paint and ordinal palette across all
+six output IDs. This produced 27918 responses. The 33 catalog family IDs include `error`;
+the count must not be equated with 33 fully supported visual diagram families.
+
+For standalone SVG, the results were 188 Conditional, 343 Unsupported, 99 Unverified and
+4023 NotApplicable. All 99 Unverified responses were canvas/root queries whose discovery
+model is explicitly not yet represented. Browser SVG and each binary export returned
+Unverified for relevant visual queries; ASCII returned NotApplicable for this visual subset.
+These are coarse discovery classifications, not rendered-terminal findings or preset
+qualification. In particular, Unverified PNG/PDF discovery does not mean the exporter cannot
+produce an image, and the high NotApplicable count is mostly cross-family target combinations.
+
+The raw queries, reasons, artifact source and summary are retained in
+`target/bench/experiments/c7a-a5e3cd2d6/support-inventory.json`. Use these responses to select
+terminal probes. Do not convert the response counts into a theme support percentage.
+
 # Cost and architecture audit still open
 
 The baseline record retains exact local file sizes and withdraws the incorrect MiB conversion.

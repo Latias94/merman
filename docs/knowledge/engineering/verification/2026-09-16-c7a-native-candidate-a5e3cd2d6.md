@@ -120,6 +120,25 @@ WASM digests are in `web-artifacts.json`. Build, installation and browser logs a
 to them. Raw artifact byte counts are not a same-capability alpha.6 comparison or a budget
 increase. Existing Web/Typst size limits remain unchanged.
 
+The release-owned Web package-group pack and verifier also passed with a manifest binding all
+five tarballs to this source SHA and alpha.7. The first group attempt selected bundled npm 11
+because of local PATH ordering and was rejected by the npm 12 metadata contract; the retained
+successful attempt explicitly selected npm 12.0.2. No parser relaxation or publication occurred.
+
+All twenty existing Web size-budget checks passed against the final package WASM files:
+
+| Profile | Raw bytes | Stripped bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `web-analysis` | 3679263 | 3678998 | 1414510 | 1075384 |
+| `web-ascii` | 5207423 | 5207158 | 1920133 | 1449437 |
+| `web-editor` | 3790403 | 3790138 | 1459069 | 1106552 |
+| `web-full` | 15951322 | 15951057 | 5949356 | 4378719 |
+| `web-render` | 14053324 | 14053059 | 5297941 | 3902469 |
+
+These are canonical package measurements with the existing strip/compression recipe, retained
+in `web-size.log` and `web-size.json`. The successful group manifest and verification log are in
+`web-package-group-npm12/` and `web-package-group-npm12.log`. The limits were not changed.
+
 # Typst publish package
 
 The exact `publish` profile built and smoked successfully with Typst 0.15.1. Its independently
@@ -133,6 +152,27 @@ The packaged plugin is 11616412 bytes, SHA-256
 `typst-command.json`, `typst-build-smoke.log` and `typst-artifact.json` retain the commands,
 source and results. This verifies the installed local Typst toolchain, not every supported
 Typst compiler version or a published package.
+
+# Native C SDK artifact
+
+The exact `c-abi-native` recipe built its native-sdk library with analysis, ASCII, SVG,
+PNG/JPEG/PDF, Cytoscape, ELK, math and native runtime enabled. A separately compiled copy of the
+existing C consumer called the actual final dylib through `merman_get_native_api`; the complete
+artifact smoke returned zero. This exercises header-owned request/result construction and API
+discovery against the production library, not just a Rust-linked unit test. The same actual dylib
+also passed all three shared authoring error vectors through the existing C-owned request/result
+helper: status, resource details and diagnostic envelopes matched their golden inputs. The small
+local wrapper performs API discovery only; it does not reconstruct native structs in Python.
+The results are retained in `c-dylib-authoring.json`.
+
+The dylib is 35489152 bytes, SHA-256
+`305936f289e2802e240891584aa8c372ed0b9340f81892d33ba1216ee424797a`.
+The static archive is 234276496 bytes and the rlib 1052000 bytes. These are distinct artifacts;
+static archive bytes must not be reported as the size of a linked application. Exact hashes,
+profile, C compiler command and successful result are retained in `c-abi-artifacts.json`.
+The complete profile-specific nextest run passed 66/66, zero skipped, across library tests
+and the C/header consumer integrations. It includes the shared support and authoring goldens
+and the retained alpha.5 C consumer. Logs are in `c-abi-build-smoke.log`.
 
 # Literal reference inputs, all ten presets
 

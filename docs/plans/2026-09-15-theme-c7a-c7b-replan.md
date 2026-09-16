@@ -45,7 +45,9 @@ canonical paths and nonempty result counters. Chromium exercised authoring and r
 rendering in both complete Web render packages. Earlier Web/Typst budgets passed at the revisions
 named in the [transport evidence](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md).
 The same-candidate Typst publish package now passes its shared vectors, 22 positive compiles
-and nine expected failures under Typst 0.15.1. Refresh the remaining native consumers. Linux/Windows, the Swift compiler floor and final same-source preflight retain their
+and nine expected failures under Typst 0.15.1. The exact C SDK profile passes 66 tests and
+actual-dylib C consumer/error-vector probes. Web package-group verification and all twenty
+existing Web size checks pass. Flutter and other remaining host consumers retain their gates. Linux/Windows, the Swift compiler floor and final same-source preflight retain their
 own open gates. Historical checks are not a final-candidate all-host run.
 
 C5 and representative C6a are complete. All 33 families have typed consumption paths, and
