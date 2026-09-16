@@ -264,3 +264,11 @@ configured native runner `macos-15`. The plan contains both CLI and LSP archive 
 routes this target to a native, non-container job. The corresponding local archives already
 passed structural and executable replay checks. Other matrix rows remain hosted evidence and
 were not inferred from this local run.
+
+# Cross-transport candidate rerun after alpha.6 policy decision at `29d3f4da4`
+
+The candidate-owned transport contracts were rerun after accepting the bounded alpha.6
+transition impact. Node/Web contract tests passed 48/48, Python qualification and catalog
+contracts passed 13/13, and the Rust bindings-core authoring/error/resource plus Typst, Native
+C ABI and UniFFI shared golden selection passed 15/15 (393 unrelated tests skipped). These
+results confirm alpha.7's own v1 contract and do not assert mixed alpha.6/alpha.7 compatibility.
