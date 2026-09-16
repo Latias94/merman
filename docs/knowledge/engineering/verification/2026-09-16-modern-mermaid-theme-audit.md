@@ -77,3 +77,15 @@ Merman 自有或兼容型预设，不应因为参考项目没有同名配置而�
 模型对这些行为的处理应按机制分类：可表达的 typed paint/typography/geometry、宿主
 CSS 能力边界、以及明确的 Unsupported/Unverified。不能以 CSS 字节数或选择器数量
 推导 Merman 需要复制同等复杂度。
+
+## 当前候选产物与初步运行数据
+
+在当前候选已有产物中，macOS ARM64 CLI 二进制约 51.4 MiB，CLI archive 约 12.9 MiB，
+LSP 二进制约 17.0 MiB，LSP archive 约 3.9 MiB；Node N-API `merman.node` 约 23.4 MiB，
+Node WASM 原始文件约 19.2 MiB。Web 五个 WASM profile 的原始文件约 3.5、5.0、3.6、
+15.2 和 13.4 MiB。上述是文件大小观察，不是跨版本回归结论。
+
+使用已构建的 macOS ARM64 CLI 对一个含分支、主题覆盖和边标签的 Flowchart 做了 3 个
+预设的单进程 CLI smoke。SVG 五次运行的 wall-clock 约为 0.01–0.06 秒，PNG 单次约为
+0.02–0.19 秒；首次运行明显受进程/字体初始化影响。这组样本太小，只能作为后续基线
+命令的 sanity check，不能据此声称性能提升或退化，也不能据此修改预算。
