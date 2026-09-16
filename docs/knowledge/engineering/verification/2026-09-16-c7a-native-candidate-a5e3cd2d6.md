@@ -91,6 +91,49 @@ contracts passed 143/143; these are validator checks, not a claim that the candi
 were rebuilt at that later commit. The repaired alias invocation also executed the native
 installed consumer successfully.
 
+# Installed Web browser consumers
+
+All five owner-built Web WASM profiles passed input freshness, TypeScript/package assembly,
+package verification, the runtime smoke matrix and DOM safety checks. Each final npm tarball
+was then installed offline with lifecycle scripts disabled into one fresh consumer directory.
+Chromium 151.0.7922.77 loaded every package through its installed public entrypoint, using the
+package's default WASM URL. No source-tree runtime module substituted for the installed module.
+
+| Profile | Packaged WASM bytes | npm archive bytes | npm archive SHA-256 |
+| --- | ---: | ---: | --- |
+| `web-full` | 15951322 | 6171330 | `34188da103f87e9527926a0df066f4742d82e936049f3e16019a5b2aa371cb8e` |
+| `web-analysis` | 3679263 | 1526589 | `5fd780e1d211d6774c7d29651aa8949b2e33b8ec4c8a38aed1f1f7b9adaa7d6d` |
+| `web-render` | 14053324 | 5503311 | `3121dd29bf8fb029a2fea83d3b1e679f3ba3e3c5aa343cc8154040106b07a880` |
+| `web-editor` | 3790403 | 1577497 | `50f2df115e0166a398e5c2ae2238b44f9e6683799354a04749abaf3c93736dd3` |
+| `web-ascii` | 5207423 | 2034515 | `7b157a3df03fedd6ffda4cb0d5f8eb0d28aa7c50b1417389c0d34b54c7725d37` |
+
+Both `web-full` and `web-render` independently passed 22 shared support queries, three error
+envelopes, two canonical definition materializations, three-family light/dark/light isolation,
+a State terminal fill override isolated from Sequence, and three preset export roundtrips.
+Each executed 18 SVG renders and mounted positive-area, visible native text. The other three
+profiles initialized successfully with structured authoring unavailable and empty preset
+catalogs. This checks real browser consumers and several positive text surfaces; it is not the
+full browser suite, a visual-equivalence certification or Worker-realm execution evidence.
+
+The actual browser/version and counters are retained in `web-browser-smoke.json`; tarball and
+WASM digests are in `web-artifacts.json`. Build, installation and browser logs are retained next
+to them. Raw artifact byte counts are not a same-capability alpha.6 comparison or a budget
+increase. Existing Web/Typst size limits remain unchanged.
+
+# Typst publish package
+
+The exact `publish` profile built and smoked successfully with Typst 0.15.1. Its independently
+versioned wrapper remains `merman/0.3.0`; the plugin runtime is `0.8.0-alpha.7`. The actual WASM
+passed 22 shared support vectors, two canonical materializations and three error envelopes.
+The owner compiled all 22 positive fixtures and rejected all nine expected failures. Removed
+presentation and scoped-CSS arguments remained rejected; no compatibility layer was restored.
+
+The packaged plugin is 11616412 bytes, SHA-256
+`b49179acc761a30fc7b2ee40af426ed588ed8ddaea6f74f90691e7f52bc66455`.
+`typst-command.json`, `typst-build-smoke.log` and `typst-artifact.json` retain the commands,
+source and results. This verifies the installed local Typst toolchain, not every supported
+Typst compiler version or a published package.
+
 # Literal reference inputs, all ten presets
 
 The same CLI binary rendered all 34 unmodified fences in Modern Mermaid's
@@ -131,9 +174,9 @@ python3 scripts/verify_lsp_release_archive.py <lsp.tar.xz> --target aarch64-appl
 python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --no-default-features --features png,jpeg,pdf,layout-cytoscape --lib --tests --test-threads 2 --no-fail-fast
 ```
 
-Same-candidate Web, Typst and the remaining native binding witnesses and their shared transport
-vectors remain to be refreshed. Python UniFFI and Node native/WASM installation evidence is
-recorded above. Linux, Windows, the Swift 5.9 floor and other host-specific
+The remaining native binding witnesses and their shared transport vectors are still being
+refreshed. Python UniFFI, Node native/WASM, Web browser and Typst package evidence is recorded
+above. Linux, Windows, the Swift 5.9 floor and other host-specific
 claims remain unverified here. Preserve older records at their original source identities.
 The preset marker gap, wider visual/semantic coverage, matched alpha.6 size/performance
 comparisons, theme compilation/discovery and large-diagram memory remain audit work.

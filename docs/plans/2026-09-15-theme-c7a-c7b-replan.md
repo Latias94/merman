@@ -37,12 +37,15 @@ Flowchart parser gap was repaired. Browser computed styles exposed a separate Fl
 arrow-color usability gap, recorded for bounded investigation before declaring presets ready.
 These execution counts do not establish complete theme support or portable qualification.
 
-The same candidate now has installed Python wheel and Node N-API/WASM authoring witnesses,
+The same candidate now has installed Python wheel, Node N-API/WASM and all five Web browser
+package witnesses,
 including shared support/error vectors and public catalog checks. A directory-alias entrypoint
 bug in the validation scripts was repaired separately; the candidate witnesses were rerun with
-canonical paths and nonempty result counters. Earlier Web/Typst budgets passed at the revisions
+canonical paths and nonempty result counters. Chromium exercised authoring and real terminal
+rendering in both complete Web render packages. Earlier Web/Typst budgets passed at the revisions
 named in the [transport evidence](../knowledge/engineering/verification/2026-09-15-c7a-transport-catalog-follow-up.md).
-Refresh Web, Typst and the remaining native consumers against the selected candidate. Linux/Windows, the Swift compiler floor and final same-source preflight retain their
+The same-candidate Typst publish package now passes its shared vectors, 22 positive compiles
+and nine expected failures under Typst 0.15.1. Refresh the remaining native consumers. Linux/Windows, the Swift compiler floor and final same-source preflight retain their
 own open gates. Historical checks are not a final-candidate all-host run.
 
 C5 and representative C6a are complete. All 33 families have typed consumption paths, and
