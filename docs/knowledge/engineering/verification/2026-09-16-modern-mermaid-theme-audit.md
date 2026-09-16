@@ -59,3 +59,21 @@ Gruvbox Dark、Ayu Light、Ayu Dark、Brutalist、Spotless、Cyberpunk。公开 
 
 审计结论必须区分“参考实现使用了 CSS”与“公共主题模型承诺支持该行为”。未测量的
 体积或性能变化不用于放宽预算，也不触发新的 proof framework 或通用抽象。
+
+## 第一轮结构化统计（2026-09-16）
+
+对 `themes.ts` 的 22 个顶层主题配置做了只读解析，结果为：225 个 theme variable
+字段，CSS 原文合计约 223,377 字节。单个主题 CSS 约 1,333 至 18,646 字节；最大的是
+Doodle、Aurora、Win95、Organic 和 Geometric Collage。该数字是参考源码的输入规模，
+不是 Merman 运行时或发布包的体积估算。
+
+当前 Merman catalog 的 10 个预设与参考主题只有 Brutalist、Spotless、Cyberpunk 三个
+直接同名条目。Editor Light/Dark、One Dark、Gruvbox Light/Dark、Ayu Light/Dark 是
+Merman 自有或兼容型预设，不应因为参考项目没有同名配置而视为缺失。参考项目的其他
+19 个主题也不应仅凭名称直接加入 catalog；它们需要先证明 token 映射、终端语义、导出
+行为和宿主字体条件。
+
+参考 CSS 大量使用选择器级覆盖、`!important`、滤镜、阴影和背景图案。当前公共主题
+模型对这些行为的处理应按机制分类：可表达的 typed paint/typography/geometry、宿主
+CSS 能力边界、以及明确的 Unsupported/Unverified。不能以 CSS 字节数或选择器数量
+推导 Merman 需要复制同等复杂度。
