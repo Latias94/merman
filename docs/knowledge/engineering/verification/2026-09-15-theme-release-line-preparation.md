@@ -252,3 +252,16 @@ The candidate-only compatibility gate was rerun after the decision with
 passed the fresh alpha.7 Cargo resolution. The previous-facade lane remains intentionally
 recorded as a known-impact failure and is not run as a required passing lane under the accepted
 transition policy.
+
+## Candidate-owned acceptance rerun after the alpha.6 policy decision (2026-09-16)
+
+Release-mode owner commands passed after accepting the bounded transition impact:
+
+- preset qualification library: 8/8;
+- route cutover, preset qualification and Block/Class/Flowchart retirement integration tests:
+  3 + 1 + 1 + 1 + 2 + 2 = 10/10;
+- native export smoke: 1/1.
+
+These checks exercise the alpha.7 candidate-owned model and retirement boundary. They do not
+turn the recorded alpha.6 previous-facade failure into a pass, and they do not prove missing
+Linux, Windows or Swift 5.9 host execution.
