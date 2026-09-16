@@ -292,6 +292,42 @@ optimization or assertion that the added cost is necessary. These results are re
 regressions, not isolated theme-only causal effects. The coarse historical CLI timings remain
 insufficient for performance claims.
 
+CPU sampling now covers seven candidate loops (three complete operations, three prepare-plus-render
+loops and a parse-only control) and three alpha.6 complete-operation loops, using the unchanged
+`profile_render` example and the same feature recipe. Each loop runs for 20 seconds; macOS
+`sample` observes ten seconds at a one-millisecond interval. All ten loops and sampling commands
+succeeded. The release binaries retain function symbols without line-level debug information.
+
+| Complete operation, candidate source | Prepared-label token partition | Standalone finalization | Compatibility validation, included within finalization |
+| --- | ---: | ---: | ---: |
+| Class tiny | 17.0% | 34.9% | 21.7% |
+| Class medium | 14.8% | 24.8% | 15.5% |
+| XY Chart medium | 15.2% | 27.6% | 18.6% |
+
+These are inclusive sampled-stack proportions, not removable time or optimization admission.
+Nested columns must not be added. The corresponding named paths are absent from all three
+alpha.6 samples and the candidate parse-only control. Source comparison against branch baseline
+`b381b842f` confirms that ordinary SVG without an explicit pipeline previously completed the
+family result directly; the current facade invokes standalone finalization and observational
+compatibility validation. Token partitioning also accounts for 23.5%–35.8% of the candidate's
+prepare-plus-render samples. Its scanner repeatedly allocates KMP prefix tables, including for
+single-byte searches. This identifies concrete owners to investigate; it does not justify bypassing
+malformed-token/XML checks, cancellation, resource limits or terminal evidence. Raw stacks,
+commands, executable hashes and inclusive counts are retained in `cpu-profile-summary.json` and
+`experiment.yaml` beside the timing reports.
+
+The maintainer's scope review distinguishes typed theme configuration from native font/resource
+and artifact-assurance capabilities. Against `b381b842f`, the renderer adds non-optional direct
+dependencies on `rustybuzz`, `ttf-parser`, `unicode-script`, `wuff`, `brotli-decompressor` and `sha2`,
+plus the workspace theme contract. Their production consumers are shaping, font metadata,
+WOFF2 decoding and fingerprints/receipts; the contract adds canonical JSON serialization.
+They are not all necessary consequences of typed colors, borders, typography properties or
+rule precedence. Some may already have existed transitively in export-heavy profiles, so this is
+not a claim that each is new to every resolved product closure. The next design review must
+separate the minimal theme/SVG dependency and execution boundary from explicit font-resource
+and native-export guarantees, retaining existing promised behavior until a reviewed replacement
+is validated. No dependency removal, new feature split or budget relaxation has been admitted yet.
+
 Manifest inspection finds five added workspace crates: production `merman-doc` and
 `merman-theme-contract`, and publish-false `merman-theme-fixtures`,
 `merman-theme-authoring-fixtures` and `merman-theme-acceptance`. Both compared workspace
@@ -305,9 +341,9 @@ files contain 253,851 added lines, including inline tests; this is not a product
 between releases and cannot establish theme-only cost, binary size or code quality. They do
 identify maintenance surface that should be evaluated independently of shipped dependencies.
 
-Cold start, causal CPU profiling, PNG/PDF throughput, large-diagram memory, theme
-compilation/discovery and same-host alpha.6 artifact rebuild comparisons remain outstanding.
-The completed SVG stage diagnostics above are preliminary attribution, not a full causal profile.
+Cold start, PNG/PDF throughput, large-diagram memory, theme compilation/discovery and same-host
+alpha.6 artifact rebuild comparisons remain outstanding. CPU sampling has identified shared
+owners; a measured, correctness-preserving optimization has not yet been selected.
 
 Keep production family ownership and acceptance-only historical authority. No new generic proof
 engine, bundled Inter resource, or budget increase is justified by the observations above.

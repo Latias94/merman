@@ -7,7 +7,11 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
-The release-range baseline and latest committed checkpoints were measured on 2026-07-27 and
+The September 16 [theme capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
+adds confirmed alpha.6-to-alpha.7 default-SVG regressions and matched CPU samples. These are
+active work below; the earlier headless optimization decisions remain historical and unchanged.
+
+The earlier release-range baseline and committed checkpoints were measured on 2026-07-27 and
 2026-07-28:
 
 - [Alpha.3 to Alpha.5 Refactoring Report](../release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md)
@@ -220,6 +224,30 @@ The latest full standard run measured 196.96 us versus mmdr's 71.08 us and retai
 and XYChart sources from every ratio.
 
 ## Work queue
+
+### Active: alpha.7 default SVG regression
+
+The September 16 release-range audit confirms regressions in unthemed complete SVG operations
+from published alpha.6 source to candidate `a5e3cd2d6`: Class tiny +270% to +274%, Class medium
++125% to +127%, and XY Chart medium +162% to +166% (simultaneous confidence bounds). The same
+Rust 1.95 toolchain, harness, features and exact SVG bytes were used. Dependency changes remain
+part of this release-range comparison; this is not theme-only attribution.
+
+Stage diagnostics and matched alpha.6/candidate CPU sampling identify prepared-text token
+partitioning and standalone SVG finalization as shared cost centers. First review the minimal
+typed-theme/SVG dependency and execution boundary separately from explicit font-resource and
+native-export guarantees; the current non-optional shaping/WOFF2 closure needs a product
+justification beyond typed configuration. Investigate repeated scanning/allocation and ownership of
+already validated artifact facts. Preserve output bytes, terminal evidence, malformed-token and
+XML errors, resource limits and cancellation. Do not revive the rejected July raw-string API or
+skip admission because the caller did not explicitly select a theme.
+
+Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
+cross-family controls, full relevant negative-contract tests, and the existing scenario-specific
+confirmation gate. Sampling percentages alone cannot admit a change or justify the added cost.
+See the [September 16 capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
+for exact observations, excluded fixtures and remaining memory/throughput work. This active
+regression is separate from the historical closed hypotheses below.
 
 ### P1.0: Profile residual Requirement layout and SVG construction
 
