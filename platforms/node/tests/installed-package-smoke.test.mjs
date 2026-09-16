@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -47,4 +47,30 @@ test("installed-package smoke rejects a native target different from the executi
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Installed native package smoke target must match the current host/);
+});
+
+test("release and benchmark commands execute through directory aliases", (context) => {
+  const temporary = mkdtempSync(path.join(os.tmpdir(), "merman-script-entrypoint-"));
+  context.after(() => rmSync(temporary, { recursive: true, force: true }));
+  const cases = [
+    ["../scripts/smoke-installed-package.mjs", [], 1, /usage: node smoke-installed-package/],
+    ["../scripts/build-candidate.mjs", [], 1, /--candidate is required/],
+    ["../scripts/assemble-packages.mjs", [], 1, /usage: node scripts\/assemble-packages/],
+    ["../scripts/verify-packages.mjs", ["--packed-root", path.join(temporary, "absent")],
+      1, /contains no recognized package/],
+    ["../scripts/benchmark/run.mjs", [], 1, /--native and --wasm are required/],
+    ["../scripts/benchmark/worker.mjs", [], 1, /requires an input JSON path/],
+    ["../../web/scripts/build-surface-packages.mjs", [], 2, /usage: node scripts\/build-surface-packages/],
+  ];
+  for (const [index, [relative, args, status, diagnostic]] of cases.entries()) {
+    const script = fileURLToPath(new URL(relative, import.meta.url));
+    const alias = path.join(temporary, `scripts-alias-${index}`);
+    symlinkSync(path.dirname(script), alias, process.platform === "win32" ? "junction" : "dir");
+    const result = spawnSync(process.execPath, [path.join(alias, path.basename(script)), ...args], {
+      encoding: "utf8",
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, status, `${relative}: invalid inputs must fail rather than skip main`);
+    assert.match(result.stderr, diagnostic);
+  }
 });
