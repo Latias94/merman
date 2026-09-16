@@ -775,7 +775,7 @@ fn write_defs(
 pub(crate) fn render_wardley_diagram_svg_model(
     layout: &WardleyDiagramLayout,
     model: &WardleyDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
     _diagram_title: Option<&str>,
     typography_theme: &crate::wardley::WardleyTypographyThemePlan,
     options: &SvgExecution<'_>,
@@ -785,7 +785,15 @@ pub(crate) fn render_wardley_diagram_svg_model(
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = WardleyTheme::from_config(effective_config);
+    let mut theme = WardleyTheme::from_config(effective_config.as_value());
+    if options.family.root_theme_plan().is_some_and(|plan| {
+        plan.replaces_default_family_background(
+            effective_config,
+            "themeVariables.wardley.backgroundColor",
+        )
+    }) {
+        theme.background_color = "none".to_owned();
+    }
     let mut surface_receipt = typography_theme.begin_terminal_receipt(layout);
 
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
@@ -922,7 +930,7 @@ mod tests {
         render_wardley_diagram_svg_model(
             &layout,
             &model,
-            &effective_config,
+            &effective_mermaid_config,
             None,
             &typography_theme,
             &execution,

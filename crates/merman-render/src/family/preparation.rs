@@ -885,6 +885,14 @@ fn prepare_xy_chart_family(
         &typography_theme,
         execution.text_measurer(),
     )?;
+    if execution.family.root_theme_plan().is_some_and(|plan| {
+        plan.replaces_default_family_background(
+            &meta.effective_config,
+            "themeVariables.xyChart.backgroundColor",
+        )
+    }) {
+        layout.background_color = "none".to_owned();
+    }
     let paint_theme = crate::xychart::XyChartPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

@@ -1032,7 +1032,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            effective_config_value,
+            effective_config,
             title,
             artifact.typography_theme(),
             options,

@@ -104,3 +104,117 @@ C6's hand-built Cyberpunk scenes remain useful mechanism tests and cannot qualif
 
 The [current product boundary plan](../../../plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md) makes three public-entrypoint scenes—Flowchart, Sequence and XY Chart—required before final C7a freeze, while retaining honest limits for the other themes and families.
 No production code or runtime tests were changed or run during this planning review.
+
+# Current-source public-entrypoint baseline
+
+The September 16 U1 run rebuilt source `8dcc6d7d6` with:
+
+```text
+CARGO_BUILD_JOBS=1 cargo build --release --locked -p merman-cli --no-default-features --features svg,png,pdf,layout-cytoscape
+```
+
+The binary SHA-256 was `0e73af8e999b4de2301bd4df13fdf9a2252e64052009224f6fea1d7d80e416bf`.
+This is a bounded native render profile, not the complete shipping CLI profile.
+Each committed input in `crates/merman-theme-fixtures/fixtures/public-cyberpunk/` was passed to
+`merman-cli render --theme-preset cyberpunk` with a caller-supplied Arial font configuration.
+All twelve commands succeeded: three families, each with parity SVG, resvg-safe SVG, PNG and PDF.
+All three PDFs opened as single-page documents in macOS PDFKit and produced preview images.
+
+Raw commands, input/output hashes, diagnostics, captures and the browser/PDF preview scripts are in
+`target/bench/experiments/theme-public-baseline-8dcc6d7d6/`:
+
+- `render-results.json`: SHA-256 `62577a8fe7767a2425b723ef283f2db3499f7fbd6d40a36b5f2ab0a71ea3f356`.
+- `browser-observations.json`: SHA-256 `55694cabc4e866ea91d28c6954a99b0ae563af08558628110e067648aeb2a0dc`.
+
+Browser observation used HeadlessChrome 151.0.7922.77 at 1280×960, DPR 1, without reference CSS or
+external network access. Arial was requested through Mermaid configuration; the installed regular
+font's path and hash are recorded in the command report. No font resource was embedded. This records
+the available host font, not a proof of every resolved glyph or native font face. Reference captures
+use the same requested family but retain their own layout and style sizes. Exact geometry, glyph
+rasterization and whole-image pixel equality are not acceptance criteria.
+
+| Terminal | Current public preset observation | Required product difference |
+| --- | --- | --- |
+| Flowchart rectangular nodes | `#0f172a` fill, `#22d3ee` 1px stroke, automatic corner radius, no filter | Declared navy/cyan recipe, 3px stroke, 10px rectangular corners and two ordered glow stages; decision geometry preserved |
+| Flowchart labels and edges | Plain labels and edges; native labels remain present | Explicit label weight/color/glow, visible marker paint and edge-label backgrounds |
+| Sequence actors | 1px cyan borders, 3px corners, weight 400 labels, no filter | Separate actor geometry/text application, intended border/corner/weight and composed glow |
+| Sequence messages | 1.5px cyan strokes without filters; response retains `3,3` dashes | Intended 2px strokes and glow while preserving request/reply distinctions |
+| XY bars and lines | Opaque cyan/green bars with zero-width borders; pink/yellow 2px lines, no filters | Recipe-specific series colors, independent bar fill alpha and stroke, glow, and documented cycling |
+| XY title | Pale `#e0f2fe`, 20px, weight 400, no shadow | Cyan, 18px, weight 700 and title glow |
+| Complete canvas | No tile or gradient definitions; a solid `#020617` root canvas only | Explicit two-direction 40px grid and radial Screen composition |
+| XY canvas ownership | A later `.background` rectangle paints white over the root canvas | Default family background yields to explicit typed canvas; explicit caller/source background retains precedence |
+
+The last row is a concrete existing product defect, independent of exact Cyberpunk reproduction.
+It occurs in both SVG variants and visibly in native PNG and PDF: pale titles/axis labels sit on
+white despite the emitted dark root canvas. The earlier source/mechanism inventories did not catch
+this composition error. A root canvas element existing in the document does not prove that a family
+has left it visible.
+
+The captures characterize missing behavior; successful exports do not qualify the preset. Flowchart
+also includes unrelated filter definitions, so raw `<filter>` counts must not be treated as applied
+theme glow. Later acceptance must inspect actual terminal bindings and native appearance. The scene
+README remains the per-terminal source specification. Geometry differences are tolerated when
+semantics are preserved; missing labels, family backgrounds covering the canvas, absent requested
+paint/effects, clipped glow, and changed relationship/message semantics are not tolerances.
+
+This baseline advances U1. Durable public-preset/browser regression coverage for the full future
+recipe is still required alongside U4–U9; neither this capture nor the portfolio probe closes C7a.
+
+## Background fix scope and remaining configuration boundary
+
+The baseline led to a focused fix shared by XY Chart and Wardley: when a root canvas has an explicit
+base or at least one layer, the family's default full-size background keeps its DOM terminal but
+uses `fill="none"`. Explicit background ownership is checked through the existing configuration
+provenance, for both `themeVariables.background` and the family's nested background path. An
+unspecified canvas does not suppress the historical background. No preset-name special case,
+new dependency or public API is needed.
+
+The regression uses caller/site configuration. Source `themeVariables` directives are protected by
+the public facade's existing hardened policy; writing a directive does not establish an effective
+source override. Existing layering tests retain that policy check. The unthemed and themed render
+must preserve the same resolved paint when caller configuration owns the root background.
+Wardley's already-derived nested background can retain white even when a root background variable
+is supplied. This pre-existing configuration-resolution behavior is not corrected by the canvas
+occlusion fix and must not be described as a newly verified root-to-family color override.
+
+## Next runtime-cost boundary
+
+The U2 source inspection identifies two existing owners to change, without introducing another
+proof framework:
+
+- `family.rs::render_svg` currently partitions prepared-label IDs even when the prepared ledger is
+  empty. The empty-ledger path can preserve the emitted SVG without parsing it for absent metadata.
+- `render.rs::render_svg_target` finalizes every SVG for target admission;
+  `StandaloneSvgArtifact::observe_exact` performs native terminal validation even for ordinary
+  parity output. Observation demand belongs at this existing facade/finalization boundary.
+
+Strict requests and native export still need actual terminal validation, resource limits and
+cancellation. The public admission model currently has no `Unverified` status, so an unobserved
+ordinary SVG must not be reported as Portable by accident. Resolve that contract at the existing
+admission owner before removing the expensive validation call. Preserve the current invalidation
+of prepared/theme evidence after untrusted postprocessing. These are identified implementation
+seams, not completed performance improvements.
+
+## Focused fix verification
+
+- Red evidence: the two public-family regression tests failed on the preset case before the fix
+  (`white` instead of `none`). Subsequent test development distinguished protected source directives
+  from effective caller configuration and recorded Wardley's pre-existing derived-background behavior.
+- Green evidence: Release nextest passed 10/10 facade tests across `theme_canvas_background`,
+  `xychart_typed_render` and `diagram_theme_layering`, plus 37/37 renderer tests across
+  `xychart_svg_test` and `wardley_svg_test`. The new matrix covers nine cases per family.
+- The same bounded CLI profile was rebuilt with the working-tree fix. Binary SHA-256:
+  `269511080b87d76607408b0aded4cfc4822ed162334908083ca13d818c54addf`.
+  The production patch is retained as `background-fix.patch` with SHA-256
+  `98a5ac4495843ad9c76a38e3dfce719e5d807fae2298067c900496cf498c5407`.
+- Twelve post-fix public renders succeeded: Flowchart, Sequence, XY Chart and Wardley, each as
+  SVG/PNG/PDF. Both unthemed XY/Wardley SVG controls are byte-identical to their pre-fix outputs.
+  Protected source-directive samples correctly change with the preset; they are not valid controls
+  for an effective caller override. Caller override preservation is tested through the Rust facade.
+- XY Chart PNG and a PDFKit-rasterized PDF now visibly show the navy canvas behind the pale title and
+  axis labels. Wardley also shows the requested canvas, but its current default dark axis/text paint
+  is hard to read on navy: this remains a family recipe/consumer gap, not a qualified dark theme.
+- `after-fix-results.json` SHA-256:
+  `433bb0a10c64b19c0f0a54a5a2e1659681ba3dbc0ae294782613f5a2d4b4b670`.
+  The bounded correctness review found no regression in this patch. No full workspace, complete
+  browser suite, all-platform build or performance remeasurement is claimed by this verification.
