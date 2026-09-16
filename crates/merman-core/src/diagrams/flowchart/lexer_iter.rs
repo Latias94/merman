@@ -119,11 +119,26 @@ impl<'input> Iterator for Lexer<'input> {
             return Some(Ok(tok));
         }
 
-        // Skip unknown single byte to avoid infinite loops.
-        let _ = self.bump();
+        // Keep recovery and error spans on UTF-8 boundaries after an unsupported character.
+        self.pos += self.input[start..].chars().next().unwrap().len_utf8();
         Some(Err(LexError::with_span(
             format!("Unexpected character at {start}"),
-            crate::SourceSpan::new(start, start + 1),
+            crate::SourceSpan::new(start, self.pos),
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_unicode_recovery_keeps_character_boundaries() {
+        let mut lexer = Lexer::new("😀A");
+        assert!(lexer.next().unwrap().is_err());
+        let (start, token, end) = lexer.next().unwrap().unwrap();
+        assert!(matches!(token, Tok::Id(ref id) if id == "A"));
+        assert_eq!((start, end), (4, 5));
+        assert!(lexer.next().is_none());
     }
 }

@@ -38,6 +38,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Accept Mermaid Unicode node IDs in Flowchart, including Japanese and accented names, and preserve UTF-8 boundaries when recovering from invalid characters.
+
 - Removed per-container Markdown prefix copies and repeated negative include-line scans, avoiding quadratic memory and suffix-scanning work on deeply nested or heavily formatted prose without diagrams.
 - Preserved conditional `cfg_attr` documentation in its original order during delayed rustdoc macro expansion, including nested conditions.
 

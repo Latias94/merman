@@ -74,7 +74,7 @@ avoids the DOMPurify initialization error encountered in a plain Node attempt.
 
 | Input | Merman | Mermaid 11.12.1 | Mermaid 11.17.2 | Finding |
 | --- | --- | --- | --- | --- |
-| Example 3, source line 58: Japanese Flowchart node IDs (`開始`, `注文`) | Rejects `Unexpected character at 17` | Parses | Parses | Confirmed parser compatibility gap; repair and regression pending |
+| Example 3, source line 58: Japanese Flowchart node IDs (`開始`, `注文`) | Rejects `Unexpected character at 17` | Parses | Parses | Confirmed at the baseline; corrected by the follow-up below |
 | Example 22, source line 588: unquoted Chinese GitGraph branch names | Rejects invalid reference | Rejects lexer/parser input | Rejects lexer/parser input | Reference example is invalid for both tested upstream versions; do not change Merman to accept it merely for a green matrix |
 
 The browser observations are retained in `reference-parse.json` beside the initial results.
@@ -92,7 +92,7 @@ contrast failure or a proven new regression. Only these two images were inspecte
 
 | Question | Current evidence | Still needed |
 | --- | --- | --- |
-| Do representative Merman presets execute on real diagrams? | 480 successful SVG/PNG/PDF outputs; two input-specific failures classified above | Repair confirmed parser gap and rerun affected inputs |
+| Do representative Merman presets execute on real diagrams? | 480 successful SVG/PNG/PDF outputs; two input-specific failures classified above | Final release-profile replay after the parser correction |
 | Do reference theme mechanisms map to typed public behavior? | Existing hash-bound 24-theme corpus | Compare recipe facets with emitted terminals and actual admission |
 | Are default, dark, presentation and high-contrast presets usable? | Five presets executed; two dark images inspected | Broader visual checks, arrows/labels, long text and expected palette assertions |
 | Do all ten presets satisfy product needs? | Ten catalog entries exist | Exercise remaining five; explicit use-case criteria and artifact qualification |
@@ -112,3 +112,24 @@ Keep production family ownership and acceptance-only historical authority. No ne
 engine, bundled Inter resource, or budget increase is justified by the observations above.
 C7b mechanism breadth and additional presets require explicit findings; zero Legacy routes and
 many successful outputs do not close that work.
+
+# Unicode parser correction follow-up
+
+The Flowchart lexer now recognizes the exact 409 `UNICODE_TEXT` entries from the pinned
+Mermaid 11.17.2 `flow.jison` at source commit `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`.
+It uses character-range matching without a new runtime dependency. Unsupported-character
+recovery advances by a complete UTF-8 scalar, and the obsolete byte-only helper was removed.
+
+The 197 selected Flowchart core tests pass, including the Japanese sample's nodes/edges/labels,
+mixed Latin/Greek/Korean/CJK IDs beside edge operators, rejected out-of-range IDs, and recovery
+after emoji. Real browser checks against both Mermaid versions accepted the mixed-ID case and
+rejected emoji, combining-accent, U+9FCD and non-BMP letter IDs, matching the new regression cases.
+
+A newly built development CLI (`--no-default-features --features svg,png,pdf,layout-cytoscape`)
+reran exact reference example 3 with all five audited presets and three export targets: **15/15**
+successful outputs with valid signatures. CLI SHA-256:
+`3b343c1ab6454c14bbc804563f6096f55d4aca6cadb67fca260354f04c702f13`.
+The input hash matches the original example; results and output files are retained under
+`target/bench/experiments/modern-reference-unicode-repaired`. The third-party license contract
+also passes. This is a targeted development-profile check, not a rebuilt release archive or a
+new full 510-row matrix. The invalid GitGraph reference remains a reference-input limitation.

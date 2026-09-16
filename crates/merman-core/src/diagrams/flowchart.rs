@@ -61,6 +61,7 @@ mod shape_data;
 mod subgraph;
 mod text;
 mod tokens;
+mod unicode_id;
 
 use text::{
     is_ecmascript_trim_char, parse_edge_label_text, parse_label_text, strip_wrapping_backticks,

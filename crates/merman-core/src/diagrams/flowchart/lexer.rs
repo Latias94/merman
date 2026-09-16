@@ -200,15 +200,6 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    pub(super) fn bump(&mut self) -> Option<u8> {
-        if self.pos >= self.input.len() {
-            return None;
-        }
-        let b = self.input.as_bytes()[self.pos];
-        self.pos += 1;
-        Some(b)
-    }
-
     pub(super) fn peek(&self) -> Option<u8> {
         self.input.as_bytes().get(self.pos).copied()
     }
@@ -923,10 +914,17 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        if !first.is_ascii_alphanumeric() && first != b'_' {
+        let first_len = if first.is_ascii_alphanumeric() || first == b'_' {
+            1
+        } else if !first.is_ascii() {
+            super::unicode_id::prefix_len(&self.input[start..])
+        } else {
+            0
+        };
+        if first_len == 0 {
             return None;
         }
-        self.pos += 1;
+        self.pos += first_len;
 
         while self.pos < bytes.len() {
             if self.pos + 1 < bytes.len()
@@ -938,6 +936,14 @@ impl<'input> Lexer<'input> {
             let b = bytes[self.pos];
             if b.is_ascii_alphanumeric() || b == b'_' {
                 self.pos += 1;
+                continue;
+            }
+            if !b.is_ascii() {
+                let len = super::unicode_id::prefix_len(&self.input[self.pos..]);
+                if len == 0 {
+                    break;
+                }
+                self.pos += len;
                 continue;
             }
             if b == b'-' {
