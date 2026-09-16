@@ -131,11 +131,27 @@ terminal probes. Do not convert the response counts into a theme support percent
 # Cost and architecture audit still open
 
 The baseline record retains exact local file sizes and withdraws the incorrect MiB conversion.
-No equivalent pre-refactor/alpha.6 artifact comparison has been performed in this audit. The
-coarse CLI smoke timings do not establish performance. Use existing Rust pipeline, memory,
-Node and WASM benchmark owners with fixed revisions, features, fonts and inputs before deciding
-whether growth is justified. Python/Typst/native sizes, cold start, throughput, large diagrams,
-theme compilation and discovery costs remain outstanding.
+The [candidate record](2026-09-16-c7a-native-candidate-a5e3cd2d6.md) now adds same-source Python,
+Typst, native SDK, Flutter and Node artifact sizes, plus final Web/Typst strip/compression
+measurements. All 24 current WASM budget checks pass without changing their limits, and all
+61 exact-profile dependency observations pass. These results establish current artifacts and
+registered boundaries, not an alpha.6-to-alpha.7 delta or minimum possible size.
+
+The first release-range experiment is registered under
+`target/bench/experiments/theme-alpha6-impact/experiment.yaml`: local tag `v0.8.0-alpha.6`
+(`d529f858ea3d337a1bdc8fe12e44e1403ededf2e`) versus `a5e3cd2d6`, Rust 1.95.0, the unchanged
+complete-SVG pipeline harness and 35 byte-identical standard fixtures. Each checkout retains
+its own lockfile; any eventual delta includes dependency changes and cannot be attributed solely
+to theme implementation. The diagnostic uses two AB/BA pairs with the long preset. Results
+are pending; the coarse historical CLI smoke timings remain insufficient for performance claims.
+
+Manifest inspection finds five added workspace crates: production `merman-doc` and
+`merman-theme-contract`, and publish-false `merman-theme-fixtures`,
+`merman-theme-authoring-fixtures` and `merman-theme-acceptance`. Both compared workspace
+manifests declare Rust 1.95. This is a manifest comparison, not runtime dependency reachability
+or byte attribution; the exact-profile verifier remains the owner of dependency boundaries.
+Cold start, stage attribution, throughput, large-diagram memory, theme compilation/discovery
+and equivalent alpha.6 artifact size comparisons remain outstanding.
 
 Keep production family ownership and acceptance-only historical authority. No new generic proof
 engine, bundled Inter resource, or budget increase is justified by the observations above.

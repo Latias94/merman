@@ -153,6 +153,12 @@ The packaged plugin is 11616412 bytes, SHA-256
 source and results. This verifies the installed local Typst toolchain, not every supported
 Typst compiler version or a published package.
 
+The canonical size owner also passed all four existing Typst limits: raw linked input
+18788989 bytes, optimized/stripped package 11616412, gzip 4456571 and Brotli 3284661. The
+post-link byte count matches the verified package above. Together with Web, all 24 unchanged
+WASM size checks pass; these measurements do not establish alpha.6-to-alpha.7 size deltas.
+Exact commands and output are retained in `typst-size.log` and `typst-size.json`.
+
 # Native C SDK artifact
 
 The exact `c-abi-native` recipe built its native-sdk library with analysis, ASCII, SVG,
