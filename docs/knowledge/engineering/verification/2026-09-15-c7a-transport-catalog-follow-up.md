@@ -1,10 +1,10 @@
 ---
 type: Verification Evidence
 title: C7a transport catalog contract follow-up
-timestamp: 2026-09-15
+timestamp: 2026-09-16
 related_plan: docs/plans/2026-09-15-theme-c7a-c7b-replan.md
 git_branch: refactor/presentation-theme-model
-git_commit: a09453da0
+git_commit: 507511f66
 tags: theme,c7a,transport,catalog,verification
 ---
 
@@ -31,7 +31,7 @@ conditions. These transport tests cover metadata handling, not an end-user porta
 These checks confirm the existing transport metadata and qualification-projection contracts. Packaged Web,
 Node, Flutter, Typst, UniFFI and Native C ABI artifacts still require their final same-source owner
 matrix and release-preflight receipts before C7a contract freeze. The selected next workspace release is `v0.8.0-alpha.7`; the candidate remains unfrozen
-while the alpha.6 compatibility decision and final artifact matrix are open.
+while the final artifact matrix and hosted execution gates are open.
 
 
 # Execution limits
@@ -107,8 +107,9 @@ checking the generated source. The `apple-xcframework` job in `release-preflight
 cannot close the Swift 5.9 obligation. This is an inspection of workflow responsibilities,
 not evidence of a new hosted run.
 
-The release-contract decision recorded in the release-line assessment remains pending.
-No compatibility exception, package-line change or C7a freeze was applied by this cleanup.
+The release-line assessment now records the maintainer decision to accept the bounded alpha.6
+transition impact. No package-line change or C7a freeze was applied by this cleanup; candidate
+artifact and host gates remain required.
 
 # Current candidate acceptance rerun at `88b23ad77`
 
