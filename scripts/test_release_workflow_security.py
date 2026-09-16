@@ -468,6 +468,38 @@ jobs:
                 self.assertIn("scripts/verify_prerelease_compatibility.py", text)
                 self.assertIn("previous_tag=", text)
 
+    @unittest.skipUnless(shutil.which("bash"), "workflow execution requires Bash")
+    def test_prerelease_workflows_scope_the_accepted_transition(self) -> None:
+        for workflow in ("release-preflight.yml", "release-crates.yml"):
+            step = read(WORKFLOW_ROOT / workflow).split(
+                "        id: prerelease_compatibility", 1
+            )[1]
+            command = textwrap.dedent(
+                step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0]
+            )
+            for version, previous, accepted in (
+                ("0.8.0-alpha.7", "v0.8.0-alpha.6", True),
+                ("0.8.0-alpha.8", "v0.8.0-alpha.7", False),
+                ("0.8.0-alpha.7", "v0.8.0-alpha.5", False),
+                ("0.8.0-alpha.7", "", False),
+            ):
+                with self.subTest(workflow=workflow, version=version, previous=previous):
+                    environment = dict(os.environ, VERSION=version, TEST_PREVIOUS=previous)
+                    result = subprocess.run(
+                        ["bash", "-c", 'git() { printf "%s\\n" "$TEST_PREVIOUS"; }; '
+                         'python3() { printf "%s\\n" "$@"; };\n' + command],
+                        env=environment, capture_output=True, text=True, check=True,
+                    )
+                    arguments = result.stdout.splitlines()
+                    self.assertEqual(arguments[:3], [
+                        "scripts/verify_prerelease_compatibility.py", "--version", version,
+                    ])
+                    if previous:
+                        self.assertEqual(arguments[3:5], ["--previous-version", previous[1:]])
+                        self.assertEqual(arguments[5:], ["--accept-alpha6-transition"] if accepted else [])
+                    else:
+                        self.assertEqual(arguments[3:], ["--allow-missing-previous"])
+
     def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
         self,
     ) -> None:

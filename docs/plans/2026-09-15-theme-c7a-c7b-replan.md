@@ -131,9 +131,18 @@ and correctly rejects the old/new combination. Its 45 focused unit/workflow test
 
 On 2026-09-16 the maintainer accepted alpha.7 with an explicit, bounded acceptance of the
 old-consumer resolution break. Keep the current product model, exact alpha.7 sibling requirements
-and accurate error semantics. Do not restore the retired presentation API or weaken the checker.
+and accurate error semantics. Keep the checker strict by default. Its explicit
+`--accept-alpha6-transition` mode implements only this approved version pair and still requires
+candidate compilation; both release workflows opt into it for that pair. Do not restore the
+retired presentation API or use the first-prerelease shortcut.
 The failed alpha.6 lane remains known-impact evidence; it is not relabeled as a pass. Rebuild and
 rerun the candidate-owned matrix after this policy decision.
+
+The transition gate implementation was validated locally on 2026-09-16: the real lockfile-free
+alpha.7 ASCII/SVG consumer compiled, and the previous lane was reported as known incompatible
+and NOT VERIFIED. The 49 focused checker/workflow tests include candidate failure, invalid
+exception version pairs, strict default behavior, and execution of both workflow command
+branches. This closes the policy-to-gate mismatch only, not the remaining C7a artifact matrix.
 
 ## Execution order and goal completion
 

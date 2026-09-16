@@ -231,6 +231,17 @@ a new release line; do not rely on downstream lockfiles to hide the mixed graph.
 tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this
 repository after publication; the next release must carry the corrected manifest and pass this gate.
 
+The maintainer accepted one bounded exception on 2026-09-16: published alpha.6 consumers
+can break when resolving alpha.7 siblings. For precisely `--version 0.8.0-alpha.7
+--previous-version 0.8.0-alpha.6`, add `--accept-alpha6-transition`. Candidate compilation remains
+mandatory; the old/new lane is explicitly reported as **NOT VERIFIED, known incompatible**,
+not as a compatibility pass. Without that flag the checker still reproduces and rejects the
+mixed graph. Both release workflows select the flag only for this exact pair. It cannot apply
+to alpha.8, another previous version, or a first-release run. See the recorded decision in
+[PUBLISH_ORDER.md](PUBLISH_ORDER.md); alpha.7 exact sibling requirements prevent future mixing
+but cannot repair the published alpha.6 manifest. Do not use `--allow-missing-previous` for this
+transition. All other same-line releases retain the rule above.
+
 The prerelease compatibility gate is admission control for a new version. A backfill of an
 immutable prerelease that was published before this gate existed may use the original tag and the
 owner-specific artifact workflows while recording its historical compatibility exception. It must
