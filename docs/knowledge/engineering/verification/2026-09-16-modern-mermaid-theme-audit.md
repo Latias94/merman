@@ -218,3 +218,105 @@ seams, not completed performance improvements.
   `433bb0a10c64b19c0f0a54a5a2e1659681ba3dbc0ae294782613f5a2d4b4b670`.
   The bounded correctness review found no regression in this patch. No full workspace, complete
   browser suite, all-platform build or performance remeasurement is claimed by this verification.
+
+## U2 resource-accounting constraint (2026-09-16)
+
+Further inspection at `94e42be6d` shows that removing native certification is not equivalent to
+removing its complete validator. `final_validation.rs::validate_element` currently collects reference
+facts while checking native compatibility; its reference planner accounts for `use`, `feImage`,
+marker geometry, and filter/mask/clip-path application multiplicity. Ordinary SVG must retain the
+currently enforced reference-expansion rejections and cancellation without inheriting native-only
+compatibility promises.
+
+Reuse the existing reference graph/expansion owner and separate resource accounting from native
+compatibility. The browser static validator currently covers `use` expansion only and cannot replace
+that accounting wholesale. A follow-up call-chain check found that `foreignObject` and unsupported
+native CSS already stop the compatibility pass before expansion planning; ordinary BestEffort
+converts that compatibility error into ValidationFailed and still returns the SVG. Output-byte limits
+and the initial raw-element preflight are separate from reference planning; they do not establish
+complete browser CSS expansion certification.
+Preserve expansion rejection for the existing analyzable subset. A new conservative browser CSS or
+inherited-marker model would be new scope, not a prerequisite disguised as regression preservation.
+The current expansion saturation at
+`MAX_RESVG_TREE_NODES + 1` must also become appropriate to the effective budget before an ordinary
+SVG path can accept budgets larger than that native ceiling. Keep native backend ceilings for native
+export. Cover cycles, duplicate IDs, href/xlink alternatives, marker/path amplification and cancellation.
+
+The public `TargetAdmissionStatus` currently contains Portable, HostDependent and Rejected.
+Unobserved ordinary output therefore needs an explicit Unverified state at this existing owner;
+absence of observation must not become either Portable or a fabricated native validation failure.
+Document/native export and strict qualification still require their actual target observations.
+These are implementation constraints, not a claim that certification has already been decoupled.
+
+## U2 prepared-label scan experiment
+
+The adjacent baseline is `94e42be6d`. Before changing production code, Release nextest passed
+11/11 token-scanner characterization tests. The candidate checks the existing reserved ID prefix
+and fixed foreignObject evidence attribute with the checkpoint-aware substring search. An empty
+ledger with neither raw spelling returns the same borrowed SVG; either spelling falls back to the
+existing scanner. Nonempty ledgers retain full token validation. This avoids tag/attribute parsing;
+both paths remain linear in SVG byte length, and the candidate still performs up to two searches.
+
+Release nextest passed 233/233 SVG pipeline tests after the candidate change. This includes ordinary
+and forged token handling, Unicode/quoted attributes, malformed-markup behavior, cancellation,
+strict validation, static output and resource-limit regressions. A test initially assumed that a
+reserved spelling in plain text was invalid; the baseline characterization contradicted it, so the
+new differential assertion was corrected to compare both success and failure outcomes. Production
+behavior was not changed to satisfy that incorrect expectation. A bounded independent review found
+no missing token recognition or cancellation path. This is not a full branch review.
+
+The same-profile baseline benchmark executable is frozen under
+`target/bench/experiments/prepared-label-scan-94e42be6d/` with SHA-256
+`e2cd5dc03e39ccd86f00cd3a0ea98713c359eb1b53c88de4e6ec1da7e3450110`.
+Both candidate diagnostics completed; decision-grade confirmation remains pending. Correctness
+success alone does not establish a speedup or close U2/U10. No native-certification policy has changed in this
+experiment.
+
+The first candidate used two substring searches. Two balanced AB/BA pairs per fixture (30 Criterion
+samples, 2-second warmup, 3-second measurement per invocation) produced the following diagnostic
+means of two point estimates. Every invocation's exact SVG byte length, element count and SHA-256
+matched the baseline, including its postflight check. These are working-tree diagnostics under
+background host load, without noise calibration or independent confirmation:
+
+| Public end-to-end fixture | Baseline (us) | First candidate (us) | Diagnostic difference |
+| --- | ---: | ---: | ---: |
+| Class tiny | 184.185 | 176.700 | -4.1% |
+| Class medium | 1367.900 | 1314.900 | -3.9% |
+| XY Chart medium | 249.230 | 233.980 | -6.1% |
+| Info medium | 33.096 | 35.3385 | +6.8% |
+
+Do not accept the first candidate on these numbers: the Info control increased by about 2.24 us.
+The fixed evidence attribute itself contains the reserved ID prefix, so the second full search is
+redundant. The revised candidate searches that attribute only if its constant spelling no longer
+contains the prefix. This keeps the exact-absence proof valid if those owners change independently.
+The first candidate executable, patch and `diagnostic.json` remain in the experiment directory;
+results from it cannot be attributed to the revised candidate. No alpha.6 regression is closed by
+this experiment.
+
+The revised single-search candidate again passed 233/233 Release SVG pipeline tests. Repeating the
+same diagnostic schedule against the original frozen baseline yielded:
+
+| Public end-to-end fixture | Baseline (us) | Revised candidate (us) | Diagnostic difference |
+| --- | ---: | ---: | ---: |
+| class_tiny | 184.050 | 163.940 | -10.9% |
+| class_medium | 1333.100 | 1195.650 | -10.3% |
+| xychart_medium | 241.380 | 213.175 | -11.7% |
+| info_medium | 32.377 | 31.971 | -1.3% |
+
+All 16 invocations retained identical per-fixture SVG preflight identities and passed postflight
+identity checks. The first candidate's Info increase did not recur in this diagnostic. The revised
+executable SHA-256 is `cfff79e557f3941633f0672191d81d28e6597af04cda05ea535a92ada1a061fd`;
+raw results are `diagnostic-single-search.json` and adjacent logs. The production patch and file
+hashes are retained as `single-search-code.patch` and `single-search-context.json`.
+
+This remains an uncommitted candidate pending calibrated confirmation of the U2 boundary change.
+Two working-tree diagnostic pairs cannot establish a decision-grade speedup, and these adjacent
+measurements do not replace the alpha.6 recovery gate. The strict/native observation remains active;
+U2's ordinary-output admission split and U10 impact closure are still outstanding.
+
+`cargo fmt --all -- --check` passed.
+`CARGO_BUILD_JOBS=1 cargo clippy --locked -p merman --features svg --lib` exited successfully;
+it still emitted warnings, including large error values
+and unused helpers. This run is not a completed workspace-wide warning classification or a
+warning-free gate. No complete workspace, browser matrix or installed-package rebuild was run for
+this isolated candidate.
