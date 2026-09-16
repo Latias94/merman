@@ -350,6 +350,28 @@ engine, bundled Inter resource, or budget increase is justified by the observati
 C7b mechanism breadth and additional presets require explicit findings; zero Legacy routes and
 many successful outputs do not close that work.
 
+# Minimal dependency boundary follow-up
+
+At source `81ee5cad0`, locked normal dependency trees were compared with published alpha.6 source `d529f858ea3d337a1bdc8fe12e44e1403ededf2e` for the `merman` facade with default features disabled.
+These are unique package-name counts, not build-unit counts, linked bytes or runtime work.
+
+| Features | Target | Alpha.6 | Current source |
+| --- | --- | ---: | ---: |
+| svg | aarch64-apple-darwin | 104 | 126 |
+| svg | wasm32-unknown-unknown | 104 | 124 |
+| png | aarch64-apple-darwin | 146 | 160 |
+
+Each capture used `cargo tree --locked -p merman --no-default-features --features <profile> --target <target> --edges normal --prefix none --format '{p}'` in the corresponding checkout.
+Raw trees, revisions and comparisons are in `target/bench/experiments/theme-alpha6-impact/minimal-profile-dependencies.json`.
+The native and WASM SVG closures newly reach font parsing/shaping and WOFF2 processing through the unconditional renderer dependencies.
+The PNG baseline already contains part of that font stack, so its incremental closure differs.
+The `fast-srgb8` to `palette_math` replacement is also present; it must not be attributed to theme design without separate dependency-history evidence.
+
+Source inspection distinguishes this from measured runtime cost: `FontCatalog::requires_prepared_text_layout` returns false without assets, and the environment's prepared-layout path already returns early in that case.
+The default timing regression therefore does not establish that native shaping ran.
+The [new boundary plan](../../../plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md) separates these compile/link and runtime problems and requires both to be measured after implementation.
+No dependency was removed or feature profile changed in this planning pass.
+
 # Unicode parser correction follow-up
 
 The Flowchart lexer now recognizes the exact 409 `UNICODE_TEXT` entries from the pinned

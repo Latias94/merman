@@ -12,6 +12,8 @@ execution: code
 
 # Portable Theme Architecture Convergence - Plan Addendum
 
+> **Current execution authority (2026-09-16):** The [theme product boundaries plan](2026-09-16-1618-refactor-theme-product-boundaries-plan.md) supersedes the remaining release sequence and the deferral of its selected Cyberpunk visual checks. Complete the product/cost boundary work before final C7a qualification and freeze. Completed C5/C6a and provider-retirement records below remain historical evidence; this is not a new Legacy migration.
+
 ## Goal Capsule
 
 | Field | Contract |

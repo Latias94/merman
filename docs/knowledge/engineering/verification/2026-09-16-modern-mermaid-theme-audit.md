@@ -82,3 +82,25 @@ The earlier `time -p` samples are insufficient for latency conclusions. They mix
 initialization with rendering and used coarse timing and too few samples. They cannot establish
 cold-start cost, throughput, memory, or a speedup. Formal comparison will use the existing
 benchmark owners and matched inputs/profiles; no budget was widened from these samples.
+
+# Public Cyberpunk consumer boundary review
+
+The September 16 follow-up inspected current source `81ee5cad0` and the pinned reference recipe.
+The external browser comparison used a reused CLI, Mermaid 11.12.1 and no font download; it corroborates missing visible mechanisms but is not an exact-HEAD or all-target qualification run.
+
+The public catalog's recipe builder still returns `ThemeDefinitionV1`, then the existing shared `materialize_spec_wire` path serves both compilation and complete-spec export.
+That shared seam already exists; the missing capability is composition of a full built-in recipe there, not a second compiler/export pipeline.
+The current Cyberpunk recipe omits the reference's ordered glow and layered grid/radial background despite those concepts being present in the complete model.
+
+The global effect binding matrix admits State/State only.
+The nonempty State writer and native filter receipt recognize a single SourceGraphic zero-spread shadow; the exporter also assumes one reference per filter.
+State has additional typed Clear routes, so this is not a claim that every other State effect facet is absent.
+Sequence width/radius, Flowchart label weight and XY per-series stroke/opacity consumers also need work for the actual reference scenes.
+Updating only the effect graph emitter would not close these drawing and native-admission boundaries.
+
+The reference background includes preview-container composition, with two-direction 40px grid and radial Screen layer.
+Full-spec root canvas support already exists, but the public recipe does not use it.
+C6's hand-built Cyberpunk scenes remain useful mechanism tests and cannot qualify a different public recipe or establish reference reproduction.
+
+The [current product boundary plan](../../../plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md) makes three public-entrypoint scenes—Flowchart, Sequence and XY Chart—required before final C7a freeze, while retaining honest limits for the other themes and families.
+No production code or runtime tests were changed or run during this planning review.
