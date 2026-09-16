@@ -235,3 +235,14 @@ Logs and review artifacts:
 The current candidate reran the repository script suite with `python3 -m unittest discover -s scripts -p 'test_*.py'`: 607 tests passed. The alpha.7 version projection check and release changelog check passed for `0.8.0-alpha.7`. Legal projections passed with `scripts/sync-release-legal-materials.py --check` (382 files), and governed Cargo package legal materials passed for 24 packages. `git diff --check` passed.
 
 The real prerelease checker was then run offline for `0.8.0-alpha.7` against published `0.8.0-alpha.6`. The fresh alpha.7 consumer compiled. The `previous-with-candidate-siblings` lane failed again with the same nine SVG compilation errors in the published alpha.6 facade: removed `merman_render::presentation`, `RenderFamilyKind`, `prepare_with_render_policy`, `plan_render_with_policy`, and public `math` exports. This confirms the compatibility result at the current candidate and keeps the release-contract decision open; no checker weakening or compatibility exception was applied.
+
+## Maintainer decision: accept alpha.6 transition impact (2026-09-16)
+
+The maintainer accepted the bounded previous-facade resolution break for `v0.8.0-alpha.7`.
+This is a release-policy decision for the published alpha.6 manifest and does not claim that
+mixed alpha.6/alpha.7 consumers compile. Alpha.7 retains the accurate new `Error` variants and
+retired renderer boundary, and all coupled workspace dependencies remain exact
+`=0.8.0-alpha.7` requirements. The compatibility checker must continue to record the alpha.6
+failure; candidate-owned alpha.7 graphs and artifacts still require independent passing checks.
+Consumers should keep a coherent alpha.6 lockfile or migrate the facade and coupled siblings
+together. No compatibility shim, error reclassification or checker weakening is authorized.
