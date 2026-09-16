@@ -102,3 +102,20 @@ C7a 之后再评估剩余 family mechanism breadth、长尾预设、参考 CSS �
    和复杂导出矩阵；其余预设先做 discovery，不直接 qualification。
 3. 以当前候选和明确的历史基线分别测量冷启动、预热渲染、SVG/PNG/PDF 吞吐、主题编译、
    discovery 和大图表内存；只有归因后的结果才进入预算或架构决策。
+
+# 代表性参考示例真实渲染（2026-09-16）
+
+从 `MERMAID_EXAMPLES.md` 选取了 11 个主要族的最小代表输入：Flowchart、Sequence、Class、
+State、ER、Gantt、Pie、Git Graph、Journey、Mindmap、Timeline。使用当前 macOS ARM64
+CLI 和 `editor-light`、`editor-dark`、`brutalist`、`cyberpunk` 四个预设，分别执行 SVG
+和 PNG 输出，共 88 次执行：
+
+- SVG：44/44 通过；
+- PNG：44/44 通过；
+- 未出现解析、主题编译或导出失败。
+
+输出大小随族和预设变化，已保存在本轮临时矩阵结果中
+`/tmp/merman-modern-theme-matrix-results.json`。这证明当前代表性 Mermaid 输入能通过
+候选 CLI 的基础 SVG/PNG 渲染路径；它不证明参考项目 22 个主题均已移植，不证明所有
+family mechanism 已 typed 支持，也不改变 preset qualification 的 artifact/profile
+范围。PDF、ASCII、长文本、多语言和 CSS 特殊机制仍需单独验证。
