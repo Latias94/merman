@@ -2422,6 +2422,7 @@ dependencies = [
 name = "merman-core"
 version = "0.8.0-alpha.6"
 dependencies = [
+ "cssparser",
  "euclid",
  "futures",
  "getrandom 0.4.3",

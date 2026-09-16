@@ -14,6 +14,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Diagram-local colors and typography now pass through a shared CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled by default, and host `secure` policies can still lock presentation fields.
+
 - Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. ASCII reports now use schema 3 and identify requested/effective layout and Compact attempts. Flowchart Compact uses a smaller default horizontal rank gap; explicit spacing overrides are preserved. Direct UniFFI bindings advance to API 7 for the revised ASCII output record; regenerate native libraries and Python/Swift wrappers together.
 
 - Clarified SVG pipeline selection in the Playground, CLI help, and SDK documentation. `readable` is an advanced text-fallback mode with browser overlap guidance and a one-click return to the default Mermaid SVG preview; pipeline values and defaults are unchanged.
@@ -25,6 +27,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.
 
 ### Fixed
+
+- Fixed `base` theme overrides leaving derived Sequence, State, Gantt, and Pie colors at their default values. The base palette now follows Mermaid's complete ordered theme calculation, including intermediate and explicit derived overrides.
 
 - Preserved visible line segments on both sides of horizontal ASCII/Unicode edge labels, including bidirectional arrows, and corrected cell centering for even-width labels (#132).
 

@@ -24,7 +24,7 @@ defaults should be stable across environments and CI.
   2. `default_config_shape.json` contains Mermaid's flat `configKeys` set plus the paths contributed
      by functions and explicit `undefined` values. Directive sanitization consumes this shape, so a
      legal key is not mistaken for a missing value.
-  3. Merman's hardened ten-key `secure` policy is typed Rust policy. `default_site_config()` applies
+  3. Merman's hardened seven-key `secure` policy is typed Rust policy. `default_site_config()` applies
      it after loading the pure upstream artifact; it is not written into either upstream artifact.
 - Generate both artifacts directly from the installed Mermaid 11.16 runtime in
   `crates/xtask/src/cmd/default_config.rs`:

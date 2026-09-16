@@ -2255,14 +2255,19 @@ fn sanitize_directive_controlled(
                 }
             }
             Value::String(s) => {
+                // Presentation values from directives and frontmatter share the final source
+                // admission boundary. Do not erase rejected values here: deleting the override
+                // there lets the trusted host value survive instead of replacing it with "".
+                if path.iter().any(|segment| {
+                    matches!(segment, DirectiveValuePathSegment::Key(key)
+                        if crate::config::is_presentation_field(key))
+                }) {
+                    continue;
+                }
                 if directive_path_is_css(&path) && !css_braces_are_balanced(s) {
                     *s = "{ /* ERROR: Unbalanced CSS */ }".to_string();
                 }
-                let blocked = s.contains('<')
-                    || s.contains('>')
-                    || s.contains("url(data:")
-                    || (directive_path_is_theme_variable(&path)
-                        && !theme_variable_value_is_allowed(s));
+                let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
                 if blocked {
                     s.clear();
                 }
@@ -2281,27 +2286,6 @@ fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {
                 .iter()
                 .any(|css_key| key.contains(css_key))
     )
-}
-
-fn directive_path_is_theme_variable(path: &[DirectiveValuePathSegment]) -> bool {
-    matches!(
-        path.iter().rev().nth(1),
-        Some(DirectiveValuePathSegment::Key(key)) if key == "themeVariables"
-    )
-}
-
-fn theme_variable_value_is_allowed(value: &str) -> bool {
-    // Mermaid's directive sanitizer accepts this exact ASCII character set for theme variables.
-    // Keep it source-backed rather than trying to infer whether an individual CSS-like value is
-    // harmless: theme variables feed generated CSS later in the rendering pipeline.
-    value.bytes().all(|byte| {
-        byte.is_ascii_digit()
-            || byte.is_ascii_alphabetic()
-            || matches!(
-                byte,
-                b' ' | b'"' | b'#' | b'%' | b'(' | b')' | b',' | b'.' | b';'
-            )
-    })
 }
 
 fn is_suspicious_directive_key(key: &str) -> bool {
@@ -3480,7 +3464,7 @@ A["<span title="😀">Label</span>"]
     }
 
     #[test]
-    fn sanitize_directive_uses_mermaid_theme_variable_allowlist() {
+    fn sanitize_directive_leaves_theme_values_for_shared_source_admission() {
         let mut value = json!({
             "themeVariables": {
                 "primaryColor": "#123456",
@@ -3497,16 +3481,13 @@ A["<span title="😀">Label</span>"]
         assert_eq!(value["themeVariables"]["secondaryColor"], "rgb(1, 2, 3)");
         assert_eq!(
             value["themeVariables"]["tertiaryColor"],
-            Value::String(String::new())
+            "url(javascript:alert(1))"
         );
         assert_eq!(
             value["themeVariables"]["noteBkgColor"],
             "hsl(120, 50%, 25.5%)"
         );
-        assert_eq!(
-            value["themeVariables"]["noteTextColor"],
-            Value::String(String::new())
-        );
+        assert_eq!(value["themeVariables"]["noteTextColor"], "red-blue");
     }
 
     #[test]

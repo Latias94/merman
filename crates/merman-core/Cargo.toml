@@ -38,6 +38,7 @@ system-random = ["dep:getrandom", "getrandom/std"]
 system-timing = ["dep:web-time"]
 
 [dependencies]
+cssparser.workspace = true
 euclid.workspace = true
 htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"] }

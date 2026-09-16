@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "13703a41400a09cb9076292db2aefcccef37fc8e70ee0c76c29e8a165d10fa1c",
+    "cargo_lock_sha256": "5e3f3a221df105badb50f89aa5684df21bade8c77e81e362c74641de9d3e38fb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [

@@ -45,8 +45,30 @@ model so downstream renderers (SVG/Canvas/UI wrappers) can match Mermaid behavio
   - remove attempts to set `secure`, then recursively filter the effective diagram config with the
     site's secure list.
 - Keep upstream data and local policy distinct: Mermaid's value artifact contains six secure keys,
-  while Merman's default site policy adds `fontFamily`, `altFontFamily`, `themeCSS`, and
-  `themeVariables` for a ten-key hardened default.
+  while Merman's default site policy adds `themeCSS` for a seven-key default. Whole stylesheets
+  remain host-controlled by default; colors and typography are validated values, not privileges.
+
+## Source presentation admission (2026-09-16)
+
+The source-to-site merge boundary applies one presentation-value admission policy to both YAML
+frontmatter and init directives. It runs after legacy font normalization and secure-key filtering,
+and before theme calculation. Trusted host config bypasses this source policy; an explicit host
+`secure` list may additionally lock fonts or `themeVariables`.
+
+Every string leaf in `themeVariables`, and font family, size, and weight fields at any nesting
+level, must be a complete CSS component-value sequence. The existing `cssparser` tokenizer handles
+CSS escapes. Admission rejects declaration/rule boundaries, comments, incomplete strings/functions,
+resource functions, host-variable substitution, markup and entity encodings that could change the
+value after validation. Pure color, numeric, calculation and shadow functions are admitted with
+bounded nesting. Invalid object fields are removed so trusted defaults survive; invalid array
+entries become null without shifting positions. Source parsing remains shape-compatible with
+Mermaid, but its historical ASCII-only theme-value regex is replaced by this shared value boundary.
+
+This replaces the former blanket font/themeVariables lock. The original balanced-braces font
+injection regression remains covered: balanced CSS is not necessarily a single safe value.
+Output-consumer policies still own stylesheet scoping, browser mounting, and raster resource
+closure. This boundary neither parses arbitrary stylesheets nor claims that parity SVG is safe to
+mount in an arbitrary browser document.
 
 ## Consequences
 
