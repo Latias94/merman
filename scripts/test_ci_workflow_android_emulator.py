@@ -44,6 +44,23 @@ def step_block(text: str, step_name: str) -> str:
 
 
 class AndroidEmulatorWorkflowTests(unittest.TestCase):
+    def test_android_sdk_omits_retired_tools_package(self) -> None:
+        text = read_ci_workflow()
+        setup = step_block(text, "Setup Android SDK")
+        install = step_block(text, "Install Android NDK")
+
+        self.assertIn("packages: platform-tools", setup)
+        self.assertIn('"ndk;${ANDROID_NDK_VERSION}"', install)
+        self.assertIn('"platforms;android-35"', install)
+
+    def test_all_android_setup_steps_override_legacy_package_default(self) -> None:
+        for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):
+            text = workflow.read_text(encoding="utf-8")
+            for setup in text.split("uses: android-actions/setup-android@")[1:]:
+                with self.subTest(workflow=workflow.name):
+                    inputs = setup.split("\n      - ", 1)[0]
+                    self.assertIn("packages: platform-tools\n", inputs)
+
     def test_android_emulator_enables_kvm_before_launch(self) -> None:
         text = read_ci_workflow()
 

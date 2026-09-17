@@ -236,6 +236,7 @@ fn source_config_cannot_override_secure_theme_variables() {
 sequenceDiagram
 Alice->>Bob: Hello"##;
     let renderer = TypedSvgRenderer::new().with_site_config(config(json!({
+        "secure": ["secure", "securityLevel", "themeVariables"],
         "themeVariables": { "lineColor": "#123456" },
     })));
 

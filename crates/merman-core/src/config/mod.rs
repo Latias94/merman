@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::mem::size_of;
 use std::sync::Arc;
 
+mod source_presentation;
+pub(crate) use source_presentation::is_presentation_field;
+
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
     "secure",
     "securityLevel",
@@ -11,10 +14,7 @@ pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
     "maxTextSize",
     "suppressErrorRendering",
     "maxEdges",
-    "fontFamily",
-    "altFontFamily",
     "themeCSS",
-    "themeVariables",
 ];
 
 pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
@@ -147,10 +147,18 @@ impl MermaidConfig {
         deep_merge_value(base, other);
     }
 
-    pub(crate) fn secure_filtered_overrides(&self, overrides: &MermaidConfig) -> MermaidConfig {
-        let mut filtered = clone_value_nonrecursive(overrides.as_value());
-        remove_secure_keys_recursive(self.as_value(), &mut filtered);
-        MermaidConfig::from_value(filtered)
+    pub(crate) fn source_filtered_overrides(
+        &self,
+        overrides: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<MermaidConfig> {
+        let mut filtered = overrides.clone();
+        // Normalize legacy typography before authority checks so a locked themeVariables or
+        // fontFamily key cannot be reintroduced through the other spelling after filtering.
+        mirror_legacy_font_family_into_theme_variables(&mut filtered);
+        remove_secure_keys_recursive(self.as_value(), filtered.value_mut());
+        source_presentation::filter(filtered.value_mut(), control)?;
+        Ok(filtered)
     }
 
     fn value_mut(&mut self) -> &mut Value {
@@ -919,9 +927,11 @@ mod tests {
             }
         }));
 
-        let filtered = site_config.secure_filtered_overrides(&overrides);
+        let filtered = site_config
+            .source_filtered_overrides(&overrides, &OperationControl::new())
+            .unwrap();
 
-        assert!(filtered.get_str("fontFamily").is_none());
+        assert_eq!(filtered.get_str("fontFamily"), Some("diagram-font"));
         assert_eq!(filtered.get_bool("flowchart.htmlLabels"), Some(false));
         assert_eq!(
             filtered.as_value()["flowchart"]["nested"][0]["shape"],
@@ -949,7 +959,9 @@ mod tests {
             "theme": "dark"
         }));
 
-        let filtered = site_config.secure_filtered_overrides(&overrides);
+        let filtered = site_config
+            .source_filtered_overrides(&overrides, &OperationControl::new())
+            .unwrap();
 
         assert!(filtered.as_value().get("secure").is_none());
         assert!(filtered.as_value().get("fontSize").is_none());

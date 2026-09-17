@@ -82,6 +82,15 @@ boundaries or change emitted SVG.
    may map product roles, but they do not mutate Mermaid's resolved theme state or redefine family
    semantics.
 
+## Base theme evaluation (2026-09-16)
+
+`base` starts with the pinned Mermaid constructor constants, applies explicit inputs, executes the
+complete ordered `updateColors()` program, then replays explicit overrides. It does not fill
+unimplemented derived fields from a completed default palette, use a no-input snapshot shortcut,
+or run a second dependency-repair pass. The generated default/dark snapshots remain exact test
+oracles. Sequence, State, Gantt, Pie, nested chart palettes, and intermediate overrides therefore
+share one evaluated theme. Other theme classes retain their own source-specific lifecycles.
+
 ## Consequences
 
 - Override order and value provenance are testable instead of implicit in mutation order.

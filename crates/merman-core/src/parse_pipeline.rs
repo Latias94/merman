@@ -1103,7 +1103,7 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config);
+        let mut effective_config = self.effective_config_before_detect(&pre.config, control)?;
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
@@ -1251,15 +1251,19 @@ impl<'a> ParsePipeline<'a> {
         runtime::with_operation_context(&context, || f(&context))
     }
 
-    fn effective_config_before_detect(&self, overrides: &MermaidConfig) -> MermaidConfig {
+    fn effective_config_before_detect(
+        &self,
+        overrides: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<MermaidConfig> {
         if overrides.is_empty_object() {
-            return self.engine.site_config.clone();
+            return Ok(self.engine.site_config.clone());
         }
 
         let mut effective_config = self.engine.site_config.clone();
-        let effective_overrides = effective_config.secure_filtered_overrides(overrides);
+        let effective_overrides = effective_config.source_filtered_overrides(overrides, control)?;
         effective_config.deep_merge(effective_overrides.as_value());
-        effective_config
+        Ok(effective_config)
     }
 }
 

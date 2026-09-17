@@ -595,6 +595,7 @@ dependencies = [
 name = "merman-core"
 version = "0.8.0-alpha.6"
 dependencies = [
+ "cssparser",
  "euclid",
  "granit-parser",
  "htmlize",
