@@ -123,6 +123,14 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-17 LSP semantic-token scheduling
+
+Full, delta, and range token computation now leaves the transport poll and shares the analysis
+executor's two CPU permits and eight task slots. Cancellation retains permits until physical work
+exits and cannot cancel sibling requests. See the [scheduling repair receipt](lsp_syntax_scheduling_2026-09-17.md)
+for deterministic progress, resource-accounting evidence, and remaining cancellation latency limits.
+No measured latency improvement is claimed.
+
 ### 2026-09-17 label work removal
 
 Flowchart image normalization uses a fixed-size ASCII prefix comparison instead of repeatedly
