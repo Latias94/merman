@@ -123,6 +123,14 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-17 label work removal
+
+Flowchart image normalization uses a fixed-size ASCII prefix comparison instead of repeatedly
+lowercasing the remaining label, removing the helper's quadratic suffix-scanning term. Built-in
+RaTeX measurement retains display-list dimensions but skips discarded SVG serialization. Neither
+change adds a cache or changes custom callbacks. See the [structural repair receipt](label_scan_math_measurement_2026-09-17.md)
+for bounds, correctness evidence, and validation limits; no latency improvement is claimed.
+
 ### 2026-08-08 headless hardening decisions
 
 | Unit | Decision | Durable boundary |
