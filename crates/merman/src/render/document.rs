@@ -694,8 +694,9 @@ impl SvgOutput {
 
     /// Returns the target-owned admission bound to these exact SVG bytes.
     ///
-    /// Every successful standalone SVG has a receipt. `BestEffort` returns the receipt even when
-    /// its status is host-dependent or rejected, while `RequirePortable` rejects such output with
+    /// Every successful standalone SVG has a receipt. Ordinary `BestEffort` output is unverified
+    /// for native compatibility; an explicitly resvg-safe pipeline still observes that contract.
+    /// Receipts may also be host-dependent or rejected. `RequirePortable` rejects nonportable output with
     /// [`RenderError::TargetAdmission`]. Callers must inspect the receipt status, for example with
     /// `output.admission().status().is_portable()`, rather than treating receipt presence as
     /// portability. Neither policy changes the selected SVG pipeline.

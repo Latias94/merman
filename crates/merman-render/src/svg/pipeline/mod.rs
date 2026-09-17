@@ -1056,9 +1056,14 @@ mod tests {
     }
 
     #[test]
-    fn exact_parity_artifact_is_compatible_when_its_bytes_satisfy_the_terminal_contract() {
-        let session = render_session();
-        let artifact = StandaloneSvgArtifact::observe_exact(
+    fn strict_parity_artifact_is_compatible_when_its_bytes_satisfy_the_terminal_contract() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(
+                crate::diagram_theme::ThemePortabilityRequirement::RequirePortable,
+            )
+            .begin_session()
+            .unwrap();
+        let artifact = StandaloneSvgArtifact::finalize_exact(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path d="M0 0h1v1z"/></svg>"#.to_owned(),
             None,
             PreparedTextEvidenceLease::default(),

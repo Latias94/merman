@@ -3112,8 +3112,9 @@ impl RenderedFamilySvg {
 
     /// Completes the exact artifact selected for the standalone SVG target.
     ///
-    /// Resvg-safe output retains the full renderer-owned terminal capability. Other pipelines are
-    /// validated in place instead of being normalized into a different artifact.
+    /// Resvg-safe output retains the full renderer-owned terminal capability. Other pipelines
+    /// preserve their exact bytes; native compatibility is observed only when portability is
+    /// required. Best-effort output still enforces resource budgets and cancellation.
     pub fn finalize_standalone(
         self,
         pipeline: Option<&SvgPipeline>,
@@ -3141,17 +3142,17 @@ impl RenderedFamilySvg {
             }
             Some(pipeline) => self
                 .apply_pipeline_with_portability(pipeline, enforce_portability)?
-                .finalize_observed_standalone(pipeline),
+                .finalize_exact_standalone(pipeline),
             None => {
                 let pipeline = SvgPipeline::parity();
-                self.finalize_observed_standalone(&pipeline)
+                self.finalize_exact_standalone(&pipeline)
             }
         }
     }
 
-    fn finalize_observed_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
+    fn finalize_exact_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let artifact = StandaloneSvgArtifact::observe_exact(
+        let artifact = StandaloneSvgArtifact::finalize_exact(
             self.svg,
             self.prepared_text_svg,
             self.prepared_text_ledger,

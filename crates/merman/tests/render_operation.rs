@@ -1398,6 +1398,44 @@ fn require_portable_svg_output_retains_the_exact_target_receipt() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn ordinary_svg_leaves_native_admission_unverified() {
+    for pipeline in [None, Some(merman::svg::SvgPipeline::parity())] {
+        for theme in [None, Some(flowchart_paint_theme())] {
+            let mut request = RenderRequest::svg(
+                "flowchart TD\nA[Alpha] --> B[Beta]",
+                OperationControl::new(),
+                merman::SvgRequest {
+                    pipeline: pipeline.clone(),
+                    ..merman::SvgRequest::default()
+                },
+            );
+            if let Some(theme) = theme {
+                request = request.with_theme(theme);
+            }
+            let RenderOutput::Svg(Some(output)) = Renderer::new().render(request).unwrap() else {
+                panic!("expected standalone SVG output");
+            };
+            assert_eq!(output.admission().status().id(), "unverified");
+            assert!(!output.admission().status().is_portable());
+            let reasons: Vec<_> = output
+                .admission()
+                .reasons()
+                .iter()
+                .map(|reason| reason.id())
+                .collect();
+            assert!(reasons.contains(&"svg_terminal_unverified"));
+            assert!(!reasons.contains(&"svg_terminal_validation_failed"));
+            assert!(!reasons.contains(&"svg_fonts_not_self_contained"));
+            assert_eq!(
+                output.admission().artifact_digest(),
+                <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+            );
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn svg_admission_preserves_the_caller_selected_pipeline() {
     const SOURCE: &str = "---\nconfig:\n  htmlLabels: true\n  flowchart:\n    htmlLabels: true\n---\nflowchart TD\nA[Alpha] --> B[Beta]";
 
@@ -1453,12 +1491,12 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
     assert_eq!(parity_receipt.artifact_digest(), parity_digest);
     assert_eq!(
         parity_receipt.status(),
-        merman::TargetAdmissionStatus::Rejected
+        merman::TargetAdmissionStatus::Unverified
     );
     assert!(
         parity_receipt
             .reasons()
-            .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
+            .contains(&merman::TargetAdmissionReason::SvgTerminalUnverified)
     );
     let parity_error = render_strict(merman::svg::SvgPipeline::parity());
     assert_eq!(parity_error.receipt().artifact_digest(), parity_digest);
@@ -1496,7 +1534,7 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn best_effort_svg_seals_terminal_validation_failure_without_discarding_the_artifact() {
+fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
     const SOURCE: &str = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Alpha] --> B[Beta]";
 
     let render = |pipeline| {
@@ -1531,6 +1569,16 @@ fn best_effort_svg_seals_terminal_validation_failure_without_discarding_the_arti
     assert_eq!(admission.status(), merman::TargetAdmissionStatus::Rejected);
     assert!(
         admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+    );
+    assert!(
+        admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgTerminalUnverified)
+    );
+    assert!(
+        !admission
             .reasons()
             .contains(&merman::TargetAdmissionReason::SvgTerminalValidationFailed)
     );

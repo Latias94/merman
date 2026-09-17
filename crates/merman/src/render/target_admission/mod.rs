@@ -41,6 +41,8 @@ impl RenderArtifactKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TargetAdmissionStatus {
+    /// This operation did not request target compatibility observation.
+    Unverified,
     Portable,
     HostDependent,
     Rejected,
@@ -48,10 +50,16 @@ pub enum TargetAdmissionStatus {
 
 #[cfg(feature = "svg")]
 impl TargetAdmissionStatus {
-    pub const ALL: &'static [Self] = &[Self::Portable, Self::HostDependent, Self::Rejected];
+    pub const ALL: &'static [Self] = &[
+        Self::Unverified,
+        Self::Portable,
+        Self::HostDependent,
+        Self::Rejected,
+    ];
 
     pub const fn id(self) -> &'static str {
         match self {
+            Self::Unverified => "unverified",
             Self::Portable => "portable",
             Self::HostDependent => "host_dependent",
             Self::Rejected => "rejected",
@@ -101,6 +109,7 @@ pub enum TargetAdmissionReason {
     PreparedMathTerminalProofIncomplete,
     SvgFontsNotSelfContained,
     SvgTerminalValidationFailed,
+    SvgTerminalUnverified,
     PreparedTextEvidenceMismatch,
     PreparedTextTerminalProofIncomplete,
     FontResolutionIncomplete,
@@ -124,6 +133,7 @@ impl TargetAdmissionReason {
         Self::PreparedMathTerminalProofIncomplete,
         Self::SvgFontsNotSelfContained,
         Self::SvgTerminalValidationFailed,
+        Self::SvgTerminalUnverified,
         Self::PreparedTextEvidenceMismatch,
         Self::PreparedTextTerminalProofIncomplete,
         Self::FontResolutionIncomplete,
@@ -146,6 +156,7 @@ impl TargetAdmissionReason {
             Self::PreparedMathTerminalProofIncomplete => "prepared_math_terminal_proof_incomplete",
             Self::SvgFontsNotSelfContained => "svg_fonts_not_self_contained",
             Self::SvgTerminalValidationFailed => "svg_terminal_validation_failed",
+            Self::SvgTerminalUnverified => "svg_terminal_unverified",
             Self::PreparedTextEvidenceMismatch => "prepared_text_evidence_mismatch",
             Self::PreparedTextTerminalProofIncomplete => "prepared_text_terminal_proof_incomplete",
             Self::FontResolutionIncomplete => "font_resolution_incomplete",
@@ -460,9 +471,15 @@ pub(super) fn document_portability_report(
     let mut reasons = Vec::new();
     let (mut rejected, host_dependent) = classify_common_document_evidence(evidence, &mut reasons);
     let resource_closure_complete = svg.finalization_report().is_some();
-    if !resource_closure_complete {
-        rejected = true;
-        reasons.push(TargetAdmissionReason::SvgTerminalValidationFailed);
+    match svg.terminal_status() {
+        merman_render::svg::StandaloneSvgTerminalStatus::Unverified => {
+            reasons.push(TargetAdmissionReason::SvgTerminalUnverified);
+        }
+        merman_render::svg::StandaloneSvgTerminalStatus::ValidationFailed => {
+            rejected = true;
+            reasons.push(TargetAdmissionReason::SvgTerminalValidationFailed);
+        }
+        merman_render::svg::StandaloneSvgTerminalStatus::Compatible => {}
     }
     let prepared_text_evidence_valid = svg.prepared_text_evidence_valid();
     if !prepared_text_evidence_valid {
@@ -540,13 +557,21 @@ pub(super) fn standalone_svg_admission(
     artifact_digest: [u8; 32],
 ) -> TargetAdmissionReceipt {
     let mut reasons = Vec::new();
-    let (rejected, mut host_dependent) = inherit_document_portability(document, &mut reasons);
-    if !svg.text_fonts_are_self_contained() {
+    reasons.extend(document.reasons().iter().copied());
+    let rejected = document.rejected;
+    let unverified =
+        svg.terminal_status() == merman_render::svg::StandaloneSvgTerminalStatus::Unverified;
+    let mut host_dependent = document.is_host_dependent();
+    if !unverified && !svg.text_fonts_are_self_contained() {
         host_dependent = true;
         reasons.push(TargetAdmissionReason::SvgFontsNotSelfContained);
     }
 
-    let status = classify_target_admission(rejected, host_dependent);
+    let status = if !rejected && unverified {
+        TargetAdmissionStatus::Unverified
+    } else {
+        classify_target_admission(rejected, host_dependent)
+    };
     let font_source = prepared_text_font_source(evidence);
     let target_evidence_digest =
         standalone_target_evidence_digest(svg, evidence, document, status, &reasons, font_source);
@@ -807,6 +832,7 @@ mod tests {
                 TargetAdmissionReason::PreparedMathTerminalProofIncomplete,
                 TargetAdmissionReason::SvgFontsNotSelfContained,
                 TargetAdmissionReason::SvgTerminalValidationFailed,
+                TargetAdmissionReason::SvgTerminalUnverified,
                 TargetAdmissionReason::PreparedTextEvidenceMismatch,
                 TargetAdmissionReason::PreparedTextTerminalProofIncomplete,
                 TargetAdmissionReason::FontResolutionIncomplete,

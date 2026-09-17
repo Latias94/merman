@@ -372,3 +372,50 @@ characterization. `cargo fmt --all` and `git diff --check` passed. The foreignOb
 still records the current `ValidationFailed` state; U2 must replace this with the planned unverified
 ordinary-output state during the observation split. No performance claim or complete export-matrix
 claim is made for this resource-budget correction.
+
+
+## U2 ordinary SVG observation boundary (2026-09-17)
+
+Ordinary BestEffort standalone SVG now returns explicit `Unverified` native target admission
+unless the caller selects the resvg-safe pipeline. Strict standalone requests still observe the
+selected bytes in place; native document/export paths retain their full finalization. The new
+state never passes `is_portable()`. Known family or prepared-evidence failures still take precedence
+and remain `Rejected`; absence of a native observation is not a fabricated validation or font failure.
+Public output bytes are not rewritten by this admission choice.
+
+Resource accounting reuses one reference-attribute collector and the existing graph planner.
+Ordinary output checks well-formed XML, raw element budgets, analyzable reference expansion and
+cancellation, without constructing native font/style/resource-closure proof. Native checks retain
+attribute precedence, duplicate-ID accounting and their backend ceilings. Strict observational
+validation now also receives the operation checkpoint throughout its scan.
+
+This is not a browser expansion certificate. CSS marker references and other unsupported browser
+forms remain unverified. A cyclic reference graph prevents a complete expansion plan, including
+for mixed cyclic/acyclic content; raw XML/budget/cancellation checks still apply. No CSS interpreter,
+new graph algorithm, new dependency or broader portability claim was introduced.
+
+Evidence before implementation: the new public ordinary-SVG test failed because the status was
+`rejected` rather than `unverified`; two of four initial budget tests failed because native
+compatibility rejected host markup before ordinary accounting. After implementation, 247/247
+renderer pipeline tests and 36/36 facade render-operation tests passed in the development profile.
+The existing mutated-output test now explicitly proves `Rejected` plus `svg_terminal_unverified`
+for known invalidated theme evidence; its strict counterpart still observes native validation
+failure for the same artifact digest.
+
+Release facade/native verification: `CARGO_BUILD_JOBS=1 cargo nextest run --release -p merman
+--no-default-features --features svg,png,pdf --lib --test render_operation --no-fail-fast` passed
+69/69 tests. This covers the selected target-admission, PNG/PDF, font and mutation cases, not all
+native export scenarios or installed platform artifacts. Independent correctness review found no
+new defect and retained the cyclic/CSS accounting limitation explicitly. The review's requested
+known-rejection coverage was added to the existing mutation test.
+
+Release renderer verification: `CARGO_BUILD_JOBS=1 cargo nextest run --release -p merman-render
+--lib -E 'test(svg::pipeline::)'` passed 247/247 selected tests (2,329 outside the selection).
+The old uncheckpointed validation wrapper now has only test consumers and is gated accordingly;
+production uses the checkpoint-aware observation or target finalizer. `CARGO_BUILD_JOBS=1 cargo
+check --locked -p merman-render --no-default-features --lib` passed after that cleanup. Formatting
+and diff checks passed. Existing unrelated compiler warnings remain; this is not a warning-free workspace audit.
+
+No latency, memory or alpha.6 recovery claim is made for this split. U2's profiling and matched-output
+comparison remain to be completed; U10 still owns overall cost admission. Full browser, package,
+platform and final candidate verification were not rerun by this change.

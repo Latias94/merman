@@ -425,6 +425,7 @@ fn is_xml_name_char(ch: char) -> bool {
 /// This check deliberately does not claim that an SVG is safe to insert into a browser DOM. DOM
 /// embedding needs a separate browser-oriented policy for navigation, network access, and HTML
 /// integration.
+#[cfg(test)]
 pub(crate) fn validate_resvg_compatible_svg(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -459,7 +460,6 @@ fn validate_resvg_compatible_svg_inner(
     )
 }
 
-#[cfg(test)]
 pub(crate) fn validate_resvg_compatible_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -485,7 +485,6 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
     )
 }
 
-#[cfg(test)]
 fn validate_resvg_compatible_svg_after_xml(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -501,6 +500,70 @@ fn validate_resvg_compatible_svg_after_xml(
         },
         None,
     )
+}
+
+/// Checks explicit SVG resource budgets without certifying a native output contract.
+pub(super) fn check_svg_resource_budget_with_execution(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    check_svg_resource_budget_with_controls(
+        svg,
+        &mut || execution.checkpoint(),
+        &mut |elements, _tree_depth| {
+            execution
+                .resource_policy()
+                .check_svg_element_count(elements)
+                .map_err(|error| execution.terminate_resource_error(error))
+        },
+    )
+}
+
+fn check_svg_resource_budget_with_controls(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+) -> Result<()> {
+    validate_well_formed_svg_with_controls(svg, checkpoint, check_structure)?;
+    let mut reader = NsReader::from_str(svg);
+    let mut reference_nodes = Vec::new();
+    let mut reference_stack = Vec::new();
+    loop {
+        checkpoint()?;
+        let event = reader.read_event();
+        checkpoint()?;
+        let event = event.map_err(|error| xml_validation_error(format!("invalid XML: {error}")))?;
+        let is_start = matches!(&event, Event::Start(_));
+        match event {
+            Event::Start(element) | Event::Empty(element) => {
+                let references =
+                    collect_reference_element(&element, reader.resolver(), checkpoint)?;
+                append_reference_node(
+                    &mut reference_nodes,
+                    reference_stack.last().copied(),
+                    references,
+                );
+                if is_start {
+                    reference_stack.push(reference_nodes.len() - 1);
+                }
+            }
+            Event::End(_) => {
+                reference_stack.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    let plan = match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint) {
+        Ok(plan) => plan,
+        // XML and raw element budgets have already been checked. A cycle prevents a complete
+        // expansion plan, including for mixed cyclic/acyclic graphs, but does not make ordinary
+        // host SVG invalid. This path returns no compatibility or expansion certificate.
+        Err(ReferencePlanningError::Invalid(_)) => return checkpoint(),
+        Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
+    };
+    checkpoint()?;
+    check_structure(plan.expanded_elements(), plan.max_tree_depth())
 }
 
 fn validate_resvg_compatible_svg_after_xml_with_structure(
@@ -889,27 +952,10 @@ fn validate_element(
         ));
     }
 
-    let is_use = is_svg_element && element_name.eq_ignore_ascii_case("use");
-    let is_fe_image = is_svg_element && element_name.eq_ignore_ascii_case("feImage");
-    let is_marker = is_svg_element && element_name.eq_ignore_ascii_case("marker");
     let is_style = is_svg_element && element_name.eq_ignore_ascii_case("style");
+    let mut reference_attributes = ReferenceAttributes::new(element_name, is_svg_element);
     let mut is_typed_font_style = false;
     let mut style_has_non_marker_attribute = false;
-    let mut use_id = None;
-    let mut parsed_id = None;
-    let mut parsed_id_seen = false;
-    let mut use_href = None;
-    let mut use_xlink_href = None;
-    let mut fe_image_href = None;
-    let mut fe_image_href_seen = false;
-    let mut geometry_source_len = 0usize;
-    let mut geometry_source_seen = false;
-    let mut marker_start = None;
-    let mut marker_start_seen = false;
-    let mut marker_mid = None;
-    let mut marker_mid_seen = false;
-    let mut marker_end = None;
-    let mut marker_end_seen = false;
     let mut root_width_seen = false;
     let mut root_height_seen = false;
     for attribute in element.attributes() {
@@ -998,61 +1044,21 @@ fn validate_element(
                 .observe_inline_css_urls(&value)
                 .map_err(validation_error)?;
         }
-        if is_svg_element
-            && !geometry_source_seen
-            && ((element_name == "path" && semantic_name == "d")
-                || (matches!(element_name, "polyline" | "polygon") && semantic_name == "points"))
-        {
-            geometry_source_seen = true;
-            geometry_source_len = value.len();
-        }
-        if is_svg_element && semantic_name == "id" && !parsed_id_seen {
-            parsed_id_seen = true;
-            parsed_id = Some(value.to_string());
-            resource_closure.observe_fragment_id(&value);
-        }
-        if is_svg_element && is_unbound_attribute && semantic_name == "id" {
-            use_id = Some(value.to_string());
-        }
-        if is_use && semantic_name == "href" {
-            if is_xlink_attribute {
-                use_xlink_href.get_or_insert_with(|| value.to_string());
-            } else if is_unbound_attribute {
-                use_href.get_or_insert_with(|| value.to_string());
-            }
-        }
-        if is_fe_image && semantic_name == "href" && !fe_image_href_seen {
-            fe_image_href_seen = true;
-            fe_image_href = Some(value.to_string());
-        }
+        reference_attributes.observe(
+            semantic_name,
+            is_unbound_attribute,
+            is_xlink_attribute,
+            &value,
+            checkpoint,
+        )?;
         if (semantic_name == "href" && !element_name.eq_ignore_ascii_case("a"))
             || semantic_name == "src"
         {
             observe_terminal_resource_url(resource_closure, &value);
         }
-        let marker_slot = if semantic_name == "marker-start" && !marker_start_seen {
-            marker_start_seen = true;
-            Some(&mut marker_start)
-        } else if semantic_name == "marker-mid" && !marker_mid_seen {
-            marker_mid_seen = true;
-            Some(&mut marker_mid)
-        } else if semantic_name == "marker-end" && !marker_end_seen {
-            marker_end_seen = true;
-            Some(&mut marker_end)
-        } else {
-            None
-        };
-        if let Some(slot) = marker_slot {
-            let target = same_document_marker_target(&value);
-            checkpoint()?;
-            let target = target?;
-            if target.is_some() && !is_marker_capable_svg_element(element_name) {
-                return Err(validation_error(format!(
-                    "marker references on <{element_name}> cannot be bounded before usvg parsing"
-                )));
-            }
-            *slot = target.map(str::to_owned);
-        }
+    }
+    if let Some(error) = reference_attributes.marker_error.take() {
+        return Err(error);
     }
     if is_typed_font_style && style_has_non_marker_attribute {
         return Err(validation_error(
@@ -1060,57 +1066,229 @@ fn validate_element(
         ));
     }
 
-    let mut references = Vec::new();
-    if let Some(target) = use_xlink_href
-        .as_deref()
-        .or(use_href.as_deref())
-        .and_then(same_document_use_target)
-    {
-        references.push(ElementReference {
-            target: target.to_owned(),
-            multiplicity: 1,
-            target_kind: ReferenceTargetKind::UseElement,
-        });
+    let mut validated = reference_attributes.finish();
+    validated.is_typed_font_style = is_typed_font_style;
+    if let Some(id) = &validated.parsed_id {
+        resource_closure.observe_fragment_id(id);
     }
-    if let Some(target) = fe_image_href.as_deref().and_then(same_document_use_target) {
-        references.push(ElementReference {
-            target: target.to_owned(),
-            multiplicity: 1,
-            target_kind: ReferenceTargetKind::ParsedElement,
-        });
-    }
-    if let Some(target) = marker_start {
-        references.push(ElementReference {
-            target,
-            multiplicity: 1,
-            target_kind: ReferenceTargetKind::Marker,
-        });
-    }
-    if let Some(target) = marker_mid {
-        references.push(ElementReference {
-            target,
-            multiplicity: marker_mid_instance_upper_bound(element_name, geometry_source_len),
-            target_kind: ReferenceTargetKind::Marker,
-        });
-    }
-    if let Some(target) = marker_end {
-        references.push(ElementReference {
-            target,
-            multiplicity: 1,
-            target_kind: ReferenceTargetKind::Marker,
-        });
+    Ok(validated)
+}
+
+/// Owns the attribute precedence shared by native validation and ordinary SVG budgeting.
+/// Unbounded marker forms are retained as native-contract errors; ordinary output remains
+/// unverified and only charges the references that this collector can analyze.
+struct ReferenceAttributes<'a> {
+    element_name: &'a str,
+    is_svg_element: bool,
+    use_id: Option<String>,
+    parsed_id: Option<String>,
+    use_href: Option<String>,
+    use_xlink_href: Option<String>,
+    fe_image_href: Option<String>,
+    geometry_source_len: Option<usize>,
+    marker_start: Option<String>,
+    marker_start_seen: bool,
+    marker_mid: Option<String>,
+    marker_mid_seen: bool,
+    marker_end: Option<String>,
+    marker_end_seen: bool,
+    marker_error: Option<Error>,
+}
+
+impl<'a> ReferenceAttributes<'a> {
+    fn new(element_name: &'a str, is_svg_element: bool) -> Self {
+        Self {
+            element_name,
+            is_svg_element,
+            use_id: None,
+            parsed_id: None,
+            use_href: None,
+            use_xlink_href: None,
+            fe_image_href: None,
+            geometry_source_len: None,
+            marker_start: None,
+            marker_start_seen: false,
+            marker_mid: None,
+            marker_mid_seen: false,
+            marker_end: None,
+            marker_end_seen: false,
+            marker_error: None,
+        }
     }
 
-    Ok(ValidatedElement {
-        is_style,
-        is_typed_font_style,
-        is_marker,
-        may_repeat_per_element: is_svg_element
-            && matches!(element_name, "filter" | "mask" | "clipPath"),
-        use_id,
-        parsed_id,
-        references,
-    })
+    fn observe(
+        &mut self,
+        semantic_name: &str,
+        is_unbound_attribute: bool,
+        is_xlink_attribute: bool,
+        value: &str,
+        checkpoint: &mut impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        if self.is_svg_element
+            && ((self.element_name == "path" && semantic_name == "d")
+                || (matches!(self.element_name, "polyline" | "polygon")
+                    && semantic_name == "points"))
+        {
+            self.geometry_source_len.get_or_insert(value.len());
+        }
+        if self.is_svg_element && semantic_name == "id" {
+            self.parsed_id.get_or_insert_with(|| value.to_owned());
+            if is_unbound_attribute {
+                self.use_id = Some(value.to_owned());
+            }
+        }
+        if self.is_svg_element && semantic_name == "href" {
+            if self.element_name.eq_ignore_ascii_case("use") {
+                if is_xlink_attribute {
+                    self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+                } else if is_unbound_attribute {
+                    self.use_href.get_or_insert_with(|| value.to_owned());
+                }
+            }
+            if self.element_name.eq_ignore_ascii_case("feImage") {
+                self.fe_image_href.get_or_insert_with(|| value.to_owned());
+            }
+        }
+        let marker_slot = if semantic_name == "marker-start" && !self.marker_start_seen {
+            self.marker_start_seen = true;
+            Some(&mut self.marker_start)
+        } else if semantic_name == "marker-mid" && !self.marker_mid_seen {
+            self.marker_mid_seen = true;
+            Some(&mut self.marker_mid)
+        } else if semantic_name == "marker-end" && !self.marker_end_seen {
+            self.marker_end_seen = true;
+            Some(&mut self.marker_end)
+        } else {
+            None
+        };
+        if let Some(slot) = marker_slot {
+            let target = same_document_marker_target(value);
+            checkpoint()?;
+            match target {
+                Ok(Some(target)) if is_marker_capable_svg_element(self.element_name) => {
+                    *slot = Some(target.to_owned());
+                }
+                Ok(None) => {}
+                Ok(Some(_)) => {
+                    self.marker_error.get_or_insert_with(|| {
+                        validation_error(format!(
+                            "marker references on <{}> cannot be bounded before usvg parsing",
+                            self.element_name
+                        ))
+                    });
+                }
+                Err(error) => {
+                    self.marker_error.get_or_insert(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> ValidatedElement {
+        let mut references = Vec::new();
+        if let Some(target) = self
+            .use_xlink_href
+            .as_deref()
+            .or(self.use_href.as_deref())
+            .and_then(same_document_use_target)
+        {
+            references.push(ElementReference {
+                target: target.to_owned(),
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::UseElement,
+            });
+        }
+        if let Some(target) = self
+            .fe_image_href
+            .as_deref()
+            .and_then(same_document_use_target)
+        {
+            references.push(ElementReference {
+                target: target.to_owned(),
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::ParsedElement,
+            });
+        }
+        if let Some(target) = self.marker_start {
+            references.push(ElementReference {
+                target,
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        if let Some(target) = self.marker_mid {
+            references.push(ElementReference {
+                target,
+                multiplicity: marker_mid_instance_upper_bound(
+                    self.element_name,
+                    self.geometry_source_len.unwrap_or(0),
+                ),
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        if let Some(target) = self.marker_end {
+            references.push(ElementReference {
+                target,
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::Marker,
+            });
+        }
+        ValidatedElement {
+            is_style: self.is_svg_element && self.element_name.eq_ignore_ascii_case("style"),
+            is_typed_font_style: false,
+            is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
+            may_repeat_per_element: self.is_svg_element
+                && matches!(self.element_name, "filter" | "mask" | "clipPath"),
+            use_id: self.use_id,
+            parsed_id: self.parsed_id,
+            references,
+        }
+    }
+}
+
+fn collect_reference_element(
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<ValidatedElement> {
+    let (namespace, local_name) = resolver.resolve_element(element.name());
+    let element_name = xml_name(local_name.as_ref())?;
+    let mut references =
+        ReferenceAttributes::new(element_name, is_svg_element_namespace(&namespace));
+    if !references.is_svg_element {
+        return Ok(references.finish());
+    }
+    for attribute in element.attributes() {
+        checkpoint()?;
+        let attribute = attribute
+            .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
+        if attribute.key.as_namespace_binding().is_some() {
+            continue;
+        }
+        let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
+        let is_unbound = matches!(&namespace, ResolveResult::Unbound);
+        let is_xlink = matches!(
+            &namespace,
+            ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE.as_bytes()
+        );
+        if !usvg_consumes_attribute_namespace(namespace)? {
+            continue;
+        }
+        let value = attribute.normalized_value(XmlVersion::Implicit1_0);
+        checkpoint()?;
+        let value = value.map_err(|error| {
+            xml_validation_error(format!("invalid XML attribute value: {error}"))
+        })?;
+        references.observe(
+            xml_name(local_name.as_ref())?,
+            is_unbound,
+            is_xlink,
+            &value,
+            checkpoint,
+        )?;
+    }
+    Ok(references.finish())
 }
 
 fn is_url_function_attribute(name: &str) -> bool {
@@ -1927,6 +2105,142 @@ mod tests {
         };
         assert_eq!(error.phase, merman_core::OperationPhase::Postprocess);
         assert_eq!(error.reason, merman_core::CancelReason::Requested);
+    }
+
+    fn check_budget(svg: &str, limit: usize) -> Result<()> {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgElements, limit)
+            .unwrap();
+        check_svg_resource_budget_with_controls(svg, &mut || Ok(()), &mut |elements, _depth| {
+            policy.check_svg_element_count(elements).map_err(Into::into)
+        })
+    }
+
+    #[test]
+    fn ordinary_budget_check_retains_host_markup_and_css_without_native_certification() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edge{marker-mid:url(#m)} text{font-family:Inter;filter:blur(2px)}</style><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(2px)">label</div></foreignObject><defs><marker id="m"><path d="M0 0L1 1"/></marker></defs><g marker-end="url(#m)"><path class="edge" d="M0 0L1 1L2 2"/></g></svg>"##;
+        check_budget(svg, 32).unwrap();
+        assert!(
+            validate(svg).is_err(),
+            "budget success must not imply native compatibility"
+        );
+    }
+
+    #[test]
+    fn ordinary_budget_check_rejects_analyzable_expansion_despite_host_markup() {
+        let svg = branching_use_svg(6).replace("</svg>", "<foreignObject/></svg>");
+        let error = check_budget(&svg, 100).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+
+    #[test]
+    fn ordinary_budget_check_does_not_use_native_backend_ceilings() {
+        check_budget(
+            &nested_group_svg(crate::resources::MAX_RESVG_TREE_DEPTH + 1),
+            10_000,
+        )
+        .unwrap();
+        let svg = branching_use_svg(20);
+        let error = check_budget(&svg, 2_000_000).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+
+    #[test]
+    fn ordinary_budget_check_shares_native_reference_attribute_precedence() {
+        let fixtures = [
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="shared"/><marker id="shared"><image href="data:image/png;base64,AAAA"/></marker><unknown id="shared"/><g s:id="aliased"><rect/><rect/></g><filter><feImage href="#aliased"/></filter></defs><path d="M0 0L1 1L2 2L3 3" marker-mid="url(#shared)" s:d="M0 0" s:marker-mid="none"/><use href="#shared"/></svg>"##,
+            r##"<svg><defs><g id="source"><rect/><rect/><rect/></g><g id="other"/><filter><feImage xml:href="#source" href="#other"/></filter><mask><rect/></mask><clipPath><rect/></clipPath></defs></svg>"##,
+            r##"<svg xmlns:xlink="http://www.w3.org/1999/xlink"><defs><g id="source"><rect/><rect/><rect/></g><g id="other"/></defs><use href="#other" xlink:href="#source"/></svg>"##,
+        ];
+        for svg in fixtures {
+            let native = validate_resvg_compatible_svg(
+                svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            let expected = native.expanded_elements();
+            check_budget(svg, expected).unwrap();
+            let error = check_budget(svg, expected - 1).unwrap_err();
+            assert!(error.to_string().contains("max_svg_elements"), "{error}");
+        }
+    }
+
+    #[test]
+    fn ordinary_budget_check_preserves_xml_namespace_errors() {
+        assert!(check_budget("<svg><unknown:rect/></svg>", 1_000).is_err());
+    }
+
+    #[test]
+    fn ordinary_budget_check_leaves_unresolved_expansion_unverified() {
+        let cycle = r##"<svg><g id="recursive"><use href="#recursive"/></g></svg>"##;
+        let missing = r##"<svg><use href="#missing"/></svg>"##;
+        for svg in [cycle, missing] {
+            check_budget(svg, 1_000).unwrap();
+            assert!(
+                validate(svg).is_err(),
+                "ordinary budget success must not certify {svg}"
+            );
+        }
+        let error = check_budget(cycle, 2).unwrap_err();
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+
+    #[test]
+    fn ordinary_budget_check_can_cancel_during_reference_collection() {
+        let svg = branching_use_svg(8);
+        let mut xml_checkpoints = 0;
+        validate_well_formed_svg_with_controls(
+            &svg,
+            &mut || {
+                xml_checkpoints += 1;
+                Ok(())
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+        let cancel_at = xml_checkpoints + 20;
+        let mut checkpoints = 0;
+        let error = check_svg_resource_budget_with_controls(
+            &svg,
+            &mut || {
+                checkpoints += 1;
+                if checkpoints == cancel_at {
+                    Err(Error::Cancelled(merman_core::OperationCancelled {
+                        phase: merman_core::OperationPhase::Postprocess,
+                        reason: merman_core::CancelReason::Requested,
+                    }))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::Cancelled(_)), "{error}");
+        assert_eq!(checkpoints, cancel_at);
+    }
+
+    #[test]
+    fn ordinary_budget_check_preserves_cancellation() {
+        let mut checkpoints = 0;
+        let error = check_svg_resource_budget_with_controls(
+            &branching_use_svg(8),
+            &mut || {
+                checkpoints += 1;
+                if checkpoints == 50 {
+                    Err(Error::Cancelled(merman_core::OperationCancelled {
+                        phase: merman_core::OperationPhase::Postprocess,
+                        reason: merman_core::CancelReason::Requested,
+                    }))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::Cancelled(_)), "{error}");
+        assert_eq!(checkpoints, 50);
     }
 
     fn branching_use_svg(levels: usize) -> String {
