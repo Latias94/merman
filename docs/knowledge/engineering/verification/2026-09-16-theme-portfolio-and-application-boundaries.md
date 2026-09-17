@@ -107,6 +107,24 @@ Semantic invariants take priority over decoration: replies stay distinguishable 
 Default categorical cycling follows the family's documented semantic series order, not DOM sibling order. Author-specified data colors retain ownership.
 Sequential/diverging quantitative color scales, if not implemented, remain unsupported rather than being approximated by the preset's categorical list.
 
+### Suitability Within a Family
+
+Follow-up source and artifact review: 2026-09-17, Merman `405593f27`. The pinned reference revision is unchanged. This review reused the recorded reference captures; it did not rerun the browser batch or certify current Merman output.
+
+Family scope is necessary but insufficient for a recommendation. A six-node Flowchart and a densely nested Flowchart share a renderer while imposing different legibility demands. A Class illustration with three short cards does not qualify a schema containing many members and relationship labels. Record these conditions in curated documentation and representative scenes, not in a new runtime suitability evaluator.
+
+| Condition | What the review must establish | Deliberate application policy |
+| --- | --- | --- |
+| Dense labels and relationships | Member rows, edge-label backgrounds and cardinalities remain legible at the intended output size | Prefer restrained documented recipes; do not silently reduce effects based on node count |
+| Multiple data series | Series remain identifiable beyond the first three, with matching legends and stable semantic order | Scope a categorical palette to its data roles; decorative node cycling is not a quantitative scale |
+| Semantic line and state distinctions | Replies, relationship types, task states and source-owned warnings remain distinguishable | Preserve those distinctions even when the reference CSS flattens them |
+| Dark, transparent or textured canvas | Text, surfaces and markers work against the actual composed background | A host-background override produces a modified recipe; do not reuse an opaque-canvas readability claim |
+| Screen, print and native export | Effects, clipping, grayscale distinctions and fonts meet the declared target conditions | Recommend by intended medium; a browser screenshot is not a PNG/PDF qualification |
+
+A deliberately supported family recipe must work for its declared scenes; weak visual suitability must not excuse a missing requested facet. Conversely, successful mechanism consumption does not establish readability. Review both structural correctness and the final image, keeping source intent, observed reference behavior and Merman's chosen behavior distinct.
+
+The product should therefore offer a manageable portfolio of useful styles rather than maximize preset count. Retain the existing ten IDs, describe their actual scope, and use the non-Cyberpunk review slices below to decide which recipes deserve further investment. New public presets require a distinct useful role and representative evidence; matching a reference name is insufficient. Do not automatically forbid an unreviewed family, change a user's selected theme, or introduce a separate preset ID for every theme/family pair.
+
 ### Predictable Selection and Overrides
 
 1. Parse the actual family and select the requested preset's shared base plus only that family's scoped rules.

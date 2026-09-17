@@ -14,7 +14,7 @@ execution: code
 
 - **Objective:** Users can choose themes with clear family-appropriate design scope, obtain a visibly complete Cyberpunk preset for the declared Flowchart, Sequence and XY Chart scenes, and export reliable results without ordinary typed themes paying for unrelated font-resource or certification work.
 - **Means:** Refactor the unpublished boundaries around the existing typed model and real drawing owners; deliver complete public recipes and measure the resulting library cost (KTD1–KTD7).
-- **Authority:** This plan supersedes the remaining execution order in the September 15 C7a/C7b replan and the August 9 addendum's deferral of selected reference visual checks. It preserves their completed C5/C6a and provider-retirement history. Product behavior is owned by R1–R12; implementation choices by KTD1–KTD7.
+- **Authority:** This plan supersedes the remaining execution order in the September 15 C7a/C7b replan and the August 9 addendum's deferral of selected reference visual checks. It preserves their completed C5/C6a and provider-retirement history. Product behavior is owned by R1–R15; implementation choices by KTD1–KTD7.
 - **Execution profile:** Implement in the current feature branch, use precise commits, shared build targets and bounded serial Cargo work. Leave unrelated work untouched. This document is a plan, not evidence that implementation or acceptance has completed.
 - **Stop conditions:** Do not freeze the contract, promote qualification, tag, publish or push while a required behavior or impact gate is unresolved. Report missing hosts as unverified. A necessary change to the agreed product scope requires a decision; ordinary internal design choices do not.
 - **Tail ownership:** The executing agent owns implementation, review and the final candidate report. Publication remains a separate maintainer action. The existing broader goal remains open; its delivery order now follows this plan.
@@ -64,6 +64,12 @@ Minimal native SVG resolves 104 to 126 unique dependency names, and minimal WASM
 
 - R11. Review all 24 pinned reference themes for visual identity, dedicated family rules, base-only styling, host dependencies and suitable uses. Separate source intent from observed output. The review does not require publishing 24 presets or making every theme suit every family.
 - R12. Apply a preset's shared base and only the current family's scoped recipe. Expose curated family design scope separately from compilation availability, mechanism support and qualification. Preserve diagram semantics and explicit selection when switching families; base-only or unreviewed styling must not be presented as complete reference reproduction. Unknown design scope is not automatically a technical rejection.
+
+**Public authoring and exchange workflows**
+
+- R13. Before public contract freeze, audit and verify preset selection, family switching, small brand modifications, saving, and importing through real public consumers. Show recipe selection, family design scope and actual output outcome separately. Preserve selection outside designed scope; do not silently substitute another preset or hide unsupported requested facets.
+- R14. Define one canonical durable exchange representation using an existing envelope, with serialized schema identity, explicit unknown-version behavior and direct import of exported files. A fresh CLI/SDK process must consume the exported recipe without manual envelope reconstruction. Complete canvas/effects/family rules and explicit Clear/transparent values must survive the exchange.
+- R15. Make custom theme creation and redistribution understandable: document the simple versus complete authoring path, modification precedence, identity/design metadata policy, host/resource requirements and license/attribution obligations. Evaluate a small preset-customization journey before adding conveniences. Do not add theme package management, remote loading, a registry or a second merge engine.
 
 ### Key Decisions
 
@@ -151,7 +157,7 @@ For zero-area lines, marker tips, text glyph bounds and foreignObject text, use 
 
 ### Sequencing and Assumptions
 
-U12 establishes portfolio and application boundaries; U1 then locks the representative visible contract before any oracle changes. U2 and U3 establish the cost boundary; U4 and U5 establish reusable recipe/effect semantics. U6–U8 deliver independent family tranches. U9 verifies public product/transport behavior, U10 admits measured cost, and U11 produces the final candidate.
+U12 establishes portfolio and application boundaries; U13 resolves public selection, authoring and exchange contracts before U4/U9; U1 then locks the representative visible contract before any oracle changes. U2 and U3 establish the cost boundary; U4 and U5 establish reusable recipe/effect semantics. U6–U8 deliver independent family tranches. U9 verifies public product/transport behavior, U10 admits measured cost, and U11 produces the final candidate.
 
 The feature name in KTD2 is a concrete starting choice; implementation may improve private module placement without introducing new capability combinations. No new third-party dependency is planned for glow, canvas or typed-style consumers. A genuinely necessary new dependency requires an owner/profile and measured cost rationale before adoption.
 
@@ -171,15 +177,16 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 | Unit | Outcome | Primary files | Depends on |
 | --- | --- | --- | --- |
 | U12 | Portfolio and family application contract | portfolio analysis, capability corpus | None |
+| U13 | Public selection, authoring and exchange contract | public workflow audit, existing contract/CLI/SDK owners | U12 |
 | U1 | Reproducible visible contract | capability corpus, reference fixtures | U12 |
 | U2 | Ordinary rendering avoids unrequested assurance | render facade, family artifacts, SVG pipeline | U1 |
 | U3 | Optional embedded-font closure | manifests, assets, prepared text, profiles | U2 |
-| U4 | One complete preset recipe | catalog, compiler, preset tests | U1 |
+| U4 | One complete preset recipe | catalog, compiler, preset tests | U13, U1 |
 | U5 | Bounded composed glow and native observation | effects, State, export filter receipts | U2, U4 |
 | U6 | Cyberpunk Flowchart | Flowchart writers and marker/label tests | U5 |
 | U7 | Cyberpunk Sequence | Sequence style/terminal owners | U5 |
 | U8 | Cyberpunk XY Chart | XY theme/paint/writer | U5 |
-| U9 | Public preset and transport qualification | public recipe fixtures, installed consumers | U3, U6, U7, U8 |
+| U9 | Public preset and transport qualification | public recipe fixtures, installed consumers | U13, U3, U6, U7, U8 |
 | U10 | Cost regression closure | existing bench owners and impact audit | U9 |
 | U11 | Same-source candidate and discovery delivery | release workflows, package/profile owners | U10 |
 
@@ -196,6 +203,21 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 - The documented selection policy separates designed/base-only/unreviewed scope from compile/target outcomes and preserves semantic distinctions.
 
 **Verification:** A source-traceable portfolio report, recorded browser probe limits and explicit family-application decisions exist. No Merman/native qualification is inferred from reference-only captures.
+
+### U13. Resolve public theme selection, authoring and exchange
+
+**Goal:** Make the unpublished interface coherent before consumers depend on its permanent shape.
+**Requirements:** R2, R3, R7, R12–R15; KTD1, KTD7. **Dependencies:** U12.
+**Files:** `crates/merman-theme-contract/src/{preset_catalog,authoring,materialized,spec,preset_export}.rs`; `crates/merman-bindings-core/src/theme.rs`; CLI theme-file and existing SDK import/export owners; `playground/src/components/ToolbarControls.tsx`; ADR 0082 and public theme documentation.
+**Approach:** Use the [public workflow audit](../knowledge/engineering/verification/2026-09-17-theme-public-workflows-audit.md). Select a canonical exchange envelope from existing formats, define serialized schema identification and direct import, and settle curated design metadata and customization behavior. Retain shared-base plus family-recipe selection; do not introduce automatic cross-preset fallback absent a demonstrated user need. Resolve these decisions before changing the complete recipe builder and public discovery projections. Add only fields and conveniences needed by the tested journeys and remove displaced unpublished adapters.
+**Test scenarios:**
+
+- A caller can distinguish dedicated/base-only/unreviewed design from unavailable compilation and unsupported output without decoding internal compiler records.
+- A saved exported recipe imports directly in a fresh public consumer; incompatible schema versions fail with an actionable diagnostic.
+- Small brand/family customization preserves unrelated facets, Clear, transparency and resource admission.
+- User-facing distribution guidance distinguishes recipe identity and legal metadata from actual resource and target guarantees.
+
+**Verification:** Decisions are recorded in the existing contract documentation and implemented through existing owners; U9 exercises the full cross-consumer journeys before freeze. This unit is not closed by the audit report alone.
 
 ### U1. Lock the reference scenes and current failures
 
@@ -244,7 +266,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 ### U4. Compile and export one complete preset recipe
 
 **Goal:** Remove the simple-definition-only restriction on internal presets.
-**Requirements:** R2, R7, R8, R12; KTD1, KTD7. **Dependencies:** U1.
+**Requirements:** R2, R7, R8, R12; KTD1, KTD7. **Dependencies:** U13, U1.
 **Files:** `crates/merman-render/src/diagram_theme/presets/catalog.rs`; `diagram_theme/compiler.rs`; `diagram_theme/presets.rs`; existing complete-spec wire/materializer tests in `crates/merman-theme-contract`.
 **Approach:** Produce one complete wire result and use it for compile/export. Keep simple recipes through the existing token materializer. Compose Cyberpunk's full canvas and effects using typed data, with final admission and identities covering the composition. Make family refinements explicit under KTD7 and preserve base-only behavior outside designed scope. Preserve explicit authoring overrides.
 **Test scenarios:**
@@ -314,10 +336,12 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 ### U9. Qualify public recipes and migrate consumers
 
 **Goal:** Make product claims agree with the recipes users actually obtain.
-**Requirements:** R2, R3, R7, R8, R11, R12; KTD1, KTD5, KTD7. **Dependencies:** U3, U6, U7, U8.
+**Requirements:** R2, R3, R7, R8, R11, R12, R13–R15; KTD1, KTD5, KTD7. **Dependencies:** U13, U3, U6, U7, U8.
 **Files:** `crates/merman-theme-acceptance/tests/preset_qualification.rs`; `crates/merman/tests/theme_authoring.rs`; U1 public-preset tests; shared `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1`; `crates/merman-theme-contract/src/preset_catalog.rs`; existing Web/Node/Typst/UniFFI/C/Flutter/Python consumer tests; `playground/src/components/ToolbarControls.tsx` and corresponding browser tests; coverage and preset documentation.
 **Approach:** Reuse the existing qualification runner for the new full recipes and profile claims. Retain hand-authored C6 tests as mechanism evidence. Review the ten IDs for light/dark contrast, labels/markers/backgrounds and export behavior; record limitations rather than importing all reference themes. Migrate unpublished APIs atomically across real consumers. Present current-family design scope in public discovery and the picker without hiding an explicit or unknown selection. Include the portfolio report's Spotless/Brutalist and non-Cyberpunk reference probes; record limited or unsupported outcomes without inventing new public presets.
 **Test scenarios:**
+
+- Covers R13–R15. Execute the six user journeys in the [public workflow audit](../knowledge/engineering/verification/2026-09-17-theme-public-workflows-audit.md), including direct exported-file import in a fresh process and small brand/family customizations. Documentation and schema round-trips alone cannot close these journeys.
 
 - Covers AE1–AE4. Fresh installed consumers export/import/render and explain unsupported or unknown profile/admission values consistently.
 - Covers AE5/AE6. Switching families updates design scope without changing selection; semantic reply/cardinality/task-state distinctions and later-series styling remain correct.
@@ -363,6 +387,7 @@ Use release-mode Rust tests with nextest for changed owners, cargo fmt, existing
 | Gate | Required evidence | Exit condition |
 | --- | --- | --- |
 | Portfolio/application | All-24 source analysis, bounded reference captures, current-family consumer cases and non-Cyberpunk probes | R11/R12 hold; suitability is separate from technical support and qualification |
+| Public workflows | U13 contract decisions and the six U9 journeys through real public consumers | R13–R15 hold; exported files import directly, design scope is explained and small customizations retain defined semantics |
 | Visible product | U1 terminal specifications, public recipe screenshots/computed style and native rasterized output | R1 passes for all three scenes and all three targets; mutation negatives fail correctly |
 | Recipe/transport | Shared golden vectors plus actual installed public consumers | R2/R3/R7 behavior agrees; no mock-only closure |
 | Minimal closure | Locked normal dependency trees for native and WASM SVG, no defaults | R4 excludes wuff, brotli-decompressor, rustybuzz, ttf-parser and unicode-script from this profile |
@@ -385,7 +410,7 @@ For unmeasured cold start, memory and themed/native workloads, U1 records the wo
 
 ## Definition of Done
 
-All R1–R12 outcomes and their unit verification are satisfied, with review of the changed production seams and actual public artifacts. The final report distinguishes supported, conditional, unsupported, unverified and deferred scope, and includes the measured costs. Every retained implementation has an active consumer; abandoned experiments and displaced runtime paths are removed. Historical C5/C6/retirement evidence remains accessible without becoming production machinery.
+All R1–R15 outcomes and their unit verification are satisfied, with review of the changed production seams and actual public artifacts. The final report distinguishes supported, conditional, unsupported, unverified and deferred scope, and includes the measured costs. Every retained implementation has an active consumer; abandoned experiments and displaced runtime paths are removed. Historical C5/C6/retirement evidence remains accessible without becoming production machinery.
 
 Finishing this document does not finish the active goal. Missing required hosts or unresolved performance/visual gates prevent final C7a closure, even if the new Rust implementation passes locally.
 
