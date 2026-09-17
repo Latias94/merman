@@ -6130,3 +6130,83 @@ note right of Idle : themed note"#,
         "note rough paths should consume noteBkgColor/noteBorderColor: {svg}"
     );
 }
+
+#[test]
+fn state_svg_preserves_ordered_shadow_inputs_and_accumulated_bounds() {
+    use merman_render::diagram_theme::EffectColorSpace;
+    let source = "stateDiagram-v2\nReady --> Done\n";
+    let render = |second_input, color_space| {
+        let graph = EffectGraph::new(
+            "composed",
+            [
+                EffectPrimitive::DropShadow {
+                    input: EffectInput::SourceGraphic,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    blur_radius: 2.0,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("#ff0000").unwrap(),
+                },
+                EffectPrimitive::DropShadow {
+                    input: second_input,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    blur_radius: 3.0,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("#0000ff").unwrap(),
+                },
+            ],
+        )
+        .unwrap()
+        .with_color_space(color_space);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_effects(
+                    DiagramEffectSet::default()
+                        .with_graph(graph)
+                        .unwrap()
+                        .with_binding(EffectBinding::new(ThemeTarget::State, "composed").unwrap())
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        render_state_svg_from_text_with_theme_in_environment(
+            source,
+            &theme,
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+        )
+    };
+    let composed = render(EffectInput::Previous, EffectColorSpace::LinearRgb);
+    let reset = render(EffectInput::SourceGraphic, EffectColorSpace::LinearRgb);
+    let srgb = render(EffectInput::Previous, EffectColorSpace::Srgb);
+    assert!(srgb.contains(r#"color-interpolation-filters="sRGB""#));
+    let document = roxmltree::Document::parse(&composed).unwrap();
+    let filters: Vec<_> = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("filter")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-theme-effect-composed"))
+        })
+        .collect();
+    assert_eq!(filters.len(), 2);
+    for filter in filters {
+        let stages: Vec<_> = filter
+            .children()
+            .filter(|node| node.has_tag_name("feDropShadow"))
+            .collect();
+        assert_eq!(stages.len(), 2);
+        assert_eq!(stages[0].attribute("in"), Some("SourceGraphic"));
+        assert_eq!(stages[1].attribute("in"), None);
+        assert_eq!(stages[0].attribute("stdDeviation"), Some("2"));
+        assert_eq!(stages[1].attribute("stdDeviation"), Some("3"));
+        assert_eq!(stages[0].attribute("flood-color"), Some("#ff0000"));
+        assert_eq!(stages[1].attribute("flood-color"), Some("#0000ff"));
+    }
+    let composed_bounds = svg_view_box(&composed);
+    let reset_bounds = svg_view_box(&reset);
+    assert!(composed_bounds[2] >= reset_bounds[2] + 16.0 - 1.0e-6);
+    assert!(composed_bounds[3] >= reset_bounds[3] + 16.0 - 1.0e-6);
+}

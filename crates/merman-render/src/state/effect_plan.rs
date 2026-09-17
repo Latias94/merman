@@ -2,254 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::diagram_theme::{
-    EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue, ThemeResourceLimitExceeded,
+    EffectGraph, MaterializedShadowEffect, SvgShadowEffect, ThemeResourceLimitExceeded,
     ThemeResourcePolicy,
 };
-
-const DROP_SHADOW_PAINT_BOUNDS_SIGMAS: f64 = 4.0;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct StateSvgFilterRegion {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-}
-
-impl StateSvgFilterRegion {
-    pub(crate) fn try_bounded(x: f32, y: f32, width: f32, height: f32) -> Option<Self> {
-        let region = Self {
-            x,
-            y,
-            width,
-            height,
-        };
-        ([region.x, region.y, region.width, region.height]
-            .into_iter()
-            .all(f32::is_finite)
-            && region.width > 0.0
-            && region.height > 0.0)
-            .then_some(region)
-    }
-
-    pub(crate) const fn as_array(self) -> [f32; 4] {
-        [self.x, self.y, self.width, self.height]
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct StateEffectOutsets {
-    pub(crate) top: f64,
-    pub(crate) right: f64,
-    pub(crate) bottom: f64,
-    pub(crate) left: f64,
-}
-
-impl StateEffectOutsets {
-    pub(crate) fn include(&mut self, other: Self) {
-        self.top = self.top.max(other.top);
-        self.right = self.right.max(other.right);
-        self.bottom = self.bottom.max(other.bottom);
-        self.left = self.left.max(other.left);
-    }
-
-    fn for_drop_shadow(
-        stroke_width: f64,
-        offset_x: f32,
-        offset_y: f32,
-        std_deviation: f32,
-    ) -> Option<Self> {
-        if !stroke_width.is_finite()
-            || stroke_width < 0.0
-            || !offset_x.is_finite()
-            || !offset_y.is_finite()
-            || !std_deviation.is_finite()
-            || std_deviation < 0.0
-        {
-            return None;
-        }
-
-        let half_stroke = stroke_width / 2.0;
-        let offset_x = f64::from(offset_x);
-        let offset_y = f64::from(offset_y);
-        // Gaussian support is mathematically unbounded. Merman deliberately materializes a finite
-        // four-sigma paint envelope so every target receives the same bounded clipping contract.
-        let blur_support = f64::from(std_deviation) * DROP_SHADOW_PAINT_BOUNDS_SIGMAS;
-        let outsets = Self {
-            top: half_stroke + blur_support + (-offset_y).max(0.0),
-            right: half_stroke + blur_support + offset_x.max(0.0),
-            bottom: half_stroke + blur_support + offset_y.max(0.0),
-            left: half_stroke + blur_support + (-offset_x).max(0.0),
-        };
-        [outsets.top, outsets.right, outsets.bottom, outsets.left]
-            .into_iter()
-            .all(f64::is_finite)
-            .then_some(outsets)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct StateSvgEffect {
-    id: String,
-    offset_x: f32,
-    offset_y: f32,
-    std_deviation: f32,
-    color: ThemeColorValue,
-}
-
-impl StateSvgEffect {
-    fn from_graph(graph: &EffectGraph) -> Option<Self> {
-        let [
-            EffectPrimitive::DropShadow {
-                input: EffectInput::SourceGraphic,
-                offset_x,
-                offset_y,
-                blur_radius,
-                spread,
-                color,
-            },
-        ] = graph.primitives()
-        else {
-            return None;
-        };
-        if *spread != 0.0 {
-            return None;
-        }
-
-        Some(Self {
-            id: graph.id().to_string(),
-            offset_x: *offset_x,
-            offset_y: *offset_y,
-            std_deviation: *blur_radius,
-            color: color.clone(),
-        })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_graph_for_test(graph: &EffectGraph) -> Option<Self> {
-        Self::from_graph(graph)
-    }
-
-    pub(crate) fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn materialize_classic_rect_region(
-        &self,
-        resources: &ThemeResourcePolicy,
-        width: f64,
-        height: f64,
-        stroke_width: f64,
-    ) -> Result<Option<StateMaterializedEffect>, ThemeResourceLimitExceeded> {
-        // State derives the bounded drop-shadow envelope from the final emitted paint geometry.
-        if !width.is_finite() || width <= 0.0 || !height.is_finite() || height <= 0.0 {
-            return Ok(None);
-        }
-
-        let Some(outsets) = StateEffectOutsets::for_drop_shadow(
-            stroke_width,
-            self.offset_x,
-            self.offset_y,
-            self.std_deviation,
-        ) else {
-            return Ok(None);
-        };
-        let min_x = -outsets.left / width;
-        let min_y = -outsets.top / height;
-        let max_x = 1.0 + outsets.right / width;
-        let max_y = 1.0 + outsets.bottom / height;
-        let Some(x) = round_down_f32(min_x) else {
-            return Ok(None);
-        };
-        let Some(y) = round_down_f32(min_y) else {
-            return Ok(None);
-        };
-        let Some(max_x) = round_up_f32(max_x) else {
-            return Ok(None);
-        };
-        let Some(max_y) = round_up_f32(max_y) else {
-            return Ok(None);
-        };
-        let Some(region_width) = round_up_f32(f64::from(max_x) - f64::from(x)) else {
-            return Ok(None);
-        };
-        let Some(region_height) = round_up_f32(f64::from(max_y) - f64::from(y)) else {
-            return Ok(None);
-        };
-        if region_width <= 0.0 || region_height <= 0.0 {
-            return Ok(None);
-        }
-
-        let Some(region) = StateSvgFilterRegion::try_bounded(x, y, region_width, region_height)
-        else {
-            return Ok(None);
-        };
-        let magnitude = region
-            .as_array()
-            .into_iter()
-            .map(f32::abs)
-            .fold(0.0_f32, f32::max);
-        resources.check_materialized_filter_region_magnitude(magnitude)?;
-
-        Ok(Some(StateMaterializedEffect { region, outsets }))
-    }
-
-    pub(crate) const fn offset_x(&self) -> f32 {
-        self.offset_x
-    }
-
-    pub(crate) const fn offset_y(&self) -> f32 {
-        self.offset_y
-    }
-
-    pub(crate) const fn std_deviation(&self) -> f32 {
-        self.std_deviation
-    }
-
-    pub(crate) const fn color(&self) -> &ThemeColorValue {
-        &self.color
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct StateMaterializedEffect {
-    region: StateSvgFilterRegion,
-    outsets: StateEffectOutsets,
-}
-
-impl StateMaterializedEffect {
-    pub(crate) const fn region(self) -> StateSvgFilterRegion {
-        self.region
-    }
-
-    pub(crate) const fn outsets(self) -> StateEffectOutsets {
-        self.outsets
-    }
-}
-
-fn round_down_f32(value: f64) -> Option<f32> {
-    let rounded = value as f32;
-    if !value.is_finite() || !rounded.is_finite() {
-        return None;
-    }
-    if f64::from(rounded) <= value {
-        return Some(rounded);
-    }
-    let outward = rounded.next_down();
-    outward.is_finite().then_some(outward)
-}
-
-fn round_up_f32(value: f64) -> Option<f32> {
-    let rounded = value as f32;
-    if !value.is_finite() || !rounded.is_finite() {
-        return None;
-    }
-    if f64::from(rounded) >= value {
-        return Some(rounded);
-    }
-    let outward = rounded.next_up();
-    outward.is_finite().then_some(outward)
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateNodeEffectPlan {
@@ -264,7 +19,7 @@ impl StateNodeEffectPlan {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateEffectPlan {
-    effects: BTreeMap<String, StateSvgEffect>,
+    effects: BTreeMap<String, SvgShadowEffect>,
     resources: Arc<ThemeResourcePolicy>,
 }
 
@@ -283,13 +38,13 @@ impl StateEffectPlan {
     }
 
     pub(crate) fn admit(&mut self, graph: &EffectGraph) -> Option<StateNodeEffectPlan> {
-        let effect = StateSvgEffect::from_graph(graph)?;
-        let effect_id = effect.id.clone();
+        let effect = SvgShadowEffect::from_graph(graph)?;
+        let effect_id = effect.id().to_owned();
         self.effects.entry(effect_id.clone()).or_insert(effect);
         Some(StateNodeEffectPlan { effect_id })
     }
 
-    pub(crate) fn effect(&self, id: &str) -> Option<&StateSvgEffect> {
+    pub(crate) fn effect(&self, id: &str) -> Option<&SvgShadowEffect> {
         self.effects.get(id)
     }
 
@@ -299,13 +54,13 @@ impl StateEffectPlan {
         width: f64,
         height: f64,
         stroke_width: f64,
-    ) -> Result<Option<(&StateSvgEffect, StateMaterializedEffect)>, ThemeResourceLimitExceeded>
+    ) -> Result<Option<(&SvgShadowEffect, MaterializedShadowEffect)>, ThemeResourceLimitExceeded>
     {
         let Some(effect) = self.effect(id) else {
             return Ok(None);
         };
         let Some(materialized) =
-            effect.materialize_classic_rect_region(&self.resources, width, height, stroke_width)?
+            effect.materialize_rect(&self.resources, width, height, stroke_width)?
         else {
             return Ok(None);
         };
@@ -316,7 +71,10 @@ impl StateEffectPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{ThemeResourceLimitId, ThemeResourceLimitPhase};
+    use crate::diagram_theme::{
+        EffectInput, EffectOutsets, EffectPrimitive, ThemeColorValue, ThemeResourceLimitId,
+        ThemeResourceLimitPhase,
+    };
 
     fn graph(primitives: impl IntoIterator<Item = EffectPrimitive>) -> EffectGraph {
         EffectGraph::new("shadow", primitives).expect("valid effect graph")
@@ -356,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn admits_only_single_source_graphic_drop_shadows_without_spread() {
+    fn admits_shadow_sequences_without_spread_and_rejects_other_primitives() {
         let color = ThemeColorValue::parse("#111827").unwrap();
         let mut plan = StateEffectPlan::default();
         let admitted = plan
@@ -376,7 +134,7 @@ mod tests {
             .expect("valid classic rect region");
         assert_eq!(
             materialized.outsets(),
-            StateEffectOutsets {
+            EffectOutsets {
                 top: 3.0,
                 right: 5.0,
                 bottom: 0.0,
@@ -419,7 +177,7 @@ mod tests {
             .expect("valid soft-shadow region");
         assert_eq!(
             materialized.outsets(),
-            StateEffectOutsets {
+            EffectOutsets {
                 top: 10.0,
                 right: 9.0,
                 bottom: 8.0,
@@ -453,17 +211,17 @@ mod tests {
 
         assert_eq!(
             materialized.outsets(),
-            StateEffectOutsets {
+            EffectOutsets {
                 top: 33.0,
                 right: 33.0,
                 bottom: 33.0,
                 left: 33.0,
             }
         );
-        assert_approx(materialized.region().x, -0.66);
-        assert_approx(materialized.region().y, -1.65);
-        assert_approx(materialized.region().width, 2.32);
-        assert_approx(materialized.region().height, 4.3);
+        assert_approx(materialized.region().as_array()[0], -0.66);
+        assert_approx(materialized.region().as_array()[1], -1.65);
+        assert_approx(materialized.region().as_array()[2], 2.32);
+        assert_approx(materialized.region().as_array()[3], 4.3);
     }
 
     #[test]
@@ -473,29 +231,29 @@ mod tests {
             .materialize_classic_rect("shadow", 50.0, 20.0, 2.0)
             .expect("materialization resource admission")
             .expect("positive hard shadow region");
-        assert_approx(region.region().x, -0.02);
-        assert_approx(region.region().y, -0.05);
-        assert_approx(region.region().width, 1.14);
-        assert_approx(region.region().height, 1.4);
+        assert_approx(region.region().as_array()[0], -0.02);
+        assert_approx(region.region().as_array()[1], -0.05);
+        assert_approx(region.region().as_array()[2], 1.14);
+        assert_approx(region.region().as_array()[3], 1.4);
 
         let negative = plan_with_shadow(ThemeResourcePolicy::default(), -5.0, -6.0);
         let (_, region) = negative
             .materialize_classic_rect("shadow", 50.0, 20.0, 2.0)
             .expect("materialization resource admission")
             .expect("negative hard shadow region");
-        assert_approx(region.region().x, -0.12);
-        assert_approx(region.region().y, -0.35);
-        assert_approx(region.region().width, 1.14);
-        assert_approx(region.region().height, 1.4);
+        assert_approx(region.region().as_array()[0], -0.12);
+        assert_approx(region.region().as_array()[1], -0.35);
+        assert_approx(region.region().as_array()[2], 1.14);
+        assert_approx(region.region().as_array()[3], 1.4);
 
         let (_, larger) = positive
             .materialize_classic_rect("shadow", 100.0, 40.0, 2.0)
             .expect("materialization resource admission")
             .expect("larger classic rect region");
-        assert_approx(larger.region().x, -0.01);
-        assert_approx(larger.region().y, -0.025);
-        assert_approx(larger.region().width, 1.07);
-        assert_approx(larger.region().height, 1.2);
+        assert_approx(larger.region().as_array()[0], -0.01);
+        assert_approx(larger.region().as_array()[1], -0.025);
+        assert_approx(larger.region().as_array()[2], 1.07);
+        assert_approx(larger.region().as_array()[3], 1.2);
     }
 
     #[test]
@@ -510,7 +268,7 @@ mod tests {
 
         assert_eq!(
             materialized.outsets(),
-            StateEffectOutsets {
+            EffectOutsets {
                 top: 2.0,
                 right: 2.0,
                 bottom: 8.0,

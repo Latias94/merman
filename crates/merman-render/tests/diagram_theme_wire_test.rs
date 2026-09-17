@@ -310,3 +310,41 @@ fn parser_aliases_and_unknown_ids_cannot_be_used_as_logical_theme_scopes() {
         }
     }
 }
+
+#[test]
+fn effect_color_space_round_trips_and_changes_recipe_identity() {
+    use merman_render::diagram_theme::EffectColorSpace;
+    let recipe = serde_json::json!({"effects": [{"kind": "graph", "id": "glow", "primitives": [
+        {"kind": "drop-shadow", "offset_x": 0.0, "offset_y": 0.0, "blur_radius": 2.0, "spread": 0.0, "color": "#00f2ff"}
+    ]}]});
+    let compiler = DiagramThemeCompiler::new();
+    let baseline = compiler
+        .compile_spec_wire(serde_json::from_value(recipe.clone()).unwrap())
+        .unwrap();
+    for (name, expected) in [
+        ("linear-rgb", EffectColorSpace::LinearRgb),
+        ("srgb", EffectColorSpace::Srgb),
+    ] {
+        let mut value = recipe.clone();
+        value["effects"][0]["color_space"] = name.into();
+        let wire: DiagramThemeSpecWireV1 = serde_json::from_value(value).unwrap();
+        let saved = serde_json::to_vec(&wire).unwrap();
+        let imported = compiler
+            .compile_spec_wire(serde_json::from_slice(&saved).unwrap())
+            .unwrap();
+        assert_eq!(
+            imported.recipe_fingerprint() == baseline.recipe_fingerprint(),
+            expected == EffectColorSpace::LinearRgb
+        );
+    }
+    let mut unknown = recipe.clone();
+    unknown["effects"][0]["color_space"] = "display-p3".into();
+    assert!(
+        compiler
+            .compile_spec_wire(serde_json::from_value(unknown).unwrap())
+            .is_err()
+    );
+    let mut null = recipe;
+    null["effects"][0]["color_space"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<DiagramThemeSpecWireV1>(null).is_err());
+}

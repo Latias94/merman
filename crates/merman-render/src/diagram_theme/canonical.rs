@@ -427,6 +427,10 @@ fn encode_effects(encoder: &mut CanonicalEncoder, effects: &DiagramEffectSet) {
         for graph in graphs {
             encoder.field("graph", |encoder| {
                 encoder.field("id", |encoder| encoder.string(graph.id()));
+                // The historical default retains its identity; explicit sRGB is a semantic input.
+                if graph.color_space() != super::EffectColorSpace::LinearRgb {
+                    encoder.field("color-space", |encoder| encoder.string("srgb"));
+                }
                 encoder.field("primitives", |encoder| {
                     encoder.sequence_len(graph.primitives().len());
                     for primitive in graph.primitives() {

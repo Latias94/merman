@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 
-use merman_render::__private::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+use merman_render::__private::{
+    EffectColorSpace, EffectInput, MAX_NATIVE_SHADOW_STAGES, NativeSvgFilterApplication,
+    NativeSvgFilterReceipt, NativeSvgShadowStage,
+};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
@@ -12,11 +15,13 @@ const TYPED_FILTER_ID_MARKER: &str = "-theme-effect-";
 #[derive(Debug)]
 struct FilterDefinition {
     region: [f32; 4],
-    primitive: DropShadowDefinition,
+    color_space: EffectColorSpace,
+    stages: Vec<DropShadowDefinition>,
 }
 
 #[derive(Debug)]
 struct DropShadowDefinition {
+    input: EffectInput,
     offset: [f32; 2],
     std_deviation: [f32; 2],
     color_css: String,
@@ -27,8 +32,9 @@ struct OpenFilter {
     depth: usize,
     id: Option<String>,
     region: Option<[f32; 4]>,
-    primitive: Option<DropShadowDefinition>,
-    primitive_seen: bool,
+    color_space: Option<EffectColorSpace>,
+    stages: Vec<DropShadowDefinition>,
+    expanded_elements: Vec<Vec<String>>,
     valid: bool,
 }
 
@@ -46,10 +52,10 @@ pub(super) fn preflight_native_filter_receipt(
     if !resolved_tree_matches(tree, &shadows) {
         return None;
     }
-    NativeSvgFilterReceipt::from_drop_shadows(shadows)
+    NativeSvgFilterReceipt::from_applications(shadows)
 }
 
-fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
+fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
@@ -75,8 +81,21 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
                     record_definition(filter, &mut definitions)?;
                 }
             }
-            Event::End(_) => {
+            Event::End(element) => {
                 depth = depth.checked_sub(1)?;
+                for filter in &mut open_filters {
+                    if filter.color_space == Some(EffectColorSpace::Srgb)
+                        && depth == filter.depth + 1
+                        && element.local_name().as_ref() == b"feMerge"
+                    {
+                        if let Some(stage) = finish_expanded_shadow(filter) {
+                            filter.stages.push(stage);
+                        } else {
+                            filter.valid = false;
+                        }
+                        filter.expanded_elements.clear();
+                    }
+                }
                 if open_filters
                     .last()
                     .is_some_and(|filter| filter.depth == depth)
@@ -119,12 +138,23 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
             return None;
         }
         let definition = slot.definition.as_ref()?;
-        shadows.push(NativeSvgHardShadow::new(
+        let stages = definition
+            .stages
+            .iter()
+            .map(|stage| {
+                NativeSvgShadowStage::new(
+                    stage.input,
+                    stage.offset,
+                    stage.std_deviation,
+                    &stage.color_css,
+                )
+            })
+            .collect::<Option<Vec<_>>>()?;
+        shadows.push(NativeSvgFilterApplication::new(
             filter_id,
             definition.region,
-            definition.primitive.offset,
-            definition.primitive.std_deviation,
-            &definition.primitive.color_css,
+            definition.color_space,
+            stages,
             1,
         )?);
     }
@@ -211,7 +241,12 @@ fn parse_filter(
     }
 
     valid &= filter_units.as_deref() == Some("objectBoundingBox");
-    valid &= color_interpolation.as_deref() == Some("linearRGB");
+    let color_space = match color_interpolation.as_deref() {
+        Some("linearRGB") => Some(EffectColorSpace::LinearRgb),
+        Some("sRGB") => Some(EffectColorSpace::Srgb),
+        _ => None,
+    };
+    valid &= color_space.is_some();
     let region = parse_filter_region(x, y, width, height);
     valid &= region.is_some();
 
@@ -219,8 +254,9 @@ fn parse_filter(
         depth,
         id,
         region,
-        primitive: None,
-        primitive_seen: false,
+        color_space,
+        stages: Vec::new(),
+        expanded_elements: Vec::new(),
         valid,
     })
 }
@@ -251,14 +287,18 @@ fn observe_filter_child(
         if depth <= filter.depth {
             continue;
         }
-        if depth == filter.depth + 1 && is_drop_shadow {
-            if filter.primitive_seen {
+        if filter.color_space == Some(EffectColorSpace::Srgb) {
+            observe_expanded_shadow(reader, element, depth, filter)?;
+        } else if depth == filter.depth + 1 && is_drop_shadow {
+            if filter.stages.len() >= MAX_NATIVE_SHADOW_STAGES {
                 filter.valid = false;
                 continue;
             }
-            filter.primitive_seen = true;
-            filter.primitive = parse_drop_shadow(reader, element)?;
-            filter.valid &= filter.primitive.is_some();
+            if let Some(stage) = parse_drop_shadow(reader, element, filter.stages.len())? {
+                filter.stages.push(stage);
+            } else {
+                filter.valid = false;
+            }
         } else {
             filter.valid = false;
         }
@@ -266,9 +306,123 @@ fn observe_filter_child(
     Ok(())
 }
 
+// This recognizes only the writer's five-primitive sRGB shadow expansion, not arbitrary
+// SVG filter programs. The two merge nodes are the last two elements of each stage.
+fn observe_expanded_shadow(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+    depth: usize,
+    filter: &mut OpenFilter,
+) -> Result<(), ()> {
+    const ELEMENTS: [&[u8]; 7] = [
+        b"feGaussianBlur",
+        b"feOffset",
+        b"feFlood",
+        b"feComposite",
+        b"feMerge",
+        b"feMergeNode",
+        b"feMergeNode",
+    ];
+    const ATTRIBUTES: [&[&[u8]]; 7] = [
+        &[b"in", b"stdDeviation", b"result"],
+        &[b"in", b"dx", b"dy", b"result"],
+        &[b"flood-color", b"result"],
+        &[b"in", b"in2", b"operator", b"result"],
+        &[b"result"],
+        &[b"in"],
+        &[b"in"],
+    ];
+    let position = filter.expanded_elements.len();
+    if filter.stages.len() >= MAX_NATIVE_SHADOW_STAGES
+        || position >= ELEMENTS.len()
+        || depth != filter.depth + if position < 5 { 1 } else { 2 }
+        || !is_svg_element(reader, element, ELEMENTS[position])
+    {
+        filter.valid = false;
+        return Ok(());
+    }
+    let names = ATTRIBUTES[position];
+    let mut values = vec![None; names.len()];
+    for attribute in element.attributes() {
+        let attribute = attribute.map_err(|_| ())?;
+        if attribute.key.as_namespace_binding().is_some() {
+            continue;
+        }
+        let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
+        let Some(index) = names.iter().position(|name| *name == local_name.as_ref()) else {
+            filter.valid = false;
+            return Ok(());
+        };
+        if !matches!(namespace, ResolveResult::Unbound) || values[index].is_some() {
+            filter.valid = false;
+            return Ok(());
+        }
+        values[index] = Some(
+            attribute
+                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .map_err(|_| ())?
+                .into_owned(),
+        );
+    }
+    if let Some(values) = values.into_iter().collect::<Option<Vec<_>>>() {
+        filter.expanded_elements.push(values);
+    } else {
+        filter.valid = false;
+    }
+    Ok(())
+}
+
+fn finish_expanded_shadow(filter: &OpenFilter) -> Option<DropShadowDefinition> {
+    let [
+        blur,
+        offset,
+        flood,
+        composite,
+        merge,
+        shadow_node,
+        source_node,
+    ] = filter.expanded_elements.as_slice()
+    else {
+        return None;
+    };
+    let index = filter.stages.len();
+    let prefix = format!("merman-shadow-{index}");
+    let input = if blur[0] == "SourceGraphic" {
+        EffectInput::SourceGraphic
+    } else if index > 0 && blur[0] == format!("merman-shadow-{}-result", index - 1) {
+        EffectInput::Previous
+    } else {
+        return None;
+    };
+    if blur[2] != format!("{prefix}-blur")
+        || offset[0] != blur[2]
+        || offset[3] != format!("{prefix}-offset")
+        || flood[1] != format!("{prefix}-flood")
+        || composite[0] != flood[1]
+        || composite[1] != offset[3]
+        || composite[2] != "in"
+        || composite[3] != format!("{prefix}-shadow")
+        || merge[0] != format!("{prefix}-result")
+        || shadow_node[0] != composite[3]
+        || source_node[0] != blur[0]
+    {
+        return None;
+    }
+    Some(DropShadowDefinition {
+        input,
+        offset: [
+            parse_finite_number(&offset[1])?,
+            parse_finite_number(&offset[2])?,
+        ],
+        std_deviation: parse_std_deviation(&blur[1])?,
+        color_css: flood[0].clone(),
+    })
+}
+
 fn parse_drop_shadow(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
+    stage_index: usize,
 ) -> Result<Option<DropShadowDefinition>, ()> {
     let mut input = None;
     let mut dx = None;
@@ -302,7 +456,14 @@ fn parse_drop_shadow(
         valid &= accepted;
     }
 
-    valid &= input.as_deref() == Some("SourceGraphic");
+    // Unknown result names fall back to the previous stage in usvg. Accept only the
+    // explicit writer grammar so that this recovery cannot certify a different graph.
+    let input = match input.as_deref() {
+        Some("SourceGraphic") => Some(EffectInput::SourceGraphic),
+        None if stage_index > 0 => Some(EffectInput::Previous),
+        _ => None,
+    };
+    valid &= input.is_some();
     let offset = dx
         .as_deref()
         .and_then(parse_finite_number)
@@ -312,6 +473,7 @@ fn parse_drop_shadow(
     valid &= offset.is_some() && std_deviation.is_some() && flood_color.is_some();
 
     Ok(valid.then(|| DropShadowDefinition {
+        input: input.expect("validated drop-shadow input"),
         offset: offset.expect("validated drop-shadow offset"),
         std_deviation: std_deviation.expect("validated drop-shadow standard deviation"),
         color_css: flood_color.expect("validated drop-shadow color"),
@@ -357,7 +519,9 @@ fn record_definition(
     let OpenFilter {
         id,
         region,
-        primitive,
+        color_space,
+        stages,
+        expanded_elements,
         valid,
         ..
     } = filter;
@@ -367,10 +531,14 @@ fn record_definition(
     if !id.contains(TYPED_FILTER_ID_MARKER) {
         return Some(());
     }
-    let definition = if valid {
+    let definition = if valid && !stages.is_empty() && expanded_elements.is_empty() {
         region
-            .zip(primitive)
-            .map(|(region, primitive)| FilterDefinition { region, primitive })
+            .zip(color_space)
+            .map(|(region, color_space)| FilterDefinition {
+                region,
+                color_space,
+                stages,
+            })
     } else {
         None
     };
@@ -405,7 +573,7 @@ fn is_svg_namespace(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> bool 
         || matches!(namespace, ResolveResult::Bound(namespace) if namespace.as_ref() == SVG_NAMESPACE)
 }
 
-fn resolved_tree_matches(tree: &usvg::Tree, shadows: &[NativeSvgHardShadow]) -> bool {
+fn resolved_tree_matches(tree: &usvg::Tree, shadows: &[NativeSvgFilterApplication]) -> bool {
     if tree.filters().len() != shadows.len() {
         return false;
     }
@@ -434,26 +602,124 @@ fn resolved_tree_matches(tree: &usvg::Tree, shadows: &[NativeSvgHardShadow]) -> 
     group_references.values().all(|count| *count == 1)
 }
 
-fn resolved_filter_matches(filter: &usvg::filter::Filter, shadow: &NativeSvgHardShadow) -> bool {
-    let [primitive] = filter.primitives() else {
-        return false;
-    };
-    if primitive.color_interpolation() != usvg::filter::ColorInterpolation::LinearRGB {
+fn resolved_filter_matches(
+    filter: &usvg::filter::Filter,
+    application: &NativeSvgFilterApplication,
+) -> bool {
+    if application.color_space() == EffectColorSpace::Srgb {
+        return resolved_expanded_filter_matches(filter, application);
+    }
+    if filter.primitives().len() != application.stages().len() {
         return false;
     }
-    let usvg::filter::Kind::DropShadow(drop_shadow) = primitive.kind() else {
-        return false;
+    let color_space = match application.color_space() {
+        EffectColorSpace::LinearRgb => usvg::filter::ColorInterpolation::LinearRGB,
+        EffectColorSpace::Srgb => usvg::filter::ColorInterpolation::SRGB,
     };
-    let [expected_dx, expected_dy] = shadow.offset();
-    let [expected_std_dev_x, expected_std_dev_y] = shadow.std_deviation();
-    let [red, green, blue, alpha] = shadow.color_rgba();
-    matches!(drop_shadow.input(), usvg::filter::Input::SourceGraphic)
-        && same_f32(drop_shadow.dx(), expected_dx)
-        && same_f32(drop_shadow.dy(), expected_dy)
-        && same_f32(drop_shadow.std_dev_x().get(), expected_std_dev_x)
-        && same_f32(drop_shadow.std_dev_y().get(), expected_std_dev_y)
-        && drop_shadow.color() == usvg::Color::new_rgb(red, green, blue)
-        && drop_shadow.opacity() == usvg::Opacity::new_u8(alpha)
+    filter
+        .primitives()
+        .iter()
+        .zip(application.stages())
+        .enumerate()
+        .all(|(index, (primitive, stage))| {
+            if primitive.color_interpolation() != color_space {
+                return false;
+            }
+            let usvg::filter::Kind::DropShadow(drop_shadow) = primitive.kind() else {
+                return false;
+            };
+            let input_matches = match (stage.input(), drop_shadow.input()) {
+                (EffectInput::SourceGraphic, usvg::filter::Input::SourceGraphic) => true,
+                (EffectInput::Previous, usvg::filter::Input::Reference(result)) => index
+                    .checked_sub(1)
+                    .is_some_and(|previous| filter.primitives()[previous].result() == result),
+                _ => false,
+            };
+            let [expected_dx, expected_dy] = stage.offset();
+            let [expected_std_dev_x, expected_std_dev_y] = stage.std_deviation();
+            let [red, green, blue, alpha] = stage.color_rgba();
+            input_matches
+                && same_f32(drop_shadow.dx(), expected_dx)
+                && same_f32(drop_shadow.dy(), expected_dy)
+                && same_f32(drop_shadow.std_dev_x().get(), expected_std_dev_x)
+                && same_f32(drop_shadow.std_dev_y().get(), expected_std_dev_y)
+                && drop_shadow.color() == usvg::Color::new_rgb(red, green, blue)
+                && drop_shadow.opacity() == usvg::Opacity::new_u8(alpha)
+        })
+}
+
+fn resolved_expanded_filter_matches(
+    filter: &usvg::filter::Filter,
+    application: &NativeSvgFilterApplication,
+) -> bool {
+    use usvg::filter::{ColorInterpolation, CompositeOperator, Input, Kind};
+    if filter.primitives().len() != application.stages().len() * 5 {
+        return false;
+    }
+    filter
+        .primitives()
+        .chunks_exact(5)
+        .zip(application.stages())
+        .enumerate()
+        .all(|(index, (primitives, stage))| {
+            let [blur, offset, flood, composite, merge] = primitives else {
+                return false;
+            };
+            if primitives
+                .iter()
+                .any(|primitive| primitive.color_interpolation() != ColorInterpolation::SRGB)
+            {
+                return false;
+            }
+            let prefix = format!("merman-shadow-{index}");
+            if [blur, offset, flood, composite, merge]
+                .into_iter()
+                .zip(["blur", "offset", "flood", "shadow", "result"])
+                .any(|(primitive, suffix)| primitive.result() != format!("{prefix}-{suffix}"))
+            {
+                return false;
+            }
+            let (
+                Kind::GaussianBlur(blur_value),
+                Kind::Offset(offset_value),
+                Kind::Flood(flood_value),
+                Kind::Composite(composite_value),
+                Kind::Merge(merge_value),
+            ) = (
+                blur.kind(),
+                offset.kind(),
+                flood.kind(),
+                composite.kind(),
+                merge.kind(),
+            )
+            else {
+                return false;
+            };
+            let input = match stage.input() {
+                EffectInput::SourceGraphic => Input::SourceGraphic,
+                EffectInput::Previous => {
+                    let Some(previous) = index.checked_sub(1) else {
+                        return false;
+                    };
+                    Input::Reference(format!("merman-shadow-{previous}-result"))
+                }
+            };
+            let [dx, dy] = stage.offset();
+            let [std_x, std_y] = stage.std_deviation();
+            let [red, green, blue, alpha] = stage.color_rgba();
+            blur_value.input() == &input
+                && same_f32(blur_value.std_dev_x().get(), std_x)
+                && same_f32(blur_value.std_dev_y().get(), std_y)
+                && offset_value.input() == &Input::Reference(blur.result().to_string())
+                && same_f32(offset_value.dx(), dx)
+                && same_f32(offset_value.dy(), dy)
+                && flood_value.color() == usvg::Color::new_rgb(red, green, blue)
+                && flood_value.opacity() == usvg::Opacity::new_u8(alpha)
+                && composite_value.input1() == &Input::Reference(flood.result().to_string())
+                && composite_value.input2() == &Input::Reference(offset.result().to_string())
+                && composite_value.operator() == CompositeOperator::In
+                && merge_value.inputs() == [Input::Reference(composite.result().to_string()), input]
+        })
 }
 
 fn same_f32(left: f32, right: f32) -> bool {
@@ -469,7 +735,7 @@ fn same_f32(left: f32, right: f32) -> bool {
 
 fn visit_group(
     group: &usvg::Group,
-    expected: &BTreeMap<&str, &NativeSvgHardShadow>,
+    expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
 ) -> bool {
@@ -532,7 +798,7 @@ fn visit_group(
 fn resolved_filter_region_matches(
     group: &usvg::Group,
     filter: &usvg::filter::Filter,
-    shadow: &NativeSvgHardShadow,
+    shadow: &NativeSvgFilterApplication,
 ) -> bool {
     let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
         return false;
@@ -553,7 +819,7 @@ fn resolved_filter_region_matches(
 
 fn visit_clip_path(
     clip_path: &usvg::ClipPath,
-    expected: &BTreeMap<&str, &NativeSvgHardShadow>,
+    expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
 ) -> bool {
@@ -565,7 +831,7 @@ fn visit_clip_path(
 
 fn visit_mask(
     mask: &usvg::Mask,
-    expected: &BTreeMap<&str, &NativeSvgHardShadow>,
+    expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
 ) -> bool {
@@ -651,15 +917,209 @@ mod tests {
         assert!(preflight_native_filter_receipt(&extra_primitive, &tree).is_none());
     }
 
+    fn srgb_stage(index: usize, input: &str, dx: i32, color: &str) -> String {
+        format!(
+            r#"<feGaussianBlur in="{input}" stdDeviation="0" result="merman-shadow-{index}-blur"/><feOffset in="merman-shadow-{index}-blur" dx="{dx}" dy="0" result="merman-shadow-{index}-offset"/><feFlood flood-color="{color}" result="merman-shadow-{index}-flood"/><feComposite in="merman-shadow-{index}-flood" in2="merman-shadow-{index}-offset" operator="in" result="merman-shadow-{index}-shadow"/><feMerge result="merman-shadow-{index}-result"><feMergeNode in="merman-shadow-{index}-shadow"/><feMergeNode in="{input}"/></feMerge>"#
+        )
+    }
+
+    fn srgb_svg(composed: bool) -> String {
+        let mut stages = srgb_stage(0, "SourceGraphic", 60, "#111827");
+        if composed {
+            stages.push_str(&srgb_stage(1, "merman-shadow-0-result", 20, "#334455"));
+        }
+        format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs><filter id="{FIRST_ID}" filterUnits="objectBoundingBox" x="-1" y="-1" width="4" height="4" color-interpolation-filters="sRGB">{stages}</filter></defs><g filter="url(#{FIRST_ID})"><rect x="10" y="10" width="50" height="30" fill="#fff"/></g></svg>"##
+        )
+    }
+
     #[test]
-    fn srgb_filter_interpolation_fails_native_color_preservation_proof() {
+    fn srgb_expanded_template_preserves_dark_color_pixels() {
+        let svg = srgb_svg(false);
+        let tree = parse_tree(&svg);
+        let receipt = preflight_native_filter_receipt(&svg, &tree).expect("expanded sRGB receipt");
+        assert_eq!(receipt.drop_shadow_count(), 1);
+        let mut pixmap = tiny_skia::Pixmap::new(200, 100).expect("pixmap");
+        resvg::render(
+            &tree,
+            tiny_skia::Transform::identity(),
+            &mut pixmap.as_mut(),
+        );
+        let color = pixmap.pixel(90, 20).expect("inside shadow").demultiply();
+        assert_eq!(
+            [color.red(), color.green(), color.blue(), color.alpha()],
+            [17, 24, 39, 255]
+        );
+    }
+
+    #[test]
+    fn srgb_direct_drop_shadow_is_not_certified() {
         let svg = exact_svg().replace(
             "color-interpolation-filters=\"linearRGB\"",
             "color-interpolation-filters=\"sRGB\"",
         );
-        let tree = parse_tree(&svg);
+        assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+    }
 
+    #[test]
+    fn srgb_composed_template_and_mismatched_stage_wiring() {
+        let svg = srgb_svg(true);
+        let tree = parse_tree(&svg);
+        let receipt = preflight_native_filter_receipt(&svg, &tree).expect("composed sRGB receipt");
+        assert_eq!(receipt.drop_shadow_count(), 2);
+        assert_eq!(receipt.reference_count(), 1);
+        let single_svg = srgb_svg(false);
+        let single_tree = parse_tree(&single_svg);
+        let single_receipt = preflight_native_filter_receipt(&single_svg, &single_tree)
+            .expect("removing a complete stage remains a valid single-stage application");
+        assert_ne!(receipt, single_receipt);
+        assert!(preflight_native_filter_receipt(&svg, &single_tree).is_none());
+        assert!(preflight_native_filter_receipt(&single_svg, &tree).is_none());
+        let wrong_order = svg.replacen(
+            r#"<feMergeNode in="merman-shadow-0-shadow"/><feMergeNode in="SourceGraphic"/>"#,
+            r#"<feMergeNode in="SourceGraphic"/><feMergeNode in="merman-shadow-0-shadow"/>"#,
+            1,
+        );
+        let wrong_previous = svg.replace("in=\"merman-shadow-0-result\"", "in=\"missing-result\"");
+        let missing_composite = svg.replacen(r#"<feComposite in="merman-shadow-0-flood" in2="merman-shadow-0-offset" operator="in" result="merman-shadow-0-shadow"/>"#, "", 1);
+        let wrong_space = svg.replace(
+            "color-interpolation-filters=\"sRGB\"",
+            "color-interpolation-filters=\"linearRGB\"",
+        );
+        for mutation in [wrong_order, wrong_previous, missing_composite, wrong_space] {
+            assert_ne!(mutation, svg);
+            let mutated_tree = parse_tree(&mutation);
+            assert!(preflight_native_filter_receipt(&mutation, &mutated_tree).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &mutated_tree).is_none());
+        }
+    }
+
+    fn composed_svg() -> String {
+        let second_stage = r##"<feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="rgba(0, 242, 255, 0.3)"/>"##;
+        exact_svg().replacen("</filter>", &format!("{second_stage}</filter>"), 1)
+    }
+
+    #[test]
+    fn ordered_shadow_chain_passes_and_receipt_preserves_each_stage() {
+        let svg = composed_svg();
+        let tree = parse_tree(&svg);
+        let receipt = preflight_native_filter_receipt(&svg, &tree).expect("composed receipt");
+        assert_eq!(receipt.drop_shadow_count(), 3);
+        assert_eq!(receipt.reference_count(), 2);
+
+        let single_svg = exact_svg();
+        let single_tree = parse_tree(&single_svg);
+        let single = preflight_native_filter_receipt(&single_svg, &single_tree)
+            .expect("deleting a legal stage remains observable");
+        assert_ne!(receipt, single);
+        assert!(preflight_native_filter_receipt(&single_svg, &tree).is_none());
+        assert!(preflight_native_filter_receipt(&svg, &single_tree).is_none());
+    }
+
+    #[test]
+    fn composed_stage_order_and_explicit_source_change_receipt() {
+        let svg = composed_svg();
+        let tree = parse_tree(&svg);
+        let receipt = preflight_native_filter_receipt(&svg, &tree).expect("composed receipt");
+        let first_stage = r##"<feDropShadow in="SourceGraphic" dx="4" dy="5" stdDeviation="0" flood-color="#112233"/>"##;
+        let second_stage = r##"<feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="rgba(0, 242, 255, 0.3)"/>"##;
+        let reordered = svg.replace(
+            &format!("{first_stage}{second_stage}"),
+            &format!(
+                "{}{}",
+                second_stage.replacen("<feDropShadow", "<feDropShadow in=\"SourceGraphic\"", 1),
+                first_stage.replace(" in=\"SourceGraphic\"", "")
+            ),
+        );
+        assert_ne!(svg, reordered);
+        let reordered_tree = parse_tree(&reordered);
+        let reordered_receipt = preflight_native_filter_receipt(&reordered, &reordered_tree)
+            .expect("reordered legal chain");
+        assert_ne!(receipt, reordered_receipt);
+        assert!(preflight_native_filter_receipt(&reordered, &tree).is_none());
+        assert!(preflight_native_filter_receipt(&svg, &reordered_tree).is_none());
+
+        let source = svg.replacen(
+            "<feDropShadow dx=",
+            "<feDropShadow in=\"SourceGraphic\" dx=",
+            1,
+        );
+        let source_tree = parse_tree(&source);
+        let source_receipt = preflight_native_filter_receipt(&source, &source_tree)
+            .expect("explicit SourceGraphic on a later stage");
+        assert_ne!(receipt, source_receipt);
+        assert!(preflight_native_filter_receipt(&source, &tree).is_none());
+        assert!(preflight_native_filter_receipt(&svg, &source_tree).is_none());
+    }
+
+    #[test]
+    fn shadow_chain_is_not_limited_to_two_stages() {
+        let stage = r##"<feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#00f2ff"/>"##;
+        let svg = exact_svg().replacen("</filter>", &format!("{}</filter>", stage.repeat(4)), 1);
+        let receipt = preflight_native_filter_receipt(&svg, &parse_tree(&svg))
+            .expect("five-stage application and independent single-stage application");
+        assert_eq!(receipt.drop_shadow_count(), 6);
+        assert_eq!(receipt.reference_count(), 2);
+    }
+
+    #[test]
+    fn raw_shadow_chain_obeys_the_shared_primitive_bound() {
+        let stage = r##"<feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="#00f2ff"/>"##;
+        let svg = exact_svg().replacen(
+            "</filter>",
+            &format!("{}</filter>", stage.repeat(MAX_NATIVE_SHADOW_STAGES - 1)),
+            1,
+        );
+        let applications = parse_raw_drop_shadows(&svg).expect("exact stage hard cap");
+        assert!(
+            applications
+                .iter()
+                .any(|application| application.stages().len() == MAX_NATIVE_SHADOW_STAGES)
+        );
+        let excessive = svg.replacen("</filter>", &format!("{stage}</filter>"), 1);
+        assert!(parse_raw_drop_shadows(&excessive).is_none());
+        let empty = exact_svg().replace(
+            r##"<feDropShadow in="SourceGraphic" dx="4" dy="5" stdDeviation="0" flood-color="#112233"/>"##,
+            "",
+        );
+        assert!(parse_raw_drop_shadows(&empty).is_none());
+    }
+
+    #[test]
+    fn per_stage_color_space_override_cannot_hide_in_resolved_tree() {
+        let svg = composed_svg();
+        let overridden = svg.replacen(
+            "<feDropShadow dx=",
+            "<feDropShadow color-interpolation-filters=\"sRGB\" dx=",
+            1,
+        );
+        let tree = parse_tree(&overridden);
         assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+        assert!(preflight_native_filter_receipt(&overridden, &tree).is_none());
+    }
+
+    #[test]
+    fn shadow_chain_rejects_unknown_reference_fallback_and_non_shadow_stage() {
+        for input in ["missing-result", "Previous", "SourceAlpha"] {
+            let svg = composed_svg().replacen(
+                "<feDropShadow dx=",
+                &format!("<feDropShadow in=\"{input}\" dx="),
+                1,
+            );
+            let tree = parse_tree(&svg);
+            assert!(
+                preflight_native_filter_receipt(&svg, &tree).is_none(),
+                "{input}"
+            );
+        }
+        let no_source = composed_svg().replacen(" in=\"SourceGraphic\"", "", 1);
+        assert!(preflight_native_filter_receipt(&no_source, &parse_tree(&no_source)).is_none());
+        let extra = composed_svg().replacen(
+            "</filter>",
+            "<feGaussianBlur stdDeviation=\"2\"/></filter>",
+            1,
+        );
+        assert!(preflight_native_filter_receipt(&extra, &parse_tree(&extra)).is_none());
     }
 
     #[test]
@@ -704,7 +1164,7 @@ mod tests {
     #[cfg(feature = "pdf")]
     #[test]
     fn pdf_localization_proof_requires_cap_budget_and_outer_group_equality() {
-        let svg = exact_svg();
+        let svg = composed_svg();
         let tree = parse_tree(&svg);
         let receipt = preflight_native_filter_receipt(&svg, &tree).expect("exact receipt");
         let exact_plan = crate::PdfFilterImagePlan {

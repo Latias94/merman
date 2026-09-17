@@ -322,6 +322,13 @@ pub enum ThemeEffectEntryWireV1 {
     Graph {
         /// Recipe-local graph identifier.
         id: String,
+        /// Optional interpolation space: `linear-rgb` (default) or `srgb`.
+        #[serde(
+            default,
+            deserialize_with = "deserialize_optional_non_null",
+            skip_serializing_if = "Option::is_none"
+        )]
+        color_space: Option<String>,
         /// Ordered effect primitives.
         primitives: Vec<ThemeEffectPrimitiveWireV1>,
     },
@@ -616,7 +623,7 @@ impl ContainsNonFiniteNumber for ThemeCanvasLayerWireV1 {
 impl ContainsNonFiniteNumber for ThemeEffectEntryWireV1 {
     fn contains_non_finite_number(&self) -> bool {
         match self {
-            Self::Graph { id: _, primitives } => primitives.contains_non_finite_number(),
+            Self::Graph { primitives, .. } => primitives.contains_non_finite_number(),
             Self::Binding {
                 target: _,
                 effect_id: _,

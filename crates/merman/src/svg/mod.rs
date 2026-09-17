@@ -9,9 +9,9 @@ pub use crate::SvgEnvironment;
 pub use merman_core::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
-    DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
-    EffectPrimitive, FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec, FontCatalog,
-    FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
+    DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectColorSpace, EffectGraph,
+    EffectInput, EffectPrimitive, FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec,
+    FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
     FontEmbeddingPermissions, FontEmbeddingRequirement, FontFaceMetadata, FontFamilyAlias,
     FontSource, FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, GradientStop,
     HostMeasurementFallback, HostMeasurementFallbackPolicy, InsetsPx, LineHeight, LinearGradient,

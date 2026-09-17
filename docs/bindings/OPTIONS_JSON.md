@@ -306,10 +306,15 @@ SVG pipeline, or a product profile.
 | `requirements` | Required theme and text-layout capability IDs. |
 | `assets` | Embedded font catalog, aliases, generic-family mappings, sources, and embedding requirements. |
 
-An effect graph contains only its recipe-local `id` and ordered `primitives`; a semantic binding selects
-the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
+An effect graph contains its recipe-local `id`, ordered `primitives`, and optional `color_space`
+(`"linear-rgb"`, the default, or `"srgb"`). A semantic binding selects the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
 safe region from final paint geometry and admits it against the effective session resource policy.
 Because the schema is closed, the removed `region` member is rejected rather than ignored.
+Unknown or null color spaces are rejected. State currently consumes ordered zero-spread drop
+shadows: `source-graphic` restarts from the painted object and `previous` uses the preceding
+stage. The first stage must use the source graphic. This does not imply effect support in every
+diagram family. Native sRGB export uses a fixed standard five-primitive expansion per shadow
+to preserve colors in the pinned backend; resource limits count those actual primitives.
 
 ```json
 {

@@ -62,6 +62,7 @@ mod root_svg;
 mod roughjs_common;
 mod sankey;
 mod sequence;
+mod shadow;
 mod state;
 mod style;
 pub(crate) mod theme;

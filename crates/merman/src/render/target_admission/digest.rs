@@ -607,7 +607,10 @@ mod tests {
     use crate::render::{
         RenderArtifactKind, TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource,
     };
-    use merman_render::__private::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+    use merman_render::__private::{
+        EffectColorSpace, EffectInput, NativeSvgFilterApplication, NativeSvgFilterReceipt,
+        NativeSvgShadowStage,
+    };
     use merman_render::diagram_theme::ThemeCapability;
 
     #[test]
@@ -661,12 +664,19 @@ mod tests {
     #[test]
     fn native_filter_digest_distinguishes_equal_counts_with_different_blur() {
         fn receipt(std_deviation: f32) -> NativeSvgFilterReceipt {
-            NativeSvgFilterReceipt::from_drop_shadows([NativeSvgHardShadow::new(
+            NativeSvgFilterReceipt::from_applications([NativeSvgFilterApplication::new(
                 "state-theme-effect-shadow",
                 [-0.2, -0.2, 1.4, 1.4],
-                [5.0, 5.0],
-                [std_deviation, std_deviation],
-                "#111827",
+                EffectColorSpace::LinearRgb,
+                vec![
+                    NativeSvgShadowStage::new(
+                        EffectInput::SourceGraphic,
+                        [5.0, 5.0],
+                        [std_deviation, std_deviation],
+                        "#111827",
+                    )
+                    .unwrap(),
+                ],
                 1,
             )
             .expect("valid drop shadow")])

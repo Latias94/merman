@@ -76,9 +76,7 @@ pub(crate) use compatibility::{
 };
 pub(crate) use config::StateConfigView;
 pub(crate) use effect_evidence::StateSvgEffectEvidenceRecorder;
-pub(crate) use effect_plan::{
-    StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect, StateSvgFilterRegion,
-};
+pub(crate) use effect_plan::{StateEffectPlan, StateNodeEffectPlan};
 pub(crate) use style_plan::{
     ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
 };

@@ -50,7 +50,7 @@ pub(super) fn render_state_node_svg(
     origin_y: f64,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-    effect_outsets: &mut crate::state::StateEffectOutsets,
+    effect_outsets: &mut crate::diagram_theme::EffectOutsets,
 ) -> Result<()> {
     let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
         return Ok(());
@@ -1059,12 +1059,8 @@ pub(super) fn render_state_node_svg(
                         let region = materialized.region();
                         let scoped_filter_id =
                             format!("{}-theme-effect-{}", node_dom_id, effect.id());
-                        let filter_url = write_state_theme_effect_application(
-                            out,
-                            &scoped_filter_id,
-                            effect,
-                            region,
-                        );
+                        let filter_url =
+                            write_theme_shadow_application(out, &scoped_filter_id, effect, region);
                         Some((effect, scoped_filter_id, filter_url, region))
                     } else {
                         None

@@ -1,12 +1,12 @@
 use std::cell::RefCell;
 
-use crate::__private::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+use crate::__private::{NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgShadowStage};
 
-use super::{StateSvgEffect, StateSvgFilterRegion};
+use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect};
 
 #[derive(Debug, Default)]
 struct StateSvgEffectEvidenceState {
-    applications: Vec<NativeSvgHardShadow>,
+    applications: Vec<NativeSvgFilterApplication>,
     invalid: bool,
 }
 
@@ -20,19 +20,32 @@ pub(crate) struct StateSvgEffectEvidenceRecorder {
 impl StateSvgEffectEvidenceRecorder {
     pub(crate) fn record_application(
         &self,
-        effect: &StateSvgEffect,
+        effect: &SvgShadowEffect,
         scoped_filter_id: &str,
-        region: StateSvgFilterRegion,
+        region: SvgFilterRegion,
     ) {
-        let region = region.as_array();
-        let Some(application) = NativeSvgHardShadow::new(
-            scoped_filter_id,
-            region,
-            [effect.offset_x(), effect.offset_y()],
-            [effect.std_deviation(), effect.std_deviation()],
-            &effect.color().as_css(),
-            1,
-        ) else {
+        let stages = effect
+            .stages()
+            .iter()
+            .map(|stage| {
+                NativeSvgShadowStage::new(
+                    stage.input,
+                    [stage.offset_x, stage.offset_y],
+                    [stage.std_deviation; 2],
+                    &stage.color.as_css(),
+                )
+            })
+            .collect::<Option<Vec<_>>>();
+        let application = stages.and_then(|stages| {
+            NativeSvgFilterApplication::new(
+                scoped_filter_id,
+                region.as_array(),
+                effect.color_space(),
+                stages,
+                1,
+            )
+        });
+        let Some(application) = application else {
             self.state.borrow_mut().invalid = true;
             return;
         };
@@ -46,7 +59,7 @@ impl StateSvgEffectEvidenceRecorder {
             return None;
         }
         let had_applications = !applications.is_empty();
-        let receipt = NativeSvgFilterReceipt::from_drop_shadows(applications);
+        let receipt = NativeSvgFilterReceipt::from_applications(applications);
         if had_applications && receipt.is_none() {
             state.invalid = true;
         }
@@ -56,13 +69,13 @@ impl StateSvgEffectEvidenceRecorder {
 
 #[cfg(test)]
 mod tests {
+    use crate::diagram_theme::SvgFilterRegion;
     use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
-    use crate::state::StateSvgFilterRegion;
 
     use super::*;
 
-    fn effect(std_deviation: f32) -> StateSvgEffect {
-        StateSvgEffect::from_graph_for_test(
+    fn effect(std_deviation: f32) -> SvgShadowEffect {
+        SvgShadowEffect::from_graph(
             &EffectGraph::new(
                 "hard-shadow",
                 [EffectPrimitive::DropShadow {
@@ -82,8 +95,8 @@ mod tests {
     #[test]
     fn receipt_requires_unique_actual_filter_applications() {
         let effect = effect(0.0);
-        let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
-            .expect("valid effect region");
+        let region =
+            SvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4).expect("valid effect region");
         let recorder = StateSvgEffectEvidenceRecorder::default();
         assert!(recorder.finish().is_none());
 
@@ -106,8 +119,8 @@ mod tests {
     #[test]
     fn duplicate_filter_ids_invalidate_the_receipt() {
         let effect = effect(0.0);
-        let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
-            .expect("valid effect region");
+        let region =
+            SvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4).expect("valid effect region");
         let recorder = StateSvgEffectEvidenceRecorder::default();
         recorder.record_application(&effect, "diagram-state-theme-effect-hard-shadow", region);
         recorder.record_application(&effect, "diagram-state-theme-effect-hard-shadow", region);
@@ -124,8 +137,8 @@ mod tests {
     #[test]
     fn receipt_order_is_independent_of_application_order() {
         let effect = effect(0.0);
-        let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
-            .expect("valid effect region");
+        let region =
+            SvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4).expect("valid effect region");
         let forward = StateSvgEffectEvidenceRecorder::default();
         forward.record_application(&effect, "alpha", region);
         forward.record_application(&effect, "beta", region);
@@ -138,7 +151,7 @@ mod tests {
 
     #[test]
     fn receipt_is_sensitive_to_the_emitted_standard_deviation() {
-        let region = StateSvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
+        let region = SvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
             .expect("valid soft-shadow region");
         let hard = StateSvgEffectEvidenceRecorder::default();
         hard.record_application(&effect(0.0), "drop-shadow", region);

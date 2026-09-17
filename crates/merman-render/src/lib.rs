@@ -78,7 +78,12 @@ pub use merman_core::DiagramFamilyId;
 pub mod __private {
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
 
-    pub use crate::native_filter_receipt::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+    pub use crate::diagram_theme::{EffectColorSpace, EffectInput};
+    pub use crate::native_filter_receipt::{
+        NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgShadowStage,
+    };
+    pub const MAX_NATIVE_SHADOW_STAGES: usize =
+        crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
 
     #[cfg(merman_internal_theme_acceptance)]
     pub use crate::svg_artifact_receipts::{

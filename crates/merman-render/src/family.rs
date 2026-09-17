@@ -1117,8 +1117,8 @@ impl ResolvedFamilyStylePlan {
             .map(crate::state::StateStylePlan::expected_native_filter_application_count)
             .unwrap_or(0);
         if emitted.is_some_and(|receipt| {
-            usize::try_from(receipt.hard_shadow_count()).ok() == Some(expected_application_count)
-                && receipt.hard_shadow_count() == receipt.reference_count()
+            usize::try_from(receipt.filter_count()).ok() == Some(expected_application_count)
+                && receipt.filter_count() == receipt.reference_count()
         }) {
             self.native_filter_receipt = emitted;
             return;

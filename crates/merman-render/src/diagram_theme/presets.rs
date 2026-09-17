@@ -638,7 +638,14 @@ mod tests {
             .effects
             .as_ref()
             .expect("public recipe owns the glow");
-        let [ThemeEffectEntryWireV1::Graph { id, primitives }] = effects.as_slice() else {
+        let [
+            ThemeEffectEntryWireV1::Graph {
+                id,
+                primitives,
+                color_space,
+            },
+        ] = effects.as_slice()
+        else {
             panic!("one family-scoped shape glow graph is expected")
         };
         let [
@@ -656,6 +663,7 @@ mod tests {
         else {
             panic!("the reference shape glow has two ordered shadows")
         };
+        assert_eq!(color_space.as_deref(), Some("srgb"));
         assert_eq!(first.as_deref(), Some("source-graphic"));
         assert_eq!(second.as_deref(), Some("previous"));
         assert_eq!((*first_blur, *second_blur), (8.0, 16.0));

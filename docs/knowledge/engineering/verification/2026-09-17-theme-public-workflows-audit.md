@@ -485,3 +485,49 @@ Artifacts, commands, font/binary identities and pixel/browser observations are u
 no font was bundled. The CLI feature profile differs from the previous minimal-profile baseline,
 so this run is not a size or speed comparison. No new WASM build, installed SDK matrix, full
 workspace run or release archive verification is claimed for this slice.
+
+## U5 State Composed-Shadow Tranche
+
+Implementation baseline: `d25064cf0`, 2026-09-17. This tranche extracts bounded ordered
+zero-spread shadows into a shared lowering/emission seam and connects the existing State
+terminal owner. It does not yet connect Flowchart, Sequence, XY Chart, text, or line terminals,
+and therefore does not close U5 or qualify the public Cyberpunk preset.
+
+An effect graph may explicitly select sRGB; omitted color space preserves linear RGB and the
+existing State single-shadow SVG semantics. SourceGraphic restarts the chain, while Previous
+uses the preceding output. Outsets account for the actual chain and include the source stroke
+once. Nonpositive object bounds remain unsupported at this objectBoundingBox seam.
+
+Native receipts now describe filter applications with ordered stages, color space, region,
+and reference counts. Sorting applications must not reorder stages. The native observer checks
+the emitted XML and resolved usvg tree against the same bounded shape before providing evidence.
+
+A pixel probe exposed a pinned-backend defect that parameter-only checks missed: direct sRGB
+feDropShadow renders author color `#111827` as `[73,86,109]` rather than `[17,24,39]`. Chromium
+and the standard GaussianBlur/Offset/Flood/Composite/Merge expansion agree on the latter.
+The sRGB writer uses that five-primitive expansion, and the observer rejects direct sRGB
+feDropShadow as native evidence. Linear RGB retains direct feDropShadow. No dependency was
+added or patched. Local probe artifacts are under
+`target/bench/experiments/theme-composed-glow-d25064cf0/`; these cover opaque hard shadows,
+not complete preset visual qualification.
+
+The default native per-filter primitive ceiling increases from 8 to 10 to accommodate two
+sRGB shadows. The total primitive ceiling remains 128, and an explicitly supplied ceiling of
+8 still rejects the same expanded filter. This is a bounded runtime resource-policy change,
+not a WASM/binary size budget adjustment.
+
+The initial State strict-render regression failed on two stages. Native regression tests also
+failed before chain support and the sRGB expansion were implemented. Production integration
+coverage exercises nonzero blur and alpha through State SVG, PNG pixels, and PDF native-filter
+receipts, including SourceGraphic reset and a lower explicit primitive ceiling. PDF receipt
+checks do not establish whole-page pixel equivalence across PDF viewers.
+
+Verification of this tranche: **318/318** scoped Release tests passed across renderer, facade,
+and native exporter (2,498 unrelated tests filtered out); **11/11** complete-spec/recipe wire
+integration tests passed. The first combined run reached the expected lower-budget rejection
+but failed an error-ID spelling assertion; the final run checks the actual public resource ID.
+Scoped Clippy completed successfully with existing warnings; formatting and `git diff --check`
+passed. Full workspace/platform builds were not rerun for this tranche.
+The scoped review reported no actionable findings. Its seven lenses ran serially inside one
+Codex reviewer because the harness rejected further agent dispatch; this is not seven independent
+reviews. The recorded PDF pixel gap remains open for later U5 qualification.

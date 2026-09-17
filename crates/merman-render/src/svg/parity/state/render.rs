@@ -343,7 +343,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // in our SVG bounds approximation.
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
-    let mut effect_outsets = crate::state::StateEffectOutsets::default();
+    let mut effect_outsets = crate::diagram_theme::EffectOutsets::default();
     render_state_root(
         &mut out,
         &ctx,
@@ -497,7 +497,7 @@ fn render_state_root(
     options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-    effect_outsets: &mut crate::state::StateEffectOutsets,
+    effect_outsets: &mut crate::diagram_theme::EffectOutsets,
 ) -> Result<()> {
     details.root_calls += 1;
     options.checkpoint_emit()?;

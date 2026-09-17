@@ -7,10 +7,28 @@ use super::resources::{
 };
 use super::semantic::ThemeTarget;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EffectInput {
     SourceGraphic,
     Previous,
+}
+
+/// Color interpolation used by every primitive in an effect graph.
+/// Existing typed effects retain the SVG default; CSS-derived recipes select sRGB explicitly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EffectColorSpace {
+    #[default]
+    LinearRgb,
+    Srgb,
+}
+
+impl EffectColorSpace {
+    pub(crate) const fn svg_name(self) -> &'static str {
+        match self {
+            Self::LinearRgb => "linearRGB",
+            Self::Srgb => "sRGB",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +116,7 @@ impl EffectPrimitive {
 pub struct EffectGraph {
     id: String,
     primitives: Vec<EffectPrimitive>,
+    color_space: EffectColorSpace,
 }
 
 impl EffectGraph {
@@ -117,7 +136,20 @@ impl EffectGraph {
             primitive.validate()?;
         }
         validate_inputs(&primitives)?;
-        Ok(Self { id, primitives })
+        Ok(Self {
+            id,
+            primitives,
+            color_space: EffectColorSpace::default(),
+        })
+    }
+
+    pub fn with_color_space(mut self, color_space: EffectColorSpace) -> Self {
+        self.color_space = color_space;
+        self
+    }
+
+    pub const fn color_space(&self) -> EffectColorSpace {
+        self.color_space
     }
 
     pub fn id(&self) -> &str {

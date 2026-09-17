@@ -42,6 +42,7 @@ pub(super) fn build_recipe(
     ]);
     spec.effects = Some(vec![ThemeEffectEntryWireV1::Graph {
         id: SHAPE_GLOW.to_owned(),
+        color_space: Some("srgb".to_owned()),
         primitives: vec![
             shadow("source-graphic", 8.0, "rgba(0, 242, 255, 0.5)"),
             shadow("previous", 16.0, "rgba(0, 242, 255, 0.3)"),

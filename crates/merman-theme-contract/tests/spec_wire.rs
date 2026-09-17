@@ -244,6 +244,7 @@ fn complete_spec_wire_rejects_deep_non_finite_values_in_serde_and_canonical_json
     let spec = DiagramThemeSpecWireV1 {
         effects: Some(vec![ThemeEffectEntryWireV1::Graph {
             id: "unsafe-filter".to_owned(),
+            color_space: None,
             primitives: vec![ThemeEffectPrimitiveWireV1::ColorMatrix {
                 input: Some("source-graphic".to_owned()),
                 values: vec![0.0, f32::NAN],

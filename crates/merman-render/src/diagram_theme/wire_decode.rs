@@ -437,12 +437,27 @@ fn decode_effects(
     let mut decoded = DiagramEffectSet::default();
     for entry in entries {
         match entry {
-            wire::ThemeEffectEntryWireV1::Graph { id, primitives } => {
+            wire::ThemeEffectEntryWireV1::Graph {
+                id,
+                color_space,
+                primitives,
+            } => {
                 let primitives = primitives
                     .into_iter()
                     .map(decode_effect_primitive)
                     .collect::<Result<Vec<_>, _>>()?;
-                decoded = decoded.with_graph(EffectGraph::new(id, primitives)?)?;
+                let color_space = match color_space.as_deref() {
+                    None | Some("linear-rgb") => super::EffectColorSpace::LinearRgb,
+                    Some("srgb") => super::EffectColorSpace::Srgb,
+                    Some(_) => {
+                        return Err(ThemeCompileValidationError::InvalidValue {
+                            field: "effects.graph.color_space",
+                        }
+                        .into());
+                    }
+                };
+                decoded = decoded
+                    .with_graph(EffectGraph::new(id, primitives)?.with_color_space(color_space))?;
             }
             wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
                 decoded = decoded.with_binding(EffectBinding::new(

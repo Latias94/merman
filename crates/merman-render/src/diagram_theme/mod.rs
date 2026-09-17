@@ -28,6 +28,7 @@ mod family_program;
 mod legacy_family_theme_bridge;
 #[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_projection_retirement;
+mod shadow_plan;
 // KTD23 route identities are renderer-owned and intentionally independent of the bridge.
 #[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_tombstones;
@@ -88,7 +89,9 @@ pub use definition_admission::{
     materialize_theme, materialize_theme_json, materialize_theme_json_with_resource_policy,
     materialize_theme_with_resource_policy,
 };
-pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
+pub use effects::{
+    DiagramEffectSet, EffectBinding, EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive,
+};
 #[cfg(merman_internal_theme_acceptance)]
 pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
@@ -146,6 +149,9 @@ pub use semantic::{
     OrdinalPalette, OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeEffectPatch,
     ThemeGeometryPatch, ThemePaintPatch, ThemeRule, ThemeRuleSet, ThemeSpacingPatch,
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
+};
+pub(crate) use shadow_plan::{
+    EffectOutsets, MaterializedShadowEffect, SvgFilterRegion, SvgShadowEffect,
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 pub use support::describe_theme_support;
@@ -501,3 +507,5 @@ mod tests {
         }
     }
 }
+
+pub(crate) use resources::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;

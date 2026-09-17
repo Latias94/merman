@@ -98,6 +98,10 @@ name = "prepared_render"
 required-features = ["svg"]
 
 [[test]]
+name = "theme_composed_effects"
+required-features = ["svg", "png", "pdf", "layout-cytoscape"]
+
+[[test]]
 name = "theme_authoring"
 required-features = ["svg"]
 

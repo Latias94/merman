@@ -44,33 +44,6 @@ fn state_gradient_defs<I>(
     );
 }
 
-pub(super) fn write_state_theme_effect_application(
-    out: &mut impl SvgOutput,
-    scoped_filter_id: &str,
-    effect: &crate::state::StateSvgEffect,
-    region: crate::state::StateSvgFilterRegion,
-) -> String {
-    let [x, y, width, height] = region.as_array();
-    let id = escape_attr(scoped_filter_id);
-    let color = escape_attr(&effect.color().as_css());
-    // Keep the SVG filter default explicit. `sRGB` causes a large dark-color gamma shift in the
-    // native resvg path, while `linearRGB` preserves the authored color within 8-bit quantization.
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{}" dy="{}" stdDeviation="{}" flood-color="{}"/></filter></defs>"#,
-        id,
-        x,
-        y,
-        width,
-        height,
-        effect.offset_x(),
-        effect.offset_y(),
-        effect.std_deviation(),
-        color,
-    );
-    format!("url(#{scoped_filter_id})")
-}
-
 pub(super) fn state_markers<I>(out: &mut impl SvgOutput, diagram_id: I, ctx: &StateRenderCtx<'_>)
 where
     I: SvgDiagramIdValue,
@@ -1085,8 +1058,8 @@ mod tests {
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
 
-    fn state_theme_effect(std_deviation: f32) -> crate::state::StateSvgEffect {
-        crate::state::StateSvgEffect::from_graph_for_test(
+    fn state_theme_effect(std_deviation: f32) -> crate::diagram_theme::SvgShadowEffect {
+        crate::diagram_theme::SvgShadowEffect::from_graph(
             &EffectGraph::new(
                 "soft-shadow",
                 [EffectPrimitive::DropShadow {
@@ -1137,11 +1110,11 @@ mod tests {
     #[test]
     fn state_theme_effect_emits_the_authored_std_deviation() {
         let effect = state_theme_effect(8.0);
-        let region = crate::state::StateSvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
+        let region = crate::diagram_theme::SvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
             .expect("bounded soft-shadow region");
         let mut svg = String::new();
 
-        let reference = write_state_theme_effect_application(
+        let reference = write_theme_shadow_application(
             &mut svg,
             "diagram-state-theme-effect-soft-shadow",
             &effect,
