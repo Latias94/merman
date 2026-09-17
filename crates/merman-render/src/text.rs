@@ -62,7 +62,8 @@ pub(crate) use prepared::{
     NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest, PreparedTextWrap,
 };
 pub(crate) use prepared::{
-    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
+    PreparedTextLabelProvenance,
 };
 #[cfg(test)]
 pub(crate) use prepared::{PreparedTextLine, TextByteRange};

@@ -653,7 +653,7 @@ impl fmt::Debug for TextLayoutRequestDigest {
     }
 }
 
-const PREPARED_TEXT_LABEL_ID_PREFIX: &str = "merman-prepared-";
+pub(crate) const PREPARED_TEXT_LABEL_ID_PREFIX: &str = "merman-prepared-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PreparedTextLabelFamily {

@@ -268,9 +268,31 @@ no missing token recognition or cancellation path. This is not a full branch rev
 The same-profile baseline benchmark executable is frozen under
 `target/bench/experiments/prepared-label-scan-94e42be6d/` with SHA-256
 `e2cd5dc03e39ccd86f00cd3a0ea98713c359eb1b53c88de4e6ec1da7e3450110`.
-Both candidate diagnostics completed; decision-grade confirmation remains pending. Correctness
-success alone does not establish a speedup or close U2/U10. No native-certification policy has changed in this
-experiment.
+The revised candidate's clean-source, full-feature confirmation is now complete. The initial
+confirmation attempt used only `svg` and correctly failed before timed samples because Criterion
+discovered the `flowchart-elk` fixture; it is retained as a contract-failure diagnostic rather than
+performance evidence. The successful rerun used `svg,layout-cytoscape,layout-elk`, eight calibration
+pairs, eight AB/BA confirmation pairs, 30 Criterion samples, a two-second warmup and a three-second
+measurement window. All four fixtures retained byte-identical SVG output and passed postflight
+identity checks; the aggregate decision was `confirmed_non_regression`, with one confirmed
+improvement, zero regressions, zero contract failures and zero inconclusive fixtures. This closes
+the candidate's isolated scan claim, not the alpha.6 recovery gate or U2's ordinary-output admission
+split. No native-certification policy changed in this experiment.
+
+The decision-grade fixture rows were (Bonferroni-adjusted one-sided bounds,
+95% simultaneous confidence for each decision family):
+
+| Fixture | Baseline (us) | Candidate (us) | Relative change | Reported simultaneous bounds | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Class tiny | 183.306 | 165.075 | -9.95% | [-11.08%, -8.77%] | Non-regression; improvement inconclusive |
+| Class medium | 1321.075 | 1193.563 | -9.65% | [-10.11%, -9.10%] | Confirmed improvement |
+| XY Chart medium | 239.506 | 218.699 | -8.70% | [-11.00%, -6.63%] | Non-regression; improvement inconclusive |
+| Info medium | 32.166 | 31.533 | -1.97% | [-3.05%, -0.76%] | Confirmed non-improvement, no regression |
+
+The exact JSON and Markdown reports are `confirmation-v2.json` and `confirmation-v2.md` in the
+experiment directory. The candidate source snapshot used for the clean measurement is the synthetic
+commit `8aacba3827f2879b798093df29b2405ca3f2019b`; it is measurement provenance, not a branch or
+release commit. No alpha.6 regression closure is inferred from this isolated experiment.
 
 The first candidate used two substring searches. Two balanced AB/BA pairs per fixture (30 Criterion
 samples, 2-second warmup, 3-second measurement per invocation) produced the following diagnostic
@@ -309,10 +331,10 @@ executable SHA-256 is `cfff79e557f3941633f0672191d81d28e6597af04cda05ea535a92ada
 raw results are `diagnostic-single-search.json` and adjacent logs. The production patch and file
 hashes are retained as `single-search-code.patch` and `single-search-context.json`.
 
-This remains an uncommitted candidate pending calibrated confirmation of the U2 boundary change.
-Two working-tree diagnostic pairs cannot establish a decision-grade speedup, and these adjacent
-measurements do not replace the alpha.6 recovery gate. The strict/native observation remains active;
-U2's ordinary-output admission split and U10 impact closure are still outstanding.
+The earlier working-tree diagnostic pairs are historical measurements and are superseded for this
+isolated scan claim by the clean-source confirmation above. They do not establish an alpha.6 recovery
+gate, and they do not close U2's ordinary-output admission split or U10 impact closure. The
+strict/native observation boundary remains active.
 
 `cargo fmt --all -- --check` passed.
 `CARGO_BUILD_JOBS=1 cargo clippy --locked -p merman --features svg --lib` exited successfully;
@@ -320,3 +342,9 @@ it still emitted warnings, including large error values
 and unused helpers. This run is not a completed workspace-wide warning classification or a
 warning-free gate. No complete workspace, browser matrix or installed-package rebuild was run for
 this isolated candidate.
+
+On September 17, the current production files matched the clean confirmation snapshot exactly.
+`CARGO_BUILD_JOBS=1 cargo nextest run --locked -p merman-render --lib prepared_text` passed
+47/47 focused tests. An initial command targeted the facade crate and selected zero tests; a
+second incorrectly supplied its `svg` feature to the renderer crate and failed before compilation.
+Neither unsuccessful command is counted as verification.

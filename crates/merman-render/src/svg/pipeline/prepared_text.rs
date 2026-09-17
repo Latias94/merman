@@ -3,14 +3,45 @@ use std::collections::HashSet;
 
 use crate::svg::fallback::PREPARED_TEXT_LABEL_DATA_ATTR;
 use crate::svg::pipeline::builtin::util::{
-    SvgTagScanner, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+    SvgTagScanner, find_with_checkpoints, next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
-use crate::text::{PreparedTextLabelId, PreparedTextLabelLedgerEntry};
+use crate::text::{
+    PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
+};
 use crate::{Error, Result};
 
 use super::context::SvgPostprocessExecution;
 
 pub(crate) fn strip_prepared_text_label_ids<'a>(
+    svg: &'a str,
+    ledger: &[PreparedTextLabelLedgerEntry],
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Cow<'a, str>> {
+    execution.checkpoint()?;
+    if ledger.is_empty() && !contains_reserved_prepared_text_spelling(svg, execution)? {
+        return Ok(Cow::Borrowed(svg));
+    }
+    strip_prepared_text_label_ids_scanned(svg, ledger, execution)
+}
+
+fn contains_reserved_prepared_text_spelling(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<bool> {
+    let mut checkpoint = || execution.checkpoint();
+    if find_with_checkpoints(svg, PREPARED_TEXT_LABEL_ID_PREFIX, &mut checkpoint)?.is_some() {
+        return Ok(true);
+    }
+    // The current evidence attribute contains the ID prefix, so its absence is already proven.
+    // Keep the exact fallback if the attribute spelling changes independently in the future.
+    Ok(
+        !PREPARED_TEXT_LABEL_DATA_ATTR.contains(PREPARED_TEXT_LABEL_ID_PREFIX)
+            && find_with_checkpoints(svg, PREPARED_TEXT_LABEL_DATA_ATTR, &mut checkpoint)?
+                .is_some(),
+    )
+}
+
+fn strip_prepared_text_label_ids_scanned<'a>(
     svg: &'a str,
     ledger: &[PreparedTextLabelLedgerEntry],
     execution: SvgPostprocessExecution<'_>,
@@ -189,11 +220,165 @@ mod tests {
         let svg = r#"<svg><text id="ordinary">label</text></svg>"#;
         let environment = crate::environment::RenderEnvironment::deterministic();
         let session = environment.begin_session().unwrap();
-        assert_eq!(
-            strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session),)
-                .unwrap(),
-            svg
-        );
+        let stripped =
+            strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                .unwrap();
+
+        assert!(matches!(&stripped, Cow::Borrowed(_)));
+        assert_eq!(stripped, svg);
+    }
+
+    #[test]
+    fn empty_ledger_rejects_reserved_tokens() {
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for (svg, message) in [
+            (
+                r#"<svg><text id="merman-prepared-state-00">label</text></svg>"#,
+                "is malformed",
+            ),
+            (
+                r#"<svg><text id='merman-prepared-unknown-0'>label</text></svg>"#,
+                "is malformed",
+            ),
+            (
+                r#"<svg><g id="merman-prepared-state-0"/></svg>"#,
+                "instead of <text>",
+            ),
+            (
+                r#"<svg><text id="merman-prepared-state-0">label</text></svg>"#,
+                "has no matching ledger entry",
+            ),
+            (
+                r#"<svg><foreignObject data-merman-prepared-text-label="ordinary"/></svg>"#,
+                "is malformed",
+            ),
+            (
+                r#"<svg><g data-merman-prepared-text-label="merman-prepared-state-0"/></svg>"#,
+                "instead of <foreignObject>",
+            ),
+            (
+                r#"<svg><foreignObject data-merman-prepared-text-label='merman-prepared-state-0'/></svg>"#,
+                "has no matching ledger entry",
+            ),
+        ] {
+            let error =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .expect_err("empty evidence must not admit a reserved SVG token");
+            assert!(error.to_string().contains(message), "{svg}: {error}");
+        }
+    }
+
+    #[test]
+    fn empty_ledger_keeps_reserved_spelling_outside_token_attributes() {
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for svg in [
+            "<svg><text>merman-prepared-state-0</text></svg>",
+            "<svg><text>data-merman-prepared-text-label</text></svg>",
+            r#"<svg><!-- <text id="merman-prepared-state-0"/> --></svg>"#,
+            r#"<svg><![CDATA[<text id="merman-prepared-state-0"/>]]></svg>"#,
+            r#"<svg><text title="merman-prepared-state-0">label</text></svg>"#,
+        ] {
+            let stripped =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .unwrap();
+            assert!(matches!(&stripped, Cow::Borrowed(_)), "{svg}");
+            assert_eq!(stripped, svg);
+        }
+    }
+
+    #[test]
+    fn empty_ledger_preserves_the_scanners_nonvalidating_xml_behavior() {
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for svg in [
+            "",
+            "plain text",
+            "<svg><text>",
+            "<svg><!-- unclosed",
+            r#"<svg><text id="unclosed"#,
+            "<svg><text id=ordinary>label</svg>",
+        ] {
+            let stripped =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .unwrap();
+            assert!(matches!(&stripped, Cow::Borrowed(_)), "{svg}");
+            assert_eq!(stripped, svg);
+        }
+    }
+
+    #[test]
+    fn empty_ledger_still_observes_operation_cancellation() {
+        for svg in [
+            "<svg><text>ordinary</text></svg>",
+            "<svg><text>merman-prepared-state-0</text></svg>",
+            r#"<svg><foreignObject data-merman-prepared-text-label="ordinary"/></svg>"#,
+        ] {
+            let control = merman_core::OperationControl::new();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            control.cancel();
+            let error =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .expect_err("cancelled operations must stop before token inspection");
+            let Error::Cancelled(cancelled) = error else {
+                panic!("expected structured cancellation for {svg}");
+            };
+            assert_eq!(cancelled.phase, merman_core::OperationPhase::Postprocess);
+            assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+        }
+    }
+
+    #[test]
+    fn empty_ledger_fast_path_matches_scanner_when_reserved_spelling_is_absent() {
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for svg in [
+            "",
+            "plain text",
+            "<svg><text>ordinary</text></svg>",
+            "<svg><text title=\"ordinary\">label</text></svg>",
+            "<svg><text title=\"你好 > 😀\">关系 é</text></svg>",
+            "<svg><!-- ordinary --></svg>",
+            "<svg><![CDATA[ordinary]]></svg>",
+            "<svg><text id=ordinary>label</svg>",
+        ] {
+            let fast =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .unwrap();
+            let scanned = strip_prepared_text_label_ids_scanned(
+                svg,
+                &[],
+                SvgPostprocessExecution::new(&session),
+            )
+            .unwrap();
+            assert_eq!(fast, scanned, "{svg}");
+            assert!(matches!(&fast, Cow::Borrowed(_)), "{svg}");
+        }
+    }
+
+    #[test]
+    fn empty_ledger_reserved_spelling_always_falls_back_to_scanner() {
+        let environment = crate::environment::RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for svg in [
+            r#"<svg><text id="merman-prepared-state-00">label</text></svg>"#,
+            r#"<svg><text>merman-prepared-state-0</text></svg>"#,
+            r#"<svg><foreignObject data-merman-prepared-text-label="ordinary"/></svg>"#,
+        ] {
+            let actual =
+                strip_prepared_text_label_ids(svg, &[], SvgPostprocessExecution::new(&session))
+                    .map_err(|error| error.to_string());
+            let scanned = strip_prepared_text_label_ids_scanned(
+                svg,
+                &[],
+                SvgPostprocessExecution::new(&session),
+            )
+            .map_err(|error| error.to_string());
+            assert_eq!(actual, scanned, "{svg}");
+        }
     }
 
     #[test]
