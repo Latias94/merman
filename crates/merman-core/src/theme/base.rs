@@ -276,13 +276,7 @@ pub(super) fn calculate(explicit: &Map<String, Value>) -> Result<Map<String, Val
                 value.trim().parse().unwrap_or(f64::NAN)
             }
         }
-        Value::Bool(value) => {
-            if *value {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        Value::Bool(true) => 1.0,
         _ => 0.0,
     };
     let mut scale_count = 0;
