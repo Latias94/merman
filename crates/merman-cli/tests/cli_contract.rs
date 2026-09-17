@@ -624,32 +624,35 @@ fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
 #[test]
 fn native_theme_file_uses_the_compiled_theme_contract() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(
-        tmp.path().join("theme.json"),
-        br#"{"preset":"editor-dark"}"#,
-    )
-    .expect("write theme selection");
-    let source = "flowchart LR\nA-->B\n";
+    let exported = merman_bindings_core::export_theme_preset_json(b"editor-dark")
+        .expect("export editable recipe");
+    for input in [
+        br#"{"preset":"editor-dark"}"#.as_slice(),
+        exported.as_slice(),
+    ] {
+        fs::write(tmp.path().join("theme.json"), input).expect("write shared theme file");
+        let source = "flowchart LR\nA-->B\n";
 
-    let args = [
-        "render",
-        "--theme-file",
-        "theme.json",
-        "--format",
-        "svg",
-        "-",
-    ];
-    let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
-    assert!(
-        output.status.success(),
-        "{args:?}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(
-        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
-        "native render should compile the theme file through the typed theme path: {svg}"
-    );
+        let args = [
+            "render",
+            "--theme-file",
+            "theme.json",
+            "--format",
+            "svg",
+            "-",
+        ];
+        let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+        assert!(
+            svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+            "native render should compile the theme file through the typed theme path: {svg}"
+        );
+    }
 }
 
 #[test]

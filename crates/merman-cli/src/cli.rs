@@ -675,7 +675,7 @@ pub(crate) struct RenderCliArgs {
     pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
 
     #[cfg(feature = "svg")]
-    /// JSON theme selection file containing exactly one `preset` or `spec` member.
+    /// Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`.
     #[arg(
         long = "theme-file",
         value_hint = ValueHint::FilePath,

@@ -47,3 +47,38 @@ A shareable recipe can still depend on host fonts or a chosen backdrop. Document
 6. Move from a small showcase to dense Class, more-than-three-series XY, and PNG/PDF; do not retain an unqualified full-support claim.
 
 Implement these through existing CLI/SDK/Playground and shared transport tests. A new metadata field, README or Rust round-trip alone does not close a user journey. Define the sharing and selection contracts before U4/U9 migration; preserve the completed core migration rather than restarting it.
+
+## Direct Recipe Exchange Implementation
+
+Implemented after source baseline `bd56f6dab`, on 2026-09-17. The Findings table above records
+its original audit baseline; the exchange envelope and direct-import rows have since advanced.
+The unpublished `PresetExportV1` is replaced by `ThemeRecipeV1`, with a required serialized
+`schema_version: 1`. Its closed `definition`/`complete_spec` variants preserve compact authoring
+or the complete canvas/effect specification. No package or schema version was incremented.
+
+Binding `options.theme`, CLI `--theme-file`, and Web's public theme selection type accept the
+exported document directly. Rust callers have `DiagramThemeCompiler::compile_recipe`.
+Existing exact preset/spec selections remain supported; mixing them with a recipe is rejected.
+Raw input admission checks the recipe byte ceiling before envelope validation, retains duplicate
+root fields for rejection, and reuses the existing definition JSON structural/version preflight
+before normalizing JSON. Materialization and semantic compilation retain their existing owners.
+
+Verification on this implementation:
+
+- `CARGO_BUILD_JOBS=1 cargo nextest run -p merman-theme-contract -p merman-bindings-core --features merman-bindings-core/svg`: **331/331 passed**. Covers stored recipe rendering through one-shot and reusable engines, new-compiler fingerprint equivalence for EditorDark and Cyberpunk, structured canvas/ordered-effect serialization, invalid/missing versions, duplicate/escaped keys, depth limits, mixed selections, and encoded-byte error precedence.
+- `CARGO_BUILD_JOBS=1 cargo nextest run -p merman-cli --features layout-elk --test cli_contract -E 'test(native_theme_file) | test(native_theme_definition)'`: **2/2 passed**, 35 unrelated tests filtered out. A fresh CLI process consumes a file containing the public preset export without envelope reconstruction; the existing raw-definition workflow also passes.
+- Renderer preset and definition-admission tests: **14/14 passed**, 2,562 unrelated tests filtered out. Includes all ten catalog recipes, their complete-spec round trips and existing authoring structural admission.
+- Web `npm run build:ts` (including contract type checks) and `node --test scripts/theme-authoring.test.mjs`: **3/3 passed**. These verify public types and mock transport forwarding, not installed WASM behavior.
+- An independent API-contract review found a duplicate `complete_spec` normalization hole; the raw envelope probe and paired direct/options negative cases were corrected, then included in the passing 331-test run. The follow-up source review reported no remaining finding in this slice.
+
+Logs: `/tmp/merman-u13-rust-green.log`, `/tmp/merman-u13-cli.log`,
+`/tmp/merman-u13-web-build.log`, `/tmp/merman-u13-web-tests.log`,
+`/tmp/merman-u13-renderer.log`.
+The first three binding import tests failed before the implementation. The wire and TypeScript
+negative checks also exposed the missing version/import contract before their implementations.
+
+The real-WASM smoke now contains direct import/output-equivalence and unknown-version/mixed-input
+cases, but a rebuilt installed WASM package was **not** exercised in this slice. This does not close
+U13: curated family design metadata/selection UI, two-brand-colors-plus-one-family-rule usability,
+missing-font workflows, and cross-installed-consumer distribution remain to be verified. No
+qualification cells or public contract freeze are promoted by these results.

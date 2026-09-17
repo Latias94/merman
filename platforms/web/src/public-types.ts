@@ -220,9 +220,13 @@ export interface SvgOptions {
   viewBoxPadding?: number;
 }
 
+/** A named preset, direct specification, or shareable recipe. Select exactly one form. */
 export type DiagramThemeSelection =
-  | { preset: string; spec?: never }
-  | { preset?: never; spec: DiagramThemeSpec };
+  | ({ kind?: never; schema_version?: never; definition?: never; complete_spec?: never } & (
+      | { preset: string; spec?: never }
+      | { preset?: never; spec: DiagramThemeSpec }
+    ))
+  | ThemeRecipeV1;
 
 export interface ThemeDefinitionV1 {
   authoring_schema_version: 1;
@@ -314,9 +318,18 @@ export interface ThemeCapabilityDescriptorV1 {
 
 export type ThemeCapabilityDescriptor = ThemeCapabilityDescriptorV1;
 
-export type PresetExportV1 =
-  | { kind: "definition"; definition: ThemeDefinitionV1 }
-  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec };
+/**
+ * A versioned theme document that can be saved as JSON and passed directly as options.theme.
+ * A recipe describes authored styles; it does not certify every family or output target.
+ */
+export type ThemeRecipeV1 = {
+  schema_version: 1;
+  preset?: never;
+  spec?: never;
+} & (
+  | { kind: "definition"; definition: ThemeDefinitionV1; complete_spec?: never }
+  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec; definition?: never }
+);
 
 export interface DiagramThemeSpec {
   mermaid?: MermaidThemeCompatibility;
@@ -1417,7 +1430,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   exportThemePreset: (
     presetId: string,
     optionsJson?: string | null
-  ) => PresetExportV1;
+  ) => ThemeRecipeV1;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

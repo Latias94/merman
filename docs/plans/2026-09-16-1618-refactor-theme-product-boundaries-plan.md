@@ -208,7 +208,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Goal:** Make the unpublished interface coherent before consumers depend on its permanent shape.
 **Requirements:** R2, R3, R7, R12–R15; KTD1, KTD7. **Dependencies:** U12.
-**Files:** `crates/merman-theme-contract/src/{preset_catalog,authoring,materialized,spec,preset_export}.rs`; `crates/merman-bindings-core/src/theme.rs`; CLI theme-file and existing SDK import/export owners; `playground/src/components/ToolbarControls.tsx`; ADR 0082 and public theme documentation.
+**Files:** `crates/merman-theme-contract/src/{preset_catalog,authoring,materialized,spec,theme_recipe}.rs`; `crates/merman-bindings-core/src/theme.rs`; CLI theme-file and existing SDK import/export owners; `playground/src/components/ToolbarControls.tsx`; ADR 0082 and public theme documentation.
 **Approach:** Use the [public workflow audit](../knowledge/engineering/verification/2026-09-17-theme-public-workflows-audit.md). Select a canonical exchange envelope from existing formats, define serialized schema identification and direct import, and settle curated design metadata and customization behavior. Retain shared-base plus family-recipe selection; do not introduce automatic cross-preset fallback absent a demonstrated user need. Resolve these decisions before changing the complete recipe builder and public discovery projections. Add only fields and conveniences needed by the tested journeys and remove displaced unpublished adapters.
 **Test scenarios:**
 

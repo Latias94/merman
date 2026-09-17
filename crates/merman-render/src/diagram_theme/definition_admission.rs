@@ -31,16 +31,23 @@ fn decode_bounded_theme_definition_json(
     resources: &ThemeResourcePolicy,
     bytes: &[u8],
 ) -> Result<ThemeDefinitionV1, ThemeMaterializationErrorV1> {
-    resources
-        .check_theme_encoded_bytes(bytes.len())
-        .map_err(encoded_bytes_contract_error)?;
-    preflight_json(bytes)?;
+    check_definition_json_input(resources, bytes)?;
     serde_json::from_slice::<ThemeDefinitionV1>(bytes).map_err(|_| {
         invalid_json_contract_error(
             "contract-shape",
             "theme definition does not match the closed version one contract",
         )
     })
+}
+
+pub(super) fn check_definition_json_input(
+    resources: &ThemeResourcePolicy,
+    bytes: &[u8],
+) -> Result<(), ThemeMaterializationErrorV1> {
+    resources
+        .check_theme_encoded_bytes(bytes.len())
+        .map_err(encoded_bytes_contract_error)?;
+    preflight_json(bytes)
 }
 
 /// Admitted, borrowed authoring input proof consumed by the pure materializer.

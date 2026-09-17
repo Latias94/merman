@@ -9,9 +9,9 @@ mod finite;
 mod materialization_error;
 mod materialized;
 mod preset_catalog;
-mod preset_export;
 mod spec;
 mod support;
+mod theme_recipe;
 mod version;
 mod wire;
 
@@ -25,7 +25,6 @@ pub use materialized::MaterializedThemeWireV1;
 pub use preset_catalog::{
     THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
 };
-pub use preset_export::PresetExportV1;
 pub use spec::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, MermaidThemeValueWireV1,
     ThemeAssetsWireV1, ThemeCanvasLayerWireV1, ThemeCanvasSpecWireV1, ThemeEffectEntryWireV1,
@@ -38,6 +37,7 @@ pub use support::{
     ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1, ThemeSupportOutputV1,
     ThemeSupportQueryV1, ThemeSupportStateV1, ThemeSupportSubjectV1, ThemeSupportUnknownSubjectV1,
 };
+pub use theme_recipe::{THEME_RECIPE_SCHEMA_VERSION_V1, ThemeRecipeV1};
 pub use version::{
     ThemeContractVersion, ThemeContractVersionError, authoring_version_registry,
     resolve_authoring_version,

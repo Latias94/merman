@@ -132,7 +132,7 @@ pub(crate) fn definition_compile_error(
     }
 }
 
-fn materialization_error(
+pub(crate) fn materialization_error(
     policy: &ThemeResourcePolicy,
     error: ThemeMaterializationErrorV1,
 ) -> BindingError {
@@ -171,7 +171,7 @@ fn materialization_error(
 mod tests {
     use crate::BindingError;
     use merman::diagram_theme::{
-        MaterializedThemeWireV1, PresetExportV1, ThemeDefinitionV1, ThemeRuleFacetV1,
+        MaterializedThemeWireV1, ThemeDefinitionV1, ThemeRecipeV1, ThemeRuleFacetV1,
         ThemeSupportBaseTypographyPropertyV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
         ThemeTokensV1, describe_theme_support, materialize_theme_with_resource_policy,
     };
@@ -309,7 +309,7 @@ mod tests {
         let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy);
         let actual = crate::export_theme_preset_json_with(&compiler, b"editor-light")
             .expect("a built-in preset should export under the active compiler policy");
-        let export: PresetExportV1 =
+        let export: ThemeRecipeV1 =
             serde_json::from_slice(&actual).expect("preset export should use the contract wire");
 
         assert_eq!(export.kind(), "complete_spec");

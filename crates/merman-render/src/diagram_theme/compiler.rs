@@ -41,6 +41,17 @@ impl DiagramThemeCompiler {
         self.resources.check_theme_encoded_bytes(actual)
     }
 
+    /// Checks raw authoring JSON before a host normalizes or allocates its typed payload.
+    ///
+    /// This enforces the same structural and version admission as `compile_theme_definition_json`.
+    /// It does not replace materialization or semantic compilation.
+    pub fn check_definition_json_input(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(), merman_theme_contract::ThemeMaterializationErrorV1> {
+        super::definition_admission::check_definition_json_input(&self.resources, bytes)
+    }
+
     pub fn compile(
         &self,
         spec: DiagramThemeSpec,
@@ -112,16 +123,31 @@ impl DiagramThemeCompiler {
         Ok(self.compile_spec_wire(spec)?)
     }
 
+    /// Compiles a saved recipe through the same authoring and complete-spec admission paths.
+    pub fn compile_recipe(
+        &self,
+        recipe: merman_theme_contract::ThemeRecipeV1,
+    ) -> Result<super::DiagramTheme, super::ThemeDefinitionCompileError> {
+        match recipe {
+            merman_theme_contract::ThemeRecipeV1::Definition { definition } => {
+                super::definition_admission::compile_theme_definition(self, &definition)
+            }
+            merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } => {
+                Ok(self.compile_spec_wire(complete_spec)?)
+            }
+        }
+    }
+
     /// Exports one built-in preset as a self-contained editable recipe under this compiler's
     /// resource policy.
     pub fn export_preset(
         &self,
         preset: super::ThemePreset,
     ) -> Result<
-        merman_theme_contract::PresetExportV1,
+        merman_theme_contract::ThemeRecipeV1,
         merman_theme_contract::ThemeMaterializationErrorV1,
     > {
-        Ok(merman_theme_contract::PresetExportV1::CompleteSpec {
+        Ok(merman_theme_contract::ThemeRecipeV1::CompleteSpec {
             complete_spec: super::presets::materialize_spec_wire(preset, &self.resources)?,
         })
     }

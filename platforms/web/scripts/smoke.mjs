@@ -454,12 +454,35 @@ if (hasCapability("svg")) {
   }
 
   const presetExport = api.exportThemePreset("editor-light");
+  assert.equal(presetExport.schema_version, 1);
   assert.equal(presetExport.kind, "complete_spec");
   assert.equal(typeof presetExport.complete_spec, "object");
   assert.deepEqual(
     exportedWasmModule.exportThemePreset("editor-light"),
     presetExport,
   );
+  const restoredRecipe = JSON.parse(JSON.stringify(presetExport));
+  const recipeSource = "flowchart LR\nA[Theme recipe] --> B[Reloaded]";
+  const recipeSvgOptions = { diagram_id: "theme-recipe-roundtrip" };
+  const presetSvg = api.renderSvg(recipeSource, {
+    theme: { preset: "editor-light" }, svg: recipeSvgOptions,
+  });
+  assert.equal(api.renderSvg(recipeSource, {
+    theme: restoredRecipe, svg: recipeSvgOptions,
+  }), presetSvg, "saved recipes must reproduce their preset without unpacking");
+  assert.equal(exportedWasmModule.renderSvg(recipeSource, JSON.stringify({
+    theme: restoredRecipe, svg: recipeSvgOptions,
+  })), presetSvg, "raw WASM and public recipe selection must agree");
+  for (const invalidRecipe of [
+    { ...restoredRecipe, schema_version: 2 },
+    { ...restoredRecipe, preset: "editor-light" },
+    { ...restoredRecipe, spec: {} },
+  ]) {
+    assert.throws(() => api.renderSvg(recipeSource, { theme: invalidRecipe }), (error) => {
+      assert.equal(error.code_name, "MERMAN_OPTIONS_JSON_ERROR");
+      return true;
+    });
+  }
 } else {
   assert.equal(themeCatalog.structured_spec_available, false);
   assert.deepEqual(themeCatalog.supported_output_ids, []);

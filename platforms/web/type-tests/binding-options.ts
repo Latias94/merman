@@ -22,6 +22,7 @@ import type {
   ThemeAuthoringTypographyV1,
   ThemeAuthoringOptions,
   ThemeDefinitionV1,
+  ThemeRecipeV1,
   ThemeStylePatch,
   ThemeSupportQueryV1,
   ThemeSupportUnknownSubjectKindV1,
@@ -182,10 +183,38 @@ const compactTypographyWithLineHeight = {
   line_height: "normal",
 } satisfies ThemeAuthoringTypographyV1;
 
-const presetExport = exportThemePreset("editor-light");
+const presetExport: ThemeRecipeV1 = exportThemePreset("editor-light");
+const exportedThemeOptions: SvgBindingOptions = { theme: presetExport };
 if (presetExport.kind === "complete_spec") {
   presetExport.complete_spec;
 }
+const authoredRecipe = {
+  schema_version: 1,
+  kind: "definition",
+  definition: themeDefinition,
+} satisfies ThemeRecipeV1;
+const authoredThemeOptions: SvgBindingOptions = { theme: authoredRecipe };
+const completeRecipe = {
+  schema_version: 1,
+  kind: "complete_spec",
+  complete_spec: { styles: [] },
+} satisfies ThemeRecipeV1;
+const completeThemeOptions: SvgBindingOptions = { theme: completeRecipe };
+const futureRecipe = { ...authoredRecipe, schema_version: 2 } as const;
+// @ts-expect-error unknown recipe versions require runtime migration, not unchecked admission.
+const futureThemeOptions: SvgBindingOptions = { theme: futureRecipe };
+const mixedPresetRecipe = { ...authoredRecipe, preset: "editor-light" };
+// @ts-expect-error recipe and preset selection must not compete for ownership.
+const mixedPresetThemeOptions: SvgBindingOptions = { theme: mixedPresetRecipe };
+const mixedSpecRecipe = { ...completeRecipe, spec: {} };
+// @ts-expect-error recipe and direct spec selection are mutually exclusive.
+const mixedSpecThemeOptions: SvgBindingOptions = { theme: mixedSpecRecipe };
+const ambiguousRecipe = { ...authoredRecipe, complete_spec: {} };
+// @ts-expect-error a recipe has exactly one payload, including structurally assigned values.
+const ambiguousRecipeOptions: SvgBindingOptions = { theme: ambiguousRecipe };
+const unversionedRecipe = { kind: "definition", definition: themeDefinition } as const;
+// @ts-expect-error shared recipes always carry their wire version.
+const unversionedThemeOptions: SvgBindingOptions = { theme: unversionedRecipe };
 
 const tightenedSvgOptions = withResourceOptions(
   {

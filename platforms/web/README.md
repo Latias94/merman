@@ -52,6 +52,33 @@ renderSvgToElement(target, `flowchart TD
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
 
+## Save and share a theme
+
+The alpha.7 source API accepts a preset ID, a complete specification, or a versioned
+`ThemeRecipeV1` document in `options.theme`. Export a preset once and keep the returned document
+intact when saving or sharing it:
+
+```ts
+import { exportThemePreset, renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
+
+const recipe: ThemeRecipeV1 = exportThemePreset("editor-light");
+const saved = JSON.stringify(recipe);
+const restored: unknown = JSON.parse(saved);
+const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", JSON.stringify({ theme: restored }));
+```
+
+Initialize the runtime before these calls. Passing the options JSON lets Rust validate a document
+loaded from storage; a TypeScript assertion cannot validate untrusted JSON. Keep `schema_version`
+and `kind` with the payload. Unknown versions and mixed recipe/preset/spec selections are rejected.
+A recipe with `kind: "definition"` exposes compact `tokens` and family-scoped `styles` under
+`definition`; a `complete_spec` recipe retains the full specification, including its canvas,
+effects, and resources. Export preserves the recipe's representation, so inspect `kind` before
+editing it. You can also select a preset directly with `{ theme: { preset: "editor-light" } }`.
+
+A reusable recipe is not a claim that every diagram family or output target supports every authored
+style. Query `describeThemeSupport()` for the relevant family, output, and mechanism. Saving a recipe
+does not switch it to another preset or embed fonts supplied separately by the host.
+
 ## Choose an SVG pipeline
 
 Browser previews should keep the default `parity` pipeline, which preserves Mermaid HTML labels

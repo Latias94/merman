@@ -528,8 +528,24 @@ preserves bounded unknown subject fields so an old consumer can display and forw
 without claiming it can execute the new subject.
 
 `export_theme_preset` is a separate alpha catalog convenience. It returns the closed
-`PresetExportV1` union (`definition` or `complete_spec`) and follows the catalog's active resource
-policy. It is not part of token expansion, support discovery, or the low-level render input contract.
+`ThemeRecipeV1` exchange union (`definition` or `complete_spec`) under the active resource policy.
+The required root `schema_version: 1` identifies the complete recipe contract; definitions also
+retain their authoring/expansion version tuple. This replaces the unpublished `PresetExportV1`
+name without adding an alias or incrementing an unpublished schema.
+
+The exported document is directly accepted by binding `options.theme` and CLI `--theme-file`.
+Existing exact `{preset}` and `{spec}` selections remain available; mixing a selection and a
+recipe is rejected. Rust callers use `DiagramThemeCompiler::compile_recipe`. Both recipe kinds
+converge on the existing materialization/compiler paths; the low-level renderer continues to
+consume a compiled theme rather than interpreting authoring JSON.
+
+Untrusted JSON entry points check the exact recipe byte budget and raw envelope before JSON
+normalization. Definition payloads reuse the existing bounded authoring JSON preflight, including
+duplicate-key rejection. Unknown versions fail explicitly, never by falling back to a preset.
+Serialization itself does not perform semantic compilation or make portability guarantees.
+Sharing the JSON with accompanying README/LICENSE files is sufficient for this tranche; host
+fonts and backdrop assumptions remain external requirements, and there is no remote theme loader
+or package registry.
 
 Only a concrete render or export report can report actual `Applied`, residual, portability, and
 admission results.

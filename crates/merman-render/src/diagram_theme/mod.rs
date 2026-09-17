@@ -119,8 +119,8 @@ pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
 pub use merman_theme_contract::{
-    PresetExportV1, THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetMetadataV1,
-    ThemePresetQualifiedCellV1,
+    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
+    ThemeRecipeV1,
 };
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,

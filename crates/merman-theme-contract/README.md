@@ -13,6 +13,32 @@ expand tokens, validate renderer semantics, or decode the wire into renderer typ
 This crate is configured as a publishable pre-freeze alpha contract and makes no cross-version
 compatibility promise before the C7a contract gate.
 
+## Saved theme recipes
+
+`ThemeRecipeV1` is the canonical exchange envelope for an editable theme file. Its required
+`schema_version: 1` and `kind` accompany either `definition` (compact tokens/styles) or
+`complete_spec` (the full specification, including canvas and effects). Exported presets use this
+same envelope. Pass the saved document directly to binding `options.theme` or CLI `--theme-file`;
+Rust callers can pass the decoded value to `DiagramThemeCompiler::compile_recipe`.
+
+```json
+{
+  "schema_version": 1,
+  "kind": "definition",
+  "definition": {
+    "authoring_schema_version": 1,
+    "expansion_version": 1,
+    "tokens": { "canvas": "#0f172a", "text": "#e5e7eb", "accent": "#60a5fa" }
+  }
+}
+```
+
+Unknown versions and mixed payload kinds are errors. This dependency-neutral crate owns the
+wire, not renderer semantics or host resource admission. Direct Serde decoding is appropriate
+only for trusted or externally bounded input. Sharing a recipe does not guarantee that all
+families support every effect, bundle system fonts, or transfer redistribution rights; document
+those requirements in accompanying README/LICENSE files.
+
 ## Authoring wire
 
 Rust callers can construct the current ephemeral envelope without spelling version numbers:

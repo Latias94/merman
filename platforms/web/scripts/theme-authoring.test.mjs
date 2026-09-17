@@ -4,6 +4,7 @@ import test from "node:test";
 import { initMerman } from "../dist/runtime-core.js";
 import {
   describeThemeSupport,
+  exportThemePreset,
   materializeTheme,
   renderSvg,
 } from "../dist/runtime-render.js";
@@ -122,4 +123,40 @@ test("ordinary SVG options reject non-finite numbers while preserving explicit n
       site_config: { fixed_today: null },
     }),
   });
+});
+
+test("exported recipes survive JSON storage and enter SVG options without unpacking", async () => {
+  const calls = [];
+  const recipe = {
+    schema_version: 1,
+    kind: "complete_spec",
+    complete_spec: { styles: [] },
+  };
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => 5,
+      exportThemePreset(presetId, options) {
+        calls.push({ presetId, options });
+        return structuredClone(recipe);
+      },
+      renderSvg(source, options) {
+        calls.push({ source, options });
+        return "<svg/>";
+      },
+    }),
+    { initMerman, exportThemePreset, renderSvg },
+  );
+  await runtime.initMerman();
+
+  const stored = JSON.stringify(runtime.exportThemePreset("editor-light"));
+  const restored = JSON.parse(stored);
+  runtime.renderSvg("flowchart LR\nA --> B", { theme: restored });
+  assert.deepEqual(calls, [
+    { presetId: "editor-light", options: undefined },
+    {
+      source: "flowchart LR\nA --> B",
+      options: JSON.stringify({ theme: recipe }),
+    },
+  ]);
 });

@@ -1,15 +1,42 @@
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourcePolicy};
-use merman_theme_contract::DiagramThemeSpecWireV1;
-use serde::Deserialize;
+use merman_theme_contract::{
+    DiagramThemeSpecWireV1, THEME_RECIPE_SCHEMA_VERSION_V1, ThemeRecipeV1,
+};
+use serde::{Deserialize, Deserializer, de::Error as _};
 use serde_json::{Value, value::RawValue};
 
 use crate::common::{BindingError, BindingStatus};
 
+#[derive(Debug)]
+pub(crate) enum BindingThemeOptionsJson {
+    Selection(ThemeSelectionJson),
+    Recipe(ThemeRecipeV1),
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct BindingThemeOptionsJson {
+pub(crate) struct ThemeSelectionJson {
     preset: Option<String>,
     spec: Option<DiagramThemeSpecWireV1>,
+}
+
+impl<'de> Deserialize<'de> for BindingThemeOptionsJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        validate_theme_wire(Some(&value)).map_err(|error| D::Error::custom(error.message()))?;
+        if value.get("kind").is_some() || value.get("schema_version").is_some() {
+            serde_json::from_value(value)
+                .map(Self::Recipe)
+                .map_err(D::Error::custom)
+        } else {
+            serde_json::from_value(value)
+                .map(Self::Selection)
+                .map_err(D::Error::custom)
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,10 +75,73 @@ pub(crate) fn validate_theme_input_json_with(
     };
     compiler
         .check_encoded_input_bytes(theme.get().len())
-        .map_err(theme_resource_error)
+        .map_err(theme_resource_error)?;
+    check_recipe_json_input(compiler, theme.get().as_bytes())
 }
 
-/// Compiles one exact `{"preset": ...}` or `{"spec": ...}` selection with default host policy.
+// Borrow payloads so version and authoring admission precede Value normalization. In particular,
+// normalizing first would silently discard duplicate definition fields.
+#[derive(Deserialize)]
+struct RecipeInputProbe<'a> {
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    schema_version: Option<&'a RawValue>,
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    kind: Option<&'a RawValue>,
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    definition: Option<&'a RawValue>,
+    #[serde(
+        default,
+        borrow,
+        rename = "complete_spec",
+        deserialize_with = "present_raw_value"
+    )]
+    _complete_spec: Option<&'a RawValue>,
+}
+
+fn present_raw_value<'de, D>(deserializer: D) -> Result<Option<&'de RawValue>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    <&RawValue>::deserialize(deserializer).map(Some)
+}
+
+fn check_recipe_json_input(
+    compiler: &DiagramThemeCompiler,
+    bytes: &[u8],
+) -> Result<(), BindingError> {
+    let probe: RecipeInputProbe<'_> = serde_json::from_slice(bytes)
+        .map_err(|error| invalid_options(format!("invalid theme JSON: {error}")))?;
+    if probe.kind.is_none() && probe.schema_version.is_none() {
+        return Ok(());
+    }
+    let version = probe
+        .schema_version
+        .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok());
+    check_recipe_version(version)?;
+    if let Some(definition) = probe.definition {
+        compiler
+            .check_definition_json_input(definition.get().as_bytes())
+            .map_err(|error| {
+                crate::theme_definition::materialization_error(compiler.resource_policy(), error)
+            })?;
+    }
+    Ok(())
+}
+
+fn check_recipe_version(version: Option<u64>) -> Result<(), BindingError> {
+    if version == Some(u64::from(THEME_RECIPE_SCHEMA_VERSION_V1)) {
+        return Ok(());
+    }
+    Err(invalid_options(format!(
+        "unsupported theme recipe schema_version {}; expected integer {}",
+        version
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "<missing or non-integer>".to_owned()),
+        THEME_RECIPE_SCHEMA_VERSION_V1,
+    )))
+}
+
+/// Compiles a versioned recipe or an exact preset/spec selection with default host policy.
 pub fn compile_theme_selection_json(bytes: &[u8]) -> Result<DiagramTheme, BindingError> {
     let compiler =
         DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
@@ -68,6 +158,7 @@ pub fn compile_theme_selection_json_with(
     compiler
         .check_encoded_input_bytes(bytes.len())
         .map_err(theme_resource_error)?;
+    check_recipe_json_input(compiler, bytes)?;
     let value: Value = serde_json::from_slice(bytes).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -103,6 +194,15 @@ pub(crate) fn validate_theme_wire(theme: Option<&Value>) -> Result<(), BindingEr
         .ok_or_else(|| invalid_options("options field `theme` must be an object or null"))?;
     let has_preset = object.contains_key("preset");
     let has_spec = object.contains_key("spec");
+    if object.contains_key("kind") || object.contains_key("schema_version") {
+        if has_preset || has_spec {
+            return Err(invalid_options(
+                "theme recipe must not also contain `preset` or `spec`",
+            ));
+        }
+        check_recipe_version(object.get("schema_version").and_then(Value::as_u64))?;
+        return Ok(());
+    }
     match (has_preset, has_spec) {
         (true, false) | (false, true) => {}
         (false, false) => {
@@ -134,6 +234,20 @@ pub(crate) fn compile_theme_with(
 ) -> Result<Option<DiagramTheme>, BindingError> {
     let Some(selection) = selection else {
         return Ok(None);
+    };
+    let selection = match selection {
+        BindingThemeOptionsJson::Recipe(recipe) => {
+            return compiler
+                .compile_recipe(recipe.clone())
+                .map(Some)
+                .map_err(|error| {
+                    crate::theme_definition::definition_compile_error(
+                        compiler.resource_policy(),
+                        error,
+                    )
+                });
+        }
+        BindingThemeOptionsJson::Selection(selection) => selection,
     };
     let theme = match (&selection.preset, &selection.spec) {
         (Some(id), None) => {
@@ -273,6 +387,8 @@ mod tests {
             serde_json::json!({"preset": "editor-dark", "spec": {}}),
             serde_json::json!({"preset": null}),
             serde_json::json!({"spec": null}),
+            serde_json::json!({"schema_version": 1, "kind": "complete_spec", "complete_spec": {}, "preset": "editor-dark"}),
+            serde_json::json!({"schema_version": 1, "kind": "complete_spec", "complete_spec": {}, "spec": {}}),
         ] {
             let error = validate_theme_wire(Some(&invalid)).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -281,6 +397,118 @@ mod tests {
         validate_theme_wire(Some(&Value::Null)).unwrap();
         validate_theme_wire(Some(&serde_json::json!({"preset": "editor-light"}))).unwrap();
         validate_theme_wire(Some(&serde_json::json!({"spec": {}}))).unwrap();
+    }
+
+    #[test]
+    fn exported_recipe_is_directly_importable_by_a_fresh_compiler() {
+        let exporter = DiagramThemeCompiler::new();
+        for preset in [
+            merman::svg::ThemePreset::EditorDark,
+            merman::svg::ThemePreset::Cyberpunk,
+        ] {
+            let recipe = exporter.export_preset(preset).unwrap();
+            let bytes = serde_json::to_vec(&recipe).unwrap();
+            let expected = exporter.compile_preset(preset).unwrap();
+            let imported = compile_theme_selection_json_with(&DiagramThemeCompiler::new(), &bytes)
+                .expect("an exported recipe must be accepted without envelope reconstruction");
+            assert_eq!(imported.recipe_fingerprint(), expected.recipe_fingerprint());
+        }
+    }
+
+    #[test]
+    fn recipe_definition_uses_the_existing_materializer_and_admission() {
+        let definition = ThemeDefinitionV1::new(
+            ThemeTokensV1::default().with_color(ThemeColorTokenV1::Accent, "#123456"),
+        );
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1,
+            "kind": "definition",
+            "definition": definition,
+        }))
+        .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let expected = compile_theme_definition(&compiler, &definition).unwrap();
+        let imported = compile_theme_selection_json_with(&compiler, &bytes)
+            .expect("a versioned definition recipe must materialize before compilation");
+        assert_eq!(imported.recipe_fingerprint(), expected.recipe_fingerprint());
+    }
+
+    #[test]
+    fn recipe_version_errors_precede_future_payload_shape_errors() {
+        let bytes =
+            br#"{"kind":"complete_spec","complete_spec":{"future_field":true},"schema_version":2}"#;
+        let error = compile_theme_selection_json(bytes).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error.message().contains("schema_version"),
+            "{}",
+            error.message()
+        );
+        assert!(error.message().contains('2'), "{}", error.message());
+    }
+
+    #[test]
+    fn recipe_raw_admission_rejects_duplicates_and_invalid_versions_in_both_entries() {
+        let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        let mut invalid = vec![
+            r#"{"schema_version":1,"kind":"complete_spec","complete_spec":{"future":true},"complete_spec":{}}"#.to_owned(),
+            format!(r#"{{"kind":"definition","schema_version":null,"schema_version":1,"definition":{definition}}}"#),
+            format!(r#"{{"kind":"definition","schema_version":2,"schema_\u0076ersion":1,"definition":{definition}}}"#),
+            r#"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
+            r##"{"kind":"definition","schema_version":1,"definition":{"authoring_schema_version":1,"expansion_version":1,"tokens":{"accent":"#111111","accent":"#222222"}}}"##.to_owned(),
+        ];
+        invalid.push(r#"{"schema_version":1,"kind":"complete_spec","complete_spec":null,"complete_\u0073pec":{}}"#.to_owned());
+        for version in ["null", "0", "2", "1.0", "1e0", "\"1\"", "true"] {
+            invalid.push(format!(
+                r#"{{"definition":{definition},"kind":"definition","schema_version":{version}}}"#
+            ));
+        }
+        invalid.push(format!(
+            r#"{{"kind":"definition","definition":{definition}}}"#
+        ));
+        let nested = format!("{}0{}", "[".repeat(40), "]".repeat(40));
+        invalid.push(format!(r#"{{"kind":"definition","schema_version":1,"definition":{{"tokens":{{"accent":{nested}}}}}}}"#));
+        let tiny = DiagramThemeCompiler::new().with_resource_policy(
+            ThemeResourcePolicy::default()
+                .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+                .unwrap(),
+        );
+        for input in invalid {
+            let options = format!(r#"{{"theme":{input}}}"#);
+            for error in [
+                compile_theme_selection_json_with(&tiny, input.as_bytes()).unwrap_err(),
+                validate_theme_input_json_with(&tiny, options.as_bytes()).unwrap_err(),
+            ] {
+                assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+            }
+            assert!(
+                compile_theme_selection_json(input.as_bytes()).is_err(),
+                "{input}"
+            );
+            assert!(
+                validate_theme_input_json(options.as_bytes()).is_err(),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn saved_recipe_renders_identically_in_one_shot_and_reusable_engines() {
+        let recipe = crate::export_theme_preset_json(b"editor-dark").unwrap();
+        let restored: Value = serde_json::from_slice(&recipe).unwrap();
+        let options = serde_json::to_vec(&serde_json::json!({
+            "svg": { "diagram_id": "shared-recipe" }, "theme": restored,
+        }))
+        .unwrap();
+        let source = b"flowchart LR\nA-->B\n";
+        let expected = crate::render_svg(
+            source,
+            br#"{"svg":{"diagram_id":"shared-recipe"},"theme":{"preset":"editor-dark"}}"#,
+        )
+        .unwrap();
+        assert_eq!(crate::render_svg(source, &options).unwrap(), expected);
+        let engine = crate::BindingEngine::new(&options).unwrap();
+        assert_eq!(engine.render_svg(source).unwrap(), expected);
     }
 
     #[test]

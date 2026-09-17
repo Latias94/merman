@@ -12,7 +12,7 @@ import type {
   HostTextMeasurer,
   HostTextMeasurerSvgBindingOptions,
   MaterializedThemeWireV1,
-  PresetExportV1,
+  ThemeRecipeV1,
   SvgBindingOptions,
   ThemeAuthoringOptions,
   SvgPlanResult,
@@ -60,7 +60,7 @@ export function describeThemeSupport(
 export function exportThemePreset(
   presetId: string,
   options?: ThemeAuthoringOptions | string
-): PresetExportV1 {
+): ThemeRecipeV1 {
   return getMerman().exportThemePreset(presetId, encodeOptions(options));
 }
 

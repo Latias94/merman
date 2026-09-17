@@ -21,13 +21,13 @@ pub use merman_render::diagram_theme::{
 };
 pub use merman_theme_contract::{
     CanonicalJsonError, CanonicalJsonErrorKind, DiagramThemeSpecWireV1, MaterializedThemeWireV1,
-    PresetExportV1, SpecifiedWireV1, THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeAuthoringTypographyV1,
+    SpecifiedWireV1, THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeAuthoringTypographyV1,
     ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1, ThemeCapabilityDescriptorV1,
     ThemeColorTokenV1, ThemeDefinitionV1, ThemeGradientStopWireV1, ThemeInsetsWireV1,
     ThemeLengthWireV1, ThemeLineHeightWireV1, ThemeLinearGradientRepetitionWireV1,
     ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeOrdinalCycleWireV1,
-    ThemeOrdinalSelectorWireV1, ThemeRadialGradientRepetitionWireV1, ThemeRuleFacetV1,
-    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
+    ThemeOrdinalSelectorWireV1, ThemeRadialGradientRepetitionWireV1, ThemeRecipeV1,
+    ThemeRuleFacetV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
     ThemeSupportBaseTypographyPropertyV1, ThemeSupportFacetV1, ThemeSupportOutputV1,
     ThemeSupportQueryV1, ThemeSupportStateV1, ThemeSupportSubjectV1, ThemeTextStylePatchWireV1,
     ThemeTokensV1,

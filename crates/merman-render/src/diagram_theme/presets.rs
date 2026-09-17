@@ -545,7 +545,7 @@ mod tests {
     fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
         for descriptor in theme_preset_descriptors() {
             let compiler = DiagramThemeCompiler::new();
-            let merman_theme_contract::PresetExportV1::CompleteSpec {
+            let merman_theme_contract::ThemeRecipeV1::CompleteSpec {
                 complete_spec: original,
             } = compiler
                 .export_preset(descriptor.preset())
@@ -604,7 +604,7 @@ mod tests {
     fn preset_complete_spec_exports_preserve_each_recipe_profile() {
         let compiler = DiagramThemeCompiler::new();
         for descriptor in theme_preset_descriptors() {
-            let merman_theme_contract::PresetExportV1::CompleteSpec { complete_spec } = compiler
+            let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = compiler
                 .export_preset(descriptor.preset())
                 .expect("preset export must materialize")
             else {
