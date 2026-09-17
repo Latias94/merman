@@ -7,10 +7,10 @@
 //! optional operation deadline before dispatch.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
-    CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey, RuntimeCatalog,
-    RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
-    WEB_TRANSPORT_API_VERSION,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingOperationResult,
+    BindingTransportKey, CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey,
+    RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey,
+    ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION,
 };
 use serde::Serialize;
 use std::time::Duration;
@@ -129,6 +129,17 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
     ))
 }
 
+/// Renders once and retains the execution metadata for the returned SVG.
+#[wasm_bindgen(js_name = renderSvgResult)]
+pub fn render_svg_result(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    svg_result(execute_wasm_operation_result(
+        "svg",
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
 #[wasm_bindgen(js_name = svgPlanJson)]
 pub fn svg_plan_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
     json_value_result(execute_wasm_operation(
@@ -150,6 +161,25 @@ pub fn render_svg_with_text_measurer(
         let services = merman_bindings_core::BindingEngineServices::new()
             .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
         string_result(execute_wasm_operation_with_services(
+            "svg",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            services,
+        ))
+    })
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = renderSvgResultWithTextMeasurer)]
+pub fn render_svg_result_with_text_measurer(
+    source: &str,
+    options_json: Option<String>,
+    callback: js_sys::Function,
+) -> Result<JsValue, JsValue> {
+    with_host_text_measure_callback(callback, || {
+        let services = merman_bindings_core::BindingEngineServices::new()
+            .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        svg_result(execute_wasm_operation_result_with_services(
             "svg",
             source.as_bytes(),
             options_bytes(options_json.as_deref()),
@@ -423,15 +453,23 @@ fn execute_wasm_operation(
     options_json: &[u8],
     uri: Option<&[u8]>,
 ) -> Result<Vec<u8>, BindingError> {
+    execute_wasm_operation_result(operation_id, source, options_json, uri)
+        .map(BindingOperationResult::into_data)
+}
+
+fn execute_wasm_operation_result(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    uri: Option<&[u8]>,
+) -> Result<BindingOperationResult, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
-    wasm_artifact_contract()
-        .execute_once(
-            BindingOperationRequest::new(operation_id, source)
-                .with_optional_uri(uri)
-                .with_options_json(&normalized_options)
-                .with_control(wasm_operation_control(timeout)),
-        )
-        .map(merman_bindings_core::BindingOperationResult::into_data)
+    wasm_artifact_contract().execute_once(
+        BindingOperationRequest::new(operation_id, source)
+            .with_optional_uri(uri)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+    )
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -441,15 +479,35 @@ fn execute_wasm_operation_with_services(
     options_json: &[u8],
     services: merman_bindings_core::BindingEngineServices,
 ) -> Result<Vec<u8>, BindingError> {
+    execute_wasm_operation_result_with_services(operation_id, source, options_json, services)
+        .map(BindingOperationResult::into_data)
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+fn execute_wasm_operation_result_with_services(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    services: merman_bindings_core::BindingEngineServices,
+) -> Result<BindingOperationResult, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
-    wasm_artifact_contract()
-        .execute_once_with_services(
-            BindingOperationRequest::new(operation_id, source)
-                .with_options_json(&normalized_options)
-                .with_control(wasm_operation_control(timeout)),
-            services,
-        )
-        .map(merman_bindings_core::BindingOperationResult::into_data)
+    wasm_artifact_contract().execute_once_with_services(
+        BindingOperationRequest::new(operation_id, source)
+            .with_options_json(&normalized_options)
+            .with_control(wasm_operation_control(timeout)),
+        services,
+    )
+}
+
+fn svg_result(result: Result<BindingOperationResult, BindingError>) -> Result<JsValue, JsValue> {
+    let output = result.map_err(binding_error_to_js)?;
+    let (_, _, data, metadata) = output.into_parts();
+    let svg = String::from_utf8(data).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let metadata: serde_json::Value = serde_json::from_slice(metadata.json_bytes())
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    serde_json::json!({ "svg": svg, "metadata": metadata })
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {

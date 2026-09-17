@@ -49,6 +49,8 @@ export interface LayoutOptions {
 }
 
 export interface RenderEnvironmentOptions {
+  /** Require the renderer's native portability admission; pipeline selection alone is not strict. */
+  theme_portability?: "best-effort" | "require-portable";
   text_measurement?: "deterministic" | null;
   math_renderer?: "none" | "ratex";
 }
@@ -1050,6 +1052,39 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
   diagrams: AnalysisDiagramFacts[];
 }
 
+/** Renderer-owned outcome, with open status/reason IDs for forward-compatible consumers. */
+export interface ThemeExecutionEvidenceV1 {
+  version: 1;
+  family_id: string;
+  theme_status: string;
+  output_mutated: boolean;
+  target_kind: string;
+  target_status: string;
+  target_reason_ids: string[];
+  font_source: string;
+}
+
+/** Unknown versions stay opaque. Never treat an unknown status or version as portable. */
+export type ThemeExecutionEvidence =
+  | ThemeExecutionEvidenceV1
+  | { version: number; [key: string]: unknown };
+
+/** Existing binding metadata for the exact SVG returned by the same execution. */
+export interface SvgRenderMetadata {
+  version: 1;
+  operation_id: "svg";
+  media_type: "image/svg+xml";
+  runtime_policy: string;
+  byte_length: number;
+  theme_execution_evidence: ThemeExecutionEvidence;
+  [key: string]: unknown;
+}
+
+export interface SvgRenderResult {
+  svg: string;
+  metadata: SvgRenderMetadata;
+}
+
 /**
  * Capability plan for one SVG render request.
  *
@@ -1325,6 +1360,12 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  renderSvgResult: (source: string, optionsJson?: string | null) => SvgRenderResult;
+  renderSvgResultWithTextMeasurer?: (
+    source: string,
+    optionsJson: string | null | undefined,
+    measurer: HostTextMeasurer
+  ) => SvgRenderResult;
   svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (
     source: string,

@@ -7,6 +7,8 @@ import {
   exportThemePreset,
   materializeTheme,
   renderSvg,
+  renderSvgResult,
+  renderSvgResultWithTextMeasurer,
 } from "../dist/runtime-render.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
@@ -159,4 +161,53 @@ test("exported recipes survive JSON storage and enter SVG options without unpack
       options: JSON.stringify({ theme: recipe }),
     },
   ]);
+});
+
+
+test("SVG results preserve opaque evidence and forward policy through one execution", async () => {
+  const calls = [];
+  let evidence = { version: 1, theme_status: "future-theme", target_status: "future-target" };
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => 5,
+      renderSvgResult(source, options) {
+        calls.push({ source, options });
+        return { svg: "<svg>用户</svg>", metadata: { version: 1, theme_execution_evidence: evidence } };
+      },
+      renderSvgResultWithTextMeasurer(source, options, callback) {
+        calls.push({ source, options, callback });
+        return { svg: "<svg/>", metadata: { version: 1, theme_execution_evidence: evidence } };
+      },
+    }),
+    { initMerman, renderSvgResult, renderSvgResultWithTextMeasurer },
+  );
+  await runtime.initMerman();
+  for (const value of [
+    evidence,
+    { version: 99, future: { target_status: "portable" } },
+    { version: 1, theme_status: "verified", target_status: "future-target" },
+  ]) {
+    evidence = value;
+    const result = runtime.renderSvgResult("classDiagram\nclass Account", {
+      environment: { theme_portability: "best-effort" },
+    });
+    assert.deepEqual(result.metadata.theme_execution_evidence, value);
+    const outcome = result.metadata.theme_execution_evidence;
+    assert.equal(outcome.version === 1 && outcome.theme_status === "verified"
+      && outcome.target_status === "portable", false, "unknown evidence must not grant portability");
+  }
+  assert.equal(calls.length, 3, "each result must come from one render operation");
+  const callback = () => null;
+  runtime.renderSvgResultWithTextMeasurer("flowchart LR\nA", callback, {
+    environment: { theme_portability: "require-portable" },
+  });
+  assert.deepEqual(calls.at(-1), {
+    source: "flowchart LR\nA", callback,
+    options: JSON.stringify({ environment: { theme_portability: "require-portable" } }),
+  });
+  assert.throws(() => runtime.renderSvgResult("classDiagram\nclass Account", {
+    theme: { spec: { typography: { default: { font_size_px: NaN } } } },
+  }), TypeError);
+  assert.equal(calls.length, 4, "invalid input must not reach the result transport");
 });

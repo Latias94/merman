@@ -23,12 +23,20 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 The current palette presets advertise no dedicated Modern Mermaid reproduction. A successful SVG
 render is not proof of readable dense labels, complete effects, or PNG/PDF portability.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
-and approve the visual design of a particular scene. Web `renderSvg()` currently returns only
-the SVG string, and `svgPlanJson().ready` checks artifact capabilities rather than applied theme
-facets. Do not use either as proof that every authored rule took effect. Exposing the actual
-request's theme outcome through a convenient Web entry point remains a contract-freeze gate.
-Web options do not yet expose the Rust facade's `RequirePortable` policy; `resvg-safe` selects a
-pipeline and must not be presented as that strict policy.
+and approve the visual design of a particular scene. Web `renderSvg()` returns only the SVG
+string, and `svgPlanJson().ready` checks artifact capabilities rather than applied theme facets.
+Use `renderSvgResult()` to retrieve `{ svg, metadata }` from one execution, including versioned
+`metadata.theme_execution_evidence`. Its theme and target states are separate; unknown versions
+or statuses must not grant portability. This is a coarse outcome, not a per-rule/facet explanation.
+BestEffort can return a useful preview together with a rejected target status; strict policy
+turns that failed admission into an operation error. Detailed user diagnostics remain a
+contract-freeze gate.
+
+Set `environment.theme_portability` to `"require-portable"` for the existing native strict policy,
+or `"best-effort"` for the default behavior. Strict rendering rejects a result that fails admission
+with the usual structured render error. It does not pick a different theme. Host fonts and
+browser-dependent output may fail this requirement even when some theme paints were applied.
+`resvg-safe` selects a pipeline and is not a substitute for the explicit policy.
 
 There is no automatic cross-preset fallback. Outside a dedicated design scope, retain the selected
 recipe and explain whether it has base-only or unreviewed styling. A host can offer an explicit

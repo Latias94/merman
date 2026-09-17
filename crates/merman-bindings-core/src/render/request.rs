@@ -262,6 +262,22 @@ impl RenderOperationConfig {
             .with_resource_policy(render_resources)
             .with_theme_resource_ceiling(theme_resources);
         if let Some(environment_json) = options.environment.as_ref() {
+            if let Some(requirement) = environment_json.theme_portability.as_deref() {
+                environment = environment.with_theme_portability_requirement(
+                    match normalize_option(requirement).as_str() {
+                        "best-effort" => merman::svg::ThemePortabilityRequirement::BestEffort,
+                        "require-portable" => {
+                            merman::svg::ThemePortabilityRequirement::RequirePortable
+                        }
+                        other => {
+                            return Err(BindingError::new(
+                                BindingStatus::InvalidArgument,
+                                format!("unsupported environment.theme_portability: {other}"),
+                            ));
+                        }
+                    },
+                );
+            }
             if let Some(kind) = environment_json.text_measurement.as_deref() {
                 environment = environment.with_text_measurement_policy(
                     match normalize_option(kind).as_str() {
@@ -639,6 +655,164 @@ fn unexpected_render_output(target: &str) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PORTABILITY_SOURCE: &[u8] =
+        b"sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
+
+    #[test]
+    fn theme_portability_default_and_explicit_best_effort_are_equivalent() {
+        let default_options = serde_json::json!({
+            "theme": {"spec": {"canvas": {"base": "#f7f3e8"}}},
+            "svg": {"diagram_id": "portability-contract", "pipeline": "resvg-safe"}
+        });
+        let mut explicit_options = default_options.clone();
+        explicit_options["environment"] = serde_json::json!({"theme_portability": "best-effort"});
+        let engine = crate::BindingEngine::new(b"").expect("reusable engine");
+        let mut expected = None;
+        for options in [default_options, explicit_options] {
+            let options = serde_json::to_vec(&options).expect("options JSON");
+            let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options);
+            let once = crate::execute_once(request.clone()).expect("best effort one shot");
+            let reusable = engine.execute(request).expect("best effort reusable");
+            let based = crate::BindingEngine::new(&options)
+                .expect("base options")
+                .execute(crate::BindingOperationRequest::new(
+                    "svg",
+                    PORTABILITY_SOURCE,
+                ))
+                .expect("best effort base options");
+            for actual in [&reusable, &based] {
+                assert_eq!(once.data(), actual.data());
+                assert_eq!(
+                    once.metadata().theme_execution_evidence(),
+                    actual.metadata().theme_execution_evidence()
+                );
+            }
+            let evidence = once.metadata().theme_execution_evidence().cloned();
+            if let Some((data, previous_evidence)) = expected.as_ref() {
+                assert_eq!(once.data(), data);
+                assert_eq!(&evidence, previous_evidence);
+            } else {
+                expected = Some((once.data().to_vec(), evidence));
+            }
+        }
+    }
+
+    #[test]
+    fn theme_portability_unknown_value_is_rejected_by_every_engine_path() {
+        let options = br#"{"environment":{"theme_portability":"portable-maybe"}}"#;
+        let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+            .with_options_json(options);
+        let once = crate::execute_once(request.clone()).expect_err("unknown one-shot policy");
+        let reusable = crate::BindingEngine::new(b"")
+            .expect("reusable engine")
+            .execute(request)
+            .expect_err("unknown request-local policy");
+        let base = crate::BindingEngine::new(options)
+            .err()
+            .expect("unknown engine policy");
+        for error in [once, reusable, base] {
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains("environment.theme_portability"));
+            assert!(error.message().contains("portable-maybe"));
+        }
+    }
+
+    #[test]
+    fn theme_portability_strict_policy_rejects_unsupported_winning_facets() {
+        let mut options = serde_json::json!({
+            "theme": {"spec": {"styles": [{
+                "kind": "rule", "target": "lifeline", "family": "sequence",
+                "style": {"stroke": {"paint": "#2563eb"}, "radius": 6}
+            }]}},
+            "svg": {"diagram_id": "strict-portability", "pipeline": "resvg-safe"}
+        });
+        let best_effort = serde_json::to_vec(&options).expect("best effort options");
+        let successful = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&best_effort),
+        )
+        .expect("supported stroke survives best effort rendering");
+        assert!(String::from_utf8_lossy(successful.data()).contains("#2563eb"));
+        options["environment"] = serde_json::json!({"theme_portability": "require-portable"});
+        let strict = serde_json::to_vec(&options).expect("strict options");
+        let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+            .with_options_json(&strict);
+        let once = crate::execute_once(request.clone()).expect_err("unsupported strict one shot");
+        let reusable = crate::BindingEngine::new(b"")
+            .expect("reusable engine")
+            .execute(request)
+            .expect_err("unsupported strict request overlay");
+        let based = crate::BindingEngine::new(&strict)
+            .expect("strict engine configuration")
+            .execute(crate::BindingOperationRequest::new(
+                "svg",
+                PORTABILITY_SOURCE,
+            ))
+            .expect_err("unsupported strict base options");
+        assert_eq!(once.status(), BindingStatus::RenderError);
+        for error in [reusable, based] {
+            assert_eq!(error.status(), once.status());
+            assert_eq!(error.message(), once.message());
+        }
+    }
+
+    #[test]
+    fn theme_portability_strict_policy_accepts_native_svg_with_embedded_font_evidence() {
+        let options = crate::common::parse_options(
+            br#"{
+            "environment": {"theme_portability": "require-portable"},
+            "site_config": {"htmlLabels": false, "themeVariables": {"fontFamily": "Excalifont"}},
+            "svg": {"pipeline": "resvg-safe"}
+        }"#,
+        )
+        .expect("strict binding options");
+        let mut config =
+            compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+                .expect("strict binding policy compiles");
+        assert_eq!(
+            config.environment.theme_portability_requirement(),
+            merman::svg::ThemePortabilityRequirement::RequirePortable
+        );
+        let font_catalog = merman::svg::FontCatalogSpec::new([merman::svg::FontAssetSpec::new(
+            "strict-binding-font",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+            )),
+        )])
+        .with_available_sources([merman::svg::FontSource::Embedded])
+        .with_embedding_requirement(merman::svg::FontEmbeddingRequirement::FullFont);
+        config.theme = Some(
+            merman::svg::DiagramThemeCompiler::new()
+                .compile(
+                    merman::svg::DiagramThemeSpec::new()
+                        .with_assets(
+                            merman::svg::ThemeAssets::default().with_font_catalog(font_catalog),
+                        )
+                        .with_canvas(merman::svg::CanvasSpec::solid("#f7f3e8").expect("canvas")),
+                )
+                .expect("embedded-font theme"),
+        );
+        let plan = config.materialize(&crate::BindingEngineServices::new());
+        let output = plan
+            .renderer
+            .render(plan.request(
+                std::str::from_utf8(PORTABILITY_SOURCE).expect("source"),
+                merman::RenderTarget::Svg(plan.svg.clone()),
+                OperationControl::new(),
+            ))
+            .expect("strict native text SVG passes real target admission");
+        let RenderOutput::Svg(Some(output)) = output else {
+            panic!("expected SVG output");
+        };
+        assert_eq!(
+            output.admission().status(),
+            merman::TargetAdmissionStatus::Portable
+        );
+        assert!(output.svg().contains("@font-face"));
+    }
 
     #[test]
     fn theme_evaluation_limits_keep_resource_status_for_render_outputs() {

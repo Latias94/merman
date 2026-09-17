@@ -16,6 +16,7 @@ import type {
   SvgBindingOptions,
   ThemeAuthoringOptions,
   SvgPlanResult,
+  SvgRenderResult,
   ThemeCapabilityDescriptor,
   ThemeCapabilityDescriptorV1,
   ThemeDefinitionV1,
@@ -24,6 +25,23 @@ import type {
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
+}
+
+/** Render once and inspect the theme/target outcome without discarding execution metadata. */
+export function renderSvgResult(source: string, options?: SvgBindingOptions | string): SvgRenderResult {
+  return getMerman().renderSvgResult(source, encodeOptions(options));
+}
+
+export function renderSvgResultWithTextMeasurer(
+  source: string,
+  measurer: HostTextMeasurer,
+  options?: HostTextMeasurerSvgBindingOptions | string
+): SvgRenderResult {
+  const render = getMerman().renderSvgResultWithTextMeasurer;
+  if (!render) {
+    throw new Error("Merman WASM does not expose renderSvgResultWithTextMeasurer(). Rebuild @mermanjs/web.");
+  }
+  return render(source, encodeOptions(options), measurer);
 }
 
 export function svgPlanJson(

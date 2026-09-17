@@ -186,3 +186,86 @@ actual `data-id="A"` terminal identity rather than a historical generated-ID con
 
 U13 is still open. These decisions precede public contract freeze; the successful palette-edit
 journey does not close U4/U6–U9 or promote current presets to full Modern Mermaid reproductions.
+
+## Actual SVG Outcomes and Explicit Strict Policy
+
+Implemented after source baseline `76e89f69e`, on 2026-09-17. Web now exposes `renderSvgResult()`
+and `renderSvgResultWithTextMeasurer()`. Both return `{ svg, metadata }` from one existing binding
+operation. The string-returning functions remain available. The result retains the canonical
+versioned metadata and its `theme_execution_evidence`, with no second render, independent receipt,
+or new certification schema. `byte_length` remains UTF-8 bytes. Unknown evidence versions and
+status IDs remain opaque/open and must not grant portability.
+
+The shared binding request now accepts `environment.theme_portability`, with `best-effort` as the
+default and `require-portable` mapped to the existing renderer policy. Unknown values are rejected
+as `MERMAN_INVALID_ARGUMENT`; a failed strict render retains `MERMAN_RENDER_ERROR`. Web and Node
+option declarations expose the new choice. This is an execution policy, not a pipeline alias or
+an instruction to substitute another preset. BestEffort may return SVG while metadata says the
+native target was rejected; only an explicit strict request makes that admission failure fatal.
+
+### Production output-policy defect found by the positive test
+
+The first strict success test failed on the public `SvgOutputPolicy::pipeline()` path even though
+the equivalent core `SvgPipeline::resvg_safe()` request passed. The shared output policy registered
+a GitGraph label-baseline pass for every family. Its implementation returned the original SVG for
+other families, but the pipeline invalidated prepared-text and typed-theme evidence merely because
+the pass was registered. This affected public binding/CLI output and was not a font-decoding error.
+
+The pipeline now stores an internal family scope with each configured pass. Execution and
+prepared-text/typed-theme/math preservation use the same applicability predicate, evaluated using
+the renderer-owned family before selecting prepared text and its ledger. Only the internal
+GitGraph pass receives a GitGraph scope. Actual GitGraph changes and unknown family identity remain
+conservative; public custom passes remain global and untrusted. Root-background modifications keep
+their prior invalidation behavior. The finalization report still records configured pass names.
+No public preservation assertion, new proof engine, dependency, or production font asset was added.
+
+### Verification
+
+- Binding core and native-host WASM unit tests: **287/287 passed**. Includes default/explicit
+  BestEffort equality, one-shot/reusable/base-options policy agreement, unknown-policy rejection,
+  unsupported winning-facet rejection, and a real strict Portable native-text SVG using the
+  existing test font. The positive test uses the public output policy; the temporary diagnostic
+  bypass to a bare core pipeline was removed before the passing run.
+- Renderer policy/GitGraph/prepared-text regression tests: **8/8 passed**, 2,570 unrelated tests
+  filtered out. Covers all logical families, unknown family identity, public custom passes,
+  root-background invalidation, actual GitGraph geometry changes and prepared-text reservations.
+- Math-enabled renderer regressions: **2/2 passed**, 2,604 unrelated tests filtered out. Canonical
+  output retains legitimate math evidence; untrusted mutation still fails.
+- Web TypeScript and contract checks passed: **40 WASM exports, 50 runtime bindings, five package
+  entries**. Focused Web authoring and package-surface tests: **19/19 passed**. Unknown evidence
+  versions/statuses are retained conservatively, invalid numeric options never reach WASM, and
+  result wrappers forward one call and the host callback.
+- Rebuilt both SVG package profiles serially: full input fingerprint **`d74920d854d4`**, render
+  **`a5188ab17fba`**. Real-WASM smoke passed for each, across 35 diagram entries per package. New
+  checks cover same-execution SVG/metadata, UTF-8 byte counts, callback invocation and equivalent
+  measurement work, unsupported Class width, a real strict success, and a mixed supported-stroke /
+  unsupported-radius failure with the same embedded font still valid.
+- Real Chromium initialized the assembled public browser entry points independently for full and
+  render. Each produced `verified / portable` for the embedded-font Sequence recipe. Adding only
+  the unsupported Lifeline radius produced `residual / rejected`, with the sole target reason
+  `theme_evidence_incomplete`, under BestEffort. Strict execution returned `MERMAN_RENDER_ERROR`.
+  SVG equality and UTF-8 byte-length checks passed. This is actual browser API execution, not
+  visual qualification or a complete browser/platform matrix.
+- Independent source review found no remaining issue in these implementation seams. It required
+  real host callback evidence and retained the distinction between coarse results and detailed
+  diagnostics; both are reflected above.
+
+Logs: `/tmp/merman-u13-result-{rust-green,pipeline,math,web-build,web-unit,wasm,render-wasm,web-smoke,render-smoke,browser}.log`.
+The reproducible local browser probe and results are retained under
+`target/bench/experiments/theme-outcome-76e89f69e/`.
+One renderer build was interrupted by a full disk before tests executed; removing only inactive
+Rust incremental caches allowed the scoped rerun. Source and audit artifacts were retained.
+
+### Remaining gates
+
+The coarse Web outcome-access gap and explicit shared-policy gap above are now implemented and
+verified for the two browser SVG profiles. U13 is **not closed**. Meaningful rule/facet diagnostics
+still need a deliberate projection: the current renderer summary drops residual detail, a family
+residual identifies a compiled rule rather than each facet, and compiled rule indexes are not
+original JSON `/styles/N` paths. Do not infer missing detail from static support matrices or expose
+internal proof objects as an authoring explanation.
+
+Complex preset semantic color parameters, missing-resource workflows, consumer/UI rollout and the
+remaining installed-platform matrix remain open. Node's option declaration was updated, but its
+installed package was not rebuilt here. No catalog qualification, reference visual parity,
+performance budget or C7a contract-freeze claim is promoted by this slice.

@@ -222,6 +222,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Decisions are recorded in the existing contract documentation and implemented through existing owners; U9 exercises the full cross-consumer journeys before freeze. This unit is not closed by the audit report alone.
 
+**Progress (2026-09-17):** Direct versioned recipe exchange, family design disclosure, scoped customization, and coarse Web render outcomes are implemented. Both browser SVG profiles now expose the existing strict policy; real Chromium verified a Portable recipe and the same recipe with an unsupported winning facet. The positive test also closed the shared GitGraph postprocessor's unrelated-family evidence invalidation. U13 remains open for useful rule/facet diagnostics with honest source attribution, semantic customization of complex presets, resource failure journeys, and consumer rollout. See the public workflow audit for scoped evidence; do not treat these results as visual qualification or the final platform matrix.
+
 ### U1. Lock the reference scenes and current failures
 
 **Goal:** Give R1 a source-backed visual oracle that cannot silently narrow as implementation proceeds.

@@ -330,3 +330,12 @@ void tiledRadialCanvas;
 void implicitLinearRepetition;
 void ambiguousLinearRepetition;
 void radialWithLinearPeriod;
+
+
+const strictThemeOptions = {
+  environment: { theme_portability: "require-portable" },
+} satisfies SvgBindingOptions;
+void strictThemeOptions;
+// @ts-expect-error Unknown request policies must not silently weaken admission.
+const unknownThemePolicy = { environment: { theme_portability: "future-policy" } } satisfies SvgBindingOptions;
+void unknownThemePolicy;

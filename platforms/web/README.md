@@ -63,11 +63,40 @@ Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `famil
 
 Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
 rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;
-`renderSvg()` returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
-A convenient Web projection of the actual theme outcome remains under review before freeze.
+use `renderSvgResult()` to inspect the actual request's theme and target status. `renderSvg()`
+returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
 Do not silently substitute another preset. An unknown
 saved preset ID is an explicit input error; the host can retain it for explanation and offer an
 explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
+
+## Inspect the actual rendering outcome
+
+```ts
+import { renderSvgResult } from "@mermanjs/web";
+
+const result = renderSvgResult("classDiagram\nclass Account", {
+  theme: { preset: "cyberpunk" },
+});
+const evidence = result.metadata.theme_execution_evidence;
+// Display the SVG and inspect the versioned outcome from that same execution.
+console.log(evidence);
+const svg = result.svg;
+```
+
+`metadata.byte_length` is the SVG's UTF-8 byte length, not JavaScript string length.
+For evidence version 1, `theme_status` is currently `verified`, `not_applicable`, `residual`, or
+`incomplete`. Theme verification and `target_status` are separate: a verified theme does not imply
+portable output. BestEffort may return SVG together with a `rejected` target status; strict policy
+is what turns failed admission into an operation error. IDs are open strings; unknown versions, missing evidence, and unknown statuses
+must not be interpreted as portable. The metadata is descriptive, not an independent certificate.
+It contains coarse status and target reasons, not per-rule or per-property explanations.
+Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
+
+Set `environment: { theme_portability: "require-portable" }` to require the renderer's existing
+native portability admission. Failure throws the normal structured render error; the runtime does
+not change your preset. The default is `"best-effort"`. Strict requests may reject unsupported theme
+facets, host-dependent fonts, or other target residuals; this is stronger than choosing the
+`resvg-safe` pipeline. Browser-only effects are not made portable by this option.
 
 ## Save and share a theme
 

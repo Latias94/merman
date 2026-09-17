@@ -13,7 +13,8 @@ pub const BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS: usize = 32;
 
 /// Versioned, coarse theme execution evidence attached to successful render metadata.
 ///
-/// Version one is a private projection of renderer-owned render evidence and target admission.
+/// Version one projects renderer-owned render evidence and target admission as coarse states.
+/// It does not expose per-rule residuals or confer an independent certification.
 /// Unknown versions remain opaque so bindings can forward metadata produced by newer revisions.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

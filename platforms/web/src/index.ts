@@ -99,6 +99,8 @@ export {
   parseJson,
   parseObject,
   renderSvg,
+  renderSvgResult,
+  renderSvgResultWithTextMeasurer,
   renderSvgElement,
   renderSvgToElement,
   renderSvgWithTextMeasurer,

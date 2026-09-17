@@ -934,6 +934,7 @@ pub(crate) struct LayoutOptionsJson {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenderEnvironmentOptionsJson {
+    pub(crate) theme_portability: Option<String>,
     pub(crate) text_measurement: Option<String>,
     pub(crate) math_renderer: Option<String>,
 }

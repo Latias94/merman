@@ -495,6 +495,81 @@ if (hasCapability("svg")) {
     assert.equal(error.details.resource.limit_id, "max_source_bytes");
     return true;
   });
+  const outcomeOptions = { theme: { spec: { styles: [{
+    kind: "rule", family: "class", target: "node", style: { stroke: { width: 2 } },
+  }] } }, svg: { pipeline: "resvg-safe" } };
+  const outcomeSource = "classDiagram\nclass 用户";
+  const outcome = api.renderSvgResult(outcomeSource, outcomeOptions);
+  assert.equal(outcome.svg, api.renderSvg(outcomeSource, outcomeOptions));
+  assert.equal(outcome.metadata.version, 1);
+  assert.equal(outcome.metadata.operation_id, "svg");
+  assert.equal(outcome.metadata.media_type, "image/svg+xml");
+  assert.equal(outcome.metadata.byte_length, Buffer.byteLength(outcome.svg, "utf8"));
+  assert.ok(outcome.metadata.byte_length > outcome.svg.length, "UTF-8 bytes differ for Chinese labels");
+  assert.equal(outcome.metadata.theme_execution_evidence.version, 1);
+  assert.equal(outcome.metadata.theme_execution_evidence.family_id, "class");
+  assert.ok(["residual", "incomplete"].includes(outcome.metadata.theme_execution_evidence.theme_status));
+  assert.notEqual(outcome.metadata.theme_execution_evidence.target_status, "portable");
+  assert.deepEqual(exportedWasmModule.renderSvgResult(outcomeSource, JSON.stringify(outcomeOptions)), outcome);
+  let resultMeasureCalls = 0;
+  const resultMeasurer = (request) => {
+    resultMeasureCalls += 1;
+    return hostTextMeasurementResult(request);
+  };
+  const measuredOutcome = api.renderSvgResultWithTextMeasurer(outcomeSource, resultMeasurer, outcomeOptions);
+  assert.ok(resultMeasureCalls > 0, "the result operation must invoke its host measurer");
+  const firstMeasureCalls = resultMeasureCalls;
+  assert.equal(measuredOutcome.svg, api.renderSvgWithTextMeasurer(outcomeSource, resultMeasurer, outcomeOptions));
+  assert.equal(resultMeasureCalls, firstMeasureCalls * 2, "result and string paths must perform the same measurement work");
+  assert.equal(measuredOutcome.metadata.byte_length, Buffer.byteLength(measuredOutcome.svg, "utf8"));
+  assert.ok(["residual", "incomplete"].includes(measuredOutcome.metadata.theme_execution_evidence.theme_status));
+  for (const render of [api.renderSvg, api.renderSvgResult]) {
+    assert.throws(() => render(outcomeSource, {
+      ...outcomeOptions, environment: { theme_portability: "require-portable" },
+    }), (error) => {
+      assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
+      return true;
+    });
+    assert.throws(() => render(outcomeSource, {
+      environment: { theme_portability: "future-policy" },
+    }), (error) => {
+      assert.equal(error.code_name, "MERMAN_INVALID_ARGUMENT");
+      return true;
+    });
+  }
+  const strictFont = await readFile(path.join(repoRoot, "fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"));
+  const portableSource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
+  const portableOptions = {
+    theme: { spec: {
+      canvas: { base: "#f7f3e8" },
+      assets: {
+        fonts: [{ id: "strict-smoke-font", format: "woff2", data_base64: strictFont.toString("base64") }],
+        available_sources: ["embedded"], embedding: "full-font",
+      },
+    } },
+    site_config: { htmlLabels: false, themeVariables: { fontFamily: "Excalifont" } },
+    environment: { theme_portability: "require-portable" },
+    svg: { pipeline: "resvg-safe" },
+  };
+  const portable = api.renderSvgResult(portableSource, portableOptions);
+  assert.equal(portable.metadata.theme_execution_evidence.theme_status, "verified");
+  assert.equal(portable.metadata.theme_execution_evidence.target_status, "portable");
+  assert.deepEqual(portable.metadata.theme_execution_evidence.target_reason_ids, []);
+  assert.ok(portable.svg.includes("@font-face"));
+  const unsupportedPortableRecipe = structuredClone(portableOptions);
+  unsupportedPortableRecipe.theme.spec.styles = [{
+    kind: "rule", family: "sequence", target: "lifeline", style: { radius: 6, stroke: { paint: "#2563eb" } },
+  }];
+  const partial = api.renderSvgResult(portableSource, {
+    ...unsupportedPortableRecipe, environment: { theme_portability: "best-effort" },
+  });
+  assert.ok(partial.metadata.theme_execution_evidence.target_reason_ids.includes("theme_evidence_incomplete"));
+  assert.ok(!partial.metadata.theme_execution_evidence.target_reason_ids.includes("svg_fonts_not_self_contained"),
+    "the unsupported-theme negative must retain its proven embedded fonts");
+  assert.throws(() => api.renderSvgResult(portableSource, unsupportedPortableRecipe), (error) => {
+    assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
+    return true;
+  });
   for (const invalidRecipe of [
     { ...restoredRecipe, schema_version: 2 },
     { ...restoredRecipe, preset: "editor-light" },
