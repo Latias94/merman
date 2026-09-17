@@ -2962,11 +2962,11 @@ impl RenderedFamilySvg {
     ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
-        let preserves_prepared_text =
-            self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let preserves_prepared_text = self.prepared_text_evidence_valid
+            && pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
         let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
-        let preserves_prepared_math =
-            self.prepared_math_evidence_valid && pipeline.preserves_prepared_math_evidence();
+        let preserves_prepared_math = self.prepared_math_evidence_valid
+            && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         let supplies_prepared_math = self.prepared_math_evidence_valid
             && (preserves_prepared_math || requires_prepared_math_projection);
         let source_svg = if preserves_prepared_text {
@@ -3004,7 +3004,7 @@ impl RenderedFamilySvg {
             ResourceLimitPhase::SvgPostprocess,
             OperationPhase::Postprocess,
         )?;
-        if !pipeline.preserves_typed_theme_evidence() {
+        if !pipeline.preserves_typed_theme_evidence(output_metadata.family_id()) {
             self.root_theme = self.root_theme.invalidate_for_output_mutation();
             self.style_report = self.style_report.invalidate_for_output_mutation();
         }
@@ -3041,8 +3041,8 @@ impl RenderedFamilySvg {
             .theme_portability_requirement()
             .unwrap_or(ThemePortabilityRequirement::BestEffort);
         let output_metadata = self.output_metadata()?;
-        let prepared_text_evidence_valid =
-            self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let prepared_text_evidence_valid = self.prepared_text_evidence_valid
+            && pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
         let source_svg = if prepared_text_evidence_valid {
             self.prepared_text_svg.unwrap_or(self.svg)
         } else {
@@ -3053,8 +3053,8 @@ impl RenderedFamilySvg {
         } else {
             PreparedTextEvidenceLease::default()
         };
-        let prepared_math_evidence_valid =
-            self.prepared_math_evidence_valid && pipeline.preserves_prepared_math_evidence();
+        let prepared_math_evidence_valid = self.prepared_math_evidence_valid
+            && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         if !self.prepared_math_evidence.is_empty() && !prepared_math_evidence_valid {
             return Err(Error::svg_postprocess(
                 "prepared-math-terminal-receipt",
@@ -3084,7 +3084,8 @@ impl RenderedFamilySvg {
             ResourceLimitPhase::SvgPostprocess,
             OperationPhase::Export,
         )?;
-        let preserves_typed_theme_evidence = pipeline.preserves_typed_theme_evidence();
+        let preserves_typed_theme_evidence =
+            pipeline.preserves_typed_theme_evidence(output_metadata.family_id());
         let root_theme = if preserves_typed_theme_evidence {
             self.root_theme
         } else {

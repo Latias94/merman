@@ -229,7 +229,7 @@ impl SvgFinalizationReport {
             postprocessor_names: pipeline
                 .postprocessors
                 .iter()
-                .map(|postprocessor| postprocessor.name().to_string())
+                .map(|entry| entry.processor.name().to_string())
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             drop_native_duplicate_fallbacks: pipeline.drop_native_duplicate_fallbacks,
@@ -515,11 +515,35 @@ enum InlineContract {
 }
 
 #[derive(Clone)]
+struct SvgPostprocessorEntry {
+    processor: Arc<dyn SvgPostprocessor>,
+    family: Option<crate::DiagramFamilyId>,
+    preserves_prepared_math: bool,
+}
+
+impl SvgPostprocessorEntry {
+    fn untrusted(processor: Arc<dyn SvgPostprocessor>) -> Self {
+        Self {
+            processor,
+            family: None,
+            preserves_prepared_math: false,
+        }
+    }
+
+    // Unknown family identity remains conservative for both execution and evidence decisions.
+    fn applies_to(&self, family: Option<crate::DiagramFamilyId>) -> bool {
+        match (self.family, family) {
+            (Some(required), Some(actual)) => required == actual,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct SvgPipeline {
     preset: SvgPipelinePreset,
-    postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
+    postprocessors: Vec<SvgPostprocessorEntry>,
     drop_native_duplicate_fallbacks: bool,
-    prepared_math_evidence_preserved: bool,
     inline_contract: Option<InlineContract>,
     isolate_ids: bool,
 }
@@ -529,7 +553,7 @@ impl fmt::Debug for SvgPipeline {
         let names = self
             .postprocessors
             .iter()
-            .map(|pass| pass.name())
+            .map(|pass| pass.processor.name())
             .collect::<Vec<_>>();
 
         f.debug_struct("SvgPipeline")
@@ -538,10 +562,6 @@ impl fmt::Debug for SvgPipeline {
             .field(
                 "drop_native_duplicate_fallbacks",
                 &self.drop_native_duplicate_fallbacks,
-            )
-            .field(
-                "prepared_math_evidence_preserved",
-                &self.prepared_math_evidence_preserved,
             )
             .field("inline_contract", &self.inline_contract)
             .field("isolate_ids", &self.isolate_ids)
@@ -579,7 +599,6 @@ impl SvgPipeline {
             preset,
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
-            prepared_math_evidence_preserved: true,
             inline_contract: None,
             isolate_ids: false,
         }
@@ -591,18 +610,35 @@ impl SvgPipeline {
     /// The terminal preset itself is renderer-owned and does not invalidate root evidence. A
     /// custom postprocessor is conservatively treated as a mutation boundary until it provides a
     /// dedicated preservation contract.
-    pub(crate) fn preserves_typed_theme_evidence(&self) -> bool {
-        self.postprocessors.is_empty()
+    pub(crate) fn preserves_typed_theme_evidence(
+        &self,
+        family: Option<crate::DiagramFamilyId>,
+    ) -> bool {
+        !self
+            .postprocessors
+            .iter()
+            .any(|entry| entry.applies_to(family))
     }
 
     /// Returns whether the pipeline can preserve renderer-owned prepared-label locators.
-    pub(crate) fn preserves_prepared_text_evidence(&self) -> bool {
-        self.postprocessors.is_empty()
+    pub(crate) fn preserves_prepared_text_evidence(
+        &self,
+        family: Option<crate::DiagramFamilyId>,
+    ) -> bool {
+        !self
+            .postprocessors
+            .iter()
+            .any(|entry| entry.applies_to(family))
     }
 
     /// Returns whether the pipeline can preserve renderer-owned prepared-math occurrences.
-    pub(crate) fn preserves_prepared_math_evidence(&self) -> bool {
-        self.prepared_math_evidence_preserved
+    pub(crate) fn preserves_prepared_math_evidence(
+        &self,
+        family: Option<crate::DiagramFamilyId>,
+    ) -> bool {
+        self.postprocessors
+            .iter()
+            .all(|entry| !entry.applies_to(family) || entry.preserves_prepared_math)
     }
 
     /// Returns whether this pipeline needs renderer-owned prepared-math evidence in order to
@@ -638,12 +674,9 @@ impl SvgPipeline {
     #[doc(hidden)]
     pub fn with_static_inline_contract(mut self, id_prefix: impl Into<String>) -> Self {
         self.inline_contract = Some(InlineContract::Static);
-        self.prepared_math_evidence_preserved = false;
-        self.postprocessors
-            .push(Arc::new(ForeignObjectFallbackPostprocessor));
-        self.postprocessors.push(Arc::new(SanitizeCssPostprocessor));
-        self.postprocessors
-            .push(Arc::new(SanitizeSvgAttributesPostprocessor));
+        self.push_postprocessor(ForeignObjectFallbackPostprocessor);
+        self.push_postprocessor(SanitizeCssPostprocessor);
+        self.push_postprocessor(SanitizeSvgAttributesPostprocessor);
         self.with_rebased_ids(id_prefix)
     }
 
@@ -676,14 +709,14 @@ impl SvgPipeline {
     where
         P: SvgPostprocessor + 'static,
     {
-        self.postprocessors.push(Arc::new(postprocessor));
-        self.prepared_math_evidence_preserved = false;
+        self.postprocessors
+            .push(SvgPostprocessorEntry::untrusted(Arc::new(postprocessor)));
         self
     }
 
     pub fn with_shared_postprocessor(mut self, postprocessor: Arc<dyn SvgPostprocessor>) -> Self {
-        self.postprocessors.push(postprocessor);
-        self.prepared_math_evidence_preserved = false;
+        self.postprocessors
+            .push(SvgPostprocessorEntry::untrusted(postprocessor));
         self
     }
 
@@ -691,8 +724,8 @@ impl SvgPipeline {
     where
         P: SvgPostprocessor + 'static,
     {
-        self.postprocessors.push(Arc::new(postprocessor));
-        self.prepared_math_evidence_preserved = false;
+        self.postprocessors
+            .push(SvgPostprocessorEntry::untrusted(Arc::new(postprocessor)));
     }
 
     /// Registers a renderer-owned pass whose implementation is proven not to alter prepared-math
@@ -702,7 +735,26 @@ impl SvgPipeline {
     where
         P: SvgPostprocessor + 'static,
     {
-        self.postprocessors.push(Arc::new(postprocessor));
+        self.postprocessors.push(SvgPostprocessorEntry {
+            processor: Arc::new(postprocessor),
+            family: None,
+            preserves_prepared_math: true,
+        });
+    }
+
+    /// The renderer owns this scope; public host passes cannot opt out of evidence invalidation.
+    pub(crate) fn push_family_postprocessor_preserving_prepared_math<P>(
+        &mut self,
+        family: crate::DiagramFamilyId,
+        postprocessor: P,
+    ) where
+        P: SvgPostprocessor + 'static,
+    {
+        self.postprocessors.push(SvgPostprocessorEntry {
+            processor: Arc::new(postprocessor),
+            family: Some(family),
+            preserves_prepared_math: true,
+        });
     }
 
     pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {
@@ -819,8 +871,12 @@ impl SvgPipeline {
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
 
-        for (index, postprocessor) in self.postprocessors.iter().enumerate() {
+        for (index, entry) in self.postprocessors.iter().enumerate() {
             execution.checkpoint()?;
+            if !entry.applies_to(metadata.family_id()) {
+                continue;
+            }
+            let postprocessor = &entry.processor;
             let ctx = SvgPostprocessContext::new(
                 self.preset,
                 index,
