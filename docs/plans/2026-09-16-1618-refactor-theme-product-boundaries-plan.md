@@ -215,6 +215,9 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 - A caller can distinguish dedicated/base-only/unreviewed design from unavailable compilation and unsupported output without decoding internal compiler records.
 - A saved exported recipe imports directly in a fresh public consumer; incompatible schema versions fail with an actionable diagnostic.
 - Small brand/family customization preserves unrelated facets, Clear, transparency and resource admission.
+- A Web caller can inspect the actual request's unapplied theme facets through an existing-owner projection; an SVG string or artifact-capability `ready` flag is not an application report. Reuse the execution owners rather than inventing a second proof engine. Current binding metadata is coarse status/reasons; useful per-facet explanations require a deliberate projection, not just forwarding that metadata.
+- Define an explicit binding/Web strict-policy request and failure semantics; `resvg-safe` is a pipeline choice, not `RequirePortable`.
+- Decide how complete complex recipes expose editable semantic color roles. Explicit per-role edits do not prove one-parameter global brand recoloring, and equal color strings must not be treated as shared token ownership.
 - User-facing distribution guidance distinguishes recipe identity and legal metadata from actual resource and target guarantees.
 
 **Verification:** Decisions are recorded in the existing contract documentation and implemented through existing owners; U9 exercises the full cross-consumer journeys before freeze. This unit is not closed by the audit report alone.

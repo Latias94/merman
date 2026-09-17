@@ -62,8 +62,10 @@ states certifies readable output or portability; those depend on the actual scen
 Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `family_id`.
 
 Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
-rules, explain the design scope, and surface unsupported requested effects through the normal
-render report or strict-policy error. Do not silently substitute another preset. An unknown
+rules and explain the design scope. Query `describeThemeSupport()` for requested mechanisms;
+`renderSvg()` returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
+A convenient Web projection of the actual theme outcome remains under review before freeze.
+Do not silently substitute another preset. An unknown
 saved preset ID is an explicit input error; the host can retain it for explanation and offer an
 explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
 
@@ -93,6 +95,9 @@ editing it. You can also select a preset directly with `{ theme: { preset: "edit
 A reusable recipe is not a claim that every diagram family or output target supports every authored
 style. Query `describeThemeSupport()` for the relevant family, output, and mechanism. Saving a recipe
 does not switch it to another preset or embed fonts supplied separately by the host.
+
+For scoped edits, Clear/transparent semantics, simple theme creation, and redistribution, see
+[Create, Customize, and Share Diagram Themes](../../docs/rendering/custom-diagram-themes.md).
 
 ## Choose an SVG pipeline
 

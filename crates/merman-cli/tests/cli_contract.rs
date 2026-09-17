@@ -656,6 +656,124 @@ fn native_theme_file_uses_the_compiled_theme_contract() {
 }
 
 #[test]
+fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let exported = merman_bindings_core::export_theme_preset_json(b"cyberpunk")
+        .expect("export complete recipe");
+    let original: Value = serde_json::from_slice(&exported).expect("recipe JSON");
+    let source = "classDiagram\nclass Account {\n +String name\n}\nclass Owned\nAccount --> Owned : link\nstyle Owned fill:#334455,stroke:#778899,stroke-width:4px\n";
+
+    for (fill, expected) in [
+        (serde_json::json!("#22354d"), "#22354d"),
+        (Value::Null, "#ECECFF"),
+        (serde_json::json!("transparent"), "transparent"),
+    ] {
+        let mut recipe = original.clone();
+        let spec = &mut recipe["complete_spec"];
+        spec["canvas"]["base"] = serde_json::json!("#142535");
+        spec["styles"].as_array_mut().expect("styles").extend([
+            serde_json::json!({"kind":"rule", "target":"node", "style":{"stroke":{"paint":"#fb7185"}}}),
+            serde_json::json!({"kind":"rule", "target":"node", "family":"class", "style":{"fill":fill}}),
+        ]);
+        fs::write(
+            tmp.path().join("custom.json"),
+            serde_json::to_vec(&recipe).unwrap(),
+        )
+        .expect("save complete recipe");
+        let output = run_with_stdin_in_dir(
+            &[
+                "render",
+                "--theme-file",
+                "custom.json",
+                "--format",
+                "svg",
+                "-",
+            ],
+            source,
+            Some(tmp.path()),
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let svg = String::from_utf8(output.stdout).expect("SVG");
+        let doc = roxmltree::Document::parse(&svg).expect("valid XML");
+        let canvas = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
+            .expect("canvas base terminal");
+        assert_eq!(canvas.attribute("fill"), Some("#142535"));
+        for (name, fill, stroke) in [
+            ("Account", expected, "#fb7185"),
+            ("Owned", "#334455", "#778899"),
+        ] {
+            let node = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.contains(&format!("-classId-{name}-")))
+                })
+                .expect("class node terminal group");
+            assert!(
+                node.descendants().any(
+                    |child| child.has_tag_name("path") && child.attribute("fill") == Some(fill)
+                ),
+                "{name} fill: {svg}"
+            );
+            assert!(
+                node.descendants()
+                    .any(|child| child.has_tag_name("path")
+                        && child.attribute("stroke") == Some(stroke)),
+                "{name} stroke: {svg}"
+            );
+            if name == "Owned" {
+                assert!(
+                    node.descendants().any(|child| child.has_tag_name("path")
+                        && child.attribute("stroke") == Some(stroke)
+                        && child.attribute("stroke-width") == Some("4")),
+                    "source width: {svg}"
+                );
+            }
+        }
+    }
+
+    // The saved Class-specific rule must not recolor a different family.
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--theme-file",
+            "custom.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA[Account] --> B[Other]\n",
+        Some(tmp.path()),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("SVG");
+    let doc = roxmltree::Document::parse(&svg).expect("valid XML");
+    let node = doc
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("A"))
+        .expect("Flowchart node terminal group");
+    assert!(
+        node.descendants().any(|child| {
+            child.attribute("fill") == Some("#0f172a")
+                || child
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("fill:#0f172a"))
+        }),
+        "Class transparent fill must not replace Flowchart fill: {svg}"
+    );
+}
+
+#[test]
 fn native_theme_definition_materializes_and_renders_without_an_intermediate_spec() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(

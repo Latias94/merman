@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { customizeNodeColors } from "../examples/custom-theme.mjs";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
   allPackageRuntimeExportNames,
@@ -473,6 +474,27 @@ if (hasCapability("svg")) {
   assert.equal(exportedWasmModule.renderSvg(recipeSource, JSON.stringify({
     theme: restoredRecipe, svg: recipeSvgOptions,
   })), presetSvg, "raw WASM and public recipe selection must agree");
+  const cyberpunk = api.exportThemePreset("cyberpunk");
+  const originalCyberpunk = structuredClone(cyberpunk);
+  const customized = customizeNodeColors(cyberpunk, {
+    background: "#142535", nodeBorder: "#fb7185", classFill: "#22354d",
+  });
+  assert.deepEqual(cyberpunk, originalCyberpunk, "editing a copy must not mutate the exported preset");
+  assert.deepEqual(customized.complete_spec.styles.slice(0, -2), cyberpunk.complete_spec.styles,
+    "scoped edits must preserve unrelated authored facets and source order");
+  const reloaded = JSON.parse(JSON.stringify(customized));
+  const editedSource = "classDiagram\nclass Account {\n +String name\n}";
+  const editedOptions = { theme: reloaded, svg: { diagram_id: "edited-recipe", pipeline: "resvg-safe" } };
+  const editedSvg = api.renderSvg(editedSource, editedOptions);
+  assert.equal(editedSvg, exportedWasmModule.renderSvg(editedSource, JSON.stringify(editedOptions)));
+  for (const paint of ["#142535", "#fb7185", "#22354d"]) assert.ok(editedSvg.includes(paint));
+  assert.throws(() => api.renderSvg(editedSource, {
+    ...editedOptions, resources: { limits: { max_source_bytes: 1 } },
+  }), (error) => {
+    assert.equal(error.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+    assert.equal(error.details.resource.limit_id, "max_source_bytes");
+    return true;
+  });
   for (const invalidRecipe of [
     { ...restoredRecipe, schema_version: 2 },
     { ...restoredRecipe, preset: "editor-light" },

@@ -120,3 +120,69 @@ The inspected screenshot is `target/bench/experiments/theme-design-53af16c4a/the
 U13 remains open for actual small-brand-edit usability, resource/font failure journeys, and the
 remaining installed-consumer distribution matrix. U4/U6–U8 must still deliver the dedicated
 recipes/effect consumers before this catalog may advertise those designs.
+
+## Scoped Customization and Fresh-Consumer Import
+
+Checked after source baseline `9b99e1aa3`, on 2026-09-17. The executable Web example exports
+Cyberpunk, copies its complete recipe, changes the canvas base and Node border paint, and appends
+a Class-only Node fill rule. Existing layers, effects and unrelated authored facets are retained;
+no new patch engine, registry, token-reference grammar or runtime dependency is introduced.
+The [user guide](../../../rendering/custom-diagram-themes.md) covers simple definitions, complete
+recipes, rule ordering, Clear versus transparent, and JSON plus accompanying README/license files.
+Custom exports do not inherit catalog design or qualification claims.
+
+Verification on this slice:
+
+- Real full-WASM package smoke passed across 35 diagram entries. The added example is exercised
+  through the public Web entry point, JSON save/load, and raw WASM output equivalence. Its color
+  substring checks are smoke checks, not a visible-terminal oracle. The existing resource contract
+  still rejects an edited-recipe render with `max_source_bytes: 1` as `MERMAN_RESOURCE_LIMIT_EXCEEDED`.
+- CLI nextest: **3/3 passed**, 35 unrelated tests filtered out. The new test saves an edited complete
+  recipe and starts fresh CLI processes. XML assertions identify the canvas and Class node paths;
+  they verify the requested paints, source-owned fill/stroke/width, Clear restoring family fill,
+  transparent remaining transparent, and the Class-only rule not changing Flowchart fill. Existing
+  direct recipe import and encoded theme-file budget tests also pass.
+- A separate local probe exported the recipe from the actual WASM module, applied the shared Web
+  example, wrote `shared.json`, and passed that exact file to fresh native CLI processes for Class
+  and Flowchart. XML terminal assertions passed. This is a local built-artifact cross-consumer
+  witness, not a freshly published npm/wheel or full installed-platform matrix.
+- An independent source review reported no correctness finding in the example, focused tests or
+  guide. It correctly limited the Web substring checks to smoke coverage.
+
+Logs: `/tmp/merman-u13-edit-web-smoke.log`, `/tmp/merman-u13-edit-cli.log`.
+Probe artifacts: `target/bench/experiments/theme-authoring-9b99e1aa3/`.
+The first CLI test run exposed a stale guessed Flowchart node ID; the assertion now uses the
+actual `data-id="A"` terminal identity rather than a historical generated-ID convention.
+
+### Remaining public-interface decisions
+
+1. **Complex preset brand parameters remain unresolved.** Current Cyberpunk exports 68 expanded
+   rules (6,631 compact JSON bytes before editing). The tested workflow changes explicit roles;
+   it does not establish a convenient global palette parameter for an effect-bearing recipe.
+   Equal paint strings in Node, Actor, Edge, Marker and series rules are not proof of common token
+   ownership. Decide the semantic customization seam with U4's complete recipe builder before
+   freeze; do not implement global JSON string replacement as a recoloring feature.
+2. **Web actual-outcome access is incomplete.** `renderSvg()` returns a string; `svgPlanJson()`
+   reports artifact capabilities, not the consumed/residual theme facets. A real-WASM probe appended
+   an unqualified Class Node `stroke.width: 2` rule: rendering succeeded, the node outline remained
+   `1.3`, and the capability plan returned `ready: true`. A separate `describeThemeSupport()` query
+   correctly returned `unsupported` with `theme-support.no-supported-route`. This is a user workflow
+   gap, not a false `Portable` claim by the core. The binding operation owner already projects
+   `theme_execution_evidence`, but WASM success adapters discard metadata via `into_data`.
+   That projection contains coarse theme/target status and reasons, not per-rule/facet details.
+   Expose a useful result through the existing execution owners; do not promise detailed
+   explanations merely by forwarding the current metadata or create a second evidence engine.
+   The probe and SVG are retained as
+   `unsupported-width.json` and `unsupported-width.svg` in the artifact directory above.
+3. **Strict policy is not exposed in binding options.** Web and binding environment JSON expose
+   text measurement and math rendering, not the Rust facade's `RequirePortable` requirement.
+   `resvg-safe` selects a rendering pipeline; it is not an equivalent strict-theme switch.
+   The request owner builds the default BestEffort environment. Settle the explicit request policy
+   and error behavior alongside actual-outcome access before freeze. Independent source review
+   confirmed both projection gaps as existing P2 delivery issues, not regressions from this slice.
+4. **Missing-resource and broader distribution journeys remain open.** No claim is made here about
+   offline font behavior, disabled embedded-font capability, complete canvas/effect rendering in
+   every consumer, dense reference scenes, PNG/PDF equivalence, or all artifact profiles.
+
+U13 is still open. These decisions precede public contract freeze; the successful palette-edit
+journey does not close U4/U6–U9 or promote current presets to full Modern Mermaid reproductions.
