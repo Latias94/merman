@@ -123,6 +123,14 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-17 layout image scanning
+
+The separate Flowchart layout image helper now compares fixed-size prefixes and consumes each
+searched tag span once. This removes the remaining quadratic suffix-lowercasing term from mixed
+image labels while preserving metric values and opaque measurer requests. See the
+[layout scanning receipt](layout_image_scan_2026-09-17.md) for the linear preparation bound,
+original-implementation behavior checks, and validation scope. No measured speedup is claimed.
+
 ### 2026-09-17 LSP semantic-token scheduling
 
 Full, delta, and range token computation now leaves the transport poll and shares the analysis

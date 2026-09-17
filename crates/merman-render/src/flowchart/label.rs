@@ -661,9 +661,14 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 while i < bytes.len() {
                     if bytes[i] == b'<' {
                         let rest = &html[i..];
-                        let rest_lower = rest.to_ascii_lowercase();
-                        if rest_lower.starts_with("<img")
-                            && let Some(rel_end) = rest.find('>')
+                        let Some(rel_end) = rest.find('>') else {
+                            // No later tag can close either; preserve the remaining text once.
+                            text_buf.push_str(rest);
+                            break;
+                        };
+                        if rest
+                            .get(..4)
+                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<img"))
                         {
                             if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
                                 blocks.push(Block::Text(std::mem::take(&mut text_buf)));
@@ -677,17 +682,16 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                             i += rel_end + 1;
                             continue;
                         }
-                        if rest_lower.starts_with("<br")
-                            && let Some(rel_end) = rest.find('>')
+                        if rest
+                            .get(..3)
+                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<br"))
                         {
                             text_buf.push('\n');
                             i += rel_end + 1;
                             continue;
                         }
-                        if let Some(rel_end) = rest.find('>') {
-                            i += rel_end + 1;
-                            continue;
-                        }
+                        i += rel_end + 1;
+                        continue;
                     }
                     let Some(ch) = html[i..].chars().next() else {
                         break;
@@ -1254,6 +1258,123 @@ mod tests {
                 height: 2.002,
                 line_count: 1,
             }
+        }
+    }
+
+    #[derive(Default)]
+    struct ImageTextMeasurer(std::cell::RefCell<Vec<String>>);
+
+    impl TextMeasurer for ImageTextMeasurer {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            self.0.borrow_mut().push(text.to_string());
+            TextMetrics {
+                width: 1.001,
+                height: 2.002,
+                line_count: 1,
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            assert_eq!(max_width, Some(120.0));
+            assert_eq!(wrap_mode, WrapMode::HtmlLike);
+            self.measure(text, style)
+        }
+    }
+
+    fn image_label_metrics(label: &str, measurer: &dyn TextMeasurer) -> TextMetrics {
+        flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer,
+            raw_label: label,
+            label_type: "html",
+            style: &TextStyle::default(),
+            max_width_px: Some(120.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &MermaidConfig::default(),
+            math_renderer: None,
+        })
+    }
+
+    #[test]
+    fn html_image_layout_preserves_metrics_and_measurement_requests() {
+        // Prefix and src recognition are deliberately the existing headless rules.
+        let cases: &[(&str, &[&str], usize, f64)] = &[
+            ("<img src='x'>", &[], 1, 80.0),
+            ("<IMG src=''>", &[], 0, 80.0),
+            (
+                "<span>中😀</span><IMGx src='图'><BRx>尾",
+                &["中😀", "尾"],
+                1,
+                120.0,
+            ),
+            ("a<im😀>b<img src='x'>", &["ab"], 1, 120.0),
+            ("a<img😀 src='x'><br中>b", &["a", "b"], 1, 120.0),
+            ("a<img>", &["a"], 0, 120.0),
+            ("a<img src='  '>", &["a"], 0, 120.0),
+            ("a<img src=x>", &["a"], 0, 120.0),
+            ("a<img src = 'x'>", &["a"], 0, 120.0),
+            ("a<img data-src='x'>", &["a"], 1, 120.0),
+            ("a<img src='a>b'>尾", &["a", "b'>尾"], 1, 120.0),
+            (
+                "<span> \tA\u{00a0} </span><BR><br /> B <img SRC=' x '> C",
+                &["A\u{00a0}\n\nB", "C"],
+                1,
+                120.0,
+            ),
+            (
+                "a<img src='x'>b<img src=''>c<img src='y'>d",
+                &["a", "b", "c", "d"],
+                2,
+                120.0,
+            ),
+            // The existing paragraph wrapper closes the otherwise unclosed tag.
+            ("head<img src='x'>tail<<中", &["head", "tail"], 1, 120.0),
+            ("head<img", &["head"], 0, 120.0),
+        ];
+        for &(label, expected_requests, images_with_src, width) in cases {
+            let measurer = ImageTextMeasurer::default();
+            let metrics = image_label_metrics(label, &measurer);
+            assert_eq!(*measurer.0.borrow(), expected_requests, "{label}");
+            assert_eq!(metrics.width, width, "{label}");
+            let height = images_with_src as f64 * width + expected_requests.len() as f64 * 2.002;
+            assert_eq!(
+                metrics.height,
+                crate::text::ceil_to_1_64_px(height),
+                "{label}"
+            );
+            assert_eq!(
+                metrics.line_count,
+                images_with_src + expected_requests.len(),
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn html_image_layout_many_tags_preserves_text_and_metrics() {
+        for count in [1, 32, 512, 4096] {
+            let plain = format!("{}<img src='x'>", "α".repeat(count));
+            let tagged = format!("{}<iMg src='x'>", "<span>α</span>".repeat(count));
+            let plain_measurer = ImageTextMeasurer::default();
+            let tagged_measurer = ImageTextMeasurer::default();
+            let plain_metrics = image_label_metrics(&plain, &plain_measurer);
+            let tagged_metrics = image_label_metrics(&tagged, &tagged_measurer);
+            assert_eq!(tagged_metrics.width, plain_metrics.width, "count={count}");
+            assert_eq!(tagged_metrics.height, plain_metrics.height, "count={count}");
+            assert_eq!(
+                tagged_metrics.line_count, plain_metrics.line_count,
+                "count={count}"
+            );
+            assert_eq!(
+                *tagged_measurer.0.borrow(),
+                *plain_measurer.0.borrow(),
+                "count={count}"
+            );
         }
     }
 
