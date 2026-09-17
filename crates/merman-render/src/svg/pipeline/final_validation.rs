@@ -1186,8 +1186,7 @@ fn is_marker_capable_svg_element(element_name: &str) -> bool {
 }
 
 fn marker_mid_instance_upper_bound(element_name: &str, geometry_source_len: usize) -> usize {
-    let cap = crate::resources::MAX_RESVG_TREE_NODES.saturating_add(1);
-    let estimate = match element_name {
+    match element_name {
         // One arc command may be lowered to multiple cubic segments. Four per source byte remains
         // a conservative bound even for compressed implicit command repetition.
         "path" => geometry_source_len.saturating_mul(4).saturating_add(16),
@@ -1195,8 +1194,7 @@ fn marker_mid_instance_upper_bound(element_name: &str, geometry_source_len: usiz
         "line" => 2,
         "rect" | "circle" | "ellipse" => 16,
         _ => 0,
-    };
-    estimate.min(cap)
+    }
 }
 
 fn plan_svg_reference_expansion_with_checkpoints<E>(
@@ -1396,7 +1394,8 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferencePlan, E> {
-    let cap = crate::resources::MAX_RESVG_TREE_NODES.saturating_add(1);
+    // User element budgets can exceed a native backend's ceiling. Count independently of that
+    // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
     let dependencies = &graph.dependencies;
     let nodes_len = dependencies.len();
     let mut states = vec![0_u8; nodes_len];
@@ -1413,15 +1412,15 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
         traversal_iteration = traversal_iteration.saturating_add(1);
         if complete {
             let is_group = index >= graph.real_nodes;
-            let mut elements = if is_group { 0 } else { 1 };
+            let mut elements = if is_group { 0_usize } else { 1 };
             let mut depth = 0_usize;
             for &(dependency, multiplicity) in &dependencies[index] {
                 checkpoint_loop(dependency_iteration, checkpoint)
                     .map_err(ReferencePlanningError::Checkpoint)?;
                 dependency_iteration = dependency_iteration.saturating_add(1);
                 let dependency_elements =
-                    capped_svg_reference_mul(expanded_elements[dependency], multiplicity, cap);
-                elements = capped_svg_reference_add(elements, dependency_elements, cap);
+                    expanded_elements[dependency].saturating_mul(multiplicity);
+                elements = elements.saturating_add(dependency_elements);
                 let dependency_depth = expanded_depths[dependency];
                 depth = depth.max(if is_group {
                     dependency_depth
@@ -1479,9 +1478,9 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
             checkpoint_loop(occurrence_dependency_iteration, checkpoint)
                 .map_err(ReferencePlanningError::Checkpoint)?;
             occurrence_dependency_iteration = occurrence_dependency_iteration.saturating_add(1);
-            let added = capped_svg_reference_mul(occurrences, multiplicity, cap);
+            let added = occurrences.saturating_mul(multiplicity);
             raw_element_occurrences[dependency] =
-                capped_svg_reference_add(raw_element_occurrences[dependency], added, cap);
+                raw_element_occurrences[dependency].saturating_add(added);
         }
     }
     raw_element_occurrences.truncate(graph.real_nodes);
@@ -1491,14 +1490,6 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
         max_tree_depth: expanded_depths[0],
         raw_element_occurrences: raw_element_occurrences.into_boxed_slice(),
     })
-}
-
-fn capped_svg_reference_add(value: usize, additional: usize, cap: usize) -> usize {
-    value.saturating_add(additional).min(cap)
-}
-
-fn capped_svg_reference_mul(value: usize, multiplier: usize, cap: usize) -> usize {
-    value.saturating_mul(multiplier).min(cap)
 }
 
 // usvg maps attributes from these namespaces to SVG attribute ids by local name.
@@ -1954,6 +1945,35 @@ mod tests {
         }
         svg.push_str(r##"</defs><use href="#use-0"/></svg>"##);
         svg
+    }
+
+    #[test]
+    fn reference_accounting_saturates_without_materializing_expanded_nodes() {
+        let graph = ReferenceDependencyGraph {
+            dependencies: vec![vec![(1, usize::MAX), (1, 2)], vec![(2, 2)], vec![]],
+            real_nodes: 3,
+        };
+        let plan = plan_svg_reference_dependencies(&graph).unwrap();
+        assert_eq!(plan.expanded_elements(), usize::MAX);
+        assert_eq!(plan.raw_element_occurrences(), &[1, usize::MAX, usize::MAX]);
+        assert_eq!(plan.max_tree_depth(), 2);
+    }
+
+    #[test]
+    fn marker_accounting_is_not_truncated_to_a_native_backend_ceiling() {
+        let source_len = crate::resources::MAX_RESVG_TREE_NODES;
+        assert_eq!(
+            marker_mid_instance_upper_bound("path", source_len),
+            source_len * 4 + 16
+        );
+        assert_eq!(
+            marker_mid_instance_upper_bound("polygon", source_len),
+            source_len + 4
+        );
+        assert_eq!(
+            marker_mid_instance_upper_bound("path", usize::MAX),
+            usize::MAX
+        );
     }
 
     #[test]

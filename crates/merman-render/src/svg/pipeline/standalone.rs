@@ -307,6 +307,96 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_does_not_mask_raw_svg_element_budget_failure() {
+        let session = session_with_max_svg_elements(2);
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/><g/></svg>"#;
+
+        let error = StandaloneSvgArtifact::observe_exact(
+            svg.to_owned(),
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .expect_err("raw SVG element budgets must run before terminal compatibility checks");
+
+        assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn parity_observation_rejects_analyzable_use_expansion_over_budget() {
+        let session = session_with_max_svg_elements(10);
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/></svg>"##;
+
+        let error = StandaloneSvgArtifact::observe_exact(
+            svg.to_owned(),
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .expect_err("an analyzable use DAG must retain its expanded resource budget");
+
+        assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn parity_observation_enforces_expansion_budget_above_native_backend_ceiling() {
+        let mut svg = String::from(r#"<svg><defs><g id="leaf"><path/></g>"#);
+        for index in 0..20 {
+            let target = if index == 0 {
+                "leaf".to_owned()
+            } else {
+                format!("branch-{}", index - 1)
+            };
+            svg.push_str(&format!(
+                r##"<g id="branch-{index}"><use href="#{target}"/><use href="#{target}"/></g>"##
+            ));
+        }
+        svg.push_str(r##"</defs><use href="#branch-19"/></svg>"##);
+        let session = session_with_max_svg_elements(crate::resources::MAX_RESVG_TREE_NODES * 2);
+        let error = StandaloneSvgArtifact::observe_exact(
+            svg,
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .expect_err("a native ceiling must not hide a larger explicit resource budget");
+        assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn foreign_object_observation_retains_svg_without_claiming_expansion_budget() {
+        let dag = r##"<defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/>"##;
+        for svg in [
+            format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/>{dag}</svg>"#),
+            format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{dag}<foreignObject/></svg>"#),
+        ] {
+            let session = session_with_max_svg_elements(64);
+            let artifact = StandaloneSvgArtifact::observe_exact(
+                svg.clone(),
+                None,
+                PreparedTextEvidenceLease::default(),
+                true,
+                &SvgPipeline::parity(),
+                &session,
+            )
+            .expect("ordinary observation retains native-incompatible SVG bytes");
+
+            assert_eq!(
+                artifact.terminal_status(),
+                StandaloneSvgTerminalStatus::ValidationFailed
+            );
+            assert!(artifact.finalization_report().is_none());
+            assert_eq!(artifact.as_str(), svg);
+        }
+    }
+
+    #[test]
     fn parity_observation_records_backend_depth_incompatibility_without_failing() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())

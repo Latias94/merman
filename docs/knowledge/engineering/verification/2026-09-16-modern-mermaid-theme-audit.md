@@ -348,3 +348,27 @@ On September 17, the current production files matched the clean confirmation sna
 47/47 focused tests. An initial command targeted the facade crate and selected zero tests; a
 second incorrectly supplied its `svg` feature to the renderer crate and failed before compilation.
 Neither unsuccessful command is counted as verification.
+
+## U2 reference-budget correction (2026-09-17)
+
+A new negative test reproduced a resource-accounting defect before implementation: an ordinary
+Parity SVG with a 20-level branching `use` DAG returned `ValidationFailed` instead of rejecting
+its explicit two-million-element budget. The existing graph saturated at the native backend's
+one-million-node ceiling plus one, so the compatibility-only error hid the larger resource limit.
+The raw document contained only 65 elements; no expanded SVG was allocated by the test.
+
+Reference counts and marker multiplicity bounds now use saturating machine-word arithmetic,
+independently of the backend ceiling. The existing graph traversal, cycle detection and native
+checks remain in place; resource counts can reach the requested budget before native compatibility
+is classified. This adds no dependency and does not materialize expanded nodes. Separate tests
+exercise arithmetic overflow and marker bounds. This is a prerequisite to U2's observation split,
+not completion of that split or proof of arbitrary browser CSS expansion accounting.
+
+Verification: the new above-ceiling budget test failed before the change by returning an observed
+artifact, then passed after the change. `CARGO_BUILD_JOBS=1 cargo nextest run --locked
+-p merman-render --lib svg::pipeline` passed 239/239 tests in the development test profile, including
+static and strict native validation, cycles, cancellation, prepared labels and foreignObject
+characterization. `cargo fmt --all` and `git diff --check` passed. The foreignObject characterization
+still records the current `ValidationFailed` state; U2 must replace this with the planned unverified
+ordinary-output state during the observation split. No performance claim or complete export-matrix
+claim is made for this resource-budget correction.
