@@ -7,6 +7,7 @@ use super::{
 };
 
 mod catalog;
+mod cyberpunk;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -612,6 +613,187 @@ mod tests {
     }
 
     #[test]
+    fn cyberpunk_complete_recipe_retains_canvas_and_scoped_ordered_glow() {
+        use merman_theme_contract::{
+            SpecifiedWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1, ThemeRecipeV1,
+            ThemeRuleSetWireV1,
+        };
+        let compiler = DiagramThemeCompiler::new();
+        let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+        let ThemeRecipeV1::CompleteSpec { complete_spec } = &recipe else {
+            unreachable!()
+        };
+        assert_eq!(
+            complete_spec
+                .canvas
+                .as_ref()
+                .unwrap()
+                .layers
+                .as_ref()
+                .unwrap()
+                .len(),
+            3
+        );
+        let effects = complete_spec
+            .effects
+            .as_ref()
+            .expect("public recipe owns the glow");
+        let [ThemeEffectEntryWireV1::Graph { id, primitives }] = effects.as_slice() else {
+            panic!("one family-scoped shape glow graph is expected")
+        };
+        let [
+            ThemeEffectPrimitiveWireV1::DropShadow {
+                input: first,
+                blur_radius: first_blur,
+                ..
+            },
+            ThemeEffectPrimitiveWireV1::DropShadow {
+                input: second,
+                blur_radius: second_blur,
+                ..
+            },
+        ] = primitives.as_slice()
+        else {
+            panic!("the reference shape glow has two ordered shadows")
+        };
+        assert_eq!(first.as_deref(), Some("source-graphic"));
+        assert_eq!(second.as_deref(), Some("previous"));
+        assert_eq!((*first_blur, *second_blur), (8.0, 16.0));
+        let scoped_targets: Vec<_> = complete_spec
+            .styles
+            .as_ref()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                ThemeRuleSetWireV1::Rule {
+                    family,
+                    target,
+                    style,
+                    ..
+                } if style.effect == SpecifiedWireV1::Value(id.clone()) => {
+                    Some((family.as_deref(), target.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            scoped_targets,
+            [(Some("flowchart"), "node"), (Some("sequence"), "actor")]
+        );
+        let encoded = serde_json::to_vec(&recipe).unwrap();
+        let imported = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        assert_eq!(
+            compiler
+                .compile_preset(ThemePreset::Cyberpunk)
+                .unwrap()
+                .recipe_fingerprint(),
+            imported.recipe_fingerprint()
+        );
+    }
+
+    #[test]
+    fn complete_preset_exchange_preserves_scoped_clear_and_transparency() {
+        use merman_theme_contract::{
+            SpecifiedWireV1, ThemeCanvasPaintWireV1, ThemeRecipeV1, ThemeRuleSetWireV1,
+            ThemeStylePatchWireV1,
+        };
+        let compiler = DiagramThemeCompiler::new();
+        let ThemeRecipeV1::CompleteSpec { mut complete_spec } =
+            compiler.export_preset(ThemePreset::Cyberpunk).unwrap()
+        else {
+            unreachable!()
+        };
+        complete_spec
+            .styles
+            .as_mut()
+            .unwrap()
+            .push(ThemeRuleSetWireV1::Rule {
+                target: "node".to_owned(),
+                family: Some("flowchart".to_owned()),
+                variant: None,
+                ordinal: None,
+                style: ThemeStylePatchWireV1 {
+                    fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+                        "transparent".to_owned(),
+                    )),
+                    effect: SpecifiedWireV1::Clear,
+                    ..Default::default()
+                },
+            });
+        let encoded = serde_json::to_vec(&ThemeRecipeV1::CompleteSpec { complete_spec }).unwrap();
+        let theme = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
+        let node = flowchart.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        assert!(matches!(node.fill(), Some(CanvasPaint::Transparent)));
+        assert!(matches!(
+            node.effect_resolution().specified(),
+            crate::diagram_theme::Specified::Clear
+        ));
+        let sequence = theme.resolve(DiagramFamilyId::SEQUENCE);
+        let actor = sequence.style(ThemeTarget::Actor, ThemeVariant::Default, None);
+        assert_eq!(
+            actor.effect_resolution().value().map(String::as_str),
+            Some("cyberpunk-shape-glow")
+        );
+        assert_eq!(theme.spec().canvas().layers().len(), 3);
+        assert_eq!(theme.spec().effects().graphs().len(), 1);
+    }
+
+    #[test]
+    fn preset_final_composition_obeys_encoded_byte_budget() {
+        let compiler = DiagramThemeCompiler::new();
+        let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = recipe else {
+            unreachable!()
+        };
+        // Preset construction admits the complete-spec payload. Importing a saved recipe
+        // separately admits the raw input including its ThemeRecipeV1 envelope.
+        let size = serde_json::to_vec(&complete_spec).unwrap().len();
+        let limited = compiler.with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size - 1)
+                .unwrap(),
+        );
+        let error = limited
+            .export_preset(ThemePreset::Cyberpunk)
+            .expect_err("final recipe bytes must be counted, not only its small token input");
+        assert_eq!(
+            error.diagnostic().limit_id(),
+            Some("max_theme_encoded_bytes")
+        );
+        assert!(limited.compile_preset(ThemePreset::Cyberpunk).is_err());
+        let exact = DiagramThemeCompiler::new().with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size)
+                .unwrap(),
+        );
+        assert!(exact.export_preset(ThemePreset::Cyberpunk).is_ok());
+        assert!(exact.compile_preset(ThemePreset::Cyberpunk).is_ok());
+    }
+
+    #[test]
+    fn preset_final_composition_obeys_effect_budget_on_export_and_compile() {
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectPrimitivesPerGraph, 1)
+                .unwrap(),
+        );
+        let error = compiler
+            .export_preset(ThemePreset::Cyberpunk)
+            .expect_err("the second composed shadow must count during export");
+        assert_eq!(
+            error.diagnostic().limit_id(),
+            Some("max_effect_primitives_per_graph")
+        );
+        assert!(compiler.compile_preset(ThemePreset::Cyberpunk).is_err());
+        assert!(compiler.export_preset(ThemePreset::EditorLight).is_ok());
+    }
+
+    #[test]
     fn preset_complete_spec_exports_preserve_each_recipe_profile() {
         let compiler = DiagramThemeCompiler::new();
         for descriptor in theme_preset_descriptors() {
@@ -650,7 +832,7 @@ mod tests {
             (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
             (ThemePreset::Brutalist, "#f4f0e6", "#111111", "#ff4f00"),
             (ThemePreset::Spotless, "#f7f5ef", "#2c2416", "#8b5e34"),
-            (ThemePreset::Cyberpunk, "#020617", "#22d3ee", "#22d3ee"),
+            (ThemePreset::Cyberpunk, "#051423", "#00f2ff", "#22d3ee"),
         ];
 
         for (preset, canvas, line, first_series) in expected {

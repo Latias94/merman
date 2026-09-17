@@ -117,8 +117,13 @@ order:
 selects the recipe's background class/style unless a background override is
 chosen. The background belongs to the preview/container composition; Mermaid's
 plain SVG is not proof that these layers were exported. The bounded public
-product expects this complete composition at the root canvas, with grid spacing
-in canvas CSS pixels rather than scaled diagram-local coordinates.
+product expects this complete composition at the root canvas. The grid is anchored
+to the canvas's top-left corner, independent of a nonzero diagram viewBox origin.
+At natural output dimensions (native scale 1, no fit or size reduction), the tile
+is 40 output pixels and the line is 1 pixel. Resizing the entire exported SVG or
+raster scales its canvas and diagram together. The exported recipe does not promise
+a separate screen-fixed CSS background when a host scales the diagram; that would
+be a different, host-owned composition from a single self-contained image.
 
 ## Capture and target contract
 

@@ -1396,13 +1396,13 @@ fn push_canvas_paint_defs(
         CanvasPaint::LinearGradient(gradient) => {
             push_linear_gradient(out, ids, gradient, view_box);
             if let Some((width_px, height_px)) = gradient.tile_size_px() {
-                push_gradient_pattern(out, ids, width_px, height_px);
+                push_gradient_pattern(out, ids, width_px, height_px, view_box);
             }
         }
         CanvasPaint::RadialGradient(gradient) => {
             push_radial_gradient(out, ids, gradient, view_box);
             if let Some((width_px, height_px)) = gradient.tile_size_px() {
-                push_gradient_pattern(out, ids, width_px, height_px);
+                push_gradient_pattern(out, ids, width_px, height_px, view_box);
             }
         }
         CanvasPaint::Transparent | CanvasPaint::Solid(_) | CanvasPaint::Pattern(_) => {}
@@ -1480,15 +1480,29 @@ fn push_gradient_pattern(
     ids: CanvasResourceIds<'_>,
     width_px: f32,
     height_px: f32,
+    view_box: Option<ViewBox>,
 ) {
     debug_assert!(ids.tiled, "tiled gradient must own a pattern id");
     out.push_str(r#"<pattern id=""#);
     ids.write(out, CanvasResourceKind::Pattern);
     let _ = write!(
         out,
-        r#"" patternUnits="userSpaceOnUse" x="0" y="0" width="{}" height="{}"><rect x="0" y="0" width="{}" height="{}" fill="url(#"#,
+        r#"" patternUnits="userSpaceOnUse" x="0" y="0" width="{}" height="{}""#,
         fmt(f64::from(width_px)),
         fmt(f64::from(height_px)),
+    );
+    if let Some(bounds) = view_box.filter(|bounds| bounds.min_x != 0.0 || bounds.min_y != 0.0) {
+        // Move the tile coordinate system once, keeping its content and gradient local.
+        let _ = write!(
+            out,
+            r#" patternTransform="translate({} {})""#,
+            fmt(bounds.min_x),
+            fmt(bounds.min_y),
+        );
+    }
+    let _ = write!(
+        out,
+        r#"><rect x="0" y="0" width="{}" height="{}" fill="url(#"#,
         fmt(f64::from(width_px)),
         fmt(f64::from(height_px)),
     );
@@ -2491,6 +2505,59 @@ mod tests {
             "one definition and one fill reference are sufficient: {}",
             rooted.svg
         );
+        assert_eq!(
+            report.verification(),
+            crate::diagram_theme::RootThemeVerification::Verified
+        );
+    }
+
+    #[test]
+    fn tiled_canvas_is_anchored_to_the_canvas_origin() {
+        let gradient = LinearGradient::new(180.0, gradient_stops())
+            .unwrap()
+            .with_tile_px(40.0, 40.0)
+            .unwrap();
+        let plan = root_theme_plan(
+            crate::diagram_theme::CanvasSpec::default()
+                .with_base(CanvasPaint::LinearGradient(gradient)),
+        );
+        let context = computed_context(DiagramFamilyId::INFO, "canvas-origin");
+        let mut out = String::new();
+        let document = context
+            .write_open(
+                &mut out,
+                RootViewportSpec::responsive(DiagramBounds::from_view_box(-8.0, 7.0, 160.0, 100.0)),
+                RootChrome::new("canvas-origin", "info"),
+            )
+            .unwrap();
+        out.push_str("<g/></svg>");
+        let meter = crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let (rooted, report) = document
+            .complete(out)
+            .unwrap()
+            .apply_root_theme(Some(&plan), &meter)
+            .unwrap();
+        let svg = roxmltree::Document::parse(&rooted.svg).unwrap();
+        let pattern = svg
+            .descendants()
+            .find(|node| node.has_tag_name("pattern"))
+            .unwrap();
+        assert_eq!(
+            pattern.attribute("patternTransform"),
+            Some("translate(-8 7)")
+        );
+        assert_eq!(pattern.attribute("x"), Some("0"));
+        assert_eq!(pattern.attribute("y"), Some("0"));
+        let tile = pattern
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(tile.attribute("x"), Some("0"));
+        assert_eq!(tile.attribute("y"), Some("0"));
+        assert_eq!(tile.attribute("width"), Some("40"));
+        assert_eq!(tile.attribute("height"), Some("40"));
         assert_eq!(
             report.verification(),
             crate::diagram_theme::RootThemeVerification::Verified

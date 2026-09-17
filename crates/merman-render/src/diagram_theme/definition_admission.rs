@@ -172,7 +172,7 @@ fn admission_contract_error(error: ThemeDefinitionAdmissionError) -> ThemeMateri
             contract_error(ThemeMaterializationDiagnosticV1::invalid_token_value(
                 "",
                 "finite-theme-definition",
-                "typed theme definition cannot be encoded for bounded admission",
+                "typed theme input cannot be encoded for bounded admission",
             ))
         }
         ThemeDefinitionAdmissionError::CollectionLimit {
@@ -298,15 +298,33 @@ fn admit_typed_definition<'a>(
     // This is transport admission, not canonical identity. Stream the contract-owned wire shape
     // so an over-budget typed value stops at the first inadmissible byte without allocating a
     // complete JSON buffer. Canonical JSON remains the authority for exported identity/digests.
+    check_typed_input_encoded_bytes(resources, definition)?;
+    Ok(AdmittedThemeDefinition::new(definition))
+}
+
+/// Counts the complete-spec payload, excluding its recipe/transport envelope, without
+/// allocating its encoded JSON representation. Raw-input hosts also admit their full envelope.
+/// Preset composition reuses this admission after appending complete-spec fields.
+pub(super) fn check_complete_spec_encoded_bytes(
+    resources: &ThemeResourcePolicy,
+    spec: &merman_theme_contract::DiagramThemeSpecWireV1,
+) -> Result<(), ThemeMaterializationErrorV1> {
+    check_typed_input_encoded_bytes(resources, spec).map_err(admission_contract_error)
+}
+
+fn check_typed_input_encoded_bytes(
+    resources: &ThemeResourcePolicy,
+    input: &impl serde::Serialize,
+) -> Result<(), ThemeDefinitionAdmissionError> {
     let mut writer = BoundedCountingWriter::new(resources);
-    let encoded = serde_json::to_writer(&mut writer, definition);
+    let encoded = serde_json::to_writer(&mut writer, input);
     if let Some(error) = writer.take_resource_error() {
         return Err(ThemeDefinitionAdmissionError::ResourceLimit(error));
     }
     encoded.map_err(|_| ThemeDefinitionAdmissionError::TypedEncoding {
-        message: "typed theme definition cannot be encoded for bounded admission".to_owned(),
+        message: "typed theme input cannot be encoded for bounded admission".to_owned(),
     })?;
-    Ok(AdmittedThemeDefinition::new(definition))
+    Ok(())
 }
 
 #[derive(Default)]
@@ -526,16 +544,12 @@ impl<'a> BoundedCountingWriter<'a> {
 impl io::Write for BoundedCountingWriter<'_> {
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
         if self.resource_error.is_some() {
-            return Err(io::Error::other(
-                "theme definition encoded-byte limit exceeded",
-            ));
+            return Err(io::Error::other("theme input encoded-byte limit exceeded"));
         }
         let projected = self.bytes.saturating_add(buffer.len());
         if let Err(error) = self.resources.check_theme_encoded_bytes(projected) {
             self.resource_error = Some(error);
-            return Err(io::Error::other(
-                "theme definition encoded-byte limit exceeded",
-            ));
+            return Err(io::Error::other("theme input encoded-byte limit exceeded"));
         }
         self.bytes = projected;
         Ok(buffer.len())

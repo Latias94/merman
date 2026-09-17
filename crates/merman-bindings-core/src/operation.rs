@@ -2510,14 +2510,31 @@ mod tests {
     #[test]
     fn one_shot_and_reusable_theme_authoring_share_resource_admission() {
         let engine = crate::BindingEngine::new(b"").expect("default engine");
-        for (operation, input) in [
-            ("materialize-theme-json", &b"{}"[..]),
-            ("describe-theme-support-json", &b"{}"[..]),
-            ("export-theme-preset-json", &b"editor-light"[..]),
+        for (operation, input, limit) in [
+            (
+                "materialize-theme-json",
+                &b"{}"[..],
+                "max_theme_encoded_bytes",
+            ),
+            (
+                "describe-theme-support-json",
+                &b"{}"[..],
+                "max_theme_encoded_bytes",
+            ),
+            (
+                "export-theme-preset-json",
+                &b"editor-light"[..],
+                "max_theme_encoded_bytes",
+            ),
+            (
+                "export-theme-preset-json",
+                &b"cyberpunk"[..],
+                "max_effect_primitives_per_graph",
+            ),
         ] {
             for wrapper in [None, Some("analysis"), Some("merman")] {
                 let resources = serde_json::json!({
-                    "resources": { "limits": { "max_theme_encoded_bytes": 1 } }
+                    "resources": { "limits": { (limit): 1 } }
                 });
                 let options = match wrapper {
                     Some(wrapper) => serde_json::json!({ wrapper: resources }),
@@ -2545,6 +2562,19 @@ mod tests {
                     one_shot.resource_details(),
                     "{operation} {wrapper:?}"
                 );
+                assert_eq!(one_shot.resource_details().unwrap().limit_id, limit);
+                assert_eq!(
+                    reused.theme_authoring_details(),
+                    one_shot.theme_authoring_details()
+                );
+                if limit == "max_effect_primitives_per_graph" {
+                    let resource = one_shot.resource_details().unwrap();
+                    assert_eq!((resource.actual, resource.max), (2, 1));
+                    assert!(
+                        one_shot.theme_authoring_details().is_some(),
+                        "composed recipe rejection retains the authoring envelope"
+                    );
+                }
             }
         }
     }

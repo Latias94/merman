@@ -28,12 +28,13 @@ Bindings also lack one Rust-owned materialization operation, so adding token exp
 Web, Node, Python, or a Playground would create multiple authorities for defaults, ordering,
 diagnostics, and replay.
 
-Version 1 is share-first. One self-contained `ThemeDefinitionV1` value is the ordinary authored and
-shared theme. Pretty-printed JSON, canonical JSON bytes, Rust or generated-SDK constructors, a local
-file, and an optional compressed Playground URL are projections of that same value, not separate
-theme formats. A complete `DiagramThemeSpec` remains the advanced share format when the compact
-definition cannot express a recipe. Version 1 does not add theme packages, manifests, installation,
-lock files, or a remote registry.
+Version 1 is share-first. `ThemeRecipeV1` is the durable exchange envelope, with required
+`schema_version: 1` and an explicit `definition` or `complete_spec` kind. The compact
+`ThemeDefinitionV1` remains the ordinary authoring payload; a complete `DiagramThemeSpecWireV1`
+carries recipes beyond that vocabulary. A local JSON file and SDK values represent the same
+recipe, not separate theme formats. The envelope carries the recipe without needing its original
+preset catalog; host fonts and artifact capabilities remain separate requirements. Version 1 does
+not add theme packages, manifests, installation, lock files, or a remote registry.
 
 This ADR defines the accepted alpha authoring design used by the C7a pre-freeze authoring
 witnesses. It does not declare a stable public interface, satisfy C6a, or unblock C7a. C7a remains
@@ -73,15 +74,43 @@ lowering are outside version 1.
 
 Light and dark themes are two independently materialized definitions. A preset is a catalog
 selection and starter example, not another authoring format. A copy/export action returns a
-self-contained `ThemeDefinitionV1` when the preset has one lossless source definition, and otherwise
-returns a complete spec. Version 1 does not require reverse-engineering an arbitrary preset into a
+`ThemeRecipeV1::Definition` when the preset has one lossless source definition, and otherwise
+returns `ThemeRecipeV1::CompleteSpec`. Version 1 does not require reverse-engineering an arbitrary preset into a
 compact definition and does not add runtime preset-plus-patch semantics.
 
-The current built-in presets are definition-backed internally, but the catalog appends Mermaid
-`theme = base` and `dark_mode` compatibility values after materialization. Until those values are
-represented losslessly by `ThemeDefinitionV1`, preset export returns `complete_spec`, not a compact
-definition. That export is a catalog convenience operation; it is not a third authoring language or
-an additional low-level renderer input.
+Built-in builders return one complete specification for compilation and export. Simple recipes
+reuse token materialization; retained recipes append Mermaid `theme = base` and `dark_mode`
+compatibility values, while complex recipes can append structured canvas and scoped effects.
+Those values are not represented losslessly by `ThemeDefinitionV1`, so current preset export uses
+`complete_spec`. The final composition receives resource admission; the export operation does
+not certify that every requested facet has a family consumer. It is a catalog convenience, not a
+third authoring language or an additional low-level renderer input.
+
+### Complete recipe snapshots and creation inputs
+
+The September 17 pre-freeze interface review distinguishes an editable rendering recipe from its
+creation source. A saved complete recipe is a snapshot: importing it must not look up its old
+preset name, apply a newer catalog recipe, or infer shared color roles from equal literal paints.
+It retains concrete canvas, effects and scoped rules, subject to the existing resource and
+capability admission. Editing it does not inherit the original preset's qualification.
+
+Explicit local customization uses the existing complete specification and rule order. It can
+change a Node border or append a Class-only rule without changing independently owned Actor,
+Note, Edge or series colors. This is not a whole-theme semantic recoloring operation.
+
+For complex preset creation, the selected direction is bounded parameters consumed by the preset's
+own complete-recipe builder. Any future public parameters must first demonstrate a real role in
+canvas/effects and family terminals, document their scope, reject unknown inputs, and use the
+existing final resource admission. Parameter names and a public callable API are **not accepted
+or implemented by this decision**: U4 and the real author journey must establish them first.
+Do not expose the entire internal palette, add symbolic references to complete-spec paints, or
+create a second merge/interpreter service to supply this convenience.
+
+Authors who need repeated parameter changes keep their creation code, inputs and library version.
+They distribute the generated complete recipe as the runtime snapshot, optionally with that
+creation source. Reimported snapshots remain directly editable, but arbitrary manual changes
+cannot be reconstructed as original generator parameters or automatically carried into a fresh
+regeneration. JSON plus README/LICENSE remains the initial distribution mechanism.
 
 ### Candidate user workflows and non-claims
 
@@ -129,7 +158,22 @@ requirements. A concrete render or export report remains the only authority for 
 
 ### 3. Define the candidate version 1 input envelope
 
-The persisted input has this closed shape:
+The durable exchange shape is:
+
+```text
+ThemeRecipeV1 =
+    { schema_version: 1, kind: "definition", definition: ThemeDefinitionV1 }
+  | { schema_version: 1, kind: "complete_spec", complete_spec: DiagramThemeSpecWireV1 }
+```
+
+The root version is required and covers the complete-spec exchange payload as well as the
+variant envelope. Unknown versions, unknown fields, mixed payloads and duplicate root fields are
+rejected. Do not infer a payload kind from absent fields. CLI `--theme-file`, binding `theme`, and
+Rust `compile_recipe` accept this exported document directly. Existing explicit preset/spec
+selection and the separate definition-materialization operation are not additional file formats.
+The envelope does not change the compact payload's authoring/expansion-version checks.
+
+The compact authoring payload has this closed shape:
 
 ```text
 ThemeDefinitionV1 {

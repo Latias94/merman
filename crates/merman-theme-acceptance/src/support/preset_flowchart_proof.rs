@@ -50,14 +50,14 @@ impl Palette {
                 background: "#f7f5ef",
             },
             ThemePreset::Cyberpunk => Self {
-                canvas: "#020617",
-                node: "#0f172a",
-                node_border: "#22d3ee",
-                text: "#e0f2fe",
-                cluster: "#111827",
-                cluster_border: "#22d3ee",
-                edge: "#22d3ee",
-                background: "#020617",
+                canvas: "#051423",
+                node: "#051423",
+                node_border: "#00f2ff",
+                text: "#00f2ff",
+                cluster: "#051423",
+                cluster_border: "#00f2ff",
+                edge: "#00f2ff",
+                background: "#051423",
             },
             _ => {
                 return Err(C6ProofError::new(

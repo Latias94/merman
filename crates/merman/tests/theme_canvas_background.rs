@@ -131,3 +131,101 @@ fn check_background_ownership(
         }
     }
 }
+
+#[test]
+fn public_cyberpunk_canvas_survives_recipe_exchange() {
+    use merman::svg::{DiagramThemeCompiler, ThemePreset};
+
+    let compiler = DiagramThemeCompiler::new();
+    let direct = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+    let saved =
+        serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
+    let imported = DiagramThemeCompiler::new()
+        .compile_recipe(serde_json::from_slice(&saved).unwrap())
+        .unwrap();
+    let renderer = merman::Renderer::new();
+    for (family, source) in [
+        (
+            "flowchart",
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+        ),
+        (
+            "sequence",
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+        ),
+        (
+            "xychart",
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+        ),
+        ("class", "classDiagram\nclass Account {\n +String name\n}"),
+    ] {
+        let render = |theme: &merman::svg::DiagramTheme| {
+            let request = merman::RenderRequest::svg(
+                source,
+                merman::OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme.clone());
+            let merman::RenderOutput::Svg(Some(output)) = renderer.render(request).unwrap() else {
+                panic!("{family}: diagram not detected");
+            };
+            output
+        };
+        let output = render(&direct);
+        if family == "class" {
+            assert!(
+                output
+                    .evidence()
+                    .theme_diagnostics()
+                    .iter()
+                    .all(|diagnostic| {
+                        diagnostic.code() != "unsupported-effect"
+                            && diagnostic.subject() != "effect-binding"
+                    }),
+                "effects scoped to other families must not create Class residuals"
+            );
+        }
+        assert_eq!(
+            output.svg(),
+            render(&imported).svg(),
+            "{family}: saved recipe"
+        );
+        let document = roxmltree::Document::parse(output.svg()).unwrap();
+        let base = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
+            .expect("painted root canvas");
+        assert_eq!(base.attribute("fill"), Some("#051423"), "{family}");
+        let layers: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-theme-canvas-layer"))
+            .collect();
+        assert_eq!(layers.len(), 3, "{family}: radial and both grid directions");
+        for layer in layers {
+            assert_eq!(layer.attribute("style"), Some("mix-blend-mode:screen"));
+            let paint = layer
+                .descendants()
+                .find(|node| node.has_tag_name("rect"))
+                .expect("layer must paint a real rectangle");
+            let id = paint
+                .attribute("fill")
+                .and_then(|fill| fill.strip_prefix("url(#"))
+                .and_then(|id| id.strip_suffix(')'))
+                .expect("layer references its paint");
+            let definition = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .expect("paint reference must resolve");
+            if definition.has_tag_name("pattern") {
+                assert_eq!(definition.attribute("patternUnits"), Some("userSpaceOnUse"));
+                assert_eq!(definition.attribute("width"), Some("40"));
+                assert_eq!(definition.attribute("height"), Some("40"));
+            } else {
+                assert!(
+                    definition.has_tag_name("radialGradient"),
+                    "{family}: canvas paint"
+                );
+            }
+        }
+    }
+}

@@ -39,7 +39,14 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
-                let family_complete = native_candidate;
+                // The complete Cyberpunk recipe now requests shape glow. These writers
+                // must consume it before their former palette-only qualification can return.
+                let pending_glow = preset.id() == "cyberpunk"
+                    && matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
+                    );
+                let family_complete = native_candidate && !pending_glow;
                 assert_eq!(
                     observation.status(),
                     if family_complete {
@@ -66,8 +73,8 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 assert_eq!(observation.bridge_residual_count(), 0);
                 assert_eq!(
                     observation.theme_residual_count(),
-                    0,
-                    "Sequence role fills cover the generic Text.fill fallback in this source",
+                    usize::from(pending_glow),
+                    "unsupported scoped shape glow remains a residual; other role paints are consumed",
                 );
                 assert_eq!(observation.source_residual_count(), 0);
             }
@@ -89,11 +96,7 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
     use merman::svg::ThemePreset;
     use merman_theme_acceptance::run_preset_qualification;
 
-    for preset in [
-        ThemePreset::Brutalist,
-        ThemePreset::Spotless,
-        ThemePreset::Cyberpunk,
-    ] {
+    for preset in [ThemePreset::Brutalist, ThemePreset::Spotless] {
         let receipt = run_preset_qualification(preset).unwrap();
         assert!(receipt.is_current());
         assert_eq!(
@@ -129,6 +132,9 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             assert_eq!(observation.mermaid_residual_count(), 0);
         }
     }
+    let error = run_preset_qualification(ThemePreset::Cyberpunk)
+        .expect_err("unconsumed ordered glow invalidates the old palette-only qualification");
+    assert!(error.to_string().contains("qualification"), "{error}");
     for descriptor in theme_preset_descriptors() {
         assert!(descriptor.qualified_cells().is_empty());
         if !matches!(

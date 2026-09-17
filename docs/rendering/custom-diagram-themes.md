@@ -20,8 +20,11 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 | `qualified_cells` | Evidence for named scenarios and targets, not every possible diagram |
 | Actual render admission | What this input, output target, resources, and policy can deliver |
 
-The current palette presets advertise no dedicated Modern Mermaid reproduction. A successful SVG
+The current catalog advertises no dedicated Modern Mermaid reproduction. A successful SVG
 render is not proof of readable dense labels, complete effects, or PNG/PDF portability.
+Cyberpunk now carries its layered canvas and declares scoped Flowchart/Sequence shape glow,
+but those family effect consumers are still incomplete. Their residuals prevent qualification;
+exporting the complete recipe does not make the current preset a finished reference reproduction.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
 and approve the visual design of a particular scene. Web `renderSvg()` returns only the SVG
 string, and `svgPlanJson().ready` checks artifact capabilities rather than applied theme facets.
@@ -149,10 +152,18 @@ means explicitly transparent paint. Clear restores the family's base behavior; i
 transparent or "remove this last rule and reveal the previous theme rule." Canvas `base` is a paint,
 not a patch field: use `"transparent"`, not `null`, for a transparent canvas.
 
-This example changes explicit roles. It is **not** a global brand-color parameter. Current Cyberpunk
-exports 68 rules, with independent node, actor, edge, marker, and data-series roles. Replacing every
-identical color string can damage those distinctions. Convenient parameterization of a complete
-complex preset remains under review before public contract freeze.
+This example changes explicit roles. It is **not** a global brand-color parameter. Cyberpunk
+contains independent node, actor, edge, marker, and data-series roles. Replacing every
+identical color string can damage those distinctions. A generated recipe is an editable snapshot,
+not a reversible record of the preset's color roles.
+For repeatable edits, keep a small creation function that exports a preset, applies your explicit
+changes, and saves the result. Keep its parameters and library version with the creation code.
+Re-running that function creates a new snapshot; it cannot automatically preserve manual edits
+made only to an earlier JSON file.
+
+Convenient semantic parameters for complete complex presets are not yet public. They must first
+be validated against actual canvas, effects and family consumers. There is no global recoloring
+API, symbolic token sidecar, or automatic reconstruction of creation parameters from imported JSON.
 
 ## Save and distribute
 
@@ -168,6 +179,10 @@ Passing JSON through the public API validates it in Rust. A TypeScript type asse
 not validate a downloaded document. Keep the serialized `schema_version` and `kind`; unknown
 versions and ambiguous preset/spec/recipe combinations are rejected. Normal resource admission
 still applies. Do not assume identical output across artifacts with different capabilities or fonts.
+
+A recipe's canvas is part of the exported image. Scaling the complete SVG or raster also scales
+its grid, background and diagram. A host's separate screen-fixed background is not carried by a
+recipe unless it has been explicitly represented in the canvas.
 
 ```sh
 merman-cli render --theme-file my-theme.json --format svg diagram.mmd

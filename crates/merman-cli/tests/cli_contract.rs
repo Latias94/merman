@@ -624,34 +624,53 @@ fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
 #[test]
 fn native_theme_file_uses_the_compiled_theme_contract() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let exported = merman_bindings_core::export_theme_preset_json(b"editor-dark")
-        .expect("export editable recipe");
-    for input in [
-        br#"{"preset":"editor-dark"}"#.as_slice(),
-        exported.as_slice(),
-    ] {
-        fs::write(tmp.path().join("theme.json"), input).expect("write shared theme file");
-        let source = "flowchart LR\nA-->B\n";
-
-        let args = [
-            "render",
-            "--theme-file",
-            "theme.json",
-            "--format",
-            "svg",
-            "-",
-        ];
-        let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
-        assert!(
-            output.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
-        assert!(
-            svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
-            "native render should compile the theme file through the typed theme path: {svg}"
-        );
+    for preset in ["editor-dark", "cyberpunk"] {
+        let exported = merman_bindings_core::export_theme_preset_json(preset.as_bytes())
+            .expect("export editable recipe");
+        let selector = serde_json::to_vec(&serde_json::json!({"preset": preset})).unwrap();
+        let mut previous_svg = None;
+        for input in [selector.as_slice(), exported.as_slice()] {
+            fs::write(tmp.path().join("theme.json"), input).expect("write shared theme file");
+            let args = [
+                "render",
+                "--theme-file",
+                "theme.json",
+                "--format",
+                "svg",
+                "-",
+            ];
+            let output = run_with_stdin_in_dir(&args, "flowchart LR\nA-->B\n", Some(tmp.path()));
+            assert!(
+                output.status.success(),
+                "{preset} {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+            if preset == "editor-dark" {
+                assert!(
+                    svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8")
+                );
+            } else {
+                let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| {
+                            node.attribute("class") == Some("merman-theme-canvas-layer")
+                        })
+                        .count(),
+                    3,
+                    "the shared file retains the complete canvas"
+                );
+            }
+            if let Some(previous) = previous_svg {
+                assert_eq!(
+                    svg, previous,
+                    "{preset}: a fresh process needs no preset lookup for its saved recipe"
+                );
+            }
+            previous_svg = Some(svg);
+        }
     }
 }
 
@@ -764,10 +783,10 @@ fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
         .expect("Flowchart node terminal group");
     assert!(
         node.descendants().any(|child| {
-            child.attribute("fill") == Some("#0f172a")
+            child.attribute("fill") == Some("#051423")
                 || child
                     .attribute("style")
-                    .is_some_and(|style| style.contains("fill:#0f172a"))
+                    .is_some_and(|style| style.contains("fill:#051423"))
         }),
         "Class transparent fill must not replace Flowchart fill: {svg}"
     );

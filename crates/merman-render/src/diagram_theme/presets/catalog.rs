@@ -10,7 +10,9 @@ use super::{
     ThemePresetQualifiedCell,
 };
 use crate::DiagramFamilyId;
-use crate::diagram_theme::definition_admission::materialize_theme_with_resource_policy;
+use crate::diagram_theme::definition_admission::{
+    check_complete_spec_encoded_bytes, materialize_theme_with_resource_policy,
+};
 use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
 
 const CATALOG_SCHEMA_VERSION: u32 = 1;
@@ -51,8 +53,11 @@ const BRUTALIST_RECIPE_FINGERPRINT: &str =
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
     "c177e9885bb2ad7ccaf59f83702c43a01b913b6a4964f24abdc00c1c6b2a346b";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "50f78a13cd0e939271b1d33480df8d2b3cc5cac667b23990560ad5a819f28336";
-type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
+    "86aa3877f29931482a083a315c1e68d9d5017875fdd0e33a6d3e9115873321e5";
+type PresetRecipeBuilder = fn(
+    PresetPalette,
+    &ThemeResourcePolicy,
+) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1>;
 
 #[derive(Clone, Copy)]
 pub(super) struct PresetPalette {
@@ -214,8 +219,11 @@ impl PresetCatalogEntry {
         self.retained
     }
 
-    fn definition(&self) -> ThemeDefinitionV1 {
-        (self.recipe_builder)(self.palette)
+    fn recipe(
+        &self,
+        resources: &ThemeResourcePolicy,
+    ) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
+        (self.recipe_builder)(self.palette, resources)
     }
 }
 
@@ -243,7 +251,10 @@ const fn entry(
         recipe_revision: 1,
         recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
-        recipe_builder: build_cross_family_recipe,
+        recipe_builder: match preset {
+            ThemePreset::Cyberpunk => super::cyberpunk::build_recipe,
+            _ => build_cross_family_recipe,
+        },
         palette,
         family_designs: SHARED_PALETTE_DESIGNS,
         qualified_cells: NO_QUALIFIED_CELLS,
@@ -609,28 +620,28 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         PresetRecipeProfile::Native,
         CYBERPUNK_RECIPE_FINGERPRINT,
         PresetPalette {
-            canvas: "#020617",
-            surface: "#0f172a",
-            surface_alt: "#111827",
-            surface_muted: "#1e293b",
-            text: "#e0f2fe",
-            subtle_text: "#a5f3fc",
-            border: "#22d3ee",
-            line: "#22d3ee",
-            accent: "#f0abfc",
-            edge_label_background: "#020617",
-            cluster_background: "#111827",
-            cluster_border: "#22d3ee",
-            note_background: "#312e81",
-            note_border: "#f0abfc",
-            note_text: "#f5f3ff",
-            actor_background: "#0f172a",
-            actor_border: "#22d3ee",
-            actor_text: "#e0f2fe",
-            activation_background: "#164e63",
-            activation_border: "#22d3ee",
-            sequence_number_text: "#020617",
-            packet_field_label_text: "#020617",
+            canvas: "#051423",
+            surface: "#051423",
+            surface_alt: "#051423",
+            surface_muted: "#051423",
+            text: "#00f2ff",
+            subtle_text: "#00f2ff",
+            border: "#00f2ff",
+            line: "#00f2ff",
+            accent: "#ff00ff",
+            edge_label_background: "#051423",
+            cluster_background: "#051423",
+            cluster_border: "#00f2ff",
+            note_background: "#051423",
+            note_border: "#ff00ff",
+            note_text: "#ff00ff",
+            actor_background: "#051423",
+            actor_border: "#00f2ff",
+            actor_text: "#00f2ff",
+            activation_background: "rgba(0, 242, 255, 0.1)",
+            activation_border: "#00f2ff",
+            sequence_number_text: "#051423",
+            packet_field_label_text: "#051423",
             series: &[
                 "#22d3ee", "#f472b6", "#a3e635", "#facc15", "#c084fc", "#38bdf8", "#fb7185",
                 "#2dd4bf",
@@ -683,8 +694,7 @@ pub(crate) fn materialize_spec_wire(
         entry.allowed_residual_ids.is_empty(),
         "unqualified alpha presets must not inherit qualification residual allowances"
     );
-    let mut spec =
-        materialize_theme_with_resource_policy(&entry.definition(), resources)?.into_spec();
+    let mut spec = entry.recipe(resources)?;
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
         spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
             theme: Some("base".to_owned()),
@@ -692,6 +702,7 @@ pub(crate) fn materialize_spec_wire(
             variables: None,
         });
     }
+    check_complete_spec_encoded_bytes(resources, &spec)?;
     Ok(spec)
 }
 
@@ -699,7 +710,15 @@ fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
     entry.retained && entry.required_feature_ids.is_empty() && entry.bundled_resource_ids.is_empty()
 }
 
-fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDefinitionV1 {
+pub(super) fn build_cross_family_recipe(
+    palette: PresetPalette,
+    resources: &ThemeResourcePolicy,
+) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
+    materialize_theme_with_resource_policy(&build_cross_family_definition(palette), resources)
+        .map(|materialized| materialized.into_spec())
+}
+
+fn build_cross_family_definition(palette: PresetPalette) -> ThemeDefinitionV1 {
     let tokens = ThemeTokensV1::default()
         .with_color(ThemeColorTokenV1::Canvas, palette.canvas)
         .with_color(ThemeColorTokenV1::Surface, palette.surface)

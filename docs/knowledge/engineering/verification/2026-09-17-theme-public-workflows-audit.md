@@ -373,3 +373,115 @@ performance, API contract and adversarial scenarios across independent Codex rev
 Receipt: `/tmp/compound-engineering-501/ce-code-review/u13-20260917T145449/review.json`
 (`status: complete`). The simplification pass retained the source-owner separation and removed the
 facade's avoidable diagnostic deep copy. These review conclusions apply to this slice only.
+
+## Complete Recipe Customization Boundary
+
+Reviewed against `c42b1dde2` on 2026-09-17. The preceding scoped-edit witness proves local role
+editing and file exchange. It does not close the complex semantic-brand-color journey.
+The private catalog still returned `ThemeDefinitionV1`; its independently owned Actor, Note,
+Edge and series roles became concrete paints in an exported spec. Equal paint strings do not
+provide a safe basis for reconstructing those roles.
+
+The selected implementation direction is to finish U4's private complete-recipe builder, then
+validate a small number of generation-time semantic parameters against actual canvas/effect and
+family terminals before exposing them. Existing explicit scoped edits remain the way to edit a
+saved complete spec. No public parameter names or new callable API are frozen by this decision.
+A complete-spec token interpreter, executable roles sidecar and global string recoloring are not
+introduced. The same compiler, rule precedence and final resource admission remain authoritative.
+
+ADR 0082 and the user guide now distinguish the distributed rendering snapshot from optional
+creation code and parameters. Import never refreshes a snapshot from a preset ID. Regeneration
+from creation inputs cannot promise to preserve arbitrary edits made only to an earlier snapshot.
+The ADR also records the already implemented `ThemeRecipeV1` exchange envelope rather than
+leaving its older definition/spec sharing description as the current contract.
+
+An independent API-contract review of those documentation changes found no contradiction with
+current public code or new compatibility promise. It did not review U4's subsequent implementation
+or run builds. Missing-resource workflows, complex semantic customization and final installed
+consumer qualification remain open.
+
+
+## Complete Catalog Recipes and Canvas Ownership
+
+The U4 implementation following `c42b1dde2` changes the private catalog builder to produce one
+complete spec for compilation and export. Simple presets still use the existing token materializer.
+Cyberpunk adds a centered radial glow and two 40-unit, 1-unit-line grids in Screen layers, plus an
+ordered two-shadow graph scoped to Flowchart Node and Sequence Actor. The reference is pinned at
+`a021cbce37fc0b07a9f4791c28e983101ea06f2d`. Shared navy/cyan and Sequence note/activation paints
+now follow that recipe; categorical series remain unchanged pending U8. No dedicated design scope,
+qualified catalog cell, dependency, font asset, or public semantic parameter was added.
+
+The final complete-spec payload is stream-counted against the encoded-byte budget after composition.
+Export also decodes and validates the completed recipe and its effect resource limits. Compile and
+export therefore reject an effect budget of one primitive for the two-shadow Cyberpunk graph.
+The payload byte count excludes the outer recipe envelope; importing a raw JSON file separately
+admits the entire input. An exact export payload budget is not a promise that the same raw-import
+budget can contain its envelope.
+
+A root-canvas bug surfaced while checking the reference: tiled gradients were anchored at diagram
+coordinate zero instead of the canvas origin when the viewBox minimum was nonzero. The shared
+writer now translates the pattern to that minimum while keeping local tile coordinates unchanged.
+The new nonzero-origin test failed before the fix and passed afterward. This applies to both linear
+and radial tiles. Whole-image scaling still scales the grid; no browser-fixed background contract
+or runtime viewport adapter was introduced.
+
+Release verification completed so far:
+
+- Renderer theme and root-SVG tests: **363/363** passed.
+- Public Rust authoring, layering and canvas integration tests: **22/22** passed. These render the
+  fixed Flowchart/Sequence/XYChart scenes and Class, compare direct compilation with JSON exchange,
+  follow actual canvas paint references and check that scoped effect residuals do not leak to Class.
+- Bindings-core library tests: **280/280** passed. One-shot and reusable authoring return the same
+  resource status, details and authoring diagnostics for the appended effect budget failure.
+
+Logs: `/tmp/merman-u4-{renderer,facade,bindings}-green.log`.
+
+The scoped formal review completed with no findings across correctness, project standards, testing,
+maintainability, security, API contract and adversarial reviews. Receipt:
+`/tmp/compound-engineering-501/ce-code-review/20260917-155514-b3f2949a`
+(`status: complete`). It requested actual native grid-phase observation, which is tracked separately
+below. The simplification coordinator completed an inline rubric pass after its delegated model
+jobs could not run; this is not claimed as three independent successful simplification reviews.
+
+This slice does not complete Cyberpunk. The Flowchart/Sequence consumers must still implement
+ordered glow, and admission must reject their unconsumed graph. State and Sequence historical
+palette proof helpers have not been promoted as complex-recipe evidence. Consumer widths, radii,
+text effects, XY series and target-specific filtering remain subsequent work. Complex preset
+customization, missing-resource journeys and installed consumer rollout also remain open.
+
+
+### CLI, qualification and native canvas observations
+
+The focused CLI Release contract suite passed **3/3**, including a fresh CLI process consuming each
+exported complete recipe. The workspace-only qualification integration and internal proof tests
+passed **10/10**: Brutalist and Spotless retain their existing bounded profile, while Cyberpunk's
+Flowchart and Sequence observations are rejected with one unconsumed effect residual each. State
+does not inherit those scoped effects. Changed-library Clippy and scoped formatting/diff checks
+passed; existing warnings remain. Logs: `/tmp/merman-u4-{cli,acceptance}-green.log` and
+`/tmp/merman-u4-clippy.log`.
+
+The actual CLI (default features plus `layout-elk`) produced SVG, PNG and PDF for all three fixed
+scenes. These nine successful operations do not certify visual completeness. Chromium
+`151.0.7922.77` observed three Screen layers, two tile patterns and three gradients per scene.
+Native PNG sampling at natural scale 1 found grid lines at canvas x=0,40,80,120. At y=4, all three
+scenes have raw RGB `[5,20,35]` at x=39, `[5,27,42]` at x=40 and `[5,20,35]` at x=41. Sequence has
+viewBox `-50 -10 550 375`; its grid therefore verifies the nonzero-origin correction in real output.
+These sparse background samples establish the PNG grid phase and spacing, not all terminal readability
+or whole-image equivalence.
+
+PDFKit previews did not retain the same visible grid. An independent local PDFium rasterization
+of the actual PDFs does show the cyan grid (Sequence/XY x=40,80,120: `[5,27,41]` over
+`[5,20,35]`). The file contains a renderable grid, but viewer-dependent output remains unresolved.
+Do not turn the PDFium positive observation into general PDF compatibility or treat file creation
+as a passing PDF visual gate. This discrepancy must be resolved or explicitly bounded before
+complex-canvas PDF qualification. PDFium also paints some lines across two adjacent pixels, so
+its positive observation does not certify the intended 1px line width. The retained PDFium probe
+uses an existing host application library (binary identity recorded in `pdfium-observations.json`),
+not a project dependency. Local library/source inspection identifies tiling patterns, gradient
+alpha soft masks and Screen composition in the file; it has not isolated a specific serializer bug.
+
+Artifacts, commands, font/binary identities and pixel/browser observations are under
+`target/bench/experiments/theme-complete-recipe-c42b1dde2/`. Arial is a caller/host test font;
+no font was bundled. The CLI feature profile differs from the previous minimal-profile baseline,
+so this run is not a size or speed comparison. No new WASM build, installed SDK matrix, full
+workspace run or release archive verification is claimed for this slice.

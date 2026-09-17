@@ -64,8 +64,7 @@ impl DiagramThemeCompiler {
         spec: DiagramThemeSpec,
         source_map: super::source::ThemeSourceMap,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
-        spec.validate()?;
-        spec.effects().check_resources(&self.resources)?;
+        self.validate_spec(&spec)?;
         let catalog = match spec.assets().font_catalog() {
             Some(catalog) => catalog.clone().compile(&self.resources)?,
             None => FontCatalog::system_fonts(),
@@ -113,6 +112,12 @@ impl DiagramThemeCompiler {
             recipe_fingerprint: ThemeRecipeFingerprint::from_bytes(fingerprint),
             report,
         })))
+    }
+
+    fn validate_spec(&self, spec: &DiagramThemeSpec) -> Result<(), ThemeCompileError> {
+        spec.validate()?;
+        spec.effects().check_resources(&self.resources)?;
+        Ok(())
     }
 
     /// Decodes and compiles one closed version 1 complete-spec wire under this compiler's policy.
@@ -164,10 +169,41 @@ impl DiagramThemeCompiler {
         merman_theme_contract::ThemeRecipeV1,
         merman_theme_contract::ThemeMaterializationErrorV1,
     > {
-        Ok(merman_theme_contract::ThemeRecipeV1::CompleteSpec {
-            complete_spec: super::presets::materialize_spec_wire(preset, &self.resources)?,
-        })
+        let complete_spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
+        // Export validates the same complete recipe without constructing a compiled theme,
+        // family cache or fingerprint. Built-in recipes never supply embedded font assets.
+        let (spec, _) = super::wire_decode::decode(
+            complete_spec.clone(),
+            &self.resources,
+            super::source::ThemeWireSources::None,
+        )
+        .map_err(preset_export_error)?;
+        self.validate_spec(&spec).map_err(preset_export_error)?;
+        Ok(merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec })
     }
+}
+
+fn preset_export_error(
+    error: ThemeCompileError,
+) -> merman_theme_contract::ThemeMaterializationErrorV1 {
+    use merman_theme_contract::{ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1};
+    let diagnostic = match error {
+        ThemeCompileError::ResourceLimit(error) => {
+            ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+                "",
+                error.limit,
+                error.actual,
+                error.max,
+                "complete preset exceeds the caller-owned resource policy",
+            )
+        }
+        error => ThemeMaterializationDiagnosticV1::invalid_token_value(
+            "",
+            "complete-preset-recipe",
+            error.to_string(),
+        ),
+    };
+    ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
 }
 
 fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapability> {
