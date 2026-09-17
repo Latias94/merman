@@ -10,6 +10,7 @@ import {
 } from "@/src/store";
 import {
   selectCurrentMermanRenderTime,
+  selectCurrentDiagramType,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
 import {
@@ -25,6 +26,7 @@ import {
   isMermanSvgPipeline,
   MERMAN_SVG_PIPELINES,
 } from "@/src/runtime/merman-core";
+import { themeFamilyTreatment } from "@/src/lib/theme-design";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import { SUPPORTED_THEMES, normalizeThemeName } from "@mermanjs/web";
 import {
@@ -111,6 +113,7 @@ export function ToolbarControls() {
     })),
   );
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
+  const visibleDiagramType = useRenderCoordinator(selectCurrentDiagramType);
   const facade = useMermanRuntime(selectMermanFacade);
   const artifactActions = useToolbarArtifactActions();
   const currentLang = getCurrentLanguage();
@@ -121,6 +124,17 @@ export function ToolbarControls() {
       return null;
     }
   }, [facade]);
+
+  const familyId = useMemo(() => {
+    try {
+      return facade?.diagramFamilyCapabilities()
+        .find((family) => family.diagram_type === visibleDiagramType)?.family_id;
+    } catch {
+      return undefined;
+    }
+  }, [facade, visibleDiagramType]);
+  const selectedPreset = themeCatalog?.presets.find((preset) => preset.id === themePresetId);
+  const selectedTreatment = themeFamilyTreatment(selectedPreset, familyId);
 
   const themeOptions: { value: Theme; label: string }[] = useMemo(() => {
     const seen = new Set<Theme>();
@@ -142,7 +156,9 @@ export function ToolbarControls() {
       openIdOptions(
         themeCatalog?.presets.map((preset) => preset.id) ?? [],
         themePresetId,
-        (id) => t(`themePresets.${id}`, { defaultValue: id }),
+        (id) => t(`themePresets.${id}`, {
+          defaultValue: themeCatalog?.presets.find((preset) => preset.id === id)?.display_name ?? id,
+        }),
       ),
     [themeCatalog, themePresetId, t],
   );
@@ -180,20 +196,30 @@ export function ToolbarControls() {
   }, []);
 
   const renderThemeMenuContent = () => (
-    <DropdownMenuContent align="end">
+    <DropdownMenuContent
+      align="end"
+      className="max-h-[min(80vh,42rem)] overflow-y-auto"
+    >
       <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        value={diagramTheme}
-        onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
-      >
-        {themeOptions.map((option) => (
-          <DropdownMenuRadioItem key={option.value} value={option.value}>
-            {option.label}
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuRadioGroup>
+      {themePresetId && (
+        <div
+          className="max-w-72 break-words px-2 py-2 text-xs text-muted-foreground"
+          role="status"
+          data-testid="theme-design-scope"
+        >
+          <p className="font-medium text-foreground">
+            {themePresetOptions.find((option) => option.value === themePresetId)?.label}
+          </p>
+          <p>{t("themeDesign.visibleDiagram", {
+            family: familyId
+              ? t(`diagramTypes.${familyId}`, { defaultValue: familyId })
+              : t("themeDesign.unknownFamily"),
+          })}</p>
+          <p>{t(`themeDesign.${selectedTreatment}`)}</p>
+          <p>{t("themeDesign.explanation")}</p>
+          {!selectedPreset?.available && <p>{t("themeDesign.unavailable")}</p>}
+        </div>
+      )}
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("toolbar.themePreset")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
@@ -205,7 +231,34 @@ export function ToolbarControls() {
         <DropdownMenuRadioItem value={NO_THEME_PRESET}>
           {t("themePresets.none")}
         </DropdownMenuRadioItem>
-        {themePresetOptions.map((option) => (
+        {themePresetOptions.map((option) => {
+          const preset = themeCatalog?.presets.find((entry) => entry.id === option.value);
+          return (
+            <DropdownMenuRadioItem
+              key={option.value}
+              value={option.value}
+              disabled={!preset?.available}
+            >
+              <span className="flex w-full items-center justify-between gap-4">
+                <span>{option.label}</span>
+                <span className="text-right text-xs text-muted-foreground">
+                  {preset?.available
+                    ? t(`themeDesign.${themeFamilyTreatment(preset, familyId)}`)
+                    : t("themeDesign.unavailable")}
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+          );
+        })}
+      </DropdownMenuRadioGroup>
+
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={diagramTheme}
+        onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
+      >
+        {themeOptions.map((option) => (
           <DropdownMenuRadioItem key={option.value} value={option.value}>
             {option.label}
           </DropdownMenuRadioItem>

@@ -365,6 +365,15 @@
     "spotless": "Spotless",
     "cyberpunk": "Cyberpunk"
   },
+  "themeDesign": {
+    "dedicated": "Designed for this diagram family",
+    "base_only": "Base styling",
+    "unreviewed": "Design not yet reviewed",
+    "unavailable": "Unavailable in this runtime",
+    "visibleDiagram": "Visible diagram: {{family}}",
+    "unknownFamily": "not detected",
+    "explanation": "Design scope does not certify export results. Your selected preset is retained."
+  },
   "svgPipelines": {
     "parity": "Mermaid SVG (default)",
     "readable": "Text fallback SVG",

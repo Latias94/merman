@@ -365,6 +365,15 @@
     "spotless": "纯净",
     "cyberpunk": "赛博朋克"
   },
+  "themeDesign": {
+    "dedicated": "针对该图族的专用设计",
+    "base_only": "基础样式",
+    "unreviewed": "设计尚未评审",
+    "unavailable": "当前运行时不可用",
+    "visibleDiagram": "当前显示的图表：{{family}}",
+    "unknownFamily": "尚未检测",
+    "explanation": "设计范围不代表导出验证结果；保留你选择的预设。"
+  },
   "svgPipelines": {
     "parity": "Mermaid SVG（默认）",
     "readable": "文字回退 SVG",

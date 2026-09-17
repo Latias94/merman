@@ -1239,6 +1239,7 @@ class MermanThemePreset {
     required this.available,
     required this.availabilityReasonIds,
     required this.qualifiedCells,
+    this.familyDesigns = const [],
     required this.licenseExpression,
     required this.requiredAttribution,
     required this.exportKind,
@@ -1251,6 +1252,10 @@ class MermanThemePreset {
   final bool available;
   final List<String> availabilityReasonIds;
   final List<MermanThemePresetQualifiedCell> qualifiedCells;
+
+  /// Design intent by family, independent of target qualification.
+  /// Missing families and unknown treatments remain unevaluated.
+  final List<MermanThemePresetFamilyDesign> familyDesigns;
   final String licenseExpression;
   final String? requiredAttribution;
   final String exportKind;
@@ -1267,6 +1272,29 @@ class MermanThemePreset {
       throw MermanException.contract(
         'theme preset $id availability contradicts its reason IDs',
       );
+    }
+    final rawFamilyDesigns = json.containsKey('family_designs')
+        ? json['family_designs']
+        : const <Object?>[];
+    if (rawFamilyDesigns is! List) {
+      throw MermanException.contract(
+        'theme preset $id.family_designs must be an array',
+      );
+    }
+    final familyDesigns = <MermanThemePresetFamilyDesign>[];
+    String? previousFamily;
+    for (final entry in rawFamilyDesigns.indexed) {
+      final design = MermanThemePresetFamilyDesign.fromJson(
+        _asObject(entry.$2, 'theme preset $id.family_designs[${entry.$1}]'),
+      );
+      if (previousFamily != null &&
+          previousFamily.compareTo(design.familyId) >= 0) {
+        throw MermanException.contract(
+          'theme preset $id.family_designs must be sorted and unique',
+        );
+      }
+      previousFamily = design.familyId;
+      familyDesigns.add(design);
     }
     final rawQualifiedCells = json['qualified_cells'];
     if (rawQualifiedCells is! List) {
@@ -1323,6 +1351,7 @@ class MermanThemePreset {
       available: available,
       availabilityReasonIds: List.unmodifiable(availabilityReasonIds),
       qualifiedCells: List.unmodifiable(qualifiedCells),
+      familyDesigns: List.unmodifiable(familyDesigns),
       licenseExpression: _requiredNonEmptyString(
         json,
         'license_expression',
@@ -1330,6 +1359,42 @@ class MermanThemePreset {
       ),
       requiredAttribution: requiredAttribution as String?,
       exportKind: exportKind,
+    );
+  }
+}
+
+/// Preset design intent for one family; this does not certify rendered output.
+class MermanThemePresetFamilyDesign {
+  const MermanThemePresetFamilyDesign({
+    required this.familyId,
+    required this.treatment,
+  });
+
+  final String familyId;
+
+  /// Open design ID: `dedicated`, `base_only`, `unreviewed`, or a future value.
+  /// `base_only` includes necessary family color and semantic adaptations to the
+  /// shared base appearance. Unknown IDs remain unevaluated, not portable.
+  final String treatment;
+
+  factory MermanThemePresetFamilyDesign.fromJson(Map<String, Object?> json) {
+    final treatment = _requiredString(
+      json,
+      'treatment',
+      'theme preset family design',
+    );
+    if (!_isRuntimeFieldIdentifier(treatment)) {
+      throw MermanException.contract(
+        'theme preset family design has invalid treatment',
+      );
+    }
+    return MermanThemePresetFamilyDesign(
+      familyId: _requiredRuntimeIdentifier(
+        json,
+        'family_id',
+        'theme preset family design',
+      ),
+      treatment: treatment,
     );
   }
 }

@@ -82,3 +82,41 @@ cases, but a rebuilt installed WASM package was **not** exercised in this slice.
 U13: curated family design metadata/selection UI, two-brand-colors-plus-one-family-rule usability,
 missing-font workflows, and cross-installed-consumer distribution remain to be verified. No
 qualification cells or public contract freeze are promoted by these results.
+
+## Family Design Disclosure and Browser Selection
+
+Implemented after source baseline `53af16c4a`, on 2026-09-17. The existing preset descriptor now
+projects `family_designs` as sorted, unique logical-family/treatment pairs. Class, Flowchart,
+Sequence and XY are explicitly `base_only` for the current ten shared-palette recipes. This
+allows necessary family color/semantic adaptations; it does not promise complete Modern Mermaid
+styling or readability in every scene. Other families are absent/unreviewed. No dedicated design
+or qualification cell was promoted to make the catalog appear complete.
+
+Web and Flutter retain unknown IDs, default an absent design array to empty, and reject malformed
+or ambiguous arrays. The Playground maps parser variants using the loaded runtime's logical-family
+catalog. Its theme menu presents presets first, explains the selected preset's scope for the
+visible diagram, and retains unknown/unavailable saved selections for explicit replacement. It
+does not infer design from `available` or `qualified_cells`, change the selection on family
+switching, or add cross-preset fallback. During an update, the description follows the still-visible
+previous diagram rather than claiming the new editor input has already been detected.
+
+Verification:
+
+- Contract/bindings nextest with SVG: **331/331 passed**, including the shared preset catalog golden and open-string Rust projection.
+- Renderer preset tests: **13/13 passed**, 2,563 unrelated tests filtered out; recipe fingerprints and all ten complete-spec round trips remain unchanged.
+- Web TypeScript build/contract checks and authoring/catalog tests: **13/13 passed**. New discovery tests first failed before implementation; unknown treatment, missing array, invalid/duplicate/unsorted entries, and defensive copying are covered.
+- Rebuilt and assembled the **full** browser WASM package with one Cargo build job; input manifest fingerprint `77a4ee44e987`. Its real package smoke passed across 35 diagram entries, including shared catalog equality and the prior slice's saved-recipe import/output-equivalence cases. This closes that slice's rebuilt full-WASM gap; other package profiles were not rebuilt here.
+- Production Playground build passed TypeScript, existing license checks, opaque-realm verification and the final artifact-graph check. The initial license failure was caused by installed `js-yaml 4.3.1` against lockfile `4.3.2`; a lockfile-based install fixed it without changing dependencies or rewriting the license report. The final build used the repository-selected npm 12.0.2.
+- Playground coordinator/design unit tests: **34/34 passed**. Chromium against the production build: **2/2 passed**. The user flow retains Cyberpunk across Flowchart, Class, XY and Packet, shows base-only versus unreviewed appropriately, and retains an unknown saved preset as selected/unavailable. This verifies selection/disclosure, not reference visual reproduction or native export quality.
+- Flutter `dart run tool/abi3_contract_test.dart` passed; focused Dart analysis reported no issues. These are projection/contract checks, not a rebuilt installed native package.
+- Independent source review found no remaining API-contract issue in this slice. Screenshot inspection confirmed that the preset-first menu exposes the current scope and compact preset rows without hiding them below the Mermaid configuration choices.
+
+The compact preset-array JSON grows from **2,534 to 4,654 bytes (+2,120 bytes)** relative to
+`53af16c4a`. This measures only the serialized metadata array; it is not a binary-size or runtime
+performance conclusion and does not change any artifact budget.
+
+Logs are `/tmp/merman-u13-design-{rust,renderer,web-green,web-smoke,wasm,playground-build,playground-unit,browser}.log`.
+The inspected screenshot is `target/bench/experiments/theme-design-53af16c4a/theme-design-menu.png`.
+U13 remains open for actual small-brand-edit usability, resource/font failure journeys, and the
+remaining installed-consumer distribution matrix. U4/U6–U8 must still deliver the dedicated
+recipes/effect consumers before this catalog may advertise those designs.

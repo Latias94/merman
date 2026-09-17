@@ -1339,6 +1339,7 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
 function facade(packageVersion = "test-merman"): MermanDomainFacade {
   return {
     packageVersion,
+    diagramFamilyCapabilities: () => [],
     themeCatalog: () => ({
       schema_version: 3,
       structured_spec_available: true,

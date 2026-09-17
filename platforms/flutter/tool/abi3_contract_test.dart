@@ -17,6 +17,7 @@ void main() {
   acceptsAdditiveTypedMetadataFields();
   rejectsMalformedThemePresetMaturity();
   preservesScopedPresetQualification();
+  preservesPresetFamilyDesigns();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   acceptsAdditiveConstructorResourceLimits();
@@ -669,6 +670,105 @@ void preservesScopedPresetQualification() {
       final value = cell('host-profile', 'host_dependent')..[field] = invalid;
       _expectContractFailure(
         () => MermanThemePresetQualifiedCell.fromJson(value),
+      );
+    }
+  }
+}
+
+void preservesPresetFamilyDesigns() {
+  final vectors = jsonDecode(
+    File.fromUri(
+      Platform.script.resolve(
+        '../../../crates/merman-theme-authoring-fixtures/'
+        'fixtures/authoring-v1/preset-catalog.json',
+      ),
+    ).readAsStringSync(),
+  ) as List;
+  for (final vector in vectors) {
+    final json = Map<String, Object?>.from(vector as Map);
+    final expected = json['family_designs'] as List;
+    final preset = MermanThemePreset.fromJson(json);
+    _expect(
+      preset.familyDesigns.length == expected.length,
+      '${preset.id}: family design projection must preserve every entry',
+    );
+    for (var index = 0; index < expected.length; index += 1) {
+      final actual = preset.familyDesigns[index];
+      _expect(
+        actual.familyId == expected[index]['family_id'] &&
+            actual.treatment == expected[index]['treatment'],
+        '${preset.id}: design metadata must match the shared catalog fixture',
+      );
+    }
+  }
+
+  final source = Map<String, Object?>.from(vectors.first as Map);
+  final missing = Map<String, Object?>.from(source)..remove('family_designs');
+  final legacy = MermanThemePreset.fromJson(missing);
+  _expect(
+    legacy.familyDesigns.isEmpty,
+    'missing additive design metadata must remain unevaluated',
+  );
+  final entries = <Object?>[
+    {'family_id': 'class', 'treatment': 'dedicated'},
+    {'family_id': 'flowchart', 'treatment': 'base_only'},
+    {'family_id': 'future-family', 'treatment': 'future_treatment'},
+    {'family_id': 'sequence', 'treatment': 'unreviewed'},
+  ];
+  final parsed = MermanThemePreset.fromJson({
+    ...source,
+    'family_designs': entries,
+    'qualified_cells': <Object?>[],
+  });
+  _expect(
+    parsed.familyDesigns[2].familyId == 'future-family' &&
+        parsed.familyDesigns[2].treatment == 'future_treatment' &&
+        parsed.qualifiedCells.isEmpty,
+    'unknown design IDs must be preserved without creating qualification',
+  );
+  entries.clear();
+  _expect(
+    parsed.familyDesigns.length == 4,
+    'the parsed design collection must not retain the input list',
+  );
+  _expectThrows<UnsupportedError>(() => parsed.familyDesigns.clear());
+  _expectThrows<UnsupportedError>(() => legacy.familyDesigns.clear());
+
+  for (final invalid in <Object?>[
+    null,
+    1,
+    {},
+    'base_only',
+    [null],
+    [1],
+    [
+      {'family_id': 'flowchart', 'treatment': 'base_only'},
+      {'family_id': 'class', 'treatment': 'dedicated'},
+    ],
+    [
+      {'family_id': 'class', 'treatment': 'base_only'},
+      {'family_id': 'class', 'treatment': 'dedicated'},
+    ],
+  ]) {
+    _expectContractFailure(
+      () => MermanThemePreset.fromJson({...source, 'family_designs': invalid}),
+    );
+  }
+  for (final field in ['family_id', 'treatment']) {
+    final valid = <String, Object?>{
+      'family_id': 'flowchart',
+      'treatment': 'base_only',
+    };
+    final missingField = Map<String, Object?>.from(valid)..remove(field);
+    _expectContractFailure(
+      () => MermanThemePresetFamilyDesign.fromJson(missingField),
+    );
+    for (final invalid in <Object?>[null, 1, '', 'Invalid Value']) {
+      _expectContractFailure(
+        () => MermanThemePresetFamilyDesign.fromJson({
+          ...valid,
+          field: invalid,
+        }),
       );
     }
   }

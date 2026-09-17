@@ -97,10 +97,19 @@ export interface ThemePresetCatalogEntry {
   maturity: string;
   available: boolean;
   availability_reason_ids: string[];
+  /** Curated design scope, independent of technical support or qualification. */
+  family_designs: ThemePresetFamilyDesign[];
   qualified_cells: ThemePresetQualifiedCell[];
   license_expression: string;
   required_attribution: string | null;
   export_kind: "definition" | "complete_spec";
+}
+
+/** Missing families and unknown treatments are unreviewed; preserve unknown IDs. */
+export interface ThemePresetFamilyDesign {
+  family_id: string;
+  /** Open string: dedicated, base_only, or unreviewed. None grants portability. */
+  treatment: string;
 }
 
 /** Scoped metadata backed by catalog qualification, not an unconditional portability claim. */

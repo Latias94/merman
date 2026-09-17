@@ -21,6 +21,10 @@ pub struct ThemePresetMetadataV1 {
     pub available: bool,
     /// Stable reasons why recipe compilation is unavailable.
     pub availability_reason_ids: Vec<String>,
+    /// Curated design treatment by family; absent families and unknown treatments are unreviewed.
+    /// This does not imply mechanism support, readability, or target qualification.
+    #[serde(default)]
+    pub family_designs: Vec<ThemePresetFamilyDesignV1>,
     /// Scoped catalog declarations; these are not execution receipts.
     pub qualified_cells: Vec<ThemePresetQualifiedCellV1>,
     /// SPDX expression for the preset recipe.
@@ -29,6 +33,20 @@ pub struct ThemePresetMetadataV1 {
     pub required_attribution: Option<String>,
     /// Recipe representation returned by preset export.
     pub export_kind: String,
+}
+
+/// Curated visual design scope, independent of compilation and output qualification.
+///
+/// `base_only` means shared recipe styling, including necessary family adaptations, rather than
+/// a dedicated design promised by this preset. `dedicated` denotes an intentional family design;
+/// it does not certify every scene or output. Missing families and unknown treatments must be
+/// displayed as unreviewed. IDs remain open and must survive older consumers unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemePresetFamilyDesignV1 {
+    /// Stable logical diagram-family ID, not a parser variant or render implementation ID.
+    pub family_id: String,
+    /// Open classification: `dedicated`, `base_only`, or `unreviewed`.
+    pub treatment: String,
 }
 
 /// Version 1 wire projection of one scoped preset qualification declaration.
@@ -68,6 +86,7 @@ mod tests {
                 "appearance": "future-appearance", "maturity": "future-maturity",
                 "available": false, "availability_reason_ids": ["future-reason"],
                 "qualified_cells": cells,
+                "family_designs": [{"family_id": "future-family", "treatment": "future-design"}],
                 "license_expression": "MIT OR Apache-2.0",
                 "required_attribution": "Future attribution", "export_kind": "future-export"
             });

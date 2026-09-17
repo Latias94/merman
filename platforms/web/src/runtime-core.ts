@@ -857,6 +857,7 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       ),
       available,
       availability_reason_ids: availabilityReasonIds,
+      family_designs: normalizeThemePresetFamilyDesigns(entry.family_designs, id),
       qualified_cells: normalizeThemePresetQualifiedCells(entry.qualified_cells, id),
       license_expression: assertNonEmptyStringField(
         entry.license_expression,
@@ -868,6 +869,30 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       ),
       export_kind: exportKind,
     };
+  });
+}
+
+function normalizeThemePresetFamilyDesigns(
+  value: unknown,
+  presetId: string
+): ThemePresetCatalogEntry["family_designs"] {
+  // Older discovery documents have no curated scope. Do not infer it from qualification.
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid family designs for theme preset ${presetId}.`);
+  }
+  let previousFamily: string | undefined;
+  return value.map((design) => {
+    if (!isRecord(design)) {
+      throw new Error(`Merman WASM returned an invalid family design for theme preset ${presetId}.`);
+    }
+    const familyId = assertRuntimeIdentifier(design.family_id, `theme preset ${presetId} family design ID`);
+    const treatment = assertRuntimeFieldIdentifier(design.treatment, `theme preset ${presetId} family design treatment`);
+    if (previousFamily !== undefined && previousFamily >= familyId) {
+      throw new Error(`Theme preset ${presetId} family designs must be sorted and unique.`);
+    }
+    previousFamily = familyId;
+    return { family_id: familyId, treatment };
   });
 }
 

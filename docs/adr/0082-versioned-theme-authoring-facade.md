@@ -527,6 +527,21 @@ least one first-party authoring consumer proves that the additional dimension is
 preserves bounded unknown subject fields so an old consumer can display and forward a newer query
 without claiming it can execute the new subject.
 
+The preset catalog separately exposes curated `family_designs`, ordered uniquely by logical
+`family_id`. Its open `treatment` string distinguishes `dedicated`, `base_only`, and `unreviewed`.
+`base_only` describes the shared recipe's base appearance, including necessary family-specific
+color or semantic adaptations; it does not mean that no family rules exist. `dedicated` declares
+intentional design for a family, not readability at every density or support on every output.
+Absent declarations, a missing array, and unknown treatments are presented as unreviewed. Preserve
+unknown values when decoding, and never derive this classification from availability or
+qualification cells. Current shared-palette presets declare base-only treatment for the four
+reviewed families; complete Modern Mermaid designs are not promised ahead of implementation.
+
+Selection remains stable when the source changes family. Hosts explain the design of the visible
+diagram, preserve an unavailable or unknown saved selection, and offer an explicit replacement;
+there is no automatic cross-preset fallback. A parser variant maps to its logical family through
+`diagramFamilyCapabilities`, not a guessed name or shared render implementation.
+
 `export_theme_preset` is a separate alpha catalog convenience. It returns the closed
 `ThemeRecipeV1` exchange union (`definition` or `complete_spec`) under the active resource policy.
 The required root `schema_version: 1` identifies the complete recipe contract; definitions also

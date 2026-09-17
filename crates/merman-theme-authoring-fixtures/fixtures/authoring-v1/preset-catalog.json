@@ -9,7 +9,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "editor-dark",
@@ -21,7 +39,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "one-dark",
@@ -33,7 +69,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "gruvbox-light",
@@ -45,7 +99,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "gruvbox-dark",
@@ -57,7 +129,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "ayu-light",
@@ -69,7 +159,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "ayu-dark",
@@ -81,7 +189,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "brutalist",
@@ -93,7 +219,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "spotless",
@@ -105,7 +249,25 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   },
   {
     "id": "cyberpunk",
@@ -117,6 +279,24 @@
     "qualified_cells": [],
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
-    "export_kind": "complete_spec"
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
   }
 ]

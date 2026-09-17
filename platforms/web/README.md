@@ -52,6 +52,21 @@ renderSvgToElement(target, `flowchart TD
 Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
 needs the serialized SVG string rather than a mounted element.
 
+## Choose a preset for a diagram
+
+Read `themeCatalog().presets` from the loaded runtime. `available` means that its compiler can
+construct the recipe. `family_designs` describes curated design intent for a logical family:
+`dedicated` is a family-specific design, `base_only` is the shared base appearance (including
+necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
+states certifies readable output or portability; those depend on the actual scene and target.
+Use `diagramFamilyCapabilities()` to map a detected `diagram_type` to its `family_id`.
+
+Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
+rules, explain the design scope, and surface unsupported requested effects through the normal
+render report or strict-policy error. Do not silently substitute another preset. An unknown
+saved preset ID is an explicit input error; the host can retain it for explanation and offer an
+explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
+
 ## Save and share a theme
 
 The alpha.7 source API accepts a preset ID, a complete specification, or a versioned

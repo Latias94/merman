@@ -3,6 +3,7 @@ import {
   asciiSupportedDiagrams,
   createBrowserTextMeasurementSession,
   detectDiagramFacts,
+  diagramFamilyCapabilities,
   initMerman,
   isMermanInitialized,
   layoutJson,
@@ -66,6 +67,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
 
     runtimeCatalog,
     themeCatalog,
+    diagramFamilyCapabilities,
 
     detectDiagram(input) {
       if (input.configurationError) return UNAVAILABLE_DIAGRAM_DETECTION;

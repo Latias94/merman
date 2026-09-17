@@ -20,6 +20,15 @@ const SPEC_SCHEMA_VERSION: u32 = 1;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
+// These audited families currently use the shared palette recipe. Family-specific color fixes
+// do not amount to the complete dedicated visual designs of the Modern Mermaid references.
+// Keep unreviewed families absent instead of deriving aesthetic scope from renderer support.
+const SHARED_PALETTE_DESIGNS: &[(&str, &str)] = &[
+    ("class", "base_only"),
+    ("flowchart", "base_only"),
+    ("sequence", "base_only"),
+    ("xychart", "base_only"),
+];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
@@ -95,6 +104,7 @@ pub(super) struct PresetCatalogEntry {
     resource_fingerprint: &'static str,
     recipe_builder: PresetRecipeBuilder,
     palette: PresetPalette,
+    family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
     qualification_invalidation: ThemePresetQualificationInvalidation,
@@ -153,6 +163,10 @@ impl PresetCatalogEntry {
 
     pub(super) const fn resource_fingerprint(&self) -> &'static str {
         self.resource_fingerprint
+    }
+
+    pub(super) const fn family_designs(&self) -> &'static [(&'static str, &'static str)] {
+        self.family_designs
     }
 
     pub(super) const fn qualified_cells(&self) -> &'static [ThemePresetQualifiedCell] {
@@ -231,6 +245,7 @@ const fn entry(
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: build_cross_family_recipe,
         palette,
+        family_designs: SHARED_PALETTE_DESIGNS,
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "complete_spec",
         qualification_invalidation: ThemePresetQualificationInvalidation::current(),

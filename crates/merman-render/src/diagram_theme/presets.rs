@@ -1,4 +1,6 @@
-use merman_theme_contract::{ThemePresetMetadataV1, ThemePresetQualifiedCellV1};
+use merman_theme_contract::{
+    ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
+};
 
 use super::{
     DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDefinitionCompileError,
@@ -134,6 +136,15 @@ impl ThemePresetDescriptor {
             maturity: self.maturity().to_owned(),
             available: availability_reason_ids.is_empty(),
             availability_reason_ids,
+            family_designs: self
+                .entry()
+                .family_designs()
+                .iter()
+                .map(|(family_id, treatment)| ThemePresetFamilyDesignV1 {
+                    family_id: (*family_id).to_owned(),
+                    treatment: (*treatment).to_owned(),
+                })
+                .collect(),
             qualified_cells: self
                 .qualified_cells()
                 .iter()

@@ -309,3 +309,33 @@ test("qualified cells reject missing conditions and conflicting admissions in th
   const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
   assert.throws(() => runtime.themeCatalog(), /duplicate qualified cells/);
 });
+
+
+test("family design scope is open, optional, and independent of qualification", async () => {
+  const catalog = themeCatalogFixture();
+  catalog.presets[0].family_designs = [
+    { family_id: "class", treatment: "base_only" },
+    { family_id: "future-family", treatment: "future-design" },
+  ];
+  const runtime = await runtimeReturning(catalog);
+  const first = runtime.themeCatalog();
+  assert.deepEqual(first.presets[0].family_designs, catalog.presets[0].family_designs);
+  assert.deepEqual(first.presets[0].qualified_cells, []);
+  assert.deepEqual(first.presets[1].family_designs, []);
+  first.presets[0].family_designs[0].treatment = "mutated";
+  assert.equal(runtime.themeCatalog().presets[0].family_designs[0].treatment, "base_only");
+});
+
+test("family design metadata rejects ambiguous and malformed declarations", async () => {
+  for (const designs of [
+    null, {}, [{ family_id: "class" }], [{ family_id: "", treatment: "base_only" }],
+    [{ family_id: "class", treatment: "" }],
+    [{ family_id: "class", treatment: "base_only" }, { family_id: "class", treatment: "dedicated" }],
+    [{ family_id: "xychart", treatment: "base_only" }, { family_id: "class", treatment: "base_only" }],
+  ]) {
+    const catalog = themeCatalogFixture();
+    catalog.presets[0].family_designs = designs;
+    const runtime = await runtimeReturning(catalog);
+    assert.throws(() => runtime.themeCatalog(), /family design/, JSON.stringify(designs));
+  }
+});

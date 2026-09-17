@@ -4,6 +4,7 @@ import type {
   AsciiCapability,
   AsciiDiagramType,
   DiagramDetectionFacts,
+  DiagramFamilyCapability,
   DiagramType,
   SvgPlanResult,
   ThemeName,
@@ -67,6 +68,7 @@ export interface MermanDomainFacade {
   readonly packageVersion: string;
   runtimeCatalog(): RuntimeCatalog;
   themeCatalog(): ThemeCatalog;
+  diagramFamilyCapabilities(): DiagramFamilyCapability[];
   detectDiagram(input: ConfiguredMermanOperationInput): DiagramDetectionFacts;
   getAsciiCapabilities(): AsciiCapability[];
   getAsciiSupportedDiagrams(): AsciiDiagramType[];
