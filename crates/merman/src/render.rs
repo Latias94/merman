@@ -48,7 +48,7 @@ pub use document::{RenderedDocument, SvgOutput};
 #[cfg(feature = "svg")]
 pub use environment::SvgEnvironment;
 #[cfg(feature = "svg")]
-pub use evidence::{RenderEvidence, ThemeEvidenceStatus, ThemeEvidenceSummary};
+pub use evidence::{RenderEvidence, ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary};
 
 /// Identifies the canonical facade path that produced a completed render artifact.
 #[cfg(feature = "svg")]

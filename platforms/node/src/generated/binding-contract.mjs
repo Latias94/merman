@@ -484,6 +484,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "required": true,
           "integer_width_bits": null,
           "open_value": true
+        },
+        {
+          "name": "diagnostics",
+          "json_type": "array",
+          "required": false,
+          "integer_width_bits": null,
+          "open_value": true
         }
       ],
       "max_id_utf8_bytes": 128,

@@ -256,7 +256,7 @@ The reproducible local browser probe and results are retained under
 One renderer build was interrupted by a full disk before tests executed; removing only inactive
 Rust incremental caches allowed the scoped rerun. Source and audit artifacts were retained.
 
-### Remaining gates
+### Remaining gates after the coarse-outcome slice
 
 The coarse Web outcome-access gap and explicit shared-policy gap above are now implemented and
 verified for the two browser SVG profiles. U13 is **not closed**. Meaningful rule/facet diagnostics
@@ -269,3 +269,107 @@ Complex preset semantic color parameters, missing-resource workflows, consumer/U
 remaining installed-platform matrix remain open. Node's option declaration was updated, but its
 installed package was not rebuilt here. No catalog qualification, reference visual parity,
 performance budget or C7a contract-freeze claim is promoted by this slice.
+
+
+## Source-Located Render Explanations
+
+Implementation baseline: `19d35e65c`, 2026-09-17. This slice advances the diagnostic gap recorded
+above; it does not close U13 or certify reference visuals.
+
+The final `FamilyRenderReport` now projects user explanations while its render session still owns
+the compiled theme. The facade moves that immutable list into `RenderEvidence`; binding metadata
+and Web `renderSvgResult()` expose it as `theme_execution_evidence.diagnostics` in the existing
+unpublished version-one envelope. There is no new admission authority or public compiled-rule ID.
+
+The materializer and wire decoder retain a private source map at the actual expansion, palette
+replacement and rule/palette split points. Complete-spec paths refer to the input's mixed `styles`
+array; Definition paths refer to authored entries or explicitly supplied tokens. Defaults remain
+marked as generated without fabricated locations. Typed Rust specifications and built-in selections
+have no original JSON document. Exporting and reimporting gives locations in the new complete-spec
+payload. Source maps do not participate in visual recipe fingerprints.
+
+The explanations remain deliberately less precise than a facet ledger: a mixed rule may apply paint
+while retaining unsupported geometry. Root effect bindings currently identify the `/effects`
+container, and expanded Definition typography has no precise token location. Missing diagnostics
+mean the producer did not provide them; an explicit empty list is not a Portable certificate.
+Unknown diagnostic identifiers remain open. Strict operation failures still use the existing error
+path rather than returning a successful result with diagnostics.
+
+### Correctness finding from the public journey
+
+The new real-binding override test exposed a pre-existing Sequence defect: a Lifeline rule containing
+only radius was omitted from terminal observations and could be classified NotApplicable. Adding
+stroke paint to the same rule activated the receipt path and correctly retained the radius residual.
+The writer and recorder both had paint-only gates. Message shared both gates; Loop had the recorder
+gate. The fix uses their existing terminal/winner observations for all matching static facets.
+It adds no support for radius and does not change the source-ownership precedence.
+
+Local tests cover a later radius overriding an earlier one, source paint ownership retaining the
+unsupported geometry, and absent Message/Loop terminals staying NotApplicable. The public binding
+regression checks only the winning input location is reported. A diagnostic for a supported sibling
+facet is not synthesized from the rule-level key.
+
+### Verification scope
+
+- Renderer compiler/materializer/admission/theme and Sequence evidence plus mutation regressions:
+  **354/354 passed**, with 2,231 unrelated unit tests filtered out.
+- Binding core and WASM Rust suites with SVG/Cytoscape: **291/291 passed**.
+- Web TypeScript/contract build and focused authoring/surface tests passed.
+- Binding metadata generation was refreshed through the existing xtask owner.
+
+The source-map and metadata getter tests first failed to compile before implementation. The actual
+pure-geometry render test then failed with zero rule diagnostics before the Sequence fix. Two
+initial test-fixture mistakes (`ordinal_palette` rather than `ordinal-palette`, and omitted required
+`tokens`) were corrected separately; those input errors are not evidence of a production defect.
+
+Logs: `/tmp/merman-u13-diagnostics-{red,binding-red,sources,focused,binding-green,renderer,web-types,web-tests,generate,contract}.log`.
+
+Cross-platform source inspection found raw metadata forwarding in C ABI, Node, UniFFI/Python and
+Flutter, so the new list uses the existing transport surface. This inspection is not an installed
+package or host-build rerun. Per-facet explanations, complex preset semantic customization,
+missing-resource journeys and the remaining consumer/UI rollout stay open.
+
+
+### Actual Web artifacts and local footprint
+
+Both SVG packages were rebuilt from this implementation, assembled, and passed their actual WASM
+smoke suites (**35 diagrams per package**). The same embedded-font loop scene first passes strict
+admission; adding only unsupported radius to Lifeline, Message or Loop then leaves exactly
+`theme_evidence_incomplete`, reports only the later winning `/styles/1`, and fails strict admission.
+This exercises the production writers rather than manufacturing receipts in a unit test.
+
+Chromium also loaded both public package entries and verified the Portable control, a partly applied
+stroke-plus-radius rule, the pure-radius override case, byte length and SVG equality with the string
+API. Full input fingerprint: `38ab504fe0d9`; render: `43eaae4f20d1`. Both input manifests passed
+freshness verification. These checks cover the two SVG packages, not every Web package/profile.
+
+The following comparison is against the previously built local artifacts from the preceding
+`19d35e65c` slice, **not** against released alpha.6 and not a measurement of the whole refactor.
+Tool versions and feature presets match; raw hashes, input manifests and deterministic gzip-9
+measurements are retained under `target/bench/experiments/theme-diagnostics-19d35e65c/`.
+
+| WASM profile | Previous bytes | Current bytes | Raw delta | gzip-9 delta |
+| --- | ---: | ---: | ---: | ---: |
+| full | 16,078,220 | 16,090,654 | +12,434 (+0.077%) | +3,433 (+0.057%) |
+| render | 14,177,036 | 14,189,450 | +12,414 (+0.088%) | +5,394 (+0.101%) |
+
+No dependency or font asset was added. No size budget was changed. This comparison says nothing
+about latency or peak allocation. The facade consumes the renderer's diagnostic list without a
+second deep copy; metadata serialization still owns its host representation. Source capture during
+materialization and final report projection have not received a dedicated timing/allocation study.
+
+Changed-crate `cargo clippy --lib` passed with existing warnings; scoped `cargo fmt --check`,
+`git diff --check` and generated binding-contract verification passed. Web TypeScript contracts and
+focused authoring/package tests passed. No full workspace, release archive, installed Node/Python
+or all-platform build rerun is claimed.
+
+Additional logs: `/tmp/merman-u13-diagnostics-{wasm-full,wasm-render,assemble,full-smoke,render-smoke,browser,clippy}.log`.
+The browser probe and its JSON results are retained alongside the footprint measurements.
+
+
+The scoped code review completed with no remaining findings after adding the real Message/Loop
+writer cases. It covered correctness, project standards, testing, maintainability, security,
+performance, API contract and adversarial scenarios across independent Codex review contexts.
+Receipt: `/tmp/compound-engineering-501/ce-code-review/u13-20260917T145449/review.json`
+(`status: complete`). The simplification pass retained the source-owner separation and removed the
+facade's avoidable diagnostic deep copy. These review conclusions apply to this slice only.

@@ -166,7 +166,15 @@ test("exported recipes survive JSON storage and enter SVG options without unpack
 
 test("SVG results preserve opaque evidence and forward policy through one execution", async () => {
   const calls = [];
-  let evidence = { version: 1, theme_status: "future-theme", target_status: "future-target" };
+  let evidence = {
+    version: 1,
+    theme_status: "future-theme",
+    target_status: "future-target",
+    diagnostics: [{
+      code: "future-code", subject: "future-subject", target: "future-target",
+      source_document: "future-document", source_paths: ["/styles/3"], generated: false,
+    }],
+  };
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
@@ -186,7 +194,7 @@ test("SVG results preserve opaque evidence and forward policy through one execut
   for (const value of [
     evidence,
     { version: 99, future: { target_status: "portable" } },
-    { version: 1, theme_status: "verified", target_status: "future-target" },
+    { version: 1, theme_status: "verified", target_status: "future-target", diagnostics: [] },
   ]) {
     evidence = value;
     const result = runtime.renderSvgResult("classDiagram\nclass Account", {

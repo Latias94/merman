@@ -56,6 +56,14 @@ impl DiagramThemeCompiler {
         &self,
         spec: DiagramThemeSpec,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        self.compile_with_sources(spec, super::source::ThemeSourceMap::default())
+    }
+
+    fn compile_with_sources(
+        &self,
+        spec: DiagramThemeSpec,
+        source_map: super::source::ThemeSourceMap,
+    ) -> Result<super::DiagramTheme, ThemeCompileError> {
         spec.validate()?;
         spec.effects().check_resources(&self.resources)?;
         let catalog = match spec.assets().font_catalog() {
@@ -95,6 +103,7 @@ impl DiagramThemeCompiler {
                 .collect::<BTreeSet<_>>(),
         );
         Ok(super::DiagramTheme(Arc::new(super::CompiledDiagramTheme {
+            source_map,
             spec,
             catalog,
             resource_restriction: self.resources.clone(),
@@ -111,8 +120,16 @@ impl DiagramThemeCompiler {
         &self,
         spec: super::DiagramThemeSpecWireV1,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
-        let spec = super::wire_decode::decode(spec, &self.resources)?;
-        self.compile(spec)
+        self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::CompleteSpec)
+    }
+
+    pub(super) fn compile_spec_wire_with_sources(
+        &self,
+        spec: super::DiagramThemeSpecWireV1,
+        sources: super::source::ThemeWireSources,
+    ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        let (spec, sources) = super::wire_decode::decode(spec, &self.resources, sources)?;
+        self.compile_with_sources(spec, sources)
     }
 
     pub fn compile_preset(
@@ -120,7 +137,7 @@ impl DiagramThemeCompiler {
         preset: super::ThemePreset,
     ) -> Result<super::DiagramTheme, super::ThemeDefinitionCompileError> {
         let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
-        Ok(self.compile_spec_wire(spec)?)
+        Ok(self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::None)?)
     }
 
     /// Compiles a saved recipe through the same authoring and complete-spec admission paths.
@@ -227,6 +244,144 @@ mod tests {
         ThemeColorValue, ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
         ThemeTarget,
     };
+
+    #[test]
+    fn diagnostic_sources_follow_interleaved_complete_spec_entries() {
+        let wire = serde_json::from_value(serde_json::json!({"styles": [
+            {"kind": "ordinal-palette", "target": "node", "colors": ["red"]},
+            {"kind": "rule", "target": "node", "style": {"radius": 4}},
+            {"kind": "ordinal-palette", "target": "pie-slice", "colors": ["blue"]},
+            {"kind": "rule", "target": "text", "style": {"fill": "green"}}
+        ]}))
+        .unwrap();
+        let theme = DiagramThemeCompiler::new().compile_spec_wire(wire).unwrap();
+        let sources = theme.source_map();
+        assert_eq!(sources.document().unwrap().id(), "complete_spec");
+        assert_eq!(sources.rule(0).unwrap().paths, ["/styles/1"]);
+        assert_eq!(sources.rule(1).unwrap().paths, ["/styles/3"]);
+        assert_eq!(
+            sources.palette(ThemeTarget::Node).unwrap().paths,
+            ["/styles/0"]
+        );
+        assert_eq!(
+            sources.palette(ThemeTarget::PieSlice).unwrap().paths,
+            ["/styles/2"]
+        );
+        assert!(!sources.rule(0).unwrap().generated);
+    }
+
+    #[test]
+    fn diagnostic_sources_preserve_definition_tokens_and_authored_palette_override() {
+        let definition = serde_json::from_value(serde_json::json!({
+            "authoring_schema_version": 1, "expansion_version": 1,
+            "tokens": {"text": "green", "series": ["orange"]},
+            "styles": [
+                {"kind": "ordinal-palette", "target": "node", "colors": ["red"]},
+                {"kind": "rule", "target": "node", "style": {"radius": 4}}
+            ]
+        }))
+        .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = super::super::compile_theme_definition(&compiler, &definition).unwrap();
+        let sources = theme.source_map();
+        assert_eq!(sources.document().unwrap().id(), "definition");
+        assert_eq!(sources.rule(0).unwrap().paths, ["/tokens/text"]);
+        assert!(sources.rule(0).unwrap().generated);
+        assert!(sources.rule(2).unwrap().paths.is_empty());
+        assert!(sources.rule(2).unwrap().generated);
+        let authored_rule = theme.spec().styles().rules().len() - 1;
+        assert_eq!(sources.rule(authored_rule).unwrap().paths, ["/styles/1"]);
+        assert!(!sources.rule(authored_rule).unwrap().generated);
+        assert_eq!(
+            sources.palette(ThemeTarget::Node).unwrap().paths,
+            ["/styles/0"]
+        );
+        assert!(!sources.palette(ThemeTarget::Node).unwrap().generated);
+        assert_eq!(
+            sources.palette(ThemeTarget::PieSlice).unwrap().paths,
+            ["/tokens/series"]
+        );
+        assert!(sources.palette(ThemeTarget::PieSlice).unwrap().generated);
+
+        let materialized = super::super::materialize_theme(&definition).unwrap();
+        let imported = compiler
+            .compile_spec_wire(materialized.into_spec())
+            .unwrap();
+        assert_eq!(theme.recipe_fingerprint(), imported.recipe_fingerprint());
+        assert_eq!(
+            imported.source_map().rule(authored_rule).unwrap().paths,
+            [format!("/styles/{authored_rule}")]
+        );
+    }
+
+    #[test]
+    fn diagnostic_sources_distinguish_generated_defaults_from_explicit_tokens() {
+        let compiler = DiagramThemeCompiler::new();
+        let default_definition =
+            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        let default =
+            super::super::compile_theme_definition_json(&compiler, default_definition).unwrap();
+        let source = default.source_map().palette(ThemeTarget::Node).unwrap();
+        assert!(source.generated);
+        assert!(source.paths.is_empty());
+        assert!(default.source_map().canvas_base().unwrap().paths.is_empty());
+        assert!(default.source_map().canvas_base().unwrap().generated);
+
+        let explicit = super::super::compile_theme_definition_json(&compiler,
+            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"line":"red","canvas":"blue"}}"#
+        ).unwrap();
+        let marker_index = explicit
+            .spec()
+            .styles()
+            .rules()
+            .iter()
+            .position(|rule| rule.target() == ThemeTarget::TransitionMarker)
+            .unwrap();
+        assert_eq!(
+            explicit.source_map().rule(marker_index).unwrap().paths,
+            ["/tokens/line"]
+        );
+        assert_eq!(
+            explicit.source_map().canvas_base().unwrap().paths,
+            ["/tokens/canvas"]
+        );
+        let imported = compiler
+            .compile_spec_wire(
+                serde_json::from_value(serde_json::json!({"canvas": {"base": "blue"}})).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            imported.source_map().canvas_base().unwrap().paths,
+            ["/canvas/base"]
+        );
+        assert!(!imported.source_map().canvas_base().unwrap().generated);
+    }
+
+    #[test]
+    fn diagnostic_sources_do_not_invent_documents_for_typed_or_builtin_themes() {
+        let compiler = DiagramThemeCompiler::new();
+        let typed = compiler.compile(DiagramThemeSpec::new()).unwrap();
+        assert!(typed.source_map().document().is_none());
+        assert!(typed.source_map().rule(0).is_none());
+        let preset = compiler
+            .compile_preset(super::super::ThemePreset::Cyberpunk)
+            .unwrap();
+        assert!(preset.source_map().document().is_none());
+        assert!(preset.source_map().rule(0).is_none());
+        let imported = compiler
+            .compile_recipe(
+                compiler
+                    .export_preset(super::super::ThemePreset::Cyberpunk)
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            imported.source_map().document().unwrap().id(),
+            "complete_spec"
+        );
+        assert_eq!(imported.source_map().rule(0).unwrap().paths, ["/styles/0"]);
+        assert_eq!(preset.recipe_fingerprint(), imported.recipe_fingerprint());
+    }
 
     fn shadow_graph() -> EffectGraph {
         EffectGraph::new(

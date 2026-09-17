@@ -22,6 +22,7 @@ use super::semantic::{
     OrdinalPalette, OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
+use super::source::{ThemeSourceMap, ThemeWireSources};
 use super::spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 use super::typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle, TextStylePatch,
@@ -32,7 +33,8 @@ use super::{FontStyle, ThemeCompileError, ThemeCompileValidationError, ThemeReso
 pub(super) fn decode(
     spec: wire::DiagramThemeSpecWireV1,
     resources: &ThemeResourcePolicy,
-) -> Result<DiagramThemeSpec, ThemeCompileError> {
+    mut sources: ThemeWireSources,
+) -> Result<(DiagramThemeSpec, ThemeSourceMap), ThemeCompileError> {
     let wire::DiagramThemeSpecWireV1 {
         mermaid,
         typography,
@@ -43,6 +45,7 @@ pub(super) fn decode(
         assets,
     } = spec;
 
+    let mut source_map = ThemeSourceMap::new(sources.document());
     let mut decoded = DiagramThemeSpec::new();
     if let Some(mermaid) = mermaid {
         decoded = decoded.with_mermaid_compatibility(decode_mermaid(mermaid)?);
@@ -51,9 +54,12 @@ pub(super) fn decode(
         decoded = decoded.with_typography(decode_typography(typography)?);
     }
     if let Some(styles) = styles {
-        decoded = decoded.with_styles(decode_styles(styles)?);
+        decoded = decoded.with_styles(decode_styles(styles, &mut sources, &mut source_map)?);
     }
     if let Some(canvas) = canvas {
+        if canvas.base.is_some() {
+            source_map.set_canvas_base(sources.take_canvas_base());
+        }
         decoded = decoded.with_canvas(decode_canvas(canvas)?);
     }
     if let Some(effects) = effects {
@@ -67,7 +73,7 @@ pub(super) fn decode(
     {
         decoded = decoded.with_assets(assets);
     }
-    Ok(decoded)
+    Ok((decoded, source_map))
 }
 
 fn decode_mermaid(
@@ -150,9 +156,12 @@ fn decode_text_style(value: wire::ThemeTextStyleWireV1) -> Result<TextStyle, The
 
 fn decode_styles(
     entries: Vec<wire::ThemeRuleSetWireV1>,
+    sources: &mut ThemeWireSources,
+    source_map: &mut ThemeSourceMap,
 ) -> Result<ThemeRuleSet, ThemeCompileError> {
     let mut decoded = ThemeRuleSet::default();
-    for entry in entries {
+    for (index, entry) in entries.into_iter().enumerate() {
+        let source = sources.take_style(index);
         match entry {
             wire::ThemeRuleSetWireV1::Rule {
                 target,
@@ -175,16 +184,16 @@ fn decode_styles(
                     rule = rule.with_ordinal(decode_ordinal(ordinal)?);
                 }
                 decoded = decoded.with_rule(rule);
+                source_map.push_rule(source);
             }
             wire::ThemeRuleSetWireV1::OrdinalPalette { target, colors } => {
                 let colors = colors
                     .into_iter()
                     .map(|color| ThemeColorValue::parse(&color))
                     .collect::<Result<Vec<_>, _>>()?;
-                decoded = decoded.with_ordinal_palette(
-                    parse_target(&target, "styles.ordinal_palette.target")?,
-                    OrdinalPalette::new(colors)?,
-                );
+                let target = parse_target(&target, "styles.ordinal_palette.target")?;
+                decoded = decoded.with_ordinal_palette(target, OrdinalPalette::new(colors)?);
+                source_map.insert_palette(target, source);
             }
         }
     }

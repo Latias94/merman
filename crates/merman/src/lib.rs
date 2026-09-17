@@ -105,7 +105,7 @@ pub use render::{
     DocumentPortabilityReport, OperationExecutionPath, RenderArtifactKind, RenderEvidence,
     RenderedDocument, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
     TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
-    ThemeEvidenceStatus, ThemeEvidenceSummary,
+    ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary,
 };
 #[cfg(feature = "jpeg")]
 pub use render::{JpegRequest, PreparedJpegExport};

@@ -1052,6 +1052,22 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
   diagrams: AnalysisDiagramFacts[];
 }
 
+/**
+ * An actual render explanation with open identifiers, not a portability certificate.
+ * Rule diagnostics may describe partially applied rules; only `property`, when present, names
+ * a specific property. Source paths are RFC 6901 pointers relative to the named recipe payload
+ * (`definition` or `complete_spec`). Generated defaults and Rust input may have no source paths.
+ */
+export interface ThemeDiagnostic {
+  code: string;
+  subject: string;
+  target?: string | null;
+  property?: string | null;
+  source_document?: string | null;
+  source_paths: string[];
+  generated: boolean;
+}
+
 /** Renderer-owned outcome, with open status/reason IDs for forward-compatible consumers. */
 export interface ThemeExecutionEvidenceV1 {
   version: 1;
@@ -1062,6 +1078,8 @@ export interface ThemeExecutionEvidenceV1 {
   target_status: string;
   target_reason_ids: string[];
   font_source: string;
+  /** Absent means not supplied. An empty list does not establish portability. */
+  diagnostics?: ThemeDiagnostic[];
 }
 
 /** Unknown versions stay opaque. Never treat an unknown status or version as portable. */

@@ -109,9 +109,11 @@ pub fn compile_theme_definition(
     compiler: &DiagramThemeCompiler,
     definition: &ThemeDefinitionV1,
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    let materialized =
-        materialize_theme_with_resource_policy(definition, compiler.resource_policy())?;
-    Ok(compiler.compile_spec_wire(materialized.into_spec())?)
+    let admitted = admit_typed_definition(compiler.resource_policy(), definition)
+        .map_err(admission_contract_error)?;
+    let (materialized, sources) = ThemeMaterializer::materialize_with_sources(admitted)
+        .map_err(ThemeMaterializationError::into_contract_error)?;
+    Ok(compiler.compile_spec_wire_with_sources(materialized.into_spec(), sources)?)
 }
 
 /// Decodes, admits, materializes, and compiles one versioned theme-definition JSON document.
@@ -119,9 +121,11 @@ pub fn compile_theme_definition_json(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    let materialized =
-        materialize_theme_json_with_resource_policy(bytes, compiler.resource_policy())?;
-    Ok(compiler.compile_spec_wire(materialized.into_spec())?)
+    let definition = decode_bounded_theme_definition_json(compiler.resource_policy(), bytes)?;
+    let admitted = AdmittedThemeDefinition::new(&definition);
+    let (materialized, sources) = ThemeMaterializer::materialize_with_sources(admitted)
+        .map_err(ThemeMaterializationError::into_contract_error)?;
+    Ok(compiler.compile_spec_wire_with_sources(materialized.into_spec(), sources)?)
 }
 
 /// A fatal failure while materializing or compiling a theme definition.

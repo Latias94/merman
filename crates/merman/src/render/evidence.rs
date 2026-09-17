@@ -1,3 +1,5 @@
+pub use merman_render::family::ThemeDiagnostic;
+
 /// Coarse terminal state for one bounded theme-evidence scope.
 ///
 /// The renderer keeps mechanism keys, selectors, element receipts, and residual ledgers private.
@@ -126,6 +128,7 @@ pub struct RenderEvidence {
     session: merman_render::environment::RenderSessionReport,
     family_id: merman_core::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
+    theme_diagnostics: Box<[ThemeDiagnostic]>,
     required_capabilities: Box<[merman_render::RenderCapability]>,
     root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
@@ -166,6 +169,7 @@ impl RenderEvidence {
             session,
             family_id,
             theme_evidence,
+            theme_diagnostics: merman_render::__private::into_theme_diagnostics(family),
             required_capabilities: required_capabilities.into_boxed_slice(),
             root_applied_capabilities,
             native_filter_receipt,
@@ -265,6 +269,12 @@ impl RenderEvidence {
         &self,
     ) -> merman_render::diagram_theme::FontCatalogFingerprint {
         self.session().font_catalog_fingerprint()
+    }
+
+    /// Explanations of unverified theme work, captured from this completed operation.
+    /// An empty list does not replace theme evidence or target admission checks.
+    pub fn theme_diagnostics(&self) -> &[ThemeDiagnostic] {
+        &self.theme_diagnostics
     }
 
     pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {

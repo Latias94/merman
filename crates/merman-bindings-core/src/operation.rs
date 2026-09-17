@@ -1610,6 +1610,121 @@ mod tests {
     }
 
     #[test]
+    fn theme_diagnostics_distinguish_missing_from_empty_and_preserve_open_ids() {
+        let mut wire = known_theme_execution_evidence_json();
+        let metadata = BindingOperationMetadata::from_json_bytes(
+            &metadata_json_with_theme_execution_evidence(wire.clone()),
+        )
+        .unwrap();
+        let evidence = metadata
+            .theme_execution_evidence()
+            .unwrap()
+            .as_v1()
+            .unwrap();
+        assert!(evidence.diagnostics().is_none());
+        assert!(
+            serde_json::to_value(evidence)
+                .unwrap()
+                .get("diagnostics")
+                .is_none()
+        );
+
+        wire["diagnostics"] = serde_json::json!([]);
+        let metadata = BindingOperationMetadata::from_json_bytes(
+            &metadata_json_with_theme_execution_evidence(wire.clone()),
+        )
+        .unwrap();
+        let evidence = metadata
+            .theme_execution_evidence()
+            .unwrap()
+            .as_v1()
+            .unwrap();
+        assert_eq!(evidence.diagnostics().unwrap().len(), 0);
+        assert_eq!(serde_json::to_value(evidence).unwrap(), wire);
+
+        wire["theme_status"] = serde_json::json!("future-theme-status");
+        wire["target_status"] = serde_json::json!("future-target-status");
+        wire["diagnostics"] = serde_json::json!([{
+            "code": "future-reason",
+            "subject": "future-subject",
+            "target": "future-target",
+            "property": "future-property",
+            "source_document": "future-document",
+            "source_paths": ["/styles/2", "/future~1field/~0key"],
+            "generated": false
+        }, {
+            "code": "unsupported-paint",
+            "subject": "rule",
+            "source_paths": [],
+            "generated": true
+        }]);
+        let metadata = BindingOperationMetadata::from_json_bytes(
+            &metadata_json_with_theme_execution_evidence(wire.clone()),
+        )
+        .unwrap();
+        let evidence = metadata
+            .theme_execution_evidence()
+            .unwrap()
+            .as_v1()
+            .unwrap();
+        assert_eq!(evidence.theme_status_id(), "future-theme-status");
+        assert_eq!(evidence.target_status_id(), "future-target-status");
+        let diagnostic = &evidence.diagnostics().unwrap()[0];
+        assert_eq!(diagnostic.code(), "future-reason");
+        assert_eq!(diagnostic.subject(), "future-subject");
+        assert_eq!(diagnostic.target(), Some("future-target"));
+        assert_eq!(diagnostic.property(), Some("future-property"));
+        assert_eq!(diagnostic.source_document(), Some("future-document"));
+        assert_eq!(
+            diagnostic.source_paths(),
+            ["/styles/2", "/future~1field/~0key"]
+        );
+        assert!(!diagnostic.generated());
+        assert_eq!(serde_json::to_value(evidence).unwrap(), wire);
+    }
+
+    #[test]
+    fn theme_diagnostics_reject_malformed_shapes_without_silently_dropping_entries() {
+        let diagnostic = serde_json::json!({
+            "code": "unsupported-geometry", "subject": "rule",
+            "source_paths": ["/styles/0"], "generated": false
+        });
+        let mut malformed = vec![
+            serde_json::json!(null),
+            serde_json::json!({}),
+            serde_json::json!([null]),
+        ];
+        for (field, value) in [
+            ("code", serde_json::json!(3)),
+            ("subject", serde_json::json!(false)),
+            ("target", serde_json::json!([])),
+            ("property", serde_json::json!({})),
+            ("source_document", serde_json::json!(8)),
+            ("source_paths", serde_json::json!([1])),
+            ("generated", serde_json::json!("false")),
+        ] {
+            let mut entry = diagnostic.clone();
+            entry[field] = value;
+            malformed.push(serde_json::json!([entry]));
+        }
+        for field in ["code", "subject", "source_paths", "generated"] {
+            let mut entry = diagnostic.clone();
+            entry.as_object_mut().unwrap().remove(field);
+            malformed.push(serde_json::json!([entry]));
+        }
+        for diagnostics in malformed {
+            let mut wire = known_theme_execution_evidence_json();
+            wire["diagnostics"] = diagnostics;
+            let error = BindingOperationMetadata::from_json_bytes(
+                &metadata_json_with_theme_execution_evidence(wire),
+            )
+            .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains("diagnostics"), "{error:?}");
+        }
+    }
+
+    #[test]
     fn typed_metadata_preserves_unknown_theme_evidence_and_exact_outer_json() {
         let json = br#"{ "version": 1, "operation_id": "svg", "media_type": "image/svg+xml", "runtime_policy": "future-policy", "byte_length": 7, "theme_execution_evidence": { "version": 9, "future": { "answer": 42 } } }"#;
         let metadata = BindingOperationMetadata::from_json_bytes(json).unwrap();
@@ -2742,6 +2857,7 @@ mod tests {
         assert!(evidence["target_status"].is_string());
         assert!(evidence["target_reason_ids"].is_array());
         assert!(evidence["font_source"].is_string());
+        assert_eq!(evidence["diagnostics"], serde_json::json!([]));
 
         let mut keys = evidence
             .as_object()
@@ -2753,6 +2869,7 @@ mod tests {
         assert_eq!(
             keys,
             [
+                "diagnostics",
                 "family_id",
                 "font_source",
                 "output_mutated",

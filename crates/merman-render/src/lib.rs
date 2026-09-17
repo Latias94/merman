@@ -328,6 +328,13 @@ pub mod __private {
         }
     }
 
+    /// Moves user explanations to the facade after it has read the completed report.
+    pub fn into_theme_diagnostics(
+        report: FamilyRenderReport,
+    ) -> Box<[crate::family::ThemeDiagnostic]> {
+        report.into_theme_diagnostics()
+    }
+
     /// Projects renderer-private root evidence without exporting the mechanism ledger.
     pub fn root_evidence(report: &FamilyRenderReport) -> RootEvidenceSummary {
         let root = report.root_theme_report();

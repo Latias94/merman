@@ -4,6 +4,9 @@ mod evidence_support;
 mod inherited_font_stack;
 mod parse_defaults;
 mod preparation;
+mod theme_diagnostics;
+
+pub use theme_diagnostics::ThemeDiagnostic;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
 pub(crate) use direct_static_paint::{
@@ -624,6 +627,7 @@ impl FamilyStyleReport {
 /// claim that any semantic target was applied or emitted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FamilyRenderReport {
+    theme_diagnostics: Box<[ThemeDiagnostic]>,
     root_theme: RootThemeReport,
     style: FamilyStyleReport,
     session: RenderSessionReport,
@@ -635,11 +639,22 @@ impl FamilyRenderReport {
         style: FamilyStyleReport,
         session: RenderSession,
     ) -> Self {
+        let theme_diagnostics = theme_diagnostics::project(&root_theme, &style, session.theme());
         Self {
+            theme_diagnostics,
             root_theme,
             style,
             session: session.report(),
         }
+    }
+
+    /// User explanations captured after rendering and postprocessing, separate from admission.
+    pub fn theme_diagnostics(&self) -> &[ThemeDiagnostic] {
+        &self.theme_diagnostics
+    }
+
+    pub(crate) fn into_theme_diagnostics(self) -> Box<[ThemeDiagnostic]> {
+        self.theme_diagnostics
     }
 
     pub const fn family_id(&self) -> DiagramFamilyId {

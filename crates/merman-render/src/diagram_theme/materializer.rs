@@ -8,6 +8,7 @@ use merman_theme_contract::{
 };
 
 use super::definition_admission::AdmittedThemeDefinition;
+use super::source::{ThemeStyleSource, ThemeWireSources};
 use super::{FontStack, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
 
 const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
@@ -207,44 +208,66 @@ impl ThemeMaterializer {
     pub(super) fn materialize(
         admitted: AdmittedThemeDefinition<'_>,
     ) -> Result<MaterializedThemeWireV1, ThemeMaterializationError> {
+        Self::materialize_with_sources(admitted).map(|(materialized, _)| materialized)
+    }
+
+    pub(super) fn materialize_with_sources(
+        admitted: AdmittedThemeDefinition<'_>,
+    ) -> Result<(MaterializedThemeWireV1, ThemeWireSources), ThemeMaterializationError> {
         let definition = admitted.definition();
         validate_definition_shape(definition)?;
         let tokens = ResolvedTokensV1::resolve(definition)?;
-        let mut styles = GENERATED_RULES
-            .iter()
-            .map(|row| materialize_generated_rule(*row, &tokens))
-            .collect::<Vec<_>>();
-        styles.extend(
-            definition
-                .styles()
-                .iter()
-                .filter(|entry| matches!(entry, ThemeRuleSetWireV1::Rule { .. }))
-                .cloned(),
-        );
+        let mut styles = Vec::new();
+        let mut sources = Vec::new();
+        for row in GENERATED_RULES {
+            styles.push(materialize_generated_rule(row, &tokens));
+            sources.push(generated_color_source(definition, [row.fill, row.stroke]));
+        }
+        for (index, entry) in definition.styles().iter().enumerate() {
+            if matches!(entry, ThemeRuleSetWireV1::Rule { .. }) {
+                styles.push(entry.clone());
+                sources.push(ThemeStyleSource::authored(format!("/styles/{index}")));
+            }
+        }
 
-        let mut palettes =
-            GENERATED_PALETTE_TARGETS.map(|target| ThemeRuleSetWireV1::OrdinalPalette {
-                target: target.id().to_owned(),
-                colors: tokens.series.clone(),
-            });
+        let palette_source = ThemeStyleSource {
+            paths: definition
+                .tokens()
+                .series()
+                .map(|_| vec!["/tokens/series".to_owned()])
+                .unwrap_or_default(),
+            generated: true,
+        };
+        let mut palettes = GENERATED_PALETTE_TARGETS.map(|target| {
+            (
+                ThemeRuleSetWireV1::OrdinalPalette {
+                    target: target.id().to_owned(),
+                    colors: tokens.series.clone(),
+                },
+                palette_source.clone(),
+            )
+        });
         let mut additional_palettes = Vec::new();
-        for entry in definition.styles() {
-            let ThemeRuleSetWireV1::OrdinalPalette { target, colors } = entry else {
+        for (index, entry) in definition.styles().iter().enumerate() {
+            let ThemeRuleSetWireV1::OrdinalPalette { target, .. } = entry else {
                 continue;
             };
+            let sourced = (
+                entry.clone(),
+                ThemeStyleSource::authored(format!("/styles/{index}")),
+            );
             match GENERATED_PALETTE_TARGETS
                 .iter()
                 .position(|generated| generated.id() == target)
             {
-                Some(index) => palettes[index] = entry.clone(),
-                None => additional_palettes.push(ThemeRuleSetWireV1::OrdinalPalette {
-                    target: target.clone(),
-                    colors: colors.clone(),
-                }),
+                Some(index) => palettes[index] = sourced,
+                None => additional_palettes.push(sourced),
             }
         }
-        styles.extend(palettes);
-        styles.extend(additional_palettes);
+        for (entry, source) in palettes.into_iter().chain(additional_palettes) {
+            styles.push(entry);
+            sources.push(source);
+        }
 
         let canvas = solid_color(tokens.color(ThemeColorTokenV1::Canvas));
         let spec = DiagramThemeSpecWireV1 {
@@ -260,12 +283,44 @@ impl ThemeMaterializer {
             }),
             ..DiagramThemeSpecWireV1::default()
         };
-        MaterializedThemeWireV1::try_new(spec).map_err(|_| {
+        let materialized = MaterializedThemeWireV1::try_new(spec).map_err(|_| {
             ThemeMaterializationError::InvalidTokenValue {
                 path: "/styles".to_owned(),
                 expected_domain_id: "finite-theme-style-values",
             }
-        })
+        })?;
+        Ok((
+            materialized,
+            ThemeWireSources::Definition {
+                styles: sources,
+                canvas_base: generated_color_source(definition, [Some(ThemeColorTokenV1::Canvas)]),
+            },
+        ))
+    }
+}
+
+fn generated_color_source(
+    definition: &ThemeDefinitionV1,
+    tokens: impl IntoIterator<Item = Option<ThemeColorTokenV1>>,
+) -> ThemeStyleSource {
+    let mut paths = Vec::new();
+    for token in tokens.into_iter().flatten() {
+        if definition.tokens().color(token).is_some() {
+            let (_, _, path) = COLOR_DEFAULTS
+                .iter()
+                .find(|(candidate, _, _)| *candidate == token)
+                .expect("every generated color token has a source path");
+            if !paths
+                .iter()
+                .any(|existing: &String| existing.as_str() == *path)
+            {
+                paths.push((*path).to_owned());
+            }
+        }
+    }
+    ThemeStyleSource {
+        paths,
+        generated: true,
     }
 }
 

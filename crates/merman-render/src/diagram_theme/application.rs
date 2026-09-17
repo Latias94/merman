@@ -118,7 +118,6 @@ pub(crate) struct RootThemeResidual {
 }
 
 impl RootThemeResidual {
-    #[cfg(test)]
     pub const fn key(&self) -> &RootThemeMechanismKey {
         &self.key
     }

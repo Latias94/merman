@@ -24,6 +24,8 @@ import type {
   ThemeDefinitionV1,
   ThemeRecipeV1,
   ThemeStylePatch,
+  ThemeDiagnostic,
+  ThemeExecutionEvidenceV1,
   ThemeSupportQueryV1,
   ThemeSupportUnknownSubjectKindV1,
 } from "../src/public-types.js";
@@ -339,3 +341,36 @@ void strictThemeOptions;
 // @ts-expect-error Unknown request policies must not silently weaken admission.
 const unknownThemePolicy = { environment: { theme_portability: "future-policy" } } satisfies SvgBindingOptions;
 void unknownThemePolicy;
+
+// Open diagnostic identifiers must survive newer renderer implementations.
+const themeDiagnostic: ThemeDiagnostic = {
+  code: "future-code",
+  subject: "future-subject",
+  target: "future-target",
+  property: "future-property",
+  source_document: "future-document",
+  source_paths: ["/styles/2"],
+  generated: false,
+};
+const themeOutcome: ThemeExecutionEvidenceV1 = {
+  version: 1,
+  family_id: "class",
+  theme_status: "residual",
+  output_mutated: false,
+  target_kind: "svg",
+  target_status: "rejected",
+  target_reason_ids: ["theme_evidence_incomplete"],
+  font_source: "embedded",
+  diagnostics: [themeDiagnostic],
+};
+const legacyThemeOutcome: ThemeExecutionEvidenceV1 = {
+  ...themeOutcome,
+  diagnostics: undefined,
+};
+legacyThemeOutcome.diagnostics?.map((diagnostic) => diagnostic.source_paths);
+const malformedThemeDiagnostic: ThemeDiagnostic = {
+  ...themeDiagnostic,
+  // @ts-expect-error source pointers are strings, not compiled rule indexes.
+  source_paths: [2],
+};
+void malformedThemeDiagnostic;

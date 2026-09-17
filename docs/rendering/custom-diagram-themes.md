@@ -27,10 +27,9 @@ and approve the visual design of a particular scene. Web `renderSvg()` returns o
 string, and `svgPlanJson().ready` checks artifact capabilities rather than applied theme facets.
 Use `renderSvgResult()` to retrieve `{ svg, metadata }` from one execution, including versioned
 `metadata.theme_execution_evidence`. Its theme and target states are separate; unknown versions
-or statuses must not grant portability. This is a coarse outcome, not a per-rule/facet explanation.
-BestEffort can return a useful preview together with a rejected target status; strict policy
-turns that failed admission into an operation error. Detailed user diagnostics remain a
-contract-freeze gate.
+or statuses must not grant portability. The outcome includes explanatory `diagnostics` for
+unverified theme work. BestEffort can return a useful preview together with a rejected target
+status; strict policy turns that failed admission into an operation error.
 
 Set `environment.theme_portability` to `"require-portable"` for the existing native strict policy,
 or `"best-effort"` for the default behavior. Strict rendering rejects a result that fails admission
@@ -43,6 +42,42 @@ recipe and explain whether it has base-only or unreviewed styling. A host can of
 alternative. Unknown preset IDs and unsupported input schema versions are input errors, not reasons
 to silently substitute a default. An unsupported effect must remain visible in support/admission
 handling; choosing another preset must not conceal it.
+
+## Understand unapplied settings
+
+Inspect `metadata.theme_execution_evidence.diagnostics` from `renderSvgResult()`. For example,
+a Sequence Lifeline rule can apply its blue stroke while retaining an unsupported radius:
+
+```json
+{
+  "code": "unsupported-geometry",
+  "subject": "rule",
+  "target": "lifeline",
+  "source_document": "complete_spec",
+  "source_paths": ["/styles/1"],
+  "generated": false
+}
+```
+
+`source_paths` are JSON Pointers relative to the named recipe payload, not to the outer options
+object. They refer to the original mixed `styles` array even when authoring expansion inserts
+additional rules. A `definition` diagnostic can instead identify explicitly authored token paths.
+Generated defaults have `generated: true` without an invented input location. Built-in preset
+selection and direct Rust typed specifications have no original JSON document; exporting and
+reimporting a preset gives locations in that new `complete_spec` document.
+
+A rule-level diagnostic does not mean every property failed. Its reason identifies a category;
+`property` is present only when the report knows a particular property, such as base typography.
+Some locations remain broad: top-level effect bindings point to `/effects`, and expanded
+Definition typography currently has no precise token location. Output mutation and incomplete
+verification may be reported without a source path. Fully overridden rules should not be reported
+as unapplied requests.
+
+Diagnostics are explanations, not an alternative admission result. An empty list cannot certify
+Portable; a missing list means the producer did not supply explanations. Preserve unknown codes,
+subjects and source-document identifiers, and avoid navigating a pointer whose document you do
+not recognize. This result API explains successful BestEffort executions; strict failures continue
+through the structured operation-error path.
 
 ## Start with a small theme
 

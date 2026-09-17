@@ -38,6 +38,7 @@ mod presets;
 mod resolved;
 mod resources;
 mod semantic;
+pub(crate) mod source;
 mod source_styles;
 mod spec;
 mod support;
@@ -246,6 +247,10 @@ impl DiagramTheme {
         self.0.recipe_fingerprint
     }
 
+    pub(crate) fn source_map(&self) -> &source::ThemeSourceMap {
+        &self.0.source_map
+    }
+
     pub(crate) fn spec(&self) -> &DiagramThemeSpec {
         self.0.spec.as_ref()
     }
@@ -321,6 +326,7 @@ impl DiagramTheme {
 
 #[derive(Debug)]
 pub(crate) struct CompiledDiagramTheme {
+    source_map: source::ThemeSourceMap,
     spec: Arc<DiagramThemeSpec>,
     catalog: FontCatalog,
     resource_restriction: ThemeResourcePolicy,

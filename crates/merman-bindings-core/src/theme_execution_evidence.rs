@@ -1,8 +1,8 @@
 use crate::BindingError;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// Schema version for the coarse renderer-owned theme execution evidence projection.
+/// Schema version for renderer-owned theme execution evidence and explanatory diagnostics.
 pub const BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 
 /// Maximum UTF-8 byte length accepted for one identifier in known evidence.
@@ -11,10 +11,10 @@ pub const BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES: usize = 128;
 /// Maximum number of target-admission reasons accepted in known evidence.
 pub const BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS: usize = 32;
 
-/// Versioned, coarse theme execution evidence attached to successful render metadata.
+/// Versioned theme execution evidence attached to successful render metadata.
 ///
 /// Version one projects renderer-owned render evidence and target admission as coarse states.
-/// It does not expose per-rule residuals or confer an independent certification.
+/// Diagnostics explain residuals without exposing internal rule IDs or conferring certification.
 /// Unknown versions remain opaque so bindings can forward metadata produced by newer revisions.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -62,7 +62,24 @@ impl BindingThemeExecutionEvidence {
                 .collect(),
             admission.font_source().id().to_owned(),
         )
-        .map(Self::V1)
+        .map(|mut evidence| {
+            evidence.diagnostics = Some(
+                render_evidence
+                    .theme_diagnostics()
+                    .iter()
+                    .map(|diagnostic| BindingThemeDiagnostic {
+                        code: diagnostic.code().to_owned(),
+                        subject: diagnostic.subject().to_owned(),
+                        target: diagnostic.target().map(|target| target.id().to_owned()),
+                        property: diagnostic.property().map(str::to_owned),
+                        source_document: diagnostic.source_document().map(str::to_owned),
+                        source_paths: diagnostic.source_paths().to_vec(),
+                        generated: diagnostic.generated(),
+                    })
+                    .collect(),
+            );
+            Self::V1(evidence)
+        })
         .map_err(|message| {
             BindingError::internal(format!(
                 "renderer produced invalid theme execution evidence: {message}"
@@ -83,6 +100,64 @@ impl Serialize for BindingThemeExecutionEvidence {
     }
 }
 
+/// An explanation of an actual render residual, not a portable-target certificate.
+///
+/// All identifiers are open strings. A rule diagnostic can describe a partially consumed rule;
+/// it does not identify a failing facet unless `property` explicitly names one. Source pointers
+/// are RFC 6901 paths relative to the named input document payload. Generated defaults and typed
+/// Rust input can have no source paths. Empty diagnostics do not establish portability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BindingThemeDiagnostic {
+    code: String,
+    subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    property: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_document: Option<String>,
+    source_paths: Vec<String>,
+    generated: bool,
+}
+
+impl BindingThemeDiagnostic {
+    #[must_use]
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+
+    #[must_use]
+    pub fn subject(&self) -> &str {
+        &self.subject
+    }
+
+    #[must_use]
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    #[must_use]
+    pub fn property(&self) -> Option<&str> {
+        self.property.as_deref()
+    }
+
+    #[must_use]
+    pub fn source_document(&self) -> Option<&str> {
+        self.source_document.as_deref()
+    }
+
+    #[must_use]
+    pub fn source_paths(&self) -> &[String] {
+        &self.source_paths
+    }
+
+    #[must_use]
+    pub const fn generated(&self) -> bool {
+        self.generated
+    }
+}
+
 /// Known version-one projection of successful renderer theme and target evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -94,6 +169,7 @@ pub struct BindingThemeExecutionEvidenceV1 {
     target_status_id: String,
     target_reason_ids: Box<[String]>,
     font_source_id: String,
+    diagnostics: Option<Box<[BindingThemeDiagnostic]>>,
 }
 
 impl BindingThemeExecutionEvidenceV1 {
@@ -135,6 +211,7 @@ impl BindingThemeExecutionEvidenceV1 {
             target_status_id,
             target_reason_ids: target_reason_ids.into_boxed_slice(),
             font_source_id,
+            diagnostics: None,
         })
     }
 
@@ -172,6 +249,13 @@ impl BindingThemeExecutionEvidenceV1 {
     pub fn font_source_id(&self) -> &str {
         &self.font_source_id
     }
+
+    /// `None` means the producer did not supply diagnostics. An empty slice means it supplied
+    /// no explanations; consumers must still inspect the theme and target admission states.
+    #[must_use]
+    pub fn diagnostics(&self) -> Option<&[BindingThemeDiagnostic]> {
+        self.diagnostics.as_deref()
+    }
 }
 
 impl Serialize for BindingThemeExecutionEvidenceV1 {
@@ -188,6 +272,7 @@ impl Serialize for BindingThemeExecutionEvidenceV1 {
             target_status: self.target_status_id(),
             target_reason_ids: self.target_reason_ids(),
             font_source: self.font_source_id(),
+            diagnostics: self.diagnostics(),
         }
         .serialize(serializer)
     }
@@ -232,6 +317,8 @@ struct BindingThemeExecutionEvidenceV1Wire<'a> {
     target_status: &'a str,
     target_reason_ids: &'a [String],
     font_source: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<&'a [BindingThemeDiagnostic]>,
 }
 
 pub(crate) fn parse_theme_execution_evidence(
@@ -281,6 +368,17 @@ pub(crate) fn parse_theme_execution_evidence(
         target_reason_ids.push(reason.to_owned());
     }
 
+    // Preserve the producer's complete list. Existing transport document limits own resource
+    // admission; an independent diagnostic-count cap could reject a valid renderer result.
+    let diagnostics = object
+        .get("diagnostics")
+        .map(|value| {
+            Box::<[BindingThemeDiagnostic]>::deserialize(value).map_err(|error| {
+                invalid_evidence(format!("`theme_execution_evidence.diagnostics`: {error}"))
+            })
+        })
+        .transpose()?;
+
     BindingThemeExecutionEvidenceV1::new(
         required_bounded_id(object, "family_id")?,
         required_bounded_id(object, "theme_status")?,
@@ -290,7 +388,10 @@ pub(crate) fn parse_theme_execution_evidence(
         target_reason_ids,
         required_bounded_id(object, "font_source")?,
     )
-    .map(BindingThemeExecutionEvidence::V1)
+    .map(|mut evidence| {
+        evidence.diagnostics = diagnostics;
+        BindingThemeExecutionEvidence::V1(evidence)
+    })
     .map_err(|message| invalid_evidence(format!("`theme_execution_evidence`: {message}")))
 }
 

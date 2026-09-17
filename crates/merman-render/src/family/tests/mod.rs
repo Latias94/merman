@@ -465,6 +465,29 @@ fn family_report(
 }
 
 #[test]
+fn theme_diagnostics_explain_missing_evidence_without_fabricating_source_paths() {
+    let root = RootThemePlan::default().begin_svg_application().finish();
+    let key = FamilyThemeMechanismKey::Rule {
+        index: 0,
+        target: ThemeTarget::State,
+    };
+    let incomplete = family_report(FamilyStyleEvaluation::Evaluated, vec![key], vec![], vec![]);
+    let diagnostics = super::theme_diagnostics::project(&root, &incomplete, None);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code(), "evidence-incomplete");
+    assert_eq!(diagnostics[0].subject(), "family-evidence");
+    assert!(diagnostics[0].source_document().is_none());
+    assert!(diagnostics[0].source_paths().is_empty());
+    assert!(!diagnostics[0].generated());
+
+    let mut compatibility =
+        family_report(FamilyStyleEvaluation::NotApplicable, vec![], vec![], vec![]);
+    compatibility.mermaid_compatibility_residual_count = 1;
+    let diagnostics = super::theme_diagnostics::project(&root, &compatibility, None);
+    assert_eq!(diagnostics[0].code(), "compatibility-unverified");
+}
+
+#[test]
 fn family_theme_verification_state_matrix_is_fail_closed() {
     let key = FamilyThemeMechanismKey::Rule {
         index: 0,
@@ -1062,6 +1085,20 @@ fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
         rendered.root_theme_report().residuals()[0].reason(),
         crate::diagram_theme::RootThemeResidualReason::OutputMutation
     );
+    let completion = rendered.into_completion();
+    let diagnostic = completion
+        .report()
+        .theme_diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.subject() == "canvas")
+        .expect("root mutation is explained in the public completion");
+    assert_eq!(diagnostic.code(), "output-mutation");
+    assert_eq!(diagnostic.target(), Some(ThemeTarget::Canvas));
+    assert!(
+        diagnostic.source_document().is_none(),
+        "typed themes have no JSON source"
+    );
+    assert!(diagnostic.source_paths().is_empty());
 }
 
 #[test]
@@ -1139,6 +1176,17 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
             reason: FamilyThemeResidualReason::OutputMutation,
         }]
     );
+
+    let completion = rendered.into_completion();
+    let diagnostic = completion
+        .report()
+        .theme_diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.subject() == "rule")
+        .expect("family mutation is explained after finalization");
+    assert_eq!(diagnostic.code(), "output-mutation");
+    assert_eq!(diagnostic.target(), Some(ThemeTarget::Node));
+    assert!(diagnostic.source_paths().is_empty());
 
     let apply_error =
         match render(ThemePortabilityRequirement::RequirePortable).apply_pipeline(&pipeline()) {

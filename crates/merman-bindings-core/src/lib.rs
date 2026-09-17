@@ -116,8 +116,9 @@ pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 pub use theme_execution_evidence::{
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
-    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeExecutionEvidence,
-    BindingThemeExecutionEvidenceV1, BindingUnknownThemeExecutionEvidence,
+    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeDiagnostic,
+    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV1,
+    BindingUnknownThemeExecutionEvidence,
 };
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.

@@ -192,6 +192,7 @@ const THEME_EXECUTION_EVIDENCE_V1_FIELDS: &[BindingJsonFieldContract] = &[
     field("target_status", "string", true, None, true),
     field("target_reason_ids", "array", true, None, true),
     field("font_source", "string", true, None, true),
+    field("diagnostics", "array", false, None, true),
 ];
 
 const THEME_EXECUTION_EVIDENCE_VERSIONS: &[BindingThemeExecutionEvidenceContract] =
@@ -507,7 +508,9 @@ mod tests {
         assert_eq!(evidence.max_id_utf8_bytes(), 128);
         assert_eq!(evidence.max_target_reason_ids(), 32);
         assert!(evidence.target_reason_ids_unique());
-        assert_eq!(evidence.fields().len(), 8);
+        assert_eq!(evidence.fields().len(), 9);
+        assert_eq!(evidence.fields()[8].name(), "diagnostics");
+        assert!(!evidence.fields()[8].required());
         assert_eq!(evidence.fields()[1].name(), "family_id");
         assert_eq!(evidence.fields()[2].name(), "theme_status");
         let ascii = contract

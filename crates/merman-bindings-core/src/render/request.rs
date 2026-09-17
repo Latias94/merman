@@ -700,6 +700,101 @@ mod tests {
     }
 
     #[test]
+    fn theme_diagnostics_locate_authored_rules_after_palette_entries() {
+        for kind in ["complete_spec", "definition"] {
+            let styles = serde_json::json!([
+                {"kind": "ordinal-palette", "target": "node", "colors": ["#123456"]},
+                {"kind": "rule", "target": "lifeline", "family": "sequence",
+                 "style": {"stroke": {"paint": "#2563eb"}, "radius": 6}}
+            ]);
+            let mut recipe = serde_json::json!({"schema_version": 1, "kind": kind});
+            recipe[kind] = if kind == "definition" {
+                serde_json::json!({"authoring_schema_version": 1, "expansion_version": 1,
+                    "tokens": {}, "styles": styles})
+            } else {
+                serde_json::json!({"styles": styles})
+            };
+            let options = serde_json::to_vec(&serde_json::json!({
+                "theme": recipe, "svg": {"pipeline": "resvg-safe"}
+            }))
+            .unwrap();
+            let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options);
+            let once = crate::execute_once(request.clone()).unwrap();
+            let reused = crate::BindingEngine::new(b"")
+                .unwrap()
+                .execute(request)
+                .unwrap();
+            assert_eq!(
+                once.metadata().theme_execution_evidence(),
+                reused.metadata().theme_execution_evidence()
+            );
+            assert!(
+                String::from_utf8_lossy(once.data()).contains("#2563eb"),
+                "a rule-level diagnostic must not imply every facet failed"
+            );
+            let metadata =
+                serde_json::to_value(once.metadata().theme_execution_evidence().unwrap()).unwrap();
+            let diagnostics = metadata["diagnostics"]
+                .as_array()
+                .expect("actual render diagnostics");
+            let diagnostic = diagnostics
+                .iter()
+                .find(|entry| {
+                    entry["target"] == "lifeline" && entry["code"] == "unsupported-geometry"
+                })
+                .expect("unsupported winning radius is explained");
+            assert_eq!(diagnostic["subject"], "rule");
+            assert_eq!(diagnostic["source_document"], kind);
+            assert_eq!(diagnostic["source_paths"], serde_json::json!(["/styles/1"]));
+            assert_eq!(diagnostic["generated"], false);
+            assert!(
+                diagnostic.get("property").is_none(),
+                "rule-level evidence cannot identify an exact failed property"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_diagnostics_do_not_report_fully_overridden_rules() {
+        let options = serde_json::to_vec(&serde_json::json!({
+            "theme": {"spec": {"styles": [
+                {"kind": "rule", "family": "sequence", "target": "lifeline", "style": {"radius": 6}},
+                {"kind": "rule", "family": "sequence", "target": "lifeline", "style": {"radius": 8}}
+            ]}}, "svg": {"pipeline": "resvg-safe"}
+        })).unwrap();
+        let result = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&options),
+        )
+        .unwrap();
+        let evidence = result
+            .metadata()
+            .theme_execution_evidence()
+            .unwrap()
+            .as_v1()
+            .unwrap();
+        let diagnostics = evidence.diagnostics().unwrap();
+        let rules = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.subject() == "rule")
+            .collect::<Vec<_>>();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].source_paths(), &["/styles/1"]);
+        assert_eq!(rules[0].code(), "unsupported-geometry");
+        let mut strict_options: serde_json::Value = serde_json::from_slice(&options).unwrap();
+        strict_options["environment"] =
+            serde_json::json!({"theme_portability": "require-portable"});
+        let strict_options = serde_json::to_vec(&strict_options).unwrap();
+        let error = crate::execute_once(
+            crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
+                .with_options_json(&strict_options),
+        )
+        .expect_err("pure unsupported geometry must not be certified portable");
+        assert_eq!(error.status(), BindingStatus::RenderError);
+    }
+
+    #[test]
     fn theme_portability_unknown_value_is_rejected_by_every_engine_path() {
         let options = br#"{"environment":{"theme_portability":"portable-maybe"}}"#;
         let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
