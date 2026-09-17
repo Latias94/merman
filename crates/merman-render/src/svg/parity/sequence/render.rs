@@ -696,8 +696,8 @@ fn resolve_sequence_message_theme(
     stroke_overridden: bool,
 ) -> Result<SequenceMessageThemeResolution> {
     use crate::diagram_theme::{
-        FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
-        ResolvedStyleProperty, ThemeTarget, ThemeVariant,
+        FamilyThemeMechanism, FamilyThemeSelectorShape, ResolvedStyleProperty, ThemeTarget,
+        ThemeVariant,
     };
 
     if !has_lines {
@@ -714,18 +714,12 @@ fn resolve_sequence_message_theme(
                 FamilyThemeSelectorShape::Static {
                     variant: None | Some(ThemeVariant::Default),
                 },
-            facet,
             ..
         } = route.mechanism()
         else {
             continue;
         };
-        if matches!(
-            facet,
-            FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
-        ) {
-            has_rule_routes = true;
-        }
+        has_rule_routes = true;
     }
     if !has_rule_routes {
         return Ok(SequenceMessageThemeResolution::default());
@@ -920,9 +914,10 @@ fn resolve_sequence_lifeline_theme(
         else {
             continue;
         };
+        // Unsupported-only rules still need the terminal winner receipt.
+        has_rule_routes = true;
         match facet {
             FamilyThemeRuleFacet::Fill(kind) => {
-                has_rule_routes = true;
                 has_typed_fill |= route.disposition() == FamilyThemeDisposition::TypedAdapter
                     && matches!(
                         kind,
@@ -930,7 +925,6 @@ fn resolve_sequence_lifeline_theme(
                     );
             }
             FamilyThemeRuleFacet::Stroke(kind) => {
-                has_rule_routes = true;
                 has_typed_stroke |= route.disposition() == FamilyThemeDisposition::TypedAdapter
                     && matches!(
                         kind,
@@ -938,7 +932,6 @@ fn resolve_sequence_lifeline_theme(
                     );
             }
             FamilyThemeRuleFacet::StrokeWidth => {
-                has_rule_routes = true;
                 has_typed_stroke_width =
                     route.disposition() == FamilyThemeDisposition::TypedAdapter;
             }

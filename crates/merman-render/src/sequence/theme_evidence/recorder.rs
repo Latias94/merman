@@ -242,8 +242,8 @@ impl SequenceThemeEvidenceRecorder {
             })
             .collect::<Vec<_>>();
 
-        // Seed every Actor rule plus every static unqualified Message signal paint and directly
-        // owned Note/Activation rule before checking winners.
+        // Seed every Actor rule and every static rule for directly owned surfaces before
+        // checking winners, including rules with only unsupported facets.
         // This keeps superseded rules, unmatched ordinal selectors, and empty terminal models in
         // the ledger so the final pass can classify them as explicitly not applicable instead of
         // leaving required keys unaccounted.
@@ -263,10 +263,7 @@ impl SequenceThemeEvidenceRecorder {
                     FamilyThemeSelectorShape::Static {
                         variant: None | Some(ThemeVariant::Default),
                     },
-                facet:
-                    FamilyThemeRuleFacet::Fill(_)
-                    | FamilyThemeRuleFacet::Stroke(_)
-                    | FamilyThemeRuleFacet::StrokeWidth,
+                ..
             } = route.mechanism()
             {
                 lifeline_rules.entry(rule_index).or_default();
@@ -278,7 +275,7 @@ impl SequenceThemeEvidenceRecorder {
                     FamilyThemeSelectorShape::Static {
                         variant: None | Some(ThemeVariant::Default),
                     },
-                facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+                ..
             } = route.mechanism()
             {
                 message_rules.entry(rule_index).or_default();
@@ -298,7 +295,7 @@ impl SequenceThemeEvidenceRecorder {
                     FamilyThemeSelectorShape::Static {
                         variant: None | Some(ThemeVariant::Default),
                     },
-                facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+                ..
             } = route.mechanism()
             {
                 loop_rules.entry(rule_index).or_default();

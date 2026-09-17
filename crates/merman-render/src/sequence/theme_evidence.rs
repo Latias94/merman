@@ -597,6 +597,154 @@ mod tests {
     }
 
     #[test]
+    fn message_and_loop_unsupported_geometry_track_winners_without_typed_paint() {
+        for target in [ThemeTarget::Message, ThemeTarget::Loop] {
+            let mut first = ThemeStylePatch::default();
+            first.geometry.radius = Specified::Value(6.0);
+            let mut last = ThemeStylePatch::default();
+            last.geometry.radius = Specified::Value(8.0);
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(
+                                ThemeRule::new(target, first).for_family(DiagramFamilyId::SEQUENCE),
+                            )
+                            .with_rule(
+                                ThemeRule::new(target, last).for_family(DiagramFamilyId::SEQUENCE),
+                            ),
+                    ),
+                )
+                .expect("compile unsupported-only Sequence rules");
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            for has_terminal in [false, true] {
+                let style = resolved.style(target, ThemeVariant::Default, None);
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                match target {
+                    ThemeTarget::Message => {
+                        let mut receipt = SequenceMessageThemeReceipt::default();
+                        receipt.record_static_style(&style);
+                        if has_terminal {
+                            receipt.record_line_candidate();
+                            receipt.record_line_emission();
+                        }
+                        recorder.record_message_emission(
+                            SequenceMessageThemeEmission::from_terminal_writer(
+                                None, true, None, receipt,
+                            ),
+                        );
+                    }
+                    ThemeTarget::Loop => {
+                        let mut receipt = SequenceLoopThemeReceipt::default();
+                        receipt.record_static_style(&style);
+                        if has_terminal {
+                            receipt.record_surface_candidate();
+                            receipt.record_surface_emission();
+                        }
+                        recorder.record_loop_emission(
+                            SequenceLoopThemeEmission::from_terminal_writer(
+                                None, true, None, true, receipt,
+                            ),
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+                let evidence = recorder.finish(Some(&resolved));
+                assert!(evidence.applied().is_empty());
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().len(),
+                    if has_terminal { 1 } else { 2 }
+                );
+                assert!(evidence.not_applicable_mechanisms().contains(
+                    &crate::diagram_theme::FamilyThemeMechanismKey::Rule { index: 0, target }
+                ));
+                if has_terminal {
+                    let [residual] = evidence.residuals() else {
+                        panic!("the winning geometry request must remain residual")
+                    };
+                    assert_eq!(
+                        residual.key(),
+                        &crate::diagram_theme::FamilyThemeMechanismKey::Rule { index: 1, target }
+                    );
+                    assert_eq!(
+                        residual.reason(),
+                        FamilyThemeResidualReason::UnsupportedGeometry
+                    );
+                } else {
+                    assert!(evidence.residuals().is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lifeline_unsupported_geometry_tracks_winners_without_typed_paint() {
+        let mut first = ThemeStylePatch::default();
+        first.geometry.radius = Specified::Value(6.0);
+        let mut last = ThemeStylePatch::default();
+        last.geometry.radius = Specified::Value(8.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Lifeline, first)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        )
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Lifeline, last)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                ),
+            )
+            .expect("compile unsupported-only Lifeline rules");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for paint_overridden in [false, true] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_line_candidate();
+            receipt.record_line_emission(0, 10.0, 2.0, 10.0, 18.0, 0.5);
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                None,
+                None,
+                false,
+                None,
+                paint_overridden,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms(),
+                &[crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            let [residual] = evidence.residuals() else {
+                panic!("the winning geometry request must remain residual")
+            };
+            assert_eq!(
+                residual.key(),
+                &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                    index: 1,
+                    target: ThemeTarget::Lifeline,
+                }
+            );
+            assert_eq!(
+                residual.reason(),
+                FamilyThemeResidualReason::UnsupportedGeometry
+            );
+        }
+    }
+
+    #[test]
     fn lifeline_mixed_typed_paint_and_unsupported_sibling_facets_remains_residual() {
         let mut style = ThemeStylePatch::default()
             .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"));
