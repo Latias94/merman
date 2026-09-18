@@ -73,7 +73,10 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_delay(out, ctx, common, label, details);
         }
         FlowchartShape::Diamond => {
-            super::render_diamond(out, common, details);
+            let receipt = super::render_diamond(out, common, details);
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
+            );
         }
         FlowchartShape::DividedRectangle => {
             super::render_divided_rect(out, common, label, details);

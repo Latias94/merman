@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let tx = -w / 2.0 + 0.5;
@@ -64,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
         );
-        return;
+        return super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified();
     }
 
     let _ = write!(
@@ -81,6 +81,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
         OptionalStyleAttr(common.style),
         common.effect_filter_attr,
     );
+    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_polygon()
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_circle(

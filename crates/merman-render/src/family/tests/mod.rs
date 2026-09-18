@@ -389,19 +389,18 @@ fn flowchart_edge_marker_id(svg: &str) -> String {
         .to_string()
 }
 
-fn flowchart_marker_contains(svg: &str, marker_id: &str, needle: &str) -> bool {
+fn assert_flowchart_point_marker_paint(svg: &str, marker_id: &str, paint: &str) {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
     let marker = document
         .descendants()
         .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
         .unwrap_or_else(|| panic!("Flowchart marker {marker_id}"));
-    marker
+    let path = marker
         .descendants()
-        .filter(|node| node.is_element())
-        .any(|node| {
-            node.attributes()
-                .any(|attribute| attribute.value().contains(needle))
-        })
+        .find(|node| node.has_tag_name("path"))
+        .expect("referenced point marker path");
+    assert_eq!(path.attribute("fill"), Some(paint));
+    assert_eq!(path.attribute("stroke"), Some(paint));
 }
 
 fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> Option<String> {
@@ -6506,12 +6505,7 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
 
     assert!(flowchart_edge_path_style(rendered.svg()).contains("stroke:#ef4444 !important"));
     let marker_id = flowchart_edge_marker_id(rendered.svg());
-    assert!(marker_id.ends_with("-pointEnd"));
-    assert!(!flowchart_marker_contains(
-        rendered.svg(),
-        &marker_id,
-        "#ef4444"
-    ));
+    assert_flowchart_point_marker_paint(rendered.svg(), &marker_id, "#ef4444");
     assert!(
         rendered
             .svg()
@@ -6557,12 +6551,7 @@ fn require_portable_accepts_swimlane_transparent_edge_stroke_after_svg_emission(
     assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
     assert!(flowchart_edge_path_style(rendered.svg()).contains("stroke:none !important"));
     let marker_id = flowchart_edge_marker_id(rendered.svg());
-    assert!(marker_id.ends_with("-pointEnd"));
-    assert!(!flowchart_marker_contains(
-        rendered.svg(),
-        &marker_id,
-        "none"
-    ));
+    assert_flowchart_point_marker_paint(rendered.svg(), &marker_id, "none");
     assert_eq!(
         rendered.style_report().theme_applied_mechanisms(),
         &[FamilyThemeMechanismKey::Rule {
@@ -6582,12 +6571,13 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
             "---\nconfig:\n  layout: swimlane\n---\nflowchart LR\nA --> B\n",
         ),
     ] {
-        for (paint, expected_css) in [
+        for (paint, expected_css, expected_paint) in [
             (
                 CanvasPaint::solid("#ef4444").unwrap(),
                 "stroke:#ef4444 !important",
+                "#ef4444",
             ),
-            (CanvasPaint::Transparent, "stroke:none !important"),
+            (CanvasPaint::Transparent, "stroke:none !important", "none"),
         ] {
             let theme = flowchart_edge_stroke_theme_with_variant(
                 family,
@@ -6616,11 +6606,7 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
             assert_eq!(rendered.family_id(), family);
             assert!(flowchart_edge_path_style(rendered.svg()).contains(expected_css));
             let marker_id = flowchart_edge_marker_id(rendered.svg());
-            assert!(!flowchart_marker_contains(
-                rendered.svg(),
-                &marker_id,
-                expected_css
-            ));
+            assert_flowchart_point_marker_paint(rendered.svg(), &marker_id, expected_paint);
             assert_eq!(
                 rendered.style_report().theme_applied_mechanisms(),
                 &[FamilyThemeMechanismKey::Rule {

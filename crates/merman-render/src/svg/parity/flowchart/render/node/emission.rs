@@ -257,6 +257,14 @@ impl FlowchartNodeShapeEmissionReceipt {
         }
     }
 
+    pub(in crate::svg::parity::flowchart) const fn classic_polygon() -> Self {
+        // A polygon consumes the same inline paint/stroke channels as a rectangle, but CSS
+        // rx/ry cannot round its vertices. Do not certify radius transport or geometry.
+        let mut receipt = Self::classic_process(false);
+        receipt.radius = Self::unverified().radius;
+        receipt
+    }
+
     pub(in crate::svg::parity::flowchart) const fn hand_drawn_process() -> Self {
         let facet = FlowchartNodeFacetEmission::new(
             FlowchartNodeFacetReach::Verified,

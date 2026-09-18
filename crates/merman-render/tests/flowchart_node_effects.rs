@@ -312,11 +312,10 @@ fn diamond_miter_stroke_is_inside_the_filter_region_even_without_blur() {
             ),
         )
         .unwrap();
-    // Diamond source-width certification is an existing residual. Best-effort output must
-    // nevertheless preserve its actual painted tips when the typed filter is attached.
+    // The polygon writer certifies the numeric source width, and the same width must bound
+    // its miter tips when a typed filter is attached.
     let source = "flowchart LR\nA{Diamond}\nstyle A stroke-width:20px";
-    assert!(render(source, &themed, "classic", true).is_err());
-    let rendered = render(source, &themed, "classic", false).unwrap();
+    let rendered = render(source, &themed, "classic", true).unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     let shape = xml
         .descendants()
@@ -448,4 +447,42 @@ fn swimlane_glow_reaches_real_nodes_without_filtering_lane_or_edge_labels() {
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn diamond_paint_and_stroke_receipt_does_not_certify_unsupported_radius() {
+    use merman_render::diagram_theme::CanvasPaint;
+    let mut patch = ThemeStylePatch::default()
+        .with_fill(CanvasPaint::solid("#123abc").unwrap())
+        .with_stroke(CanvasPaint::solid("#def012").unwrap());
+    patch.stroke.width = Specified::Value(3.0);
+    patch.stroke.dasharray = Specified::Value(vec![4.0, 2.0]);
+    let themed =
+        theme(ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch.clone())));
+    let source = "flowchart LR\nA{Decision}";
+    let rendered = render(source, &themed, "classic", true).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let polygon = xml
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("polygon") && node.attribute("class") == Some("label-container")
+        })
+        .unwrap();
+    let style = polygon.attribute("style").unwrap();
+    for value in [
+        "fill:#123abc",
+        "stroke:#def012",
+        "stroke-width:3px",
+        "stroke-dasharray:4 2",
+    ] {
+        assert!(style.contains(value), "{style}");
+    }
+    patch.geometry.radius = Specified::Value(10.0);
+    let radius = theme(ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)));
+    assert!(render(source, &radius, "classic", true).is_err());
+    let rendered = render(source, &radius, "classic", false).unwrap();
+    let completion = rendered.into_completion();
+    assert!(
+        merman_render::__private::family_evidence(completion.report()).theme_residual_count() > 0
+    );
 }

@@ -89,6 +89,10 @@ fn assert_evidence(
 
 fn marker_references(svg: &str) -> Vec<String> {
     let document = roxmltree::Document::parse(svg).unwrap();
+    marker_references_in(&document)
+}
+
+fn marker_references_in(document: &roxmltree::Document<'_>) -> Vec<String> {
     document
         .descendants()
         .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
@@ -464,6 +468,251 @@ fn unsupported_marker_values_and_fallback_mechanisms_require_real_references() {
                 if visible { 0 } else { 2 },
                 if visible { 2 } else { 0 },
             );
+        }
+    }
+}
+
+fn referenced_marker_paints(svg: &str) -> Vec<(String, Option<String>, Option<String>)> {
+    let document = roxmltree::Document::parse(svg).unwrap();
+    marker_references_in(&document)
+        .iter()
+        .map(|reference| {
+            let id = reference
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let marker = document
+                .descendants()
+                .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id))
+                .unwrap();
+            let shape = marker.children().find(|node| node.is_element()).unwrap();
+            (
+                shape.tag_name().name().to_owned(),
+                shape.attribute("stroke").map(str::to_owned),
+                shape.attribute("fill").map(str::to_owned),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn typed_edge_paint_reaches_its_actual_direction_markers() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ca3579").unwrap()),
+    )]);
+    for swimlane in [false, true] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for (arrow, count, filled) in [("<-->", 2, true), ("o--o", 2, true), ("x--x", 2, false)]
+            {
+                let source = format!("flowchart LR\nA {arrow} B\n");
+                let rendered = render(
+                    &source,
+                    &theme,
+                    config(swimlane, look),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let paints = referenced_marker_paints(rendered.svg());
+                assert_eq!(paints.len(), count);
+                for (_, stroke, fill) in paints {
+                    assert_eq!(
+                        stroke.as_deref(),
+                        Some("#ca3579"),
+                        "{swimlane}/{look}/{arrow}"
+                    );
+                    assert_eq!(
+                        fill.as_deref(),
+                        filled.then_some("#ca3579"),
+                        "{swimlane}/{look}/{arrow}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn source_and_config_edge_owners_preserve_their_marker_behavior() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ca3579").unwrap()),
+    )]);
+    let plain = compile([]);
+    for swimlane in [false, true] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let source = "flowchart LR\nA <--> B\nlinkStyle 0 stroke:#246801\n";
+            let themed = render(
+                source,
+                &theme,
+                config(swimlane, look),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let base = render(
+                source,
+                &plain,
+                config(swimlane, look),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_eq!(
+                referenced_marker_paints(themed.svg()),
+                referenced_marker_paints(base.svg())
+            );
+            assert_eq!(
+                marker_references(themed.svg()),
+                marker_references(base.svg())
+            );
+        }
+    }
+    let cfg = MermaidConfig::from_value(
+        json!({"htmlLabels":false,"themeVariables":{"lineColor":"#123456"}}),
+    );
+    let themed = render(
+        POINT,
+        &theme,
+        cfg.clone(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let base = render(POINT, &plain, cfg, ThemePortabilityRequirement::BestEffort).unwrap();
+    assert_eq!(
+        referenced_marker_paints(themed.svg()),
+        referenced_marker_paints(base.svg())
+    );
+    assert_eq!(
+        marker_references(themed.svg()),
+        marker_references(base.svg())
+    );
+}
+
+#[test]
+fn public_cyberpunk_scene_has_cyan_direction_markers_after_recipe_exchange() {
+    use merman_render::diagram_theme::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let theme = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+    let wire =
+        serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
+    let imported = DiagramThemeCompiler::new()
+        .compile_recipe(serde_json::from_slice(&wire).unwrap())
+        .unwrap();
+    let source =
+        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd");
+    for selected in [&theme, &imported] {
+        let rendered = render(
+            source,
+            selected,
+            config(false, "classic"),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let paints = referenced_marker_paints(rendered.svg());
+        assert_eq!(paints.len(), 3);
+        assert!(
+            paints
+                .iter()
+                .all(|(_, stroke, fill)| stroke.as_deref() == Some("#00f2ff")
+                    && fill.as_deref() == Some("#00f2ff")),
+            "{paints:?}"
+        );
+    }
+}
+
+#[test]
+fn edge_clear_transparency_and_fill_fallback_are_shared_with_markers() {
+    for (style, expected) in [
+        (
+            ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
+            Some("none"),
+        ),
+        (
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123abc").unwrap()),
+            Some("#123abc"),
+        ),
+        (
+            ThemeStylePatch {
+                stroke: merman_render::diagram_theme::ThemeStrokePatch {
+                    paint: Specified::Clear,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            None,
+        ),
+    ] {
+        let theme = compile([ThemeRule::new(ThemeTarget::Edge, style)]);
+        let rendered = render(
+            POINT,
+            &theme,
+            config(false, "classic"),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert_eq!(
+            render(
+                POINT,
+                &theme,
+                config(false, "classic"),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            expected.is_some()
+        );
+        let paints = referenced_marker_paints(rendered.svg());
+        assert_eq!(paints.len(), 1);
+        assert_eq!(paints[0].1.as_deref(), expected);
+        assert_eq!(paints[0].2.as_deref(), expected);
+    }
+}
+
+#[test]
+fn source_and_typed_same_color_do_not_alias_distinct_marker_shapes() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ca3579").unwrap()),
+    )]);
+    // The source-owned Neo start marker preserves its existing unpainted shape; the typed
+    // start marker needs its own definition even though their color values are identical.
+    let source = "flowchart LR\nA <--> B\nC <--> D\nlinkStyle 0 stroke:#ca3579\n";
+    let rendered = render(
+        source,
+        &theme,
+        config(false, "neo"),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let refs = marker_references(rendered.svg());
+    assert_eq!(refs.len(), 4);
+    assert_ne!(refs[0], refs[2]);
+    let paints = referenced_marker_paints(rendered.svg());
+    assert_eq!(paints[0].2, None);
+    assert_eq!(paints[2].2.as_deref(), Some("#ca3579"));
+}
+
+#[test]
+fn transparent_edge_paint_clears_all_visible_marker_channels() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
+    )]);
+    for look in ["classic", "neo", "handDrawn"] {
+        for (arrow, filled) in [("<-->", true), ("o--o", true), ("x--x", false)] {
+            let source = format!("flowchart LR\nA {arrow} B");
+            let rendered = render(
+                &source,
+                &theme,
+                config(false, look),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let paints = referenced_marker_paints(rendered.svg());
+            assert_eq!(paints.len(), 2);
+            for (_, stroke, fill) in paints {
+                assert_eq!(stroke.as_deref(), Some("none"), "{look}/{arrow}");
+                assert_eq!(fill.as_deref(), filled.then_some("none"), "{look}/{arrow}");
+            }
         }
     }
 }

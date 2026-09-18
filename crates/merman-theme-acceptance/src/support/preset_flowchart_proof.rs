@@ -209,8 +209,10 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
             .descendants_of(marker.index())
             .any(|e| e.tag_name() == "path"
                 && e.has_class("arrowMarkerPath")
-                && e.attribute("d") == Some("M 0 0 L 10 5 L 0 10 z")),
-        "missing directed arrow shape"
+                && e.attribute("d") == Some("M 0 0 L 10 5 L 0 10 z")
+                && e.attribute("fill") == Some(palette.edge)
+                && e.attribute("stroke") == Some(palette.edge)),
+        "missing or incorrectly painted directed arrow shape"
     );
     let label = receipt
         .elements()
@@ -271,7 +273,8 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
         "opacity",
         "0.5",
     )?;
-    // The exact recipes retain the default marker; no explicit Marker rule is qualified here.
+    // Global marker CSS remains unchanged. The referenced shape inherits the winning Edge
+    // paint through its own attributes; no explicit Marker rule is qualified here.
     require_exact_writer_declaration(receipt, &format!("#{root} .marker"), "fill", "#333333")?;
     Ok(Geometry {
         view: receipt.view_box(),
@@ -411,7 +414,7 @@ fn check_pixels(
         raster,
         view,
         [center + 1.5, b[1] - 7.0, 2.0, 4.0],
-        "#333333",
+        palette.edge,
         "direction marker",
     )?;
     let cluster_rgb = parse_c6_hex_rgb(palette.cluster)?;
@@ -556,6 +559,29 @@ mod tests {
             .unwrap();
         let reference = edge.attribute("marker-end").unwrap();
         let marker_id = local_fragment_id(reference).unwrap();
+        let marker_body = document
+            .svg()
+            .split_once(&format!("id=\"{marker_id}\""))
+            .unwrap()
+            .1
+            .split_once("</marker>")
+            .unwrap()
+            .0;
+        for channel in ["fill", "stroke"] {
+            let original = format!("{channel}=\"{}\"", palette.edge);
+            assert!(marker_body.contains(&original));
+            for replacement in [String::new(), format!("{channel}=\"none\"")] {
+                let changed_marker = marker_body.replace(&original, &replacement);
+                let changed = observe(&document.svg().replacen(marker_body, &changed_marker, 1));
+                let error = check_svg(&changed, palette)
+                    .err()
+                    .expect("missing marker paint accepted");
+                assert!(
+                    error.to_string().contains("preset-flowchart-marker"),
+                    "{error}"
+                );
+            }
+        }
         for (old, new, stage) in [
             ("Review".to_owned(), "Changed".to_owned(), "label"),
             ("Review".to_owned(), String::new(), "label"),

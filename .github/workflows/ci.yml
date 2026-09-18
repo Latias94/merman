@@ -532,12 +532,12 @@ jobs:
         if: matrix.parity
         run: python3 scripts/verify_theme_acceptance_boundary.py
 
-      - name: Test theme authoring across SVG and PNG
+      - name: Test theme authoring and Flowchart markers across SVG and PNG
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
             --no-default-features --features svg,png --test theme_authoring \
-            --cargo-quiet
+            --test theme_flowchart_markers --cargo-quiet
 
       - name: Test exact Rustdoc artifact recipe
         if: matrix.parity
