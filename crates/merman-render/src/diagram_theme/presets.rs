@@ -634,6 +634,35 @@ mod tests {
                 .len(),
             3
         );
+        let sized_roles: Vec<_> = complete_spec
+            .styles
+            .as_ref()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                ThemeRuleSetWireV1::Rule {
+                    family,
+                    target,
+                    style,
+                    ..
+                } if style.typography.as_ref().is_some_and(|typography| {
+                    matches!(typography.font_size_px, SpecifiedWireV1::Value(_))
+                }) =>
+                {
+                    Some((family.as_deref(), target.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sized_roles,
+            [
+                (Some("xychart"), "title"),
+                (Some("xychart"), "axis-title"),
+                (Some("xychart"), "legend"),
+            ],
+            "role sizes must not leak into other families"
+        );
         let effects = complete_spec
             .effects
             .as_ref()

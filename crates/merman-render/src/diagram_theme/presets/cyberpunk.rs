@@ -119,7 +119,31 @@ pub(super) fn build_recipe(
         ),
     ]);
     append_xy_series(&mut spec);
+    append_xy_text(&mut spec);
     Ok(spec)
+}
+
+fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
+    for (target, size, weight) in [
+        (ThemeTarget::Title, 18.0, Some(700)),
+        (ThemeTarget::AxisTitle, 13.0, None),
+        (ThemeTarget::Legend, 12.0, None),
+    ] {
+        spec.styles.get_or_insert_default().push(family_rule(
+            DiagramFamilyId::XY_CHART,
+            target,
+            ThemeStylePatchWireV1 {
+                fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color("#00f2ff".to_owned())),
+                typography: Some(ThemeTextStylePatchWireV1 {
+                    font_size_px: SpecifiedWireV1::Value(size),
+                    font_weight: weight
+                        .map_or(SpecifiedWireV1::Unspecified, SpecifiedWireV1::Value),
+                    ..ThemeTextStylePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ));
+    }
 }
 
 fn append_xy_series(spec: &mut DiagramThemeSpecWireV1) {

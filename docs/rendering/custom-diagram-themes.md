@@ -253,8 +253,10 @@ The public Cyberpunk recipe uses these kind selectors and a three-color cycle: c
 `#6cc6cb`, purple `#c77dff`, green `#7ce38b`. Bars have 20% fill opacity, a 2px border and an
 8px shadow; lines have a 3px stroke and a 6px shadow. The cycle follows global series order
 and repeats after the third series. Saving the preset includes these rules and effect graphs.
-This is not qualification of the full Cyberpunk XY Chart design: role-specific text styling
-and final public scene validation remain open. Public qualification cells remain empty.
+The recipe also scopes cyan (`#00f2ff`) text to the XY Chart title (18px, weight 700), axis
+titles (13px), and legend (12px). Tick-label sizes retain their baseline. These values survive
+preset export and fresh import. Text glow and final public-scene validation remain open;
+this is not qualification of the full Cyberpunk design. Public qualification cells remain empty.
 
 ## Style XY Chart text roles
 
