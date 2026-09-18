@@ -290,3 +290,89 @@ fn flowchart_label_weight_config_and_class_precedence_reach_terminals() {
         assert!(render_flowchart_label_weights(invalid_source, &theme, html).is_err());
     }
 }
+
+#[test]
+fn flowchart_html_label_weights_reject_unmeasured_structural_class_rules() {
+    let theme = label_weight_theme(false);
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        for body in [
+            "A[NodeAlpha] -->|EdgeGamma| B[NodeBeta]",
+            "A[\"<span>NodeAlpha</span>\"] -->|<span>EdgeGamma</span>| B[NodeBeta]",
+        ] {
+            for unrelated in [
+                "",
+                "\nclassDef unrelated font-weight:800",
+                "\nclassDef label color:red",
+            ] {
+                let source = format!("{prefix}flowchart LR\n{body}{unrelated}");
+                let rendered = render_flowchart_label_weights(&source, &theme, true).unwrap();
+                assert_eq!(explicit_label_weight(rendered.svg(), "NodeAlpha"), "600");
+                assert_eq!(explicit_label_weight(rendered.svg(), "EdgeGamma"), "500");
+            }
+        }
+        for class in ["label", "nodeLabel", "edgeLabel"] {
+            for root_config in ["", "%%{init: {\"fontWeight\": \"900\"}}%%\n"] {
+                let source = format!(
+                    "{prefix}{root_config}flowchart LR\nA[\"<span>NodeAlpha</span>\"] -->|<span>EdgeGamma</span>| B[NodeBeta]\nclassDef {class} font-weight:800"
+                );
+                assert!(
+                    render_flowchart_label_weights(&source, &theme, true).is_err(),
+                    "{source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_html_label_weights_preserve_plain_source_and_reject_nested_class_winners() {
+    let theme = label_weight_theme(false);
+    for layout in ["dagre", "swimlane"] {
+        for root_weight in ["", "  fontWeight: '900'\n"] {
+            for (class, assignment) in [
+                ("emphasis", "class A emphasis\n"),
+                ("default", ""),
+                ("node", ""),
+            ] {
+                for (body, expected_alpha) in [
+                    ("A[Alpha] -->|Gamma| B[Beta]", "600"),
+                    ("A[Alpha] -->|Gamma| B[Beta]", "800"),
+                ] {
+                    let override_style = if expected_alpha == "600" {
+                        "style A font-weight:600\n"
+                    } else {
+                        ""
+                    };
+                    let source = format!(
+                        "---\nconfig:\n  layout: {layout}\n{root_weight}---\nflowchart LR\n{body}\nclassDef {class} font-weight:800\n{assignment}{override_style}"
+                    );
+                    let rendered = render_flowchart_label_weights(&source, &theme, true)
+                        .unwrap_or_else(|error| panic!("{source}: {error}"));
+                    assert_eq!(
+                        explicit_label_weight(rendered.svg(), "Alpha"),
+                        expected_alpha
+                    );
+                }
+                let nested = format!(
+                    "---\nconfig:\n  layout: {layout}\n{root_weight}---\nflowchart LR\nA[\"<span>Alpha</span>\"] -->|Gamma| B[Beta]\nclassDef {class} font-weight:800\n{assignment}style A font-weight:600"
+                );
+                assert!(
+                    render_flowchart_label_weights(&nested, &theme, true).is_err(),
+                    "{nested}"
+                );
+            }
+        }
+    }
+    for (prefix, ancestor_class) in [
+        ("", "edgeLabels"),
+        ("---\nconfig:\n  layout: swimlane\n---\n", "nodes"),
+    ] {
+        let source = format!(
+            "{prefix}flowchart LR\nA[Alpha] -->|<span>Gamma</span>| B[Beta]\nclassDef {ancestor_class} font-weight:800"
+        );
+        assert!(
+            render_flowchart_label_weights(&source, &theme, true).is_err(),
+            "{source}"
+        );
+    }
+}

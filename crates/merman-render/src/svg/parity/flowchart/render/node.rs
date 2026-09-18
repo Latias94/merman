@@ -529,7 +529,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         receipt.font_weight_reach().map(|reach| {
             let precedence = crate::flowchart::FlowchartFacetPrecedence::new(
                 compiled_styles.emitted_source_font_weight_status(receipt),
-                ctx.node_typography_config_ownership.font_weight.is_some(),
+                ctx.node_typography_config_ownership.font_weight.is_some() && reach.is_verified(),
             );
             crate::flowchart::FlowchartThemeFacetEmission::new(
                 precedence,

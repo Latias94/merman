@@ -1330,10 +1330,56 @@ pub(super) fn sanitized_xhtml_typography_statuses(
     (font_stack, font_size)
 }
 
-/// Checks inline weight ownership only when a writer requests a prepared weight.
-/// Inline weight changes are not yet represented in label measurement.
-pub(super) fn sanitized_xhtml_font_weight_status(
+/// Generated class selectors can style descendants of the label shell without appearing in
+/// the sanitized fragment. Their inheritance is not represented by the label measurement plan.
+pub(super) fn html_label_structural_font_weight_is_unverified(
+    class_defs: &IndexMap<String, Vec<String>>,
+    shell_classes: &[&str],
+) -> bool {
+    shell_classes.iter().any(|class| {
+        class_defs.get(*class).is_some_and(|declarations| {
+            declarations.iter().any(|group| {
+                crate::flowchart::flowchart_split_mermaid_style_decls(group).any(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
+                        |declaration| {
+                            matches!(declaration.property(), "font-weight" | "font" | "all")
+                        },
+                    )
+                })
+            })
+        })
+    })
+}
+
+/// Ancestor class rules are already folded into the outer label's measured style. A nested
+/// span can receive a new declaration from `.class span`, bypassing that inherited winner.
+pub(super) fn html_label_font_weight_status<'a>(
+    class_defs: &IndexMap<String, Vec<String>>,
+    shell_classes: &[&str],
+    ancestor_classes: impl IntoIterator<Item = &'a str>,
     sanitized_xhtml: &str,
+) -> crate::flowchart::FlowchartSourceFacetStatus {
+    if html_label_structural_font_weight_is_unverified(class_defs, shell_classes) {
+        return crate::flowchart::FlowchartSourceFacetStatus::Unverified;
+    }
+    let unmeasured_descendant_weight = contains_ascii_case_insensitive(sanitized_xhtml, b"span")
+        && ancestor_classes
+            .into_iter()
+            .any(|class| html_label_structural_font_weight_is_unverified(class_defs, &[class]));
+    inspect_xhtml_font_weight(sanitized_xhtml, unmeasured_descendant_weight)
+}
+
+#[cfg(test)]
+fn sanitized_xhtml_font_weight_status(
+    sanitized_xhtml: &str,
+) -> crate::flowchart::FlowchartSourceFacetStatus {
+    inspect_xhtml_font_weight(sanitized_xhtml, false)
+}
+
+/// Inline weight changes and descendant selector winners are not represented in measurement.
+fn inspect_xhtml_font_weight(
+    sanitized_xhtml: &str,
+    unmeasured_descendant_weight: bool,
 ) -> crate::flowchart::FlowchartSourceFacetStatus {
     use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Unverified};
 
@@ -1361,6 +1407,9 @@ pub(super) fn sanitized_xhtml_font_weight_status(
             Err(_) => return Unverified,
         };
         let name = element.local_name();
+        if unmeasured_descendant_weight && name.as_ref().eq_ignore_ascii_case(b"span") {
+            return Unverified;
+        }
         if [
             b"b".as_slice(),
             b"strong",
@@ -2530,6 +2579,71 @@ mod tests {
                 r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1"><span style="font-size:31px">user</span></span>"#,
             ),
             (Absent, Admitted),
+        );
+    }
+
+    #[test]
+    fn structural_html_weight_checks_only_matching_shell_classes() {
+        let classes = IndexMap::from([
+            ("label".to_string(), vec!["color:red".to_string()]),
+            (
+                "nodeLabel".to_string(),
+                vec![r"f\6f nt-weight:800".to_string()],
+            ),
+            (
+                "edgeLabel".to_string(),
+                vec!["font:800 16px Arial".to_string()],
+            ),
+            ("unrelated".to_string(), vec!["font-weight:900".to_string()]),
+        ]);
+        assert!(!html_label_structural_font_weight_is_unverified(
+            &classes,
+            &["label"]
+        ));
+        assert!(html_label_structural_font_weight_is_unverified(
+            &classes,
+            &["label", "nodeLabel"]
+        ));
+        assert!(html_label_structural_font_weight_is_unverified(
+            &classes,
+            &["edgeLabel"]
+        ));
+        assert!(!html_label_structural_font_weight_is_unverified(
+            &classes,
+            &["missing"]
+        ));
+    }
+
+    #[test]
+    fn ancestor_weight_only_invalidates_unmeasured_descendant_spans() {
+        use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Unverified};
+        let classes =
+            IndexMap::from([("emphasis".to_string(), vec!["font-weight:800".to_string()])]);
+        for (html, expected) in [
+            ("Alpha", Absent),
+            ("<p>Alpha<br/>Beta</p>", Absent),
+            ("<p><span>Alpha</span></p>", Unverified),
+            ("<p><SPAN>Alpha</SPAN></p>", Unverified),
+        ] {
+            assert_eq!(
+                html_label_font_weight_status(
+                    &classes,
+                    &["label", "nodeLabel"],
+                    ["emphasis"],
+                    html
+                ),
+                expected,
+                "{html}"
+            );
+        }
+        assert_eq!(
+            html_label_font_weight_status(
+                &classes,
+                &["label"],
+                ["unrelated"],
+                "<span>Alpha</span>"
+            ),
+            Absent
         );
     }
 

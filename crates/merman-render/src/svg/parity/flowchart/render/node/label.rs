@@ -194,7 +194,13 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
                 label_html.as_ref(),
             );
-        let weight_verified = label_weight_is_verified(ctx, label, Some(label_html.as_ref()));
+        let weight_verified = label_weight_is_verified(
+            ctx,
+            label,
+            Some(label_html.as_ref()),
+            &["label", "nodeLabel", "labelBkg"],
+            self.node_classes,
+        );
         super::emission::FlowchartNodeLabelEmissionReceipt::verified()
             .with_font_weight_reach(typography_applicable, weight_verified)
             .with_background_area(width > 0.0 && height > 0.0)
@@ -419,7 +425,17 @@ fn render_flowchart_node_label_with_wrapper(
                 &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(label_html.as_ref()),
             ));
         }
-        html_weight_verified = label_weight_is_verified(ctx, label, Some(label_html.as_ref()));
+        html_weight_verified = label_weight_is_verified(
+            ctx,
+            label,
+            Some(label_html.as_ref()),
+            if common.shape == "note" {
+                &["label", "nodeLabel", "noteLabel"]
+            } else {
+                &["label", "nodeLabel"]
+            },
+            common.node_classes,
+        );
         html_typography_statuses =
             crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
                 label_html.as_ref(),
@@ -521,7 +537,7 @@ fn render_flowchart_node_label_with_wrapper(
     super::emission::FlowchartNodeLabelEmissionReceipt::verified()
         .with_font_weight_reach(
             typography_applicable,
-            html_weight_verified && label_weight_is_verified(ctx, label, None),
+            html_weight_verified && label_weight_is_verified(ctx, label, None, &[], &[]),
         )
         .with_prepared_typography_reach(
             typography_applicable,
@@ -600,6 +616,8 @@ fn label_weight_is_verified(
     ctx: &FlowchartRenderCtx<'_>,
     label: &super::FlowchartNodeLabelState<'_>,
     html: Option<&str>,
+    shell_classes: &[&str],
+    node_classes: &[String],
 ) -> bool {
     ctx.svg_label_sidecar.is_some_and(|sidecar| {
         let weights = sidecar.label_weights();
@@ -607,7 +625,14 @@ fn label_weight_is_verified(
     }) && label.label_type != "markdown"
         && !label.text.contains("$$")
         && html.is_none_or(|html| {
-            crate::svg::parity::flowchart::style::sanitized_xhtml_font_weight_status(html)
-                == crate::flowchart::FlowchartSourceFacetStatus::Absent
+            let ancestor_classes = ["root", "nodes", "node", "default"]
+                .into_iter()
+                .chain(node_classes.iter().map(String::as_str));
+            crate::svg::parity::flowchart::style::html_label_font_weight_status(
+                ctx.class_defs,
+                shell_classes,
+                ancestor_classes,
+                html,
+            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
         })
 }

@@ -133,7 +133,7 @@ fn record_edge_label_emission(
                 crate::flowchart::FlowchartSourceFacetStatus::Absent,
                 |styles| styles.emitted_source_font_weight_status(receipt),
             ),
-            ctx.node_typography_config_ownership.font_weight.is_some(),
+            ctx.node_typography_config_ownership.font_weight.is_some() && reach.is_verified(),
         );
         crate::flowchart::FlowchartThemeFacetEmission::new(
             precedence,
@@ -401,7 +401,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         )
         .with_font_weight_reach(
             typography_applicable,
-            visible && weight_terminal_verified(weights, label_text, label_type, sanitized_xhtml),
+            visible
+                && weight_terminal_verified(
+                    ctx,
+                    weights,
+                    label_text,
+                    label_type,
+                    sanitized_xhtml,
+                    false,
+                ),
         );
         ctx.text_surface_paint.background.record_terminal(
             background_area,
@@ -868,7 +876,14 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             .with_font_weight_reach(
                 typography_applicable,
                 (prepared.is_some() || sanitized_xhtml.is_some())
-                    && weight_terminal_verified(weights, label_text, label_type, sanitized_xhtml),
+                    && weight_terminal_verified(
+                        ctx,
+                        weights,
+                        label_text,
+                        label_type,
+                        sanitized_xhtml,
+                        true,
+                    ),
             );
             record_edge_label_emission(
                 ctx,
@@ -1205,17 +1220,33 @@ mod tests {
 }
 
 fn weight_terminal_verified(
+    ctx: &FlowchartRenderCtx<'_>,
     weights: crate::flowchart::FlowchartLabelWeights,
     text: &str,
     label_type: &str,
     html: Option<&str>,
+    swimlane: bool,
 ) -> bool {
     weights.config_is_verified()
         && weights.get(ThemeTarget::EdgeLabel).is_some()
         && label_type != "markdown"
         && !text.contains("$$")
         && html.is_none_or(|html| {
-            crate::svg::parity::flowchart::style::sanitized_xhtml_font_weight_status(html)
-                == crate::flowchart::FlowchartSourceFacetStatus::Absent
+            let shell_classes: &[&str] = if swimlane {
+                &["label", "edgeLabel", "nodeLabel"]
+            } else {
+                &["label", "edgeLabel", "labelBkg"]
+            };
+            let ancestor_classes = if swimlane {
+                &["root", "nodes"]
+            } else {
+                &["root", "edgeLabels"]
+            };
+            crate::svg::parity::flowchart::style::html_label_font_weight_status(
+                ctx.class_defs,
+                shell_classes,
+                ancestor_classes.iter().copied(),
+                html,
+            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
         })
 }
