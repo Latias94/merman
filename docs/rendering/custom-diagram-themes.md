@@ -196,6 +196,47 @@ Convenient semantic parameters for complete complex presets are not yet public. 
 be validated against actual canvas, effects and family consumers. There is no global recoloring
 API, symbolic token sidecar, or automatic reconstruction of creation parameters from imported JSON.
 
+## Style XY Chart series
+
+An XY Chart `chart-series` rule addresses the plotted geometry. Ordinals are one-based in
+source declaration order across both bar and line series. For `bar, line, bar, line`, the last
+line is ordinal 4. A cyclic selector keeps that same order; it is not tied to DOM children or
+numbered independently by plot kind.
+
+For example, this complete-spec rule styles the first series with a translucent red interior
+and an opaque green border:
+
+```json
+{
+  "kind": "rule",
+  "family": "xychart",
+  "target": "chart-series",
+  "ordinal": { "exact": 1 },
+  "style": {
+    "fill": "#ff0000",
+    "fill_opacity": 0.25,
+    "stroke": { "paint": "#00ff00", "width": 4 }
+  }
+}
+```
+
+Solid and transparent fill/stroke, stroke width, and the three opacity channels apply to bar
+and line geometry. `opacity` affects the whole mark; `fill_opacity` affects its fill, and
+`stroke.opacity` affects its stroke. Visible legend markers follow the same series style.
+Point labels, bar data labels and legend text keep their own paint; making a mark translucent
+does not dim its labels. A line normally has no fill; an explicit fill paints the area closed
+by its path. Do not use a line fill to change point-label text.
+
+`null` clears the selected property back to the family baseline and blocks that property's
+theme-palette fallback. Baseline bars use the configuration palette and have no border;
+baseline lines have no fill and use a 2px stroke. Opacity clears to 1. An explicit source or
+site `themeVariables.xyChart.plotColorPalette` owns the series colors, while theme widths and
+opacity remain independently applicable. Unsupported winning properties, such as effects or
+dash arrays, still retain residuals even when another property in the same rule was applied.
+
+This paint support does not qualify the full Cyberpunk XY Chart design. Kind-specific recipe
+selection, glow, typography and final scene validation remain separate work.
+
 ## Save and distribute
 
 Save the complete `ThemeRecipeV1` document as JSON. A fresh consumer imports it directly; it does

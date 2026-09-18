@@ -1256,6 +1256,19 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     },
     RuleClaim {
         family: "xychart",
+        target: "chart-series",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &[
+            "fill",
+            "stroke-paint",
+            "stroke-width",
+            "opacity",
+            "fill-opacity",
+            "stroke-opacity",
+        ],
+    },
+    RuleClaim {
+        family: "xychart",
         target: "axis",
         kind: SupportClaimKind::TypedPartial,
         facets: &["fill", "stroke-paint"],

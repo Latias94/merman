@@ -12,13 +12,13 @@ use serde_json::Value;
 use std::fmt::Write as _;
 
 mod paint;
+mod series;
 mod theme;
 
 pub(crate) use paint::{XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId};
 
-pub(crate) use theme::{
-    XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt, XyChartTypographyThemePlan,
-};
+pub(crate) use series::{XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt};
+pub(crate) use theme::XyChartTypographyThemePlan;
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -332,7 +332,9 @@ fn legend_drawable_elements(
                 height: marker_size,
                 fill: fill_color.to_string(),
                 stroke_fill: stroke_color.to_string(),
-                stroke_width: 0.0,
+                stroke_width: series_paint
+                    .stroke_width(*plot_index)
+                    .expect("resolved series width"),
             }),
             XyChartPlotType::Line => {
                 let marker_y = start_y + legend_index as f64 * row_height + marker_size / 2.0;
@@ -341,9 +343,11 @@ fn legend_drawable_elements(
                         "M {start_x},{marker_y} L {},{marker_y}",
                         start_x + marker_size
                     ),
-                    fill: None,
+                    fill: (fill_color != "none").then(|| fill_color.to_string()),
                     stroke_fill: stroke_color.to_string(),
-                    stroke_width: 2.0,
+                    stroke_width: series_paint
+                        .stroke_width(*plot_index)
+                        .expect("resolved series width"),
                 });
             }
         }
@@ -1457,7 +1461,9 @@ pub(crate) fn layout_xychart_diagram_typed(
                             height: bar_width,
                             fill: fill_color.to_string(),
                             stroke_fill: stroke_color.to_string(),
-                            stroke_width: 0.0,
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         });
                     } else {
                         rects.push(XyChartRectData {
@@ -1467,7 +1473,9 @@ pub(crate) fn layout_xychart_diagram_typed(
                             height: plot_rect.y + plot_rect.height - y,
                             fill: fill_color.to_string(),
                             stroke_fill: stroke_color.to_string(),
-                            stroke_width: 0.0,
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         });
                     }
                 }
@@ -1493,9 +1501,11 @@ pub(crate) fn layout_xychart_diagram_typed(
                         group_texts: vec!["plot".to_string(), format!("line-plot-{plot_index}")],
                         data: vec![XyChartPathData {
                             path,
-                            fill: None,
+                            fill: (fill_color != "none").then(|| fill_color.to_string()),
                             stroke_fill: stroke_color.to_string(),
-                            stroke_width: 2.0,
+                            stroke_width: series_paint
+                                .stroke_width(plot_index)
+                                .expect("resolved series width"),
                         }],
                     });
                     if !plot.point_labels.is_empty() {
@@ -1529,7 +1539,10 @@ pub(crate) fn layout_xychart_diagram_typed(
                                     text: label.clone(),
                                     x,
                                     y,
-                                    fill: fill_color.to_string(),
+                                    fill: series_paint
+                                        .point_label_fill_css(plot_index)
+                                        .expect("resolved point-label paint")
+                                        .to_string(),
                                     font_size,
                                     rotation: 0.0,
                                     vertical_pos,
@@ -1553,6 +1566,11 @@ pub(crate) fn layout_xychart_diagram_typed(
         }
     }
 
+    if !series_paint.record_legend_layout(legend_plots.iter().map(|(index, _)| *index)) {
+        return Err(Error::InvalidModel {
+            message: "XY Chart legend plan was already finalized".to_owned(),
+        });
+    }
     drawables.extend(legend_drawable_elements(
         &legend_plots,
         legend_origin,

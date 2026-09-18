@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
+use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType};
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
@@ -64,18 +64,21 @@ impl Node {
         plan: &crate::xychart::XyChartSeriesPaintPlan,
         receipt: &mut crate::xychart::XyChartSeriesPaintReceipt,
     ) {
-        let attribute = |name| {
+        let attribute = |name: &str| {
             self.attrs
                 .iter()
                 .find(|(key, _)| *key == name)
-                .map(|(key, value)| (*key, value.as_str()))
+                .map(|(_, value)| value.as_str())
         };
         match self.series_terminal {
             Some(SeriesTerminal::Bar { plot, mark }) => {
-                receipt.record_bar_mark(plan, plot, mark, attribute("fill"), attribute("stroke"))
+                receipt.record_mark(plan, plot, mark, XyChartPlotType::Bar, false, attribute)
             }
             Some(SeriesTerminal::Line { plot, mark }) => {
-                receipt.record_line_mark(plan, plot, mark, attribute("stroke"))
+                receipt.record_mark(plan, plot, mark, XyChartPlotType::Line, false, attribute)
+            }
+            Some(SeriesTerminal::Legend { plot, plot_type }) => {
+                receipt.record_mark(plan, plot, 0, plot_type, true, attribute)
             }
             Some(SeriesTerminal::LineLabel { plot, label }) => {
                 receipt.record_line_label(plan, plot, label, attribute("fill"))
@@ -139,9 +142,22 @@ fn render_node(
 
 #[derive(Clone, Copy)]
 enum SeriesTerminal {
-    Bar { plot: usize, mark: usize },
-    Line { plot: usize, mark: usize },
-    LineLabel { plot: usize, label: usize },
+    Bar {
+        plot: usize,
+        mark: usize,
+    },
+    Line {
+        plot: usize,
+        mark: usize,
+    },
+    LineLabel {
+        plot: usize,
+        label: usize,
+    },
+    Legend {
+        plot: usize,
+        plot_type: XyChartPlotType,
+    },
 }
 
 pub(crate) fn render_xychart_diagram_svg(
@@ -329,6 +345,22 @@ pub(crate) fn render_xychart_diagram_svg(
                         plot,
                         mark: mark_index,
                     });
+                    let series = bar_plot_index.or_else(|| {
+                        (group_texts.as_slice() == ["legend", "markers"])
+                            .then(|| series_paint.legend_plot(XyChartPlotType::Bar, mark_index))
+                            .flatten()
+                    });
+                    if let Some(plot) = series {
+                        for (name, value) in series_paint.opacity_attributes(plot) {
+                            n.attr(name, value);
+                        }
+                        if bar_plot_index.is_none() {
+                            n.series_terminal = Some(SeriesTerminal::Legend {
+                                plot,
+                                plot_type: XyChartPlotType::Bar,
+                            });
+                        }
+                    }
                     push_child(&mut arena, parent, n);
                 }
 
@@ -473,6 +505,22 @@ pub(crate) fn render_xychart_diagram_svg(
                         plot,
                         mark: mark_index,
                     });
+                    let series = line_plot_index.or_else(|| {
+                        (group_texts.as_slice() == ["legend", "markers"])
+                            .then(|| series_paint.legend_plot(XyChartPlotType::Line, mark_index))
+                            .flatten()
+                    });
+                    if let Some(plot) = series {
+                        for (name, value) in series_paint.opacity_attributes(plot) {
+                            n.attr(name, value);
+                        }
+                        if line_plot_index.is_none() {
+                            n.series_terminal = Some(SeriesTerminal::Legend {
+                                plot,
+                                plot_type: XyChartPlotType::Line,
+                            });
+                        }
+                    }
                     push_child(&mut arena, parent, n);
                 }
             }
@@ -1011,6 +1059,7 @@ mod tests {
             let mut bar = node("rect");
             bar.attr("fill", "#123456");
             bar.attr("stroke", "#123456");
+            bar.attr("stroke-width", "0");
             bar.series_terminal = Some(SeriesTerminal::Bar { plot: 0, mark: 0 });
             let id = push_child(&mut arena, 0, bar);
             match mutation {
@@ -1029,6 +1078,124 @@ mod tests {
             assert_eq!(
                 plan.record_terminal(receipt),
                 mutation == "none",
+                "{mutation}"
+            );
+        }
+    }
+
+    #[test]
+    fn xychart_series_receipt_requires_each_width_alpha_and_visible_legend_terminal() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeRule,
+            ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+        };
+        let model: XyChartDiagramRenderModel = serde_json::from_value(serde_json::json!({
+            "xAxis": { "type": "band", "categories": ["A"] },
+            "yAxis": { "type": "linear", "min": 0, "max": 10 },
+            "plots": [
+                { "type": "bar", "title": "Bar", "values": [4], "data": [["A", 4]] },
+                { "type": "line", "title": "Line", "values": [7], "data": [["A", 7]] }
+            ]
+        }))
+        .unwrap();
+        let mut style = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+            .with_stroke(CanvasPaint::solid("#00ff00").unwrap())
+            .with_stroke_width(4.0)
+            .unwrap();
+        style.paint.opacity = Specified::Value(0.5);
+        style.paint.fill_opacity = Specified::Value(0.25);
+        style.stroke.stroke_opacity = Specified::Value(0.75);
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ChartSeries, style)),
+            ))
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::XY_CHART);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        for mutation in [
+            "none",
+            "missing-width",
+            "wrong-width",
+            "missing-opacity",
+            "wrong-fill-opacity",
+            "wrong-stroke-opacity",
+            "missing-later-plot",
+            "missing-legend",
+            "wrong-legend-width",
+            "wrong-legend-opacity",
+            "repeated-legend",
+        ] {
+            let plan = crate::xychart::XyChartSeriesPaintPlan::resolve(
+                Some(&theme),
+                &merman_core::MermaidConfig::default(),
+                &model,
+                &meter,
+            )
+            .unwrap();
+            assert!(plan.record_legend_layout(vec![0, 1]));
+            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            let mut arena = vec![node("g")];
+            for terminal in [
+                SeriesTerminal::Bar { plot: 0, mark: 0 },
+                SeriesTerminal::Line { plot: 1, mark: 0 },
+                SeriesTerminal::Legend {
+                    plot: 0,
+                    plot_type: XyChartPlotType::Bar,
+                },
+                SeriesTerminal::Legend {
+                    plot: 1,
+                    plot_type: XyChartPlotType::Line,
+                },
+            ] {
+                let mut mark = node("path");
+                mark.attr("fill", "#ff0000");
+                mark.attr("stroke", "#00ff00");
+                mark.attr("stroke-width", "4");
+                mark.attr("opacity", "0.5");
+                mark.attr("fill-opacity", "0.25");
+                mark.attr("stroke-opacity", "0.75");
+                mark.series_terminal = Some(terminal);
+                push_child(&mut arena, 0, mark);
+            }
+            let changed = match mutation {
+                "missing-width" => Some((1, "stroke-width", None)),
+                "wrong-width" => Some((1, "stroke-width", Some("5"))),
+                "missing-opacity" => Some((1, "opacity", None)),
+                "wrong-fill-opacity" => Some((1, "fill-opacity", Some("0.5"))),
+                "wrong-stroke-opacity" => Some((2, "stroke-opacity", Some("1"))),
+                "wrong-legend-width" => Some((3, "stroke-width", Some("0"))),
+                "wrong-legend-opacity" => Some((4, "opacity", Some("1"))),
+                _ => None,
+            };
+            if let Some((id, attr, replacement)) = changed {
+                arena[id].attrs.retain(|(name, _)| *name != attr);
+                if let Some(value) = replacement {
+                    arena[id].attr(attr, value);
+                }
+            }
+            match mutation {
+                "missing-later-plot" => arena[0].children.retain(|id| *id != 2),
+                "missing-legend" => arena[0].children.retain(|id| *id != 4),
+                "repeated-legend" => arena[0].children.push(4),
+                _ => {}
+            }
+            let mut out = String::new();
+            render_node(&mut out, &arena, 0, &mut |emitted| {
+                emitted.observe_series_paint(&plan, &mut receipt)
+            })
+            .unwrap();
+            assert_eq!(
+                plan.record_terminal(receipt),
+                mutation == "none",
+                "{mutation}"
+            );
+            let evidence = plan.finish_evidence();
+            assert_eq!(
+                evidence.applied().len(),
+                usize::from(mutation == "none"),
                 "{mutation}"
             );
         }

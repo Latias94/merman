@@ -1525,6 +1525,36 @@ pub(super) fn classify_rule_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::XY_CHART
+        && target == ThemeTarget::ChartSeries
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            } | FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Clear
+                    | FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Clear
+                    | FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+            ) | FamilyThemeRuleFacet::StrokeWidth
+                | FamilyThemeRuleFacet::Opacity
+                | FamilyThemeRuleFacet::FillOpacity
+                | FamilyThemeRuleFacet::StrokeOpacity
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+
     if family == DiagramFamilyId::STATE {
         return classify_state_rule_facet(target, facet);
     }

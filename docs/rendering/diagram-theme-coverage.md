@@ -452,7 +452,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Requirement | Typed | Typed | None |
 | ER | Typed | Typed | None |
 | Pie | Typed | Unsupported | None |
-| XY Chart | Typed | Unsupported | Required |
+| XY Chart | Typed | Unsupported | None |
 | Radar | Typed | Typed | None |
 | Quadrant Chart | Typed | Unsupported | None |
 | Timeline | Typed | Typed | None |
@@ -528,6 +528,12 @@ Important boundaries that a family-level count cannot express:
   a C4 `Title.fill` consumer.
 - XY Chart shares a resolved `FontStack` across title/axis/legend measurement, layout, CSS, and
   visible-text receipts. Only base `FontSize` is Unsupported; role-local `xyChart.*` sizes remain.
+  ChartSeries rules now consume solid/transparent/Clear fill and stroke, stroke width, and
+  whole/fill/stroke opacity through actual plot and visible legend terminals. Unqualified and
+  Default selectors support static or global declaration ordinals. Point-label palette paint stays
+  separate from geometry fill and alpha; explicit source palette ownership releases only color
+  facets. Missing terminal receipts and unsupported winning siblings remain incomplete. This
+  does not add ChartSeries effects or qualify the complete Cyberpunk XY Chart scene.
 - Class shares base typography with layout and final CSS; fixed-size cardinality terminals do not
   acquire the base FontSize. Source-owned descendant fonts require their own measurement evidence.
 - Treemap shares its FontStack plan with text measurement and final output. Static unqualified and
