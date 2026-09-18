@@ -13,6 +13,7 @@ mod code_actions;
 mod completion;
 mod diagnostic_round_trip;
 mod diagnostics;
+mod line_index;
 mod protocol;
 mod refresh_coordinator;
 mod refresh_transport;

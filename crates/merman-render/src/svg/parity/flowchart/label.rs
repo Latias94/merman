@@ -714,6 +714,58 @@ mod tests {
     }
 
     #[test]
+    fn html_image_prefix_matching_preserves_unicode_and_malformed_tags() {
+        for security_level in ["strict", "loose", "antiscript", "sandbox"] {
+            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": true,
+                "securityLevel": security_level
+            }));
+            for surrounding in ["", "<span>中文😀</span>", "&lt;img&gt;", "<é>α</é>"] {
+                for suffix in [" src='x'>", "inary src='x'>", ">", " src=x>"] {
+                    let lower = format!("{surrounding}<img{suffix}");
+                    let expected = flowchart_label_html_impl(&lower, "string", &config, None);
+                    for prefix in ["<IMG", "<Img", "<iMg", "<imG"] {
+                        let input = format!("{surrounding}{prefix}{suffix}");
+                        assert_eq!(
+                            flowchart_label_html_impl(&input, "string", &config, None),
+                            expected,
+                            "security={security_level}, input={input:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn html_image_after_many_tags_preserves_text_and_image_style() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "strict"
+        }));
+        let spans = "<span>中文😀</span>".repeat(1_600);
+        let input = format!("{spans}<ImG src='https://example.com/x.svg'>");
+        let output = flowchart_label_html_impl(&input, "string", &config, None);
+        assert_eq!(output.matches("中文😀").count(), 1_600);
+        assert_eq!(output.matches("<img ").count(), 1);
+        assert!(output.contains("https://example.com/x.svg"), "{output}");
+        assert!(output.contains("width: 100%;"), "{output}");
+        assert!(output.ends_with(" /></p>"), "{output}");
+    }
+
+    #[test]
+    fn html_unclosed_image_preserves_original_prefix_case() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "strict"
+        }));
+        assert_eq!(
+            flowchart_label_html_impl("<IMG src='x'", "string", &config, None),
+            "<p><IMG src='x' />"
+        );
+    }
+
+    #[test]
     fn html_label_output_preserves_entity_and_direct_nbsp_boundaries() {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "htmlLabels": true,

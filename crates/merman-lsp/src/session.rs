@@ -1,5 +1,6 @@
 use self::documents::SessionState;
 use self::lifecycle::SessionLifecycle;
+use crate::line_index::LineIndexBudget;
 use crate::refresh_coordinator::RefreshCoordinator;
 use crate::refresh_transport::RefreshClient;
 use crate::server::MermanLanguageServer;
@@ -50,6 +51,7 @@ struct LanguageSessionInner {
     state: Arc<AsyncMutex<SessionState>>,
     cancellation: merman_analysis::AnalysisCancellationToken,
     analysis_executor: analysis::executor::AnalysisExecutor,
+    line_index_budget: LineIndexBudget,
     client_effects: ClientEffectDispatcher,
     refresh_coordinator: RefreshCoordinator,
     lifecycle: SessionLifecycle,
@@ -130,6 +132,8 @@ impl LanguageSession {
                 state: Arc::new(AsyncMutex::new(state)),
                 cancellation,
                 analysis_executor,
+                // Separate from analysis-result retention; dense indexes fall back to local work.
+                line_index_budget: LineIndexBudget::new(8 * 1024 * 1024),
                 client_effects: ClientEffectDispatcher::new(),
                 refresh_coordinator: RefreshCoordinator::new(refresh_client),
                 lifecycle: SessionLifecycle::default(),
@@ -148,6 +152,10 @@ impl LanguageSession {
         );
         let (refresh_client, _, _) = RefreshClient::channel();
         Self::from_state(state, cancellation, refresh_client)
+    }
+
+    pub(crate) fn line_index_budget(&self) -> LineIndexBudget {
+        self.inner.line_index_budget.clone()
     }
 
     pub(crate) fn endpoint_guard(&self) -> SessionEndpointGuard {

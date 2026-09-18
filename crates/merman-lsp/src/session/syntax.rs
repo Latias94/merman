@@ -6,7 +6,7 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::Uri;
 
 impl LanguageSession {
-    pub(crate) async fn query_semantic_tokens<T>(
+    pub(crate) async fn query_semantic_tokens<T: Send + 'static>(
         &self,
         uri: &Uri,
         previous_result_id: Option<&str>,
@@ -14,7 +14,9 @@ impl LanguageSession {
             &SyntaxDocumentState,
             Option<Arc<SemanticTokensState>>,
             &merman_analysis::AnalysisCancellationToken,
-        ) -> Result<Option<(T, Option<SemanticTokensState>)>>,
+        ) -> Result<Option<(T, Option<SemanticTokensState>)>>
+        + Send
+        + 'static,
     ) -> Result<Option<T>> {
         let captured = {
             let mut state = self.inner.state.lock().await;
@@ -28,7 +30,24 @@ impl LanguageSession {
         let Some((Some(snapshot), previous)) = captured else {
             return Ok(None);
         };
-        let computed = compute(&snapshot.document, previous, snapshot.cancellation());
+        let document = Arc::clone(&snapshot.document);
+        let computed = tokio::select! {
+            biased;
+            _ = self.terminated() => return Ok(None),
+            result = self.inner.analysis_executor.execute_syntax(
+                snapshot.cancellation(),
+                move |cancellation| compute(&document, previous, cancellation),
+            ) => result,
+        };
+        let computed = computed.unwrap_or_else(|error| {
+            Err(if error.is_stale() {
+                semantic_tokens_stale_error()
+            } else {
+                let mut response = tower_lsp_server::jsonrpc::Error::internal_error();
+                response.message = error.to_string().into();
+                response
+            })
+        });
 
         let mut state = self.inner.state.lock().await;
         self.commit_state_if_active(&mut state, |state| {
@@ -57,3 +76,6 @@ fn semantic_tokens_stale_error() -> tower_lsp_server::jsonrpc::Error {
     error.message = "semantic tokens document changed while computing".into();
     error
 }
+
+#[cfg(test)]
+mod tests;
