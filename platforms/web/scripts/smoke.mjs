@@ -475,6 +475,39 @@ if (hasCapability("svg")) {
     theme: restoredRecipe, svg: recipeSvgOptions,
   })), presetSvg, "raw WASM and public recipe selection must agree");
   const cyberpunk = api.exportThemePreset("cyberpunk");
+  // Exercise the public recipe, not a separately authored C6 mechanism fixture.
+  const canvas = cyberpunk.complete_spec.canvas;
+  assert.equal(canvas.base, "#051423");
+  assert.equal(canvas.layers.length, 3);
+  const [radial, xGrid, yGrid] = canvas.layers;
+  assert.deepEqual(canvas.layers.map((layer) => layer.blend_mode), ["screen", "screen", "screen"]);
+  assert.equal(radial.paint.kind, "radial-gradient");
+  assert.deepEqual(radial.paint.center_x, { percent: 50 });
+  assert.deepEqual(radial.paint.center_y, { percent: 50 });
+  assert.ok(Math.abs(radial.paint.radius.percent - 100 / Math.SQRT2) < 0.00001);
+  assert.deepEqual(radial.paint.stops.map((stop) => stop.color),
+    ["rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"]);
+  assert.equal(radial.paint.stops[0].offset, 0);
+  assert.ok(Math.abs(radial.paint.stops[1].offset - 0.7) < 0.000001);
+  for (const [layer, angle] of [[xGrid, 90], [yGrid, 180]]) {
+    assert.equal(layer.paint.kind, "linear-gradient");
+    assert.equal(layer.paint.angle_degrees, angle);
+    assert.deepEqual(layer.paint.repetition, { kind: "tiled", width_px: 40, height_px: 40 });
+    assert.deepEqual(layer.paint.stops.map((stop) => stop.color),
+      ["rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "transparent", "transparent"]);
+    for (const [index, offset] of [0, 1 / 40, 1 / 40, 1].entries()) {
+      assert.ok(Math.abs(layer.paint.stops[index].offset - offset) < 0.000001);
+    }
+  }
+  const glowSource = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
+  const glowOptions = {
+    site_config: { htmlLabels: false },
+    svg: { diagram_id: "public-cyberpunk", pipeline: "resvg-safe" },
+  };
+  const glowSvg = api.renderSvg(glowSource, { ...glowOptions, theme: { preset: "cyberpunk" } });
+  assert.equal(api.renderSvg(glowSource, {
+    ...glowOptions, theme: JSON.parse(JSON.stringify(cyberpunk)),
+  }), glowSvg, "export/import must retain the actual background and glow output");
   const originalCyberpunk = structuredClone(cyberpunk);
   const customized = customizeNodeColors(cyberpunk, {
     background: "#142535", nodeBorder: "#fb7185", classFill: "#22354d",
