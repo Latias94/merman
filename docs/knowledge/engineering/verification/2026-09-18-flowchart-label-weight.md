@@ -10,7 +10,7 @@ consumers. Each diagram resolves the two target weights once, and the existing l
 shares them between measurement and concrete SVG/HTML writers. Clear restores the resolved
 base weight. The ordinary public Cyberpunk recipe requests weight 600 for the two Flowchart
 targets, preserving these rules through recipe export/import. Its compiled fingerprint is
-`0c6d62acd03a56a505267d44bf1987617181321d4bc9d0131bf675477e3c897d`.
+`1583f2a8e9d1a249624873741825f6df6b864cdb042dd832223dde8dbdb57ff9`.
 
 Source declarations retain precedence. Explicit root string `fontWeight` also overrides typed
 rules; layout and emission normalize it against CSS initial weight 400 before source-relative
