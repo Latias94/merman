@@ -26,6 +26,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Diagram-local colors and typography now pass through a shared CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled by default, and host `secure` policies can still lock presentation fields.
+
 - Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. ASCII reports now use schema 3 and identify requested/effective layout and Compact attempts. Flowchart Compact uses a smaller default horizontal rank gap; explicit spacing overrides are preserved.
 
 - Clarified SVG pipeline selection in the Playground, CLI help, and SDK documentation. `readable` is an advanced text-fallback mode with browser overlap guidance and a one-click return to the default Mermaid SVG preview; pipeline values and defaults are unchanged.
@@ -37,6 +39,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.
 
 ### Fixed
+
+- Updated the CLI TLS dependency to `rustls 0.23.45` to fix TLS 1.3 handshake encryption-level validation (RUSTSEC-2026-0285).
 
 - Accept Mermaid Unicode node IDs in Flowchart, including Japanese and accented names, and preserve UTF-8 boundaries when recovering from invalid characters.
 

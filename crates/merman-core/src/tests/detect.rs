@@ -881,7 +881,10 @@ fn secure_filtered_source_theme_does_not_trigger_rematerialization() {
 #[test]
 fn fully_filtered_source_config_does_not_change_post_detection_overlay_semantics() {
     let engine = Engine::new()
-        .with_site_config(MermaidConfig::from_value(json!({ "theme": "base" })))
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "secure": ["secure", "securityLevel", "themeVariables"]
+        })))
         .with_post_detection_config_overlay(flowchart_overlay(
             "themeVariables.primaryColor",
             json!("#123456"),
@@ -1028,10 +1031,21 @@ fn theme_parse_evidence_reconciles_complete_conceptual_fields_and_deduplicates_p
         .expect("dark-mode conceptual field");
     assert_eq!(theme.opaque_id(), "mermaid.theme");
     assert_eq!(dark_mode.opaque_id(), "mermaid.darkMode");
-    assert_eq!(
-        dark_mode.surviving_assignment_paths().collect::<Vec<_>>(),
-        vec!["darkMode", "themeVariables.darkMode"]
-    );
+    let dark_mode_paths = dark_mode.surviving_assignment_paths().collect::<Vec<_>>();
+    // Base now records derived assignments at their actual execution stage. The conceptual
+    // dark-mode field owns both its explicit spellings and the color decisions it controls.
+    for path in [
+        "darkMode",
+        "themeVariables.darkMode",
+        "themeVariables.primaryTextColor",
+        "themeVariables.primaryBorderColor",
+    ] {
+        assert!(
+            dark_mode_paths.contains(&path),
+            "missing dark-mode dependency: {path}"
+        );
+    }
+    assert!(dark_mode_paths.windows(2).all(|pair| pair[0] < pair[1]));
 
     let mut partial = theme
         .consume_all(Disposition::ReplacedByTypedSurface)

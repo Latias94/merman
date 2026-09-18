@@ -201,6 +201,49 @@ flowchart TD
 }
 
 #[test]
+fn source_theme_values_render_without_admitting_css_injection() {
+    for attack in [
+        "x;a{b} :not(&){background:green !important} c{d}",
+        r"u\72l(https://example.com/secret)",
+        "font#34;stroke:red",
+        "</style><script>alert(1)</script>",
+    ] {
+        let config = serde_json::json!({
+            "theme": "base",
+            "themeCSS": "body { outline: 13px solid red; }",
+            "fontFamily": "Inter, sans-serif",
+            "themeVariables": { "primaryColor": "#181818", "actorBkg": attack },
+            "sequence": { "actorFontWeight": attack }
+        });
+        for source in [
+            format!("%%{{init: {config}}}%%\nsequenceDiagram\nAlice->>Bob: hi"),
+            format!("---\nconfig: {config}\n---\nsequenceDiagram\nAlice->>Bob: hi"),
+        ] {
+            let renderer = TypedSvgRenderer::new().with_diagram_id("source-theme");
+            let svg = render_svg(&renderer, "source-theme", &source);
+            assert_xml_parseable("source-theme", &svg);
+            assert!(
+                svg.contains(".actor{stroke:hsl(0, 0%, 0%);fill:#181818;"),
+                "{source}\nactor CSS: {:?}",
+                svg.split(".actor{")
+                    .nth(1)
+                    .and_then(|rule| rule.split('}').next())
+            );
+            assert!(svg.contains("font-family:Inter,sans-serif;"), "{svg}");
+            for rejected in [
+                "outline: 13px",
+                "background:green",
+                "example.com/secret",
+                "<script",
+                "stroke:red",
+            ] {
+                assert!(!svg.contains(rejected), "{rejected}: {svg}");
+            }
+        }
+    }
+}
+
+#[test]
 fn strict_click_javascript_url_does_not_emit_renderable_href() {
     let source = r#"flowchart TD
     A[Click me]

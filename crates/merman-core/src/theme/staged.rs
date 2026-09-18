@@ -13,10 +13,13 @@ use crate::{MermaidConfig, ThemeEvaluationLimitExceeded};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod base;
+
 pub(super) const MAX_THEME_COLOR_ITERATIONS: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StagedProgram {
+    Base,
     Dark,
     Forest,
     Neutral,
@@ -252,6 +255,7 @@ impl Resolution {
         state.theme_color_iterations = theme_color_iteration_count(&state)?;
 
         match program {
+            StagedProgram::Base => base::update(&mut state)?,
             StagedProgram::Dark => update_dark(&mut state)?,
             StagedProgram::Forest => update_forest(&mut state)?,
             StagedProgram::Neutral => update_neutral(&mut state)?,

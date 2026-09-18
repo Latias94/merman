@@ -25,7 +25,7 @@ However, fully hand-maintaining a large config schema in Rust is expensive.
 - Sanitize untrusted init directives against Mermaid's generated flat key shape. Unknown, null, and
   prototype-pollution keys are removed; trusted site config remains forward-compatible.
 - Keep Merman security policy separate from upstream data. The upstream artifact retains Mermaid's
-  six secure keys; the default Engine uses the local ten-key hardened policy.
+  six secure keys; the default Engine uses the local seven-key hardened policy.
 - Keep host analysis options separate from Mermaid site configuration.
   `merman-analysis::AnalysisConfigContract` owns direct/wrapped root selection, field constraints,
   rule/profile/severity projections, resource descriptors, invalidation scope, and the standard

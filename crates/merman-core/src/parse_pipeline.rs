@@ -1103,7 +1103,7 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let (mut effective_config, effective_source_config) =
-            match self.effective_config_before_detect(&pre.config) {
+            match self.effective_config_before_detect(&pre.config, control)? {
                 Ok(config) => config,
                 Err(error) => return Ok(Err(error)),
             };
@@ -1257,25 +1257,34 @@ impl<'a> ParsePipeline<'a> {
     fn effective_config_before_detect(
         &self,
         overrides: &MermaidConfig,
-    ) -> Result<(MermaidConfig, MermaidConfig)> {
-        let mut materialized_site_config = self.engine.default_effective_config()?;
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(MermaidConfig, MermaidConfig)>> {
+        let mut materialized_site_config = match self.engine.default_effective_config() {
+            Ok(config) => config,
+            Err(error) => return Ok(Err(error)),
+        };
         if overrides.is_empty_object() {
-            return Ok((materialized_site_config, MermaidConfig::empty_object()));
+            return Ok(Ok((
+                materialized_site_config,
+                MermaidConfig::empty_object(),
+            )));
         }
 
-        let effective_overrides = materialized_site_config.secure_filtered_overrides(overrides);
+        let effective_overrides =
+            materialized_site_config.source_filtered_overrides(overrides, control)?;
         let effective_config = match theme::materialize_source_selected_theme(
             &self.engine.site_config,
             &self.engine.fallback_overlay_explicit_config,
             &effective_overrides,
-        )? {
-            Some(config) => config,
-            None => {
+        ) {
+            Ok(Some(config)) => config,
+            Ok(None) => {
                 materialized_site_config.deep_merge_explicit(effective_overrides.as_value());
                 materialized_site_config
             }
+            Err(error) => return Ok(Err(error.into())),
         };
-        Ok((effective_config, effective_overrides))
+        Ok(Ok((effective_config, effective_overrides)))
     }
 
     fn apply_post_detection_config_overlay(

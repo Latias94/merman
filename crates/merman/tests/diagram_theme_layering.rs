@@ -115,6 +115,7 @@ fn source_config_cannot_override_secure_site_values() {
 sequenceDiagram
 Alice->>Bob: Hello"##;
     let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
+        "secure": ["secure", "securityLevel", "themeVariables"],
         "themeVariables": { "lineColor": "#123456" },
     }))));
 
