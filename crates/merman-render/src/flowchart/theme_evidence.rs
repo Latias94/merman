@@ -281,13 +281,20 @@ impl FlowchartShapeFacetEmissionReceipt {
     }
 }
 
+/// Absence of a corner channel is a writer fact, distinct from missing verification.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum FlowchartRadiusEmission {
+    Applicable(FlowchartThemeFacetEmission),
+    NotApplicable(FlowchartFacetPrecedence),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) fill: FlowchartThemeFacetEmission,
     pub(crate) stroke: FlowchartThemeFacetEmission,
     pub(crate) stroke_width: FlowchartThemeFacetEmission,
     pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
-    pub(crate) radius: FlowchartThemeFacetEmission,
+    pub(crate) radius: FlowchartRadiusEmission,
     pub(crate) effect: FlowchartThemeFacetEmission,
     pub(crate) label_fill: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
@@ -322,7 +329,7 @@ impl FlowchartNodeThemeEmission {
             stroke: FlowchartThemeFacetEmission::absent(),
             stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
-            radius: FlowchartThemeFacetEmission::absent(),
+            radius: FlowchartRadiusEmission::Applicable(FlowchartThemeFacetEmission::absent()),
             effect: FlowchartThemeFacetEmission::absent(),
             label_fill: None,
             font_stack: None,
@@ -1619,11 +1626,23 @@ impl FlowchartThemeEvidenceRecorder {
             emission.stroke_dasharray.precedence,
             emission.stroke_dasharray.verified,
         );
+        let (radius, radius_emission) = match emission.radius {
+            FlowchartRadiusEmission::Applicable(emission) => (style.radius.as_ref(), emission),
+            FlowchartRadiusEmission::NotApplicable(precedence) => (
+                // Only an admitted numeric request can be inapplicable. Preserve unsupported
+                // operations (including Clear) and their original source/config precedence.
+                style
+                    .radius
+                    .as_ref()
+                    .filter(|outcome| matches!(outcome, FlowchartScalarOutcome::Residual { .. })),
+                FlowchartThemeFacetEmission::new(precedence, false),
+            ),
+        };
         record_scalar_outcome(
             &mut state.node,
-            style.radius.as_ref(),
-            emission.radius.precedence,
-            emission.radius.verified,
+            radius,
+            radius_emission.precedence,
+            radius_emission.verified,
             ThemeCapability::RoundedGeometry,
         );
         record_node_effect_outcome(&mut state, style.effect.as_ref(), emission.effect);
@@ -2816,7 +2835,10 @@ mod tests {
             stroke: FlowchartThemeFacetEmission::new(no_override(), stroke),
             stroke_width: FlowchartThemeFacetEmission::new(no_override(), stroke_width),
             stroke_dasharray: FlowchartThemeFacetEmission::new(no_override(), stroke_dasharray),
-            radius: FlowchartThemeFacetEmission::new(no_override(), radius),
+            radius: FlowchartRadiusEmission::Applicable(FlowchartThemeFacetEmission::new(
+                no_override(),
+                radius,
+            )),
             effect: FlowchartThemeFacetEmission::new(no_override(), false),
             label_fill: None,
             font_stack: None,
@@ -4058,6 +4080,75 @@ mod tests {
     }
 
     #[test]
+    fn explicit_corner_inapplicability_preserves_siblings_and_missing_writer_residuals() {
+        for with_fill in [false, true] {
+            let mut patch = ThemeStylePatch::default();
+            patch.geometry.radius = Specified::Value(8.0);
+            if with_fill {
+                patch = patch.with_fill(CanvasPaint::solid("#123abc").unwrap());
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
+                ))
+                .unwrap()
+                .resolve(DiagramFamilyId::FLOWCHART);
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            for channels in [
+                &[None][..],
+                &[None, Some(true)][..],
+                &[Some(true), None][..],
+                &[None, Some(false)][..],
+                &[Some(true), Some(false), None][..],
+            ] {
+                let recorder = FlowchartThemeEvidenceRecorder::default();
+                for channel in channels {
+                    let mut observed = emission(with_fill, false, false, false, false);
+                    observed.radius = match channel {
+                        Some(verified) => FlowchartRadiusEmission::Applicable(
+                            FlowchartThemeFacetEmission::new(no_override(), *verified),
+                        ),
+                        None => FlowchartRadiusEmission::NotApplicable(no_override()),
+                    };
+                    recorder
+                        .record_node_emission(&style, observed, &[], &meter)
+                        .unwrap();
+                }
+                let (evidence, _) = recorder.finish(Some(&theme));
+                if channels.contains(&Some(false)) {
+                    assert!(evidence.applied().is_empty());
+                    assert_eq!(evidence.residuals().len(), 1);
+                    assert_eq!(
+                        evidence.residuals()[0].reason(),
+                        FamilyThemeResidualReason::UnsupportedGeometry
+                    );
+                } else {
+                    assert!(evidence.residuals().is_empty());
+                    assert_eq!(
+                        evidence
+                            .applied_capabilities()
+                            .contains(&ThemeCapability::RoundedGeometry),
+                        channels.contains(&Some(true))
+                    );
+                    assert_eq!(
+                        evidence
+                            .applied_capabilities()
+                            .contains(&ThemeCapability::SolidPaint),
+                        with_fill
+                    );
+                    assert_eq!(
+                        evidence.not_applicable_mechanisms().len(),
+                        usize::from(!with_fill && !channels.contains(&Some(true)))
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn source_or_mermaid_config_radius_shadows_the_typed_rule() {
         let theme = resolved_radius_theme();
         let meter = OperationWorkMeter::new(
@@ -4073,7 +4164,9 @@ mod tests {
 
             let recorder = FlowchartThemeEvidenceRecorder::default();
             let mut observed = FlowchartNodeThemeEmission::none();
-            observed.radius = FlowchartThemeFacetEmission::new(precedence, false);
+            observed.radius = FlowchartRadiusEmission::Applicable(
+                FlowchartThemeFacetEmission::new(precedence, false),
+            );
             recorder
                 .record_node_emission(&style, observed, &[], &meter)
                 .expect("record metered theme emission");

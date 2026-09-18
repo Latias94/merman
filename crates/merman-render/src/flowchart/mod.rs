@@ -182,8 +182,8 @@ pub(crate) use theme_evidence::{
     FlowchartClusterThemeEmission, FlowchartClusterThemePlan, FlowchartClusterThemeStyle,
     FlowchartEdgeLabelThemeEmission, FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle,
     FlowchartFacetPrecedence, FlowchartNodeThemeEmission, FlowchartNodeThemeStyle,
-    FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder,
-    FlowchartThemeFacetEmission,
+    FlowchartRadiusEmission, FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus,
+    FlowchartThemeEvidenceRecorder, FlowchartThemeFacetEmission,
 };
 
 mod text_paint;

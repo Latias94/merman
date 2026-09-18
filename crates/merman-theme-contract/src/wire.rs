@@ -120,7 +120,10 @@ pub struct ThemeStylePatchWireV1 {
         skip_serializing_if = "Option::is_none"
     )]
     pub stroke: Option<ThemeStrokePatchWireV1>,
-    /// Corner radius in pixels.
+    /// Geometry radius in pixels, interpreted by family and target (for example, Flowchart
+    /// Node corners or Quadrant ChartSeries points). A family may explicitly classify a
+    /// numeric request as inapplicable to a shape without that geometry channel; this does
+    /// not certify an unimplemented writer or an unsupported operation such as Clear.
     #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
     pub radius: SpecifiedWireV1<f32>,
     /// Padding in pixels.

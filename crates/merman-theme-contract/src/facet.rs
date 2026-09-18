@@ -25,7 +25,7 @@ pub enum ThemeRuleFacetV1 {
     StrokeLineJoin,
     /// Stroke-specific opacity.
     StrokeOpacity,
-    /// Corner radius.
+    /// Target-specific geometry radius, such as rectangle corners or chart points.
     Radius,
     /// Content padding.
     Padding,

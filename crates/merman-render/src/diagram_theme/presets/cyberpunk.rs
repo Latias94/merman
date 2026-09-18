@@ -58,6 +58,7 @@ pub(super) fn build_recipe(
             ThemeTarget::Node,
             ThemeStylePatchWireV1 {
                 effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
+                radius: SpecifiedWireV1::Value(10.0),
                 stroke: Some(ThemeStrokePatchWireV1 {
                     width: SpecifiedWireV1::Value(3.0),
                     ..ThemeStrokePatchWireV1::default()

@@ -563,12 +563,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                     typed_stroke_dasharray_selected
                         && shape_outcome.emission().typed_stroke_dasharray_verified(),
                 ),
-                radius: crate::flowchart::FlowchartThemeFacetEmission::new(
+                radius: shape_outcome.emission().typed_radius_emission(
                     crate::flowchart::FlowchartFacetPrecedence::new(
                         source_evidence.radius,
                         ctx.node_corner_radius_config_override,
                     ),
-                    typed_radius_selected && shape_outcome.emission().typed_radius_verified(),
+                    typed_radius_selected,
                 ),
                 label_fill: label_fill_emission,
                 font_stack: font_stack_emission,

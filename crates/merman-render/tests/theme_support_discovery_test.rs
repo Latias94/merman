@@ -64,23 +64,23 @@ fn unknown_facet_stays_unverified_even_when_the_known_target_is_not_applicable()
 
 #[test]
 fn family_owned_partial_route_is_reported_as_conditional() {
-    let query = ThemeSupportQueryV1::for_target(
-        DiagramFamilyId::FLOWCHART.as_str(),
-        ThemeSupportOutputV1::StandaloneSvg,
-        ThemeTarget::Node.id(),
-        ThemeRuleFacetV1::Radius,
-    );
-
-    let support = describe_theme_support(&query);
-
-    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
-    assert_eq!(
-        support.reason_ids(),
-        [
-            "theme-support.family-owned-consumer-present",
-            "theme-support.public-value-domain-partial",
-        ]
-    );
+    for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        let query = ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Node.id(),
+            ThemeRuleFacetV1::Radius,
+        );
+        let support = describe_theme_support(&query);
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
+    }
 }
 
 #[test]

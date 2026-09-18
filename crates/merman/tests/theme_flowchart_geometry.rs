@@ -35,9 +35,13 @@ fn painted_rect(width: f32, radius: f32, source: &str) -> (u32, u32, Vec<u8>) {
     else {
         panic!("document required")
     };
+    document_pixels(&document, 4.0)
+}
+
+fn document_pixels(document: &merman::RenderedDocument, scale: f32) -> (u32, u32, Vec<u8>) {
     let output = document
         .export_png(
-            &merman::svg::export::RasterOptions::default().with_scale(4.0),
+            &merman::svg::export::RasterOptions::default().with_scale(scale),
             OperationControl::new(),
         )
         .unwrap();
@@ -129,6 +133,75 @@ fn source_radius_and_equivalent_typed_radius_have_identical_native_geometry() {
             assert!(
                 source.2 == typed.2,
                 "source radius must reach native geometry for {look} {shape}"
+            );
+        }
+    }
+}
+
+#[test]
+fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
+    use merman::svg::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+    let rounded = compiler.compile_recipe(recipe.clone()).unwrap();
+    let mut square_recipe = serde_json::to_value(recipe).unwrap();
+    let mut changed = 0;
+    for rule in square_recipe["complete_spec"]["styles"]
+        .as_array_mut()
+        .unwrap()
+    {
+        if rule["family"] == "flowchart"
+            && rule["target"] == "node"
+            && rule["style"]["radius"] == 10.0
+        {
+            rule["style"]["radius"] = serde_json::json!(0.0);
+            changed += 1;
+        }
+    }
+    assert_eq!(
+        changed, 1,
+        "the public recipe must expose one family-scoped corner rule"
+    );
+    let square = compiler
+        .compile_recipe(serde_json::from_value(square_recipe).unwrap())
+        .unwrap();
+    for (source, has_corners) in [
+        (
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+            true,
+        ),
+        ("flowchart LR\nA{Decision}", false),
+    ] {
+        let render = |theme| {
+            let RenderOutput::Document(Some(document)) = Renderer::new()
+                .render(
+                    RenderRequest::document(source, OperationControl::new(), Default::default())
+                        .with_theme(theme),
+                )
+                .unwrap()
+            else {
+                panic!("document required")
+            };
+            document_pixels(&document, 1.0)
+        };
+        let rounded = render(rounded.clone());
+        let square = render(square.clone());
+        assert_eq!((rounded.0, rounded.1), (square.0, square.1));
+        if has_corners {
+            let changed_pixels = rounded
+                .2
+                .chunks_exact(4)
+                .zip(square.2.chunks_exact(4))
+                .filter(|(a, b)| a != b)
+                .count();
+            assert!(
+                changed_pixels > 100,
+                "public 10px corners must affect actual native pixels"
+            );
+        } else {
+            assert!(
+                rounded.2 == square.2,
+                "corner settings must preserve Diamond pixels"
             );
         }
     }

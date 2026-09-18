@@ -82,6 +82,37 @@ subjects and source-document identifiers, and avoid navigating a pointer whose d
 not recognize. This result API explains successful BestEffort executions; strict failures continue
 through the structured operation-error path.
 
+## Radius depends on the target and shape
+
+`radius` is a geometry value whose meaning belongs to the selected family and target. For
+example, a Quadrant `chart-series` rule changes point radius; a Flowchart or Swimlane `node`
+rule sets an existing corner channel. It does not change the node's shape kind or turn a
+Diamond into a rounded path.
+
+For Flowchart/Swimlane Node rules, the current contract is:
+
+| Terminal | Numeric radius outcome |
+| --- | --- |
+| Classic/Neo Process or RoundedRectangle | Applied when the winning value reaches the rectangle; zero means square corners |
+| Classic/Neo Diamond polygon | NotApplicable for the radius facet; preserve polygon geometry and other requested paints |
+| Hand-drawn or a writer without verified corner semantics | Residual; strict admission rejects it |
+
+These are writer observations, not a rule that every missing `rx`/`ry` is harmless. A rectangle
+whose writer fails to consume a selected radius still has a residual. In a mixed fill-plus-radius
+rule, Diamond fill can apply without claiming rounded geometry. An unsupported sibling property
+still prevents the rule from being fully applied. Source rx/ry evidence is checked independently.
+
+Explicit source rx/ry or an owning Neo configuration supersedes the typed radius. Either source
+axis currently supersedes the scalar typed setting; the other axis retains the existing shape/configuration or SVG
+automatic-radius behavior. Flowchart Node `radius: null` (Clear) remains unsupported, including on Diamond. Other
+families keep their own Clear behavior; for example, Quadrant point Clear restores its baseline.
+
+Discovery for Flowchart/Swimlane Node radius remains `conditional`: the query does not include
+individual shape occurrences. Use execution evidence for the actual input. Cyberpunk's exported
+complete recipe contains an ordinary Flowchart Node `radius: 10` rule; import preserves this rule
+without enumerating node ordinals or substituting a different preset. This does not qualify the
+complete reference appearance.
+
 ## Start with a small theme
 
 For a palette and ordinary scoped rules, author a `definition` recipe. Keep the versions and

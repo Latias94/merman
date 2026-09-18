@@ -3,6 +3,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::svg::parity::flowchart) enum FlowchartNodeFacetReach {
     None,
+    /// The concrete writer has proved that this typed facet has no shape channel.
+    NotApplicable,
     Unverified,
     Verified,
 }
@@ -259,9 +261,11 @@ impl FlowchartNodeShapeEmissionReceipt {
 
     pub(in crate::svg::parity::flowchart) const fn classic_polygon() -> Self {
         // A polygon consumes the same inline paint/stroke channels as a rectangle, but CSS
-        // rx/ry cannot round its vertices. Do not certify radius transport or geometry.
+        // rx/ry cannot round its vertices. Source CSS remains unverified; a numeric typed
+        // corner request is explicitly inapplicable and must not certify rounded geometry.
         let mut receipt = Self::classic_process(false);
         receipt.radius = Self::unverified().radius;
+        receipt.radius.typed_theme = FlowchartNodeFacetReach::NotApplicable;
         receipt
     }
 
@@ -479,8 +483,21 @@ impl FlowchartNodeShapeEmissionReceipt {
         self.stroke_width.typed_theme.is_verified()
     }
 
-    pub(in crate::svg::parity::flowchart) const fn typed_radius_verified(self) -> bool {
-        self.radius.typed_theme.is_verified()
+    pub(in crate::svg::parity::flowchart) fn typed_radius_emission(
+        self,
+        precedence: crate::flowchart::FlowchartFacetPrecedence,
+        selected: bool,
+    ) -> crate::flowchart::FlowchartRadiusEmission {
+        if self.radius.typed_theme == FlowchartNodeFacetReach::NotApplicable {
+            crate::flowchart::FlowchartRadiusEmission::NotApplicable(precedence)
+        } else {
+            crate::flowchart::FlowchartRadiusEmission::Applicable(
+                crate::flowchart::FlowchartThemeFacetEmission::new(
+                    precedence,
+                    selected && self.radius.typed_theme.is_verified(),
+                ),
+            )
+        }
     }
 
     pub(in crate::svg::parity::flowchart) const fn typed_stroke_dasharray_verified(self) -> bool {

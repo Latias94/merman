@@ -450,7 +450,7 @@ fn swimlane_glow_reaches_real_nodes_without_filtering_lane_or_edge_labels() {
 }
 
 #[test]
-fn diamond_paint_and_stroke_receipt_does_not_certify_unsupported_radius() {
+fn diamond_paint_and_stroke_preserve_shape_without_claiming_rounded_geometry() {
     use merman_render::diagram_theme::CanvasPaint;
     let mut patch = ThemeStylePatch::default()
         .with_fill(CanvasPaint::solid("#123abc").unwrap())
@@ -479,12 +479,16 @@ fn diamond_paint_and_stroke_receipt_does_not_certify_unsupported_radius() {
     }
     patch.geometry.radius = Specified::Value(10.0);
     let radius = theme(ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)));
-    assert!(render(source, &radius, "classic", true).is_err());
-    let rendered = render(source, &radius, "classic", false).unwrap();
-    let completion = rendered.into_completion();
-    assert!(
-        merman_render::__private::family_evidence(completion.report()).theme_residual_count() > 0
+    let rounded_request = render(source, &radius, "classic", true).unwrap();
+    assert_eq!(
+        rounded_request.svg(),
+        rendered.svg(),
+        "radius must not redraw the Diamond"
     );
+    let completion = rounded_request.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert!(evidence.applied_count() > 0);
 }
 
 #[test]
@@ -524,7 +528,7 @@ fn rounded_rect_consumes_typed_radius_and_stroke_without_changing_its_default() 
 }
 
 #[test]
-fn public_cyberpunk_recipe_exchange_keeps_flowchart_stroke_widths() {
+fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corners() {
     use merman_render::diagram_theme::ThemePreset;
     let compiler = DiagramThemeCompiler::new();
     let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
@@ -549,7 +553,28 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_stroke_widths() {
             })
             .collect();
         assert_eq!(nodes.len(), 4);
+        assert_eq!(
+            nodes
+                .iter()
+                .filter(|node| node.has_tag_name("polygon"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            nodes
+                .iter()
+                .filter(|node| node.has_tag_name("rect"))
+                .count(),
+            3
+        );
         for node in nodes {
+            if node.has_tag_name("rect") {
+                assert_eq!(node.attribute("rx"), Some("10"));
+                assert_eq!(node.attribute("ry"), Some("10"));
+            } else {
+                assert!(node.attribute("rx").is_none());
+                assert!(node.attribute("ry").is_none());
+            }
             assert!(
                 node.attribute("style")
                     .unwrap()
@@ -686,5 +711,102 @@ fn rectangle_source_radius_keeps_each_axis_and_declaration_precedence() {
                 assert_eq!(rect.attribute("ry"), ry.or(fallback), "{look} {source}");
             }
         }
+    }
+}
+
+#[test]
+fn node_radius_applies_only_to_verified_corner_channels() {
+    use merman_render::diagram_theme::CanvasPaint;
+    let compiler = DiagramThemeCompiler::new();
+    let mut radius = ThemeStylePatch::default();
+    radius.geometry.radius = Specified::Value(10.0);
+    let radius_rule = ThemeRule::new(ThemeTarget::Node, radius.clone());
+    let radius_theme = compiler
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(ThemeRuleSet::default().with_rule(radius_rule.clone())),
+        )
+        .unwrap();
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        let diamonds = format!("{prefix}flowchart LR\nA{{Decision}}");
+        assert!(render(&diamonds, &radius_theme, "handDrawn", true).is_err());
+        let rough = render(&diamonds, &radius_theme, "handDrawn", false)
+            .unwrap()
+            .into_completion();
+        assert_eq!(
+            merman_render::__private::family_evidence(rough.report()).theme_residual_count(),
+            1
+        );
+        let result = render(&diamonds, &radius_theme, "classic", true).unwrap();
+        let completion = result.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        let mixed = format!("{prefix}flowchart LR\nA[Rectangle] --> B{{Decision}} --> C(Rounded)");
+        let result = render(&mixed, &radius_theme, "classic", true).unwrap();
+        let xml = roxmltree::Document::parse(result.svg()).unwrap();
+        let rectangles = xml
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("basic label-container")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(rectangles.len(), 2);
+        assert!(
+            rectangles.iter().all(
+                |rect| rect.attribute("rx") == Some("10") && rect.attribute("ry") == Some("10")
+            )
+        );
+        let completion = result.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert!(render(&mixed, &radius_theme, "handDrawn", true).is_err());
+        let unknown_channel = format!("{prefix}flowchart LR\nA[Rectangle] --> B((Circle))");
+        assert!(render(&unknown_channel, &radius_theme, "classic", true).is_err());
+        let source_radius = format!("{diamonds}\nstyle A rx:4px");
+        assert!(render(&source_radius, &radius_theme, "classic", true).is_err());
+        let mut clear = ThemeStylePatch::default();
+        clear.geometry.radius = Specified::Clear;
+        let clear = compiler
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, clear)),
+            ))
+            .unwrap();
+        assert!(render(&diamonds, &clear, "classic", true).is_err());
+        let paint = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123abc").unwrap());
+        let mut combined = paint.clone();
+        combined.geometry.radius = Specified::Value(10.0);
+        let combined = compiler
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, combined)),
+            ))
+            .unwrap();
+        let split = compiler
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::Node, paint))
+                        .with_rule(radius_rule.clone()),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            render(&diamonds, &combined, "classic", true).unwrap().svg(),
+            render(&diamonds, &split, "classic", true).unwrap().svg()
+        );
+        let mut unsupported_sibling = radius.clone();
+        unsupported_sibling.paint.opacity = Specified::Value(0.5);
+        let unsupported_sibling = compiler
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::Node, unsupported_sibling)),
+                ),
+            )
+            .unwrap();
+        assert!(render(&diamonds, &unsupported_sibling, "classic", true).is_err());
     }
 }

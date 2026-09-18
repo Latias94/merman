@@ -437,6 +437,12 @@ impl Default for ThemeStrokePatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThemeGeometryPatch {
+    /// Geometry radius in pixels, interpreted by the selected family and target.
+    ///
+    /// Flowchart/Swimlane Node rules adjust existing rectangle corner channels; they do not
+    /// convert a Diamond into a rounded path. A numeric request is not applicable to an
+    /// explicitly preserved Diamond polygon. Unverified writers and unsupported operations
+    /// retain residuals. Quadrant ChartSeries rules instead control point radius.
     pub radius: Specified<f32>,
 }
 

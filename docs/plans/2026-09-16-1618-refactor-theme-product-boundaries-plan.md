@@ -310,7 +310,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Public compile/export/import passes the Flowchart visual contract in all R1 targets. Existing Class label and Flowchart mutation regressions stay covered.
 
-**Progress (2026-09-18):** The [rectangle geometry record](../knowledge/engineering/verification/2026-09-18-flowchart-rectangle-geometry.md) covers typed rectangle radii, browser/native source/config consistency and public Node/Edge stroke widths. This does not close U6: exportable corner applicability, text/edge effects and complete three-target scene acceptance remain required.
+**Progress (2026-09-18):** The [rectangle geometry record](../knowledge/engineering/verification/2026-09-18-flowchart-rectangle-geometry.md) covers typed rectangle radii, browser/native source/config consistency and public Node/Edge stroke widths. The [corner applicability record](../knowledge/engineering/verification/2026-09-18-flowchart-radius-applicability.md) defines Flowchart/Swimlane Node numeric radius as an existing corner-channel parameter: a concrete Diamond polygon reports NotApplicable for that facet, while unverified writers and unsupported Clear retain residuals. The ordinary public Cyberpunk recipe now carries radius 10 and preserves it through export/import. No global radius redefinition or shape selector is introduced. U6 still requires text/edge effects and complete three-target scene acceptance.
 
 ### U7. Deliver the complete Sequence scene
 
@@ -409,7 +409,6 @@ For unmeasured cold start, memory and themed/native workloads, U1 records the wo
 
 ### Deferred Implementation Questions
 
-- Flowchart corner applicability: the current broad `Node.radius` request has no shape selector and an unconsumed matching facet remains a residual. Before adding the public recipe's 10px corners, define an explicit, exportable applicability contract that preserves Diamond geometry. Do not use fixture ordinals, preset-only dispatch or reinterpret every unsupported writer as NotApplicable. This remains required U6/R1 work, not deferred product scope.
 - Exact module placement for the optional font backend: resolve in U3 from dependency direction; retain KTD2's single capability and base contract.
 - Native PDF filter lowering and browser/native color-space tolerance: establish in U1/U5 with the existing backend. If a required R1 effect cannot be represented, report the blocker; do not substitute a blank or flattened effect and call it equivalent.
 - Residual package growth attributable to changed toolchains, dependencies and mainline work: U10 must measure it. No current percentage constitutes an accepted budget increase.
