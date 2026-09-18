@@ -1,4 +1,5 @@
 mod activation;
+mod actor_effect;
 mod actor_man;
 mod actor_man_glyphs;
 mod actor_popup;

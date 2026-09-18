@@ -89,6 +89,11 @@ fn direct_only_family_slices_are_reported_as_conditional() {
         (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Actor,
+            ThemeRuleFacetV1::Effect,
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Actor,
             ThemeRuleFacetV1::StrokeWidth,
         ),
         (

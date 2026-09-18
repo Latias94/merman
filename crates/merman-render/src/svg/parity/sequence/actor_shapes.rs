@@ -327,7 +327,9 @@ pub(super) fn write_rect_actor_shape(
     label_ctx: &ActorLabelContext<'_>,
     rect_style: SequenceActorRectStyle,
     receipt: &crate::sequence::SequenceActorThemeReceipt,
+    shadow: Option<super::actor_effect::SequenceActorShadow<'_>>,
 ) -> Result<()> {
+    let filter = shadow.as_ref().map(|shadow| shadow.write_definition(out));
     let (x, y) = node_left_top(n);
     let custom_class = actor_custom_class(actor);
     let fill = if custom_class.is_some() {
@@ -360,8 +362,17 @@ pub(super) fn write_rect_actor_shape(
         // An inline declaration must outrank the generated `.actor` stylesheet.
         let _ = write!(out, r#" style="stroke-width:{}px;""#, fmt(f64::from(width)));
     }
+    if let Some(filter) = &filter {
+        let _ = write!(out, r#" filter="{}""#, escape_attr(filter));
+    }
     out.push_str("/>");
     out.checkpoint()?;
+    if let Some(shadow) = shadow {
+        shadow.record_emission();
+        receipt.record_effect_rect();
+    } else if supported && receipt.effect_cleared {
+        receipt.record_effect_rect();
+    }
     if supported {
         receipt.record_geometry_rect();
     }

@@ -11,6 +11,8 @@ use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {
+    pub(super) shadow_plan: &'a super::actor_effect::SequenceActorShadowPlan,
+    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) rect_style: super::actor_shapes::SequenceActorRectStyle,
     pub(super) geometry_receipt: &'a crate::sequence::SequenceActorThemeReceipt,
     pub(super) model: &'a SequenceSvgModel,
@@ -93,6 +95,7 @@ pub(super) fn render_sequence_bottom_actors(
                     &label_ctx,
                     ctx.rect_style,
                     ctx.geometry_receipt,
+                    ctx.shadow_plan.terminal(n, ctx.shadow_evidence),
                 )?;
                 out.push_str("</g>");
             }
@@ -228,6 +231,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     &label_ctx,
                     ctx.rect_style,
                     ctx.geometry_receipt,
+                    ctx.shadow_plan.terminal(top, ctx.shadow_evidence),
                 )?;
                 out.push_str("</g></g>");
             }

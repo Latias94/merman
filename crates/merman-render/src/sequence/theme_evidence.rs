@@ -30,6 +30,87 @@ mod tests {
     };
 
     #[test]
+    fn actor_effect_requires_resolved_ownership_and_every_terminal() {
+        use crate::diagram_theme::{
+            DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+            ThemeColorValue,
+        };
+        for binding in [false, true] {
+            let mut spec = DiagramThemeSpec::new();
+            let mut effects = DiagramEffectSet::default()
+                .with_graph(
+                    EffectGraph::new(
+                        "glow",
+                        [EffectPrimitive::DropShadow {
+                            input: EffectInput::SourceGraphic,
+                            offset_x: 0.0,
+                            offset_y: 0.0,
+                            blur_radius: 8.0,
+                            spread: 0.0,
+                            color: ThemeColorValue::parse("#00ffff").unwrap(),
+                        }],
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            if binding {
+                effects = effects
+                    .with_binding(EffectBinding::new(ThemeTarget::Actor, "glow").unwrap())
+                    .unwrap();
+            } else {
+                spec = spec.with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Actor,
+                    ThemeStylePatch::default().with_effect("glow").unwrap(),
+                )));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(spec.with_effects(effects))
+                .unwrap();
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            for emitted in [0, 1, 2] {
+                let mut receipt = SequenceActorThemeReceipt::default();
+                receipt.record_static_style(&resolved.style(
+                    ThemeTarget::Actor,
+                    ThemeVariant::Default,
+                    None,
+                ));
+                receipt.effect_requested = true;
+                receipt.effect_binding_used = binding;
+                receipt.record_geometry_candidate();
+                receipt.record_geometry_candidate();
+                for _ in 0..emitted {
+                    receipt.record_effect_rect();
+                }
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                recorder
+                    .record_actor_emission(1, false, false, false, false, false, false, receipt);
+                let evidence = recorder.finish(Some(&resolved));
+                assert_eq!(evidence.applied().len(), usize::from(emitted == 2));
+                assert!(evidence.not_applicable_mechanisms().is_empty());
+            }
+            if binding {
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                recorder.record_actor_emission(
+                    1,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    Default::default(),
+                );
+                let evidence = recorder.finish(Some(&resolved));
+                assert!(evidence.applied().is_empty());
+                assert!(
+                    evidence.not_applicable_mechanisms().is_empty(),
+                    "missing resolution cannot suppress a binding"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn actor_geometry_needs_every_expected_terminal_before_application() {
         for emitted in [0, 1, 2] {
             let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();

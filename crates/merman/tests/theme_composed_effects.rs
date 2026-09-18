@@ -255,3 +255,70 @@ fn shadow_writer_elides_only_srgb_identity_translations() {
         }
     }
 }
+
+#[test]
+fn composed_sequence_actor_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows("sequenceDiagram\nA->>B: Hello", ThemeTarget::Actor, 4);
+}
+
+#[test]
+fn public_cyberpunk_sequence_actor_glow_survives_native_export() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman::svg::ThemePreset::Cyberpunk)
+        .unwrap();
+    let RenderOutput::Document(Some(document)) = Renderer::new()
+        .render(
+            RenderRequest::document(
+                include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+                OperationControl::new(),
+                Default::default(),
+            )
+            .with_theme(theme),
+        )
+        .unwrap()
+    else {
+        panic!("document required")
+    };
+    let png = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .unwrap();
+    let pdf = document
+        .export_pdf(
+            &merman::svg::export::PdfOptions::default(),
+            OperationControl::new(),
+        )
+        .unwrap();
+    for admission in [png.admission(), pdf.admission()] {
+        assert!(
+            matches!(
+                admission.status(),
+                merman::TargetAdmissionStatus::Portable
+                    | merman::TargetAdmissionStatus::HostDependent
+            ),
+            "unexpected native admission: {admission:?}"
+        );
+        for reason in [
+            TargetAdmissionReason::ThemeEvidenceIncomplete,
+            TargetAdmissionReason::NativeFilterReceiptMismatch,
+            TargetAdmissionReason::PdfNativeFilterNotLocalized,
+        ] {
+            assert!(!admission.reasons().contains(&reason), "{admission:?}");
+        }
+    }
+    let receipt = png
+        .export_report()
+        .native_filter_receipt()
+        .expect("actual actor filters");
+    assert_eq!(
+        (
+            receipt.filter_count(),
+            receipt.reference_count(),
+            receipt.drop_shadow_count()
+        ),
+        (4, 4, 8)
+    );
+    assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
+}

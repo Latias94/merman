@@ -40,6 +40,11 @@ pub(crate) struct SequenceActorThemeReceipt {
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     pub(super) ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     geometry_requested: bool,
+    pub(crate) effect_requested: bool,
+    pub(crate) effect_binding_used: bool,
+    pub(crate) effect_cleared: bool,
+    pub(crate) effect_unhandled: bool,
+    effect_rects: Cell<usize>,
     geometry_candidates: Cell<usize>,
     geometry_rects: Cell<usize>,
     pub(super) geometry_unhandled: Cell<bool>,
@@ -58,14 +63,14 @@ impl SequenceActorThemeReceipt {
     }
 
     pub(crate) fn record_geometry_candidate(&self) {
-        if self.geometry_requested {
+        if self.geometry_requested || self.effect_requested {
             self.geometry_candidates
                 .set(self.geometry_candidates.get().saturating_add(1));
         }
     }
 
     pub(crate) fn record_unhandled_geometry(&self) {
-        if self.geometry_requested {
+        if self.geometry_requested || self.effect_requested {
             self.geometry_unhandled.set(true);
         }
     }
@@ -75,6 +80,18 @@ impl SequenceActorThemeReceipt {
             self.geometry_rects
                 .set(self.geometry_rects.get().saturating_add(1));
         }
+    }
+
+    pub(crate) fn record_effect_rect(&self) {
+        if self.effect_requested {
+            self.effect_rects
+                .set(self.effect_rects.get().saturating_add(1));
+        }
+    }
+
+    pub(super) fn effect_complete(&self) -> bool {
+        self.geometry_candidates.get() != 0
+            && self.geometry_candidates.get() == self.effect_rects.get()
     }
 
     pub(super) fn geometry_complete(&self) -> bool {
@@ -90,6 +107,12 @@ impl SequenceActorThemeReceipt {
         self.static_winners.extend(other.static_winners);
         self.ordinal_winners.extend(other.ordinal_winners);
         self.geometry_requested |= other.geometry_requested;
+        self.effect_requested |= other.effect_requested;
+        self.effect_binding_used |= other.effect_binding_used;
+        self.effect_cleared |= other.effect_cleared;
+        self.effect_unhandled |= other.effect_unhandled;
+        self.effect_rects
+            .set(self.effect_rects.get().max(other.effect_rects.get()));
         self.geometry_candidates.set(
             self.geometry_candidates
                 .get()

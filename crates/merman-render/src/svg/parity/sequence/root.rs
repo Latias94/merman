@@ -8,6 +8,7 @@ pub(super) fn write_sequence_svg_root_open(
     diagram_id: SvgDiagramId<'_>,
     resources: crate::resources::RenderResourcePolicy,
     actor_stroke_outset: f64,
+    effect_bounds: Option<&Bounds>,
 ) -> Result<root_svg::RootDocument> {
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -15,7 +16,7 @@ pub(super) fn write_sequence_svg_root_open(
         max_x: 100.0,
         max_y: 100.0,
     });
-    let root_bounds = root_svg::DiagramBounds::from_extents(
+    let mut root_bounds = root_svg::DiagramBounds::from_extents(
         bounds.min_x,
         bounds.min_y,
         bounds.max_x,
@@ -23,6 +24,15 @@ pub(super) fn write_sequence_svg_root_open(
         actor_stroke_outset,
     );
 
+    if let Some(effect) = effect_bounds {
+        root_bounds = root_svg::DiagramBounds::from_extents(
+            root_bounds.min_x.min(effect.min_x),
+            root_bounds.min_y.min(effect.min_y),
+            (root_bounds.min_x + root_bounds.width).max(effect.max_x),
+            (root_bounds.min_y + root_bounds.height).max(effect.max_y),
+            0.0,
+        );
+    }
     let aria_labelledby = model
         .acc_title
         .as_deref()

@@ -3428,6 +3428,10 @@ impl FamilyRenderArtifact {
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let filter_receipt = match &self.family {
+            BuiltinFamilyArtifact::Sequence(artifact) => Some((
+                artifact.layout.effect_evidence().finish(),
+                artifact.layout.expected_effect_applications().get(),
+            )),
             BuiltinFamilyArtifact::State(artifact) => Some((
                 artifact.effect_evidence().finish(),
                 self.context

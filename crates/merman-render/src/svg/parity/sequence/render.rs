@@ -173,6 +173,26 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         note_stroke_overridden,
     )?;
 
+    let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
+        FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
+    for (node_index, node) in layout.nodes.iter().enumerate() {
+        checkpoints.checkpoint_loop(node_index)?;
+        nodes_by_id.insert(node.id.as_str(), node);
+    }
+
+    let actor_shadows = super::actor_effect::SequenceActorShadowPlan::prepare(
+        actor_theme.effect.take(),
+        &nodes_by_id,
+        model,
+        settings.mirror_actors,
+        actor_theme.rect_style,
+        effective_config,
+        &mut actor_theme.receipt,
+        options,
+    )?;
+    prepared
+        .expected_effect_applications()
+        .set(actor_shadows.len());
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -187,14 +207,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .map(f64::from)
             .unwrap_or(0.0)
             / 2.0,
+        actor_shadows.bounds.as_ref(),
     )?;
-
-    let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
-        FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
-    for (node_index, node) in layout.nodes.iter().enumerate() {
-        checkpoints.checkpoint_loop(node_index)?;
-        nodes_by_id.insert(node.id.as_str(), node);
-    }
 
     let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
         FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
@@ -237,6 +251,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let actor_ctx = SequenceActorRenderContext {
         rect_style: actor_theme.rect_style,
         geometry_receipt: &actor_theme.receipt,
+        shadow_plan: &actor_shadows,
+        shadow_evidence: prepared.effect_evidence(),
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
@@ -539,6 +555,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
 struct SequenceActorThemeResolution {
     rect_style: super::actor_shapes::SequenceActorRectStyle,
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
     typed_fill: Option<String>,
     typed_stroke: Option<String>,
     has_ordinal_routes: bool,
@@ -613,6 +630,7 @@ fn resolve_sequence_actor_theme(
     let Some(theme) = options.resolved_theme() else {
         return Ok(SequenceActorThemeResolution {
             rect_style: Default::default(),
+            effect: None,
             typed_fill: None,
             typed_stroke: None,
             has_ordinal_routes: false,
@@ -704,7 +722,34 @@ fn resolve_sequence_actor_theme(
             .filter(|_| !width_overridden),
         radius: style.as_ref().and_then(|s| s.radius()),
     };
+    let effect_resolution = style
+        .as_ref()
+        .map(|style| style.effect_resolution().clone())
+        .unwrap_or_default();
+    let effect = match theme.resolve_effect(ThemeTarget::Actor, &effect_resolution) {
+        None => None,
+        Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+            receipt.effect_requested = true;
+            receipt.effect_cleared = true;
+            None
+        }
+        Some(resolved) => {
+            receipt.effect_requested = true;
+            let graph = match resolved {
+                crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                    receipt.effect_binding_used = true;
+                    graph
+                }
+                crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+            };
+            let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+            receipt.effect_unhandled = effect.is_none();
+            effect
+        }
+    };
     Ok(SequenceActorThemeResolution {
+        effect,
         rect_style,
         typed_fill,
         typed_stroke,

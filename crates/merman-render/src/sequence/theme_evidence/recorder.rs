@@ -579,6 +579,28 @@ impl SequenceThemeEvidenceRecorder {
                                 );
                             }
                         }
+                        FamilyThemeDisposition::TypedAdapter
+                            if facet == FamilyThemeRuleFacet::Effect =>
+                        {
+                            let receipt = &state.actor_style_receipt;
+                            if receipt.effect_unhandled || receipt.geometry_unhandled.get() {
+                                observation
+                                    .residual
+                                    .get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+                            } else if !receipt.effect_complete() {
+                                observation.incomplete = true;
+                            } else {
+                                observation
+                                    .capabilities
+                                    .insert(ThemeCapability::SemanticRules);
+                                if !receipt.effect_cleared {
+                                    observation.capabilities.extend([
+                                        ThemeCapability::Shadow,
+                                        ThemeCapability::SvgFilter,
+                                    ]);
+                                }
+                            }
+                        }
                         FamilyThemeDisposition::TypedAdapter => observation.incomplete = true,
                         FamilyThemeDisposition::Unsupported => {
                             observation
@@ -637,13 +659,18 @@ impl SequenceThemeEvidenceRecorder {
                     ..
                 } => {
                     let key = theme.family_mechanism_key(route);
-                    if state.actor_count == 0 {
+                    let receipt = &state.actor_style_receipt;
+                    if state.actor_count == 0
+                        || (receipt.effect_requested && !receipt.effect_binding_used)
+                    {
                         evidence.mark_not_applicable(key);
-                    } else if !matches!(
-                        route.disposition(),
-                        FamilyThemeDisposition::LegacyCompatibility
-                    ) {
+                    } else if receipt.effect_unhandled || receipt.geometry_unhandled.get() {
                         evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                    } else if receipt.effect_complete() {
+                        evidence.mark_applied_with_capabilities(
+                            key,
+                            [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                        );
                     }
                 }
                 FamilyThemeMechanism::RuleFacet { .. }

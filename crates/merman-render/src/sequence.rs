@@ -171,12 +171,22 @@ pub(crate) struct SequencePreparedArtifact {
     text_sidecar: SequenceTextSidecar,
     math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
+    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
+    expected_effect_applications: std::cell::Cell<usize>,
     typography: Arc<SequenceTypographyPlan>,
     diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
 
 impl SequencePreparedArtifact {
+    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
+        &self.effect_evidence
+    }
+
+    pub(crate) fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
+        &self.expected_effect_applications
+    }
+
     pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
         &self.layout
     }
@@ -699,6 +709,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         ),
         math_sidecar,
         theme_evidence: SequenceThemeEvidenceRecorder::default(),
+        effect_evidence: Default::default(),
+        expected_effect_applications: Default::default(),
         typography,
         diagram_title,
         block_label_box_metrics,
