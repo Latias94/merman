@@ -1877,3 +1877,73 @@ fn xy_axis_text_roles_are_discoverable_without_promising_other_families() {
         );
     }
 }
+
+#[test]
+fn xy_tick_geometry_support_is_distinct_from_axis_and_text() {
+    assert_eq!(
+        ThemeTarget::from_id("axis-tick"),
+        Some(ThemeTarget::AxisTick)
+    );
+    assert!(ThemeTarget::ALL.contains(&ThemeTarget::AxisTick));
+    for (target, facet, expected) in [
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::Fill,
+            ThemeSupportStateV1::Conditional,
+        ),
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::StrokePaint,
+            ThemeSupportStateV1::Conditional,
+        ),
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::Opacity,
+            ThemeSupportStateV1::Conditional,
+        ),
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::FontSize,
+            ThemeSupportStateV1::Unsupported,
+        ),
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::StrokeWidth,
+            ThemeSupportStateV1::Unsupported,
+        ),
+        (
+            ThemeTarget::AxisTick,
+            ThemeRuleFacetV1::Effect,
+            ThemeSupportStateV1::Unsupported,
+        ),
+        (
+            ThemeTarget::Axis,
+            ThemeRuleFacetV1::Opacity,
+            ThemeSupportStateV1::Unsupported,
+        ),
+    ] {
+        let query = ThemeSupportQueryV1::for_target(
+            DiagramFamilyId::XY_CHART.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        );
+        assert_eq!(
+            describe_theme_support(&query).state(),
+            expected,
+            "{query:?}"
+        );
+    }
+    for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::RADAR] {
+        let query = ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::AxisTick.id(),
+            ThemeRuleFacetV1::Opacity,
+        );
+        assert_eq!(
+            describe_theme_support(&query).state(),
+            ThemeSupportStateV1::NotApplicable
+        );
+    }
+}

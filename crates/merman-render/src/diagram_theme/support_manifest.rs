@@ -50,6 +50,7 @@ const MANIFEST_TARGET_IDS: &[&str] = &[
     "axis",
     "axis-title",
     "axis-label",
+    "axis-tick",
     "legend",
     "table",
     "task",
@@ -1299,6 +1300,12 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         target: "axis-label",
         kind: SupportClaimKind::TypedPartial,
         facets: &["fill", "font-size", "font-weight"],
+    },
+    RuleClaim {
+        family: "xychart",
+        target: "axis-tick",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill", "stroke-paint", "opacity"],
     },
     RuleClaim {
         family: "xychart",

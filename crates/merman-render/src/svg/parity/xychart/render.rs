@@ -677,6 +677,11 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
                     n.attr("stroke", escape_xml(&p.stroke_fill));
                     n.attr("stroke-width", fmt_xy(p.stroke_width));
+                    if let Some(opacity) =
+                        paint_theme.path_opacity(group_texts, &layout.chart_orientation)
+                    {
+                        n.attr("opacity", opacity.to_string());
+                    }
                     n.paint_terminal =
                         paint_theme.terminal_id(crate::xychart::XyChartPaintTerminalId::Path {
                             drawable,
@@ -1369,6 +1374,86 @@ mod tests {
                 assert_eq!(
                     plan.finish_evidence().applied().len(),
                     if mutation == "none" { 2 } else { 0 }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn xychart_tick_receipt_requires_exact_opacity_and_clear() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch, ThemeTarget,
+        };
+        for (requested, expected) in [
+            (Specified::Value(0.3), Some("0.3")),
+            (Specified::Clear, None),
+        ] {
+            let mut style = ThemeStylePatch::default();
+            style.paint.opacity = requested;
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::AxisTick, style)),
+                ))
+                .unwrap()
+                .resolve(crate::DiagramFamilyId::XY_CHART);
+            let config = merman_core::MermaidConfig::default();
+            let meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::interactive(),
+            );
+            let typography =
+                crate::xychart::XyChartTypographyThemePlan::resolve(Some(&theme), &config, &meter)
+                    .unwrap();
+            for actual in [None, Some("0.3"), Some("0.7")] {
+                let mut layout: crate::model::XyChartDiagramLayout = serde_json::from_value(serde_json::json!({
+                    "width":700.0, "height":500.0, "chartOrientation":"vertical", "showDataLabel":false,
+                    "showDataLabelOutsideBar":false, "labelData":[], "backgroundColor":"white", "drawables":[]
+                })).unwrap();
+                layout
+                    .drawables
+                    .push(crate::model::XyChartDrawableElem::Path {
+                        group_texts: vec!["bottom-axis".into(), "ticks".into()],
+                        data: vec![crate::model::XyChartPathData {
+                            path: "M 0,0 L 0,5".into(),
+                            fill: None,
+                            stroke_fill: "black".into(),
+                            stroke_width: 2.0,
+                        }],
+                    });
+                let plan = crate::xychart::XyChartPaintPlan::resolve(
+                    Some(&theme),
+                    &config,
+                    &mut layout,
+                    &typography,
+                    &crate::text::DeterministicTextMeasurer::default(),
+                    &meter,
+                )
+                .unwrap();
+                let mut receipt = plan.begin_terminal_receipt(escape_xml, "ticks").unwrap();
+                let mut path = node("path");
+                path.attr("d", "M 0,0 L 0,5");
+                path.attr("stroke", "black");
+                path.attr("stroke-width", "2");
+                if let Some(value) = actual {
+                    path.attr("opacity", value);
+                }
+                path.paint_terminal =
+                    plan.terminal_id(crate::xychart::XyChartPaintTerminalId::Path {
+                        drawable: 0,
+                        item: 0,
+                    });
+                render_node(&mut String::new(), &[path], 0, &mut |n| {
+                    n.observe_paint(&mut receipt)
+                })
+                .unwrap();
+                assert_eq!(
+                    plan.record_terminal(receipt),
+                    actual == expected,
+                    "actual={actual:?}, expected={expected:?}"
+                );
+                assert_eq!(
+                    plan.finish_evidence().applied().len(),
+                    usize::from(actual == expected)
                 );
             }
         }

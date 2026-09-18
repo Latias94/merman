@@ -120,6 +120,18 @@ pub(super) fn build_recipe(
     ]);
     append_xy_series(&mut spec);
     append_xy_text(&mut spec);
+    spec.styles.get_or_insert_default().push(family_rule(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::AxisTick,
+        ThemeStylePatchWireV1 {
+            stroke: Some(ThemeStrokePatchWireV1 {
+                paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color("#00f2ff".to_owned())),
+                ..ThemeStrokePatchWireV1::default()
+            }),
+            opacity: SpecifiedWireV1::Value(0.3),
+            ..ThemeStylePatchWireV1::default()
+        },
+    ));
     Ok(spec)
 }
 

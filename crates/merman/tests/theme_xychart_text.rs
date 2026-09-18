@@ -74,7 +74,7 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
 }
 
 #[test]
-fn public_cyberpunk_role_fonts_and_glow_survive_preset_exchange() {
+fn public_cyberpunk_xy_roles_survive_preset_exchange() {
     use merman::svg::ThemePreset;
 
     let compiler = DiagramThemeCompiler::new();
@@ -172,6 +172,31 @@ fn public_cyberpunk_role_fonts_and_glow_survive_preset_exchange() {
                     "axis-label recipe stays unchanged"
                 );
                 assert!(tick.attribute("filter").is_none());
+                assert!(tick.attribute("opacity").is_none());
+                let mut tick_count = 0;
+                for path in xml.descendants().filter(|n| n.has_tag_name("path")) {
+                    if path
+                        .ancestors()
+                        .any(|n| n.attribute("class") == Some("ticks"))
+                    {
+                        tick_count += 1;
+                        assert_eq!(path.attribute("stroke"), Some("#00f2ff"));
+                        assert_eq!(
+                            path.attribute("opacity"),
+                            Some("0.3"),
+                            "public tick opacity"
+                        );
+                    } else if path
+                        .ancestors()
+                        .any(|n| matches!(n.attribute("class"), Some("axis-line" | "axisl-line")))
+                    {
+                        assert!(
+                            path.attribute("opacity").is_none(),
+                            "axis lines stay opaque"
+                        );
+                    }
+                }
+                assert!(tick_count > 0);
                 svgs.push(output.svg().to_owned());
                 #[cfg(all(feature = "png", feature = "pdf"))]
                 {

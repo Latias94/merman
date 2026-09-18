@@ -1575,6 +1575,31 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if target == ThemeTarget::AxisTick {
+        return if family == DiagramFamilyId::XY_CHART
+            && matches!(
+                selector,
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default)
+                }
+            )
+            && matches!(
+                facet,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Solid
+                        | FamilyThemePaintKind::Transparent
+                        | FamilyThemePaintKind::Clear
+                ) | FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Solid
+                        | FamilyThemePaintKind::Transparent
+                        | FamilyThemePaintKind::Clear
+                ) | FamilyThemeRuleFacet::Opacity
+            ) {
+            FamilyThemeDisposition::TypedAdapter
+        } else {
+            FamilyThemeDisposition::Unsupported
+        };
+    }
     if matches!(target, ThemeTarget::AxisTitle | ThemeTarget::AxisLabel) {
         return FamilyThemeDisposition::Unsupported;
     }

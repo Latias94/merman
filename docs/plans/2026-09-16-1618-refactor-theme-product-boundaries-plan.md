@@ -344,9 +344,13 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Public XY SVG/PNG/PDF scenes meet U1 and existing axis/ordinal/ownership regressions pass.
 
+**Tick role boundary:** Represent tick geometry as the XY-only `AxisTick` target (`axis-tick`), alongside AxisTitle/AxisLabel. Inherit Axis through the existing per-property author-order merge, without Text inheritance or a new selector/query field. Begin with static solid/transparent/Clear paint and opacity; source tick color owns only paint, Clear preserves source/default terminals, and unsupported facets/selectors retain residuals when they match actual terminals. Absent variants and out-of-range ordinals remain NotApplicable. Preserve the existing combined Axis geometry ordinal sequence and verify tick-specific writer attributes. Public discovery must report this limited target separately from generic Axis opacity.
+
 **Text glow consumer increment (2026-09-19):** The [consumer verification](../knowledge/engineering/verification/2026-09-19-xychart-text-glow-consumer.md) records static Title/AxisTitle/Legend effects, unchanged layout measurement, writer-owned placement/filter observations and actual native containment checks. A bounded one-em paint reserve is not an ink guarantee; underestimated host metrics remain rejected by native export. At that baseline, public recipe wiring, multilingual browser/native scenes and U10 allocation cost remained open; this increment does not close U8.
 
 **Public text glow recipe increment (2026-09-19):** The [public recipe record](../knowledge/engineering/verification/2026-09-19-cyberpunk-xy-text-glow-recipe.md) connects the three XY roles through compile_preset and recipe exchange, with English/Chinese and both orientations. Actual SVG/PNG/PDF, Chromium and PDFium observations retain text glow; native admission remains host-dependent. Catalog identity is synchronized without increasing unpublished version numbers or promoting cells. Full reference comparison, axis/tick semantics, shared font provenance and U10 costs remain open.
+
+**Tick paint increment:** The [AxisTick record](../knowledge/engineering/verification/2026-09-18-xychart-axis-tick-paint.md) tracks the bounded tick consumer, writer opacity checks, separate support discovery and public Cyberpunk recipe. Full scene comparison, qualification and U10 costs remain open.
 
 ### U9. Qualify public recipes and migrate consumers
 

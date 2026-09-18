@@ -3173,3 +3173,265 @@ fn xychart_text_glow_unsupported_graph_is_residual_for_rules_and_bindings() {
         );
     }
 }
+
+#[test]
+fn xychart_axis_tick_style_is_independent_of_axis_lines_and_text() {
+    let recipe = serde_json::from_value(serde_json::json!({
+        "schema_version": 1, "kind": "complete_spec", "complete_spec": {"styles": [
+            {"kind":"rule", "target":"axis", "style":{"stroke":{"paint":"#abcdef"}}},
+            {"kind":"rule", "target":"text", "style":{"fill":"#010203"}},
+            {"kind":"rule", "target":"axis-tick", "style":{"stroke":{"paint":"#ff0000"}, "opacity":0.3}}
+        ]}
+    })).unwrap();
+    let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    for orientation in ["", " horizontal"] {
+        let source =
+            format!("xychart{orientation}\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4, 7]");
+        let (_, rendered) =
+            try_render_xychart_with_theme(&source, &theme, Engine::new(), &strict, "ticks")
+                .unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let mut ticks = 0;
+        let mut axes = 0;
+        for path in xml.descendants().filter(|n| n.has_tag_name("path")) {
+            let tick = path
+                .ancestors()
+                .any(|n| n.attribute("class") == Some("ticks"));
+            let axis = path
+                .ancestors()
+                .any(|n| matches!(n.attribute("class"), Some("axis-line" | "axisl-line")));
+            if tick {
+                ticks += 1;
+                assert_eq!(path.attribute("stroke"), Some("#ff0000"));
+                assert_eq!(path.attribute("opacity"), Some("0.3"));
+            } else {
+                assert!(path.attribute("opacity").is_none());
+                if axis {
+                    axes += 1;
+                    assert_eq!(path.attribute("stroke"), Some("#abcdef"));
+                }
+            }
+        }
+        assert!(ticks > 0 && axes > 0);
+        for text in xml.descendants().filter(|n| n.has_tag_name("text")) {
+            assert_eq!(text.attribute("fill"), Some("#010203"));
+            assert!(text.attribute("opacity").is_none());
+        }
+    }
+}
+
+#[test]
+fn xychart_axis_tick_rules_preserve_order_clear_source_and_absence() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, Specified, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    let compile = |rules: Vec<ThemeRule>| {
+        let mut set = ThemeRuleSet::default();
+        for rule in rules {
+            set = set.with_rule(rule);
+        }
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(set))
+            .unwrap()
+    };
+    let mut tick = ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#222222").unwrap());
+    tick.paint.opacity = Specified::Value(0.3);
+    let axis_rule = ThemeRule::new(
+        ThemeTarget::Axis,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#111111").unwrap()),
+    );
+    let tick_rule =
+        ThemeRule::new(ThemeTarget::AxisTick, tick.clone()).with_variant(ThemeVariant::Default);
+    for (rules, color) in [
+        (vec![axis_rule.clone(), tick_rule.clone()], "#222222"),
+        (vec![tick_rule.clone(), axis_rule.clone()], "#111111"),
+    ] {
+        let theme = compile(rules);
+        let (_, rendered) =
+            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for node in xml.descendants().filter(|n| {
+            n.has_tag_name("path") && n.ancestors().any(|a| a.attribute("class") == Some("ticks"))
+        }) {
+            assert_eq!(node.attribute("stroke"), Some(color));
+            assert_eq!(node.attribute("opacity"), Some("0.3"));
+        }
+    }
+    let theme = compile(vec![tick_rule.clone()]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"themeVariables":{"xyChart":{"xAxisTickColor":"#123456", "yAxisTickColor":"#123456"}}})));
+    let (_, rendered) =
+        try_render_xychart_with_theme(source, &theme, engine, &strict, "ticks").unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for node in xml.descendants().filter(|n| {
+        n.has_tag_name("path") && n.ancestors().any(|a| a.attribute("class") == Some("ticks"))
+    }) {
+        assert_eq!(node.attribute("stroke"), Some("#123456"));
+        assert_eq!(
+            node.attribute("opacity"),
+            Some("0.3"),
+            "source color cannot own opacity"
+        );
+    }
+    let collect_ticks = |svg: &str| {
+        let xml = roxmltree::Document::parse(svg).unwrap();
+        xml.descendants()
+            .filter(|n| {
+                n.has_tag_name("path")
+                    && n.ancestors().any(|a| a.attribute("class") == Some("ticks"))
+            })
+            .map(|n| {
+                (
+                    n.attribute("stroke").map(str::to_owned),
+                    n.attribute("opacity").map(str::to_owned),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let plain = compile(vec![]);
+    let (_, baseline) =
+        try_render_xychart_with_theme(source, &plain, Engine::new(), &strict, "ticks").unwrap();
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    clear.paint.opacity = Specified::Clear;
+    let theme = compile(vec![
+        axis_rule,
+        tick_rule,
+        ThemeRule::new(ThemeTarget::AxisTick, clear),
+    ]);
+    let (_, cleared) =
+        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+    assert_eq!(
+        collect_ticks(cleared.svg()),
+        collect_ticks(baseline.svg()),
+        "Clear keeps source/default paint, not the overridden Axis stroke"
+    );
+    tick.paint.opacity = Specified::Value(0.0);
+    let theme = compile(vec![ThemeRule::new(ThemeTarget::AxisTick, tick)]);
+    let (_, transparent) =
+        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+    assert!(
+        collect_ticks(transparent.svg())
+            .iter()
+            .all(|(_, opacity)| opacity.as_deref() == Some("0"))
+    );
+    let hidden = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"xyChart":{"xAxis":{"showTick":false},"yAxis":{"showTick":false}}}),
+    ));
+    let (_, hidden) =
+        try_render_xychart_with_theme(source, &theme, hidden, &strict, "ticks").unwrap();
+    assert!(collect_ticks(hidden.svg()).is_empty());
+}
+
+#[test]
+fn xychart_axis_tick_cannot_certify_unsupported_siblings_or_selectors() {
+    use merman_render::diagram_theme::{
+        OrdinalSelector, Specified, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    let mut opacity = ThemeStylePatch::default();
+    opacity.paint.opacity = Specified::Value(0.3);
+    let mut typography = opacity.clone();
+    typography.typography.font_size_px = Specified::Value(18.0);
+    for rule in [
+        ThemeRule::new(ThemeTarget::AxisTick, typography),
+        ThemeRule::new(
+            ThemeTarget::AxisTick,
+            opacity.clone().with_stroke_width(3.0).unwrap(),
+        ),
+        ThemeRule::new(ThemeTarget::AxisTick, opacity.clone())
+            .with_ordinal(OrdinalSelector::Exact(1)),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let result = try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks");
+        assert!(
+            matches!(
+                result,
+                Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+            ),
+            "unsupported Tick request must retain residual"
+        );
+    }
+    for rule in [
+        ThemeRule::new(ThemeTarget::AxisTick, opacity.clone()).with_variant(ThemeVariant::Primary),
+        ThemeRule::new(ThemeTarget::AxisTick, opacity)
+            .with_ordinal(OrdinalSelector::Exact(usize::MAX)),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let (_, rendered) =
+            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "ticks").unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_axis_tick_keeps_the_combined_axis_geometry_ordinal_sequence() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, OrdinalSelector, Specified, ThemeRule, ThemeStylePatch,
+    };
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
+    let engine = || {
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"xyChart":{"xAxis":{"showLabel":false,"showTitle":false},"yAxis":{"showLabel":false,"showTitle":false}}})))
+    };
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    let mut opacity = ThemeStylePatch::default();
+    opacity.paint.opacity = Specified::Value(0.3);
+    let rules = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::AxisTick, opacity));
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules.clone()))
+        .unwrap();
+    let (_, baseline) =
+        try_render_xychart_with_theme(source, &baseline, engine(), &strict, "ticks").unwrap();
+    let xml = roxmltree::Document::parse(baseline.svg()).unwrap();
+    let count = xml
+        .descendants()
+        .filter(|n| {
+            n.has_tag_name("path")
+                && n.ancestors().any(|a| {
+                    matches!(
+                        a.attribute("class"),
+                        Some("ticks" | "axis-line" | "axisl-line")
+                    )
+                })
+        })
+        .count();
+    assert!(count > 2);
+    for ordinal in [count, count + 1] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    rules.clone().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Axis,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::Exact(ordinal)),
+                    ),
+                ),
+            )
+            .unwrap();
+        let result = try_render_xychart_with_theme(source, &theme, engine(), &strict, "ticks");
+        assert_eq!(
+            result.is_ok(),
+            ordinal > count,
+            "Axis ordinal {ordinal} across {count} geometry terminals"
+        );
+    }
+}

@@ -28,6 +28,8 @@ pub enum ThemeTarget {
     Axis,
     AxisTitle,
     AxisLabel,
+    /// XY Chart tick marks; excludes axis lines and tick-label text.
+    AxisTick,
     Legend,
     Table,
     Task,
@@ -85,6 +87,7 @@ impl ThemeTarget {
         Self::Axis,
         Self::AxisTitle,
         Self::AxisLabel,
+        Self::AxisTick,
         Self::Legend,
         Self::Table,
         Self::Task,
@@ -138,6 +141,7 @@ impl ThemeTarget {
             Self::Axis => "axis",
             Self::AxisTitle => "axis-title",
             Self::AxisLabel => "axis-label",
+            Self::AxisTick => "axis-tick",
             Self::Legend => "legend",
             Self::Table => "table",
             Self::Task => "task",
@@ -211,7 +215,9 @@ impl ThemeTarget {
             Self::Entity => matches!(family, DiagramFamilyId::ER),
             Self::Relation => matches!(family, DiagramFamilyId::REQUIREMENT | DiagramFamilyId::ER),
             Self::PieSlice => matches!(family, DiagramFamilyId::PIE),
-            Self::AxisTitle | Self::AxisLabel => family == DiagramFamilyId::XY_CHART,
+            Self::AxisTitle | Self::AxisLabel | Self::AxisTick => {
+                family == DiagramFamilyId::XY_CHART
+            }
             Self::ChartSeries | Self::Axis | Self::Legend => matches!(
                 family,
                 DiagramFamilyId::XY_CHART
