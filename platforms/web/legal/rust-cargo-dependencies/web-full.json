@@ -12,6 +12,7 @@
         "analysis",
         "ascii",
         "editor",
+        "embedded-fonts",
         "layout-cytoscape",
         "layout-elk",
         "math",
@@ -44,7 +45,7 @@
     "offline": true,
     "cargo_lock_sha256": "e008f728a8bd80a163810a66ffc1fb5a456edd44e959068e02237316915d98a2",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "3c7cfbd2829a4a0a797e87113656e16e58afb2f43f7a1d6d4d26ff0616a2936e"
+    "artifact_profile_sha256": "1884f386b8acad84ce6b28f72e6a27bf66abb5d86a325f632c879baceb099902"
   },
   "dependency_closure": {
     "package_count": 184,

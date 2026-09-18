@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0fb024801c"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -16,6 +16,7 @@
 #define MERMAN_CAPABILITY_ANALYSIS "analysis"
 #define MERMAN_CAPABILITY_ASCII "ascii"
 #define MERMAN_CAPABILITY_EDITOR "editor"
+#define MERMAN_CAPABILITY_EMBEDDED_FONTS "embedded-fonts"
 #define MERMAN_CAPABILITY_ICONS "icons"
 #define MERMAN_CAPABILITY_JPEG "jpeg"
 #define MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE "layout-cytoscape"
@@ -105,6 +106,16 @@ static const char *const MERMAN_CAPABILITY_ASCII_TARGETS[] = {
 static const char *const MERMAN_CAPABILITY_EDITOR_TARGETS[] = {
     "native",
     "web",
+};
+
+static const char *const MERMAN_CAPABILITY_EMBEDDED_FONTS_TARGETS[] = {
+    "native",
+    "typst",
+    "web",
+};
+
+static const char *const MERMAN_CAPABILITY_EMBEDDED_FONTS_IMPLICATIONS[] = {
+    "svg",
 };
 
 static const char *const MERMAN_CAPABILITY_ICONS_TARGETS[] = {
@@ -204,6 +215,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "analysis", "api", "Expose diagnostics and semantic analysis APIs.", MERMAN_CAPABILITY_ANALYSIS_TARGETS, 3, NULL, 0 },
     { "ascii", "output", "Render supported Mermaid semantics as terminal text.", MERMAN_CAPABILITY_ASCII_TARGETS, 2, NULL, 0 },
     { "editor", "api", "Expose parser-backed editor intelligence APIs.", MERMAN_CAPABILITY_EDITOR_TARGETS, 2, NULL, 0 },
+    { "embedded-fonts", "engine", "Decode caller-supplied theme font resources and prepare native text layout.", MERMAN_CAPABILITY_EMBEDDED_FONTS_TARGETS, 3, MERMAN_CAPABILITY_EMBEDDED_FONTS_IMPLICATIONS, 1 },
     { "icons", "tool", "Compile CLI local Iconify pack loading.", MERMAN_CAPABILITY_ICONS_TARGETS, 1, NULL, 0 },
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
@@ -222,7 +234,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 20u
+#define MERMAN_CAPABILITY_COUNT 21u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",

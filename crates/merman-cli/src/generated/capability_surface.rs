@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0fb024801c";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -14,6 +14,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "analysis",
     "ascii",
     "editor",
+    "embedded-fonts",
     "icons",
     "jpeg",
     "layout-cytoscape",
@@ -103,6 +104,7 @@ pub enum CapabilityKey {
     Analysis,
     Ascii,
     Editor,
+    EmbeddedFonts,
     Icons,
     Jpeg,
     LayoutCytoscape,
@@ -127,6 +129,7 @@ impl CapabilityKey {
         Self::Analysis,
         Self::Ascii,
         Self::Editor,
+        Self::EmbeddedFonts,
         Self::Icons,
         Self::Jpeg,
         Self::LayoutCytoscape,
@@ -151,6 +154,7 @@ impl CapabilityKey {
             "analysis" => Some(Self::Analysis),
             "ascii" => Some(Self::Ascii),
             "editor" => Some(Self::Editor),
+            "embedded-fonts" => Some(Self::EmbeddedFonts),
             "icons" => Some(Self::Icons),
             "jpeg" => Some(Self::Jpeg),
             "layout-cytoscape" => Some(Self::LayoutCytoscape),
@@ -181,23 +185,24 @@ impl CapabilityKey {
             Self::Analysis => &CAPABILITIES[0],
             Self::Ascii => &CAPABILITIES[1],
             Self::Editor => &CAPABILITIES[2],
-            Self::Icons => &CAPABILITIES[3],
-            Self::Jpeg => &CAPABILITIES[4],
-            Self::LayoutCytoscape => &CAPABILITIES[5],
-            Self::LayoutElk => &CAPABILITIES[6],
-            Self::Markdown => &CAPABILITIES[7],
-            Self::Math => &CAPABILITIES[8],
-            Self::NetworkIcons => &CAPABILITIES[9],
-            Self::ParallelMarkdown => &CAPABILITIES[10],
-            Self::Pdf => &CAPABILITIES[11],
-            Self::Png => &CAPABILITIES[12],
-            Self::Rustdoc => &CAPABILITIES[13],
-            Self::ShellCompletions => &CAPABILITIES[14],
-            Self::Svg => &CAPABILITIES[15],
-            Self::SystemClock => &CAPABILITIES[16],
-            Self::SystemRandom => &CAPABILITIES[17],
-            Self::SystemTimezone => &CAPABILITIES[18],
-            Self::SystemTiming => &CAPABILITIES[19],
+            Self::EmbeddedFonts => &CAPABILITIES[3],
+            Self::Icons => &CAPABILITIES[4],
+            Self::Jpeg => &CAPABILITIES[5],
+            Self::LayoutCytoscape => &CAPABILITIES[6],
+            Self::LayoutElk => &CAPABILITIES[7],
+            Self::Markdown => &CAPABILITIES[8],
+            Self::Math => &CAPABILITIES[9],
+            Self::NetworkIcons => &CAPABILITIES[10],
+            Self::ParallelMarkdown => &CAPABILITIES[11],
+            Self::Pdf => &CAPABILITIES[12],
+            Self::Png => &CAPABILITIES[13],
+            Self::Rustdoc => &CAPABILITIES[14],
+            Self::ShellCompletions => &CAPABILITIES[15],
+            Self::Svg => &CAPABILITIES[16],
+            Self::SystemClock => &CAPABILITIES[17],
+            Self::SystemRandom => &CAPABILITIES[18],
+            Self::SystemTimezone => &CAPABILITIES[19],
+            Self::SystemTiming => &CAPABILITIES[20],
         }
     }
 }
@@ -612,6 +617,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Expose parser-backed editor intelligence APIs.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::EmbeddedFonts,
+        id: "embedded-fonts",
+        kind: "engine",
+        description: "Decode caller-supplied theme font resources and prepare native text layout.",
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {
         key: CapabilityKey::Icons,

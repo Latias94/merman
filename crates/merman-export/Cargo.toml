@@ -19,6 +19,7 @@ artifact-profile-required = true
 
 [features]
 default = []
+embedded-fonts = ["merman-render?/embedded-fonts"]
 png = [
     "dep:sha2",
     "dep:cssparser",

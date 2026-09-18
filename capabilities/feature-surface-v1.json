@@ -116,6 +116,17 @@
       }
     },
     {
+      "id": "embedded-fonts",
+      "kind": "engine",
+      "description": "Decode caller-supplied theme font resources and prepare native text layout.",
+      "targets": ["native", "web", "typst"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Compiling an embedded-font resource returns a typed missing-capability error when the capability is absent; resource-free typography and lossless recipe transport remain available."
+      }
+    },
+    {
       "id": "math",
       "kind": "engine",
       "description": "Render Mermaid math labels with the selected math engine.",

@@ -111,6 +111,7 @@ internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilit
     MermanBindingCapabilitySpec("analysis", listOf()),
     MermanBindingCapabilitySpec("ascii", listOf()),
     MermanBindingCapabilitySpec("editor", listOf()),
+    MermanBindingCapabilitySpec("embedded-fonts", listOf("svg")),
     MermanBindingCapabilitySpec("icons", listOf()),
     MermanBindingCapabilitySpec("jpeg", listOf()),
     MermanBindingCapabilitySpec("layout-cytoscape", listOf("svg")),

@@ -3212,6 +3212,7 @@ mod tests {
             );
         }
         for (capability_id, expected) in [
+            ("embedded-fonts", cfg!(feature = "embedded-fonts")),
             ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
             ("layout-elk", cfg!(feature = "layout-elk")),
             ("math", cfg!(feature = "math")),

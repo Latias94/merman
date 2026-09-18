@@ -4700,6 +4700,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             .as_array()
             .unwrap();
         for (capability_id, expected) in [
+            ("embedded-fonts", cfg!(feature = "embedded-fonts")),
             ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
             ("layout-elk", cfg!(feature = "layout-elk")),
             ("math", cfg!(feature = "math")),

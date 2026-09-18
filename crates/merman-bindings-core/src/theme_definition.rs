@@ -115,7 +115,10 @@ pub fn compile_theme_definition_json_with(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, BindingError> {
-    compile_theme_definition_json_with_renderer(compiler, bytes)
+    let compiler = compiler
+        .clone()
+        .with_embedded_fonts_allowed(cfg!(feature = "embedded-fonts"));
+    compile_theme_definition_json_with_renderer(&compiler, bytes)
         .map_err(|error| definition_compile_error(compiler.resource_policy(), error))
 }
 

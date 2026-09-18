@@ -195,10 +195,12 @@ fn flowchart_node_radius_theme(family: DiagramFamilyId, radius: f32) -> DiagramT
         .expect("compile Flowchart Node radius theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn flowchart_node_label_font_stack_theme(family: DiagramFamilyId) -> DiagramTheme {
     flowchart_node_label_font_stack_theme_with_base(family, None)
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn base_typography_theme(family: DiagramFamilyId) -> DiagramTheme {
     let latin = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -228,6 +230,7 @@ fn base_typography_theme(family: DiagramFamilyId) -> DiagramTheme {
         .expect("compile Flowchart base typography theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn flowchart_node_label_font_stack_theme_with_base(
     family: DiagramFamilyId,
     base_font_stack: Option<FontStack>,
@@ -235,6 +238,7 @@ fn flowchart_node_label_font_stack_theme_with_base(
     flowchart_node_label_typography_theme(family, base_font_stack, None, None)
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn flowchart_node_label_font_stack_and_size_theme_with_base(
     family: DiagramFamilyId,
     base_font_size_px: Option<f32>,
@@ -264,6 +268,7 @@ fn flowchart_node_label_font_size_theme_without_catalog(family: DiagramFamilyId)
         .expect("compile Flowchart NodeLabel font-size theme without a font catalog")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn flowchart_node_label_typography_theme(
     family: DiagramFamilyId,
     base_font_stack: Option<FontStack>,
@@ -667,10 +672,12 @@ fn unknown_fallback_contributions_are_always_portability_residuals() {
     ));
 }
 
+#[cfg(feature = "embedded-fonts")]
 struct RejectingTextLayoutBackend {
     identity: crate::text::TextLayoutBackendIdentity,
 }
 
+#[cfg(feature = "embedded-fonts")]
 impl crate::text::TextLayoutBackend for RejectingTextLayoutBackend {
     fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
         &self.identity
@@ -689,6 +696,7 @@ impl crate::text::TextLayoutBackend for RejectingTextLayoutBackend {
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn custom_catalog_preparation_failure_uses_the_native_catalog_fallback() {
     let bytes = include_bytes!(concat!(
@@ -2328,6 +2336,7 @@ fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
     );
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn require_portable_accepts_flowchart_and_swimlane_node_label_typography_after_emission() {
     for (family, source) in [
@@ -2406,6 +2415,7 @@ A[Alpha]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn require_portable_accepts_flowchart_and_swimlane_base_typography_after_terminal_svg() {
     for (family, source) in [
@@ -2486,6 +2496,7 @@ A[Alpha] -->|message| B[Beta]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_base_typography_is_not_applied_when_every_label_has_a_typed_local_owner() {
     for (family, source) in [
@@ -2568,6 +2579,7 @@ A[Alpha]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_diagram_title_keeps_unshadowed_base_font_stack_applicable() {
     for (family, source) in [
@@ -2699,6 +2711,7 @@ A["<span style='font-size:31px'>Alpha</span>"]
     assert!(rendered.style_report().theme_residuals().is_empty());
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_base_typography_remains_applied_when_an_unshadowed_label_occurrence_exists() {
     for (family, source) in [
@@ -2767,6 +2780,7 @@ A[测试]:::local --> B[Base]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn explicit_site_and_source_base_typography_outranks_flowchart_and_swimlane_typed_values() {
     const FLOWCHART_SOURCE: &str = r#"---
@@ -2886,6 +2900,7 @@ A[测试] -->|测试| B[测试]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn require_portable_accepts_sequence_base_typography_after_terminal_svg() {
     const SOURCE: &str = r#"sequenceDiagram
@@ -3028,6 +3043,7 @@ end
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn sequence_role_local_font_owner_does_not_fall_back_to_the_typed_family_stack() {
     const SOURCE: &str = r#"sequenceDiagram
@@ -3183,6 +3199,7 @@ fn sequence_oversized_base_font_stack_remains_direct_through_the_terminal_writer
     assert!(rendered.style_report().theme_residuals().is_empty());
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn sequence_theme_variable_font_size_is_not_promoted_to_a_runtime_owner() {
     const SOURCE: &str = r#"sequenceDiagram
@@ -3248,6 +3265,7 @@ Note over A,B: Note
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn typed_node_label_font_stack_outranks_legacy_base_typography() {
     for (family, source) in [
@@ -3321,6 +3339,7 @@ A[Alpha]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn typed_node_label_font_size_outranks_legacy_base_typography() {
     for (family, source) in [
@@ -3382,6 +3401,7 @@ A[Alpha]
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_source_and_explicit_config_own_node_label_font_stack_precedence() {
     let theme = flowchart_node_label_font_stack_theme(DiagramFamilyId::FLOWCHART);
@@ -3453,6 +3473,7 @@ A[测试]:::local
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_source_and_explicit_config_own_only_node_label_font_size_precedence() {
     let theme =
@@ -3522,6 +3543,7 @@ A[Alpha]:::local
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_node_label_typography_rejects_unprepared_label_modes() {
     let theme =
@@ -3644,6 +3666,7 @@ A[Alpha]
     ));
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_node_without_label_makes_typed_typography_not_applicable() {
     let theme =
@@ -3698,6 +3721,7 @@ A@{ shape: start }
     assert!(rendered.style_report().theme_residuals().is_empty());
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_escaped_font_size_is_not_a_node_label_override() {
     let theme =
@@ -3783,6 +3807,7 @@ A[Alpha]:::local
     );
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_uppercase_font_size_is_not_a_node_label_override() {
     let theme =
@@ -3839,6 +3864,7 @@ A[Alpha]:::local
     );
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn flowchart_entity_authored_unicode_space_consumes_typed_node_label_typography() {
     let theme =
@@ -10752,6 +10778,7 @@ fn prepare_with_layout_work_limit(
     prepare(parsed, &LayoutOptions::default(), session)
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn prepare_with_prepared_text_retained_limit(
     source: &str,
     max_prepared_text_retained_bytes: Option<usize>,
@@ -10889,6 +10916,7 @@ fn session_report_accounts_for_every_metered_layout_family() {
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn prepared_text_retained_budget_has_an_exact_family_boundary() {
     let cases = [
@@ -10938,6 +10966,7 @@ fn prepared_text_retained_budget_has_an_exact_family_boundary() {
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn invalidated_resvg_output_releases_prepared_text_evidence_and_reservations() {
     let artifact = prepare_with_prepared_text_retained_limit(
@@ -10963,6 +10992,7 @@ fn invalidated_resvg_output_releases_prepared_text_evidence_and_reservations() {
     assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn sealed_resvg_output_shares_the_prepared_text_reservation_lease() {
     let artifact = prepare_with_prepared_text_retained_limit(
@@ -10990,6 +11020,7 @@ fn sealed_resvg_output_shares_the_prepared_text_reservation_lease() {
     assert_eq!(report.family_id(), DiagramFamilyId::FLOWCHART);
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn raw_svg_completion_discards_the_prepared_text_reservation_lease() {
     let artifact = prepare_with_prepared_text_retained_limit(
@@ -11261,6 +11292,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
     assert!(visible_text.contains("edgesemanticowner"), "{visible_text}");
 }
 
+#[cfg(feature = "embedded-fonts")]
 #[test]
 fn custom_catalog_swimlane_group_title_prepares_plain_markdown_and_rejects_complex_markdown() {
     let bytes = include_bytes!(concat!(

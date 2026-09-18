@@ -1,16 +1,20 @@
 #![cfg(feature = "svg")]
 
+use merman::svg::{DiagramTheme, SvgPipeline, ThemePortabilityRequirement};
+#[cfg(feature = "embedded-fonts")]
 use merman::svg::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
-    FontEmbeddingRequirement, FontStack, Specified, SvgPipeline, TextStylePatch, ThemeAssets,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeVariant,
+    DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
+    FontEmbeddingRequirement, FontStack, Specified, TextStylePatch, ThemeAssets, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
+#[cfg(feature = "embedded-fonts")]
+use merman::{DiagramFamilyId, Engine, MermaidConfig};
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
-    Renderer, SvgEnvironment, SvgOutput, SvgRequest, ThemeEvidenceStatus,
+    OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgOutput, SvgRequest,
+    ThemeEvidenceStatus,
 };
 
+#[cfg(feature = "embedded-fonts")]
 fn edge_label_typography_styles_with_font_stack(
     family: DiagramFamilyId,
     font_family: &str,
@@ -47,10 +51,12 @@ fn edge_label_typography_styles_with_font_stack(
         )
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn edge_label_typography_theme(family: DiagramFamilyId) -> DiagramTheme {
     edge_label_typography_theme_with_font_stack(family, "Excalifont")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn edge_label_typography_theme_with_font_stack(
     family: DiagramFamilyId,
     edge_font_family: &str,
@@ -132,6 +138,7 @@ fn render_with_renderer(
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn edge_label_text_styles(svg: &str) -> Vec<String> {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG XML");
     document
@@ -175,6 +182,7 @@ fn edge_label_text_content(svg: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn assert_typed_edge_label_style(output: &SvgOutput) {
     let styles = edge_label_text_styles(output.svg());
     assert!(
@@ -192,6 +200,7 @@ fn assert_typed_edge_label_style(output: &SvgOutput) {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn typed_edge_label_typography_is_verified_for_flowchart_and_swimlane() {
     for (family, source) in [
         (
@@ -236,6 +245,7 @@ A -->|typed edge label| B
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn source_and_config_shadow_edge_label_typography_per_facet() {
     let source_font_size = render(
         r#"---
@@ -324,6 +334,7 @@ A -->|typed edge label| B
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn edge_label_typography_is_satisfied_without_edge_labels() {
     let output = render(
         r#"---
@@ -346,6 +357,7 @@ A --> B
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn html_edge_labels_fail_closed_before_a_prepared_token_exists() {
     let error = render(
         "flowchart LR\nA@{ shape: start }\nB@{ shape: stop }\nA -->|HTML edge label| B\n",
@@ -361,6 +373,7 @@ fn html_edge_labels_fail_closed_before_a_prepared_token_exists() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn one_markdown_edge_label_cannot_be_hidden_by_a_verified_plain_label() {
     let source = r#"---
 config:

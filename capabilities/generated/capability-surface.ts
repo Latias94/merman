@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0fb024801c" as const;
 
 export const TARGETS = [
   {
@@ -50,6 +50,19 @@ export const CAPABILITIES = [
       "web"
     ],
     "implications": []
+  },
+  {
+    "id": "embedded-fonts",
+    "kind": "engine",
+    "description": "Decode caller-supplied theme font resources and prepare native text layout.",
+    "targets": [
+      "native",
+      "typst",
+      "web"
+    ],
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "icons",
@@ -537,6 +550,7 @@ export const CAPABILITY_IDS = [
   "analysis",
   "ascii",
   "editor",
+  "embedded-fonts",
   "icons",
   "jpeg",
   "layout-cytoscape",

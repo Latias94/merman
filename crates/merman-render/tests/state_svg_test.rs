@@ -4,11 +4,15 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontAssetSpec, FontCatalogSpec,
-    FontEmbeddingRequirement, FontStack, GenericFontFamily, OrdinalSelector, Specified,
-    TextStylePatch, ThemeAssets, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, OrdinalSelector, Specified,
+    TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
     ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy, ThemeRule,
     ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+};
+#[cfg(feature = "embedded-fonts")]
+use merman_render::diagram_theme::{
+    FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontStack, GenericFontFamily,
+    ThemeAssets,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -687,6 +691,7 @@ fn state_note_radius_theme(radius: Specified<f32>) -> DiagramTheme {
         .expect("compile State note radius theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn state_prepared_transition_label_theme(font_size_px: f32) -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -722,6 +727,7 @@ fn state_prepared_transition_label_theme(font_size_px: f32) -> DiagramTheme {
         .expect("compile prepared State transition label theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn state_prepared_native_label_theme(font_size_px: f32) -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -3499,6 +3505,7 @@ fn state_transition_stroke_follows_source_backed_theme_ownership() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn prepared_state_transition_labels_share_layout_background_and_baseline_geometry() {
     let source = "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nA --> B: Agjp";
     let mut heights = Vec::new();
@@ -3628,6 +3635,7 @@ fn prepared_state_transition_labels_share_layout_background_and_baseline_geometr
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn prepared_state_native_labels_share_one_explicit_baseline_contract() {
     const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
 stateDiagram-v2

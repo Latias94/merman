@@ -10,8 +10,10 @@ use crate::diagram_theme::{
 use crate::math::{ConfiguredMathBackend, MathRenderer};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
+#[cfg(feature = "embedded-fonts")]
+use crate::text::NativeTextLayoutBackend;
 use crate::text::{
-    DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, PreparedTextLayout,
+    DeterministicTextMeasurer, PrepareCatalogRequest, PreparedTextLayout,
     PreparedTextLayoutBuilder, PreparedTextLayoutReport, TextLayoutBackend, TextLayoutError,
     TextLayoutFailure, TextMeasurer, TextMetrics, TextStyle, WrapMode, append_text_width_em,
     estimate_text_width_em, is_html_collapsible_ascii_whitespace,
@@ -1668,7 +1670,7 @@ fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
 #[derive(Clone)]
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
-    text_layout_backend: ConfiguredTextLayoutBackend,
+    text_layout_backend: Option<ConfiguredTextLayoutBackend>,
     capability_policy: RenderCapabilityPolicy,
     math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
@@ -1684,6 +1686,7 @@ pub struct RenderEnvironment {
 
 #[derive(Clone)]
 enum ConfiguredTextLayoutBackend {
+    #[cfg(feature = "embedded-fonts")]
     BuiltinNative(NativeTextLayoutBackend),
     External(Arc<dyn TextLayoutBackend>),
 }
@@ -1691,6 +1694,7 @@ enum ConfiguredTextLayoutBackend {
 impl ConfiguredTextLayoutBackend {
     fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
         match self {
+            #[cfg(feature = "embedded-fonts")]
             Self::BuiltinNative(backend) => backend.identity(),
             Self::External(backend) => backend.identity(),
         }
@@ -1698,6 +1702,7 @@ impl ConfiguredTextLayoutBackend {
 
     fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
         match self {
+            #[cfg(feature = "embedded-fonts")]
             Self::BuiltinNative(backend) => backend.capabilities(),
             Self::External(backend) => backend.capabilities(),
         }
@@ -1708,13 +1713,18 @@ impl ConfiguredTextLayoutBackend {
         request: &PrepareCatalogRequest,
     ) -> Result<crate::text::PreparedTextLayoutResponse, TextLayoutError> {
         match self {
+            #[cfg(feature = "embedded-fonts")]
             Self::BuiltinNative(backend) => backend.prepare_catalog(request),
             Self::External(backend) => backend.prepare_catalog(request),
         }
     }
 
     const fn is_builtin_native(&self) -> bool {
-        matches!(self, Self::BuiltinNative(_))
+        match self {
+            #[cfg(feature = "embedded-fonts")]
+            Self::BuiltinNative(_) => true,
+            Self::External(_) => false,
+        }
     }
 }
 
@@ -1764,9 +1774,12 @@ impl RenderEnvironment {
     pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::deterministic(),
-            text_layout_backend: ConfiguredTextLayoutBackend::BuiltinNative(
+            #[cfg(feature = "embedded-fonts")]
+            text_layout_backend: Some(ConfiguredTextLayoutBackend::BuiltinNative(
                 NativeTextLayoutBackend::default(),
-            ),
+            )),
+            #[cfg(not(feature = "embedded-fonts"))]
+            text_layout_backend: None,
             capability_policy: RenderCapabilityPolicy::unrestricted(),
             math_backend: default_math_backend(),
             icon_registry: None,
@@ -1798,7 +1811,7 @@ impl RenderEnvironment {
     /// The external backend contract remains crate-private until its C4b assurance boundary is
     /// complete. Production environments use the built-in operation-local `rustybuzz` backend.
     pub(crate) fn with_text_layout_backend(mut self, backend: Arc<dyn TextLayoutBackend>) -> Self {
-        self.text_layout_backend = ConfiguredTextLayoutBackend::External(backend);
+        self.text_layout_backend = Some(ConfiguredTextLayoutBackend::External(backend));
         self
     }
 
@@ -2091,6 +2104,9 @@ impl RenderEnvironment {
             return (None, None);
         }
 
+        let Some(backend) = &self.text_layout_backend else {
+            return (None, Some(TextLayoutError::BackendRejected));
+        };
         let request = PrepareCatalogRequest::new(
             catalog.clone(),
             resolved_resources.font_source_policy().clone(),
@@ -2102,12 +2118,12 @@ impl RenderEnvironment {
         let mut deferred_host_response = None;
         let mut terminal_error = None;
 
-        match self.text_layout_backend.prepare_catalog(&request) {
+        match backend.prepare_catalog(&request) {
             Ok(response) => {
-                if self.text_layout_backend.is_builtin_native() {
+                if backend.is_builtin_native() {
                     match builder.admit_portable_response(
-                        self.text_layout_backend.identity(),
-                        self.text_layout_backend.capabilities(),
+                        backend.identity(),
+                        backend.capabilities(),
                         response,
                         None,
                     ) {
@@ -2121,8 +2137,8 @@ impl RenderEnvironment {
                     let deferred = response.clone();
                     let mut probe = PreparedTextLayoutBuilder::new(request.clone());
                     match probe.admit_host_dependent_response(
-                        self.text_layout_backend.identity(),
-                        self.text_layout_backend.capabilities(),
+                        backend.identity(),
+                        backend.capabilities(),
                         response,
                         ThemePortabilityRequirement::BestEffort,
                     ) {
@@ -2142,6 +2158,9 @@ impl RenderEnvironment {
 
         for fallback in fallback_policy.priority() {
             match fallback {
+                #[cfg(not(feature = "embedded-fonts"))]
+                HostMeasurementFallback::NativeCatalog => {}
+                #[cfg(feature = "embedded-fonts")]
                 HostMeasurementFallback::NativeCatalog => {
                     let native = NativeTextLayoutBackend::default();
                     if builder.has_backend(native.identity()) {
@@ -2170,8 +2189,8 @@ impl RenderEnvironment {
                         continue;
                     };
                     if let Err(error) = builder.admit_host_dependent_response(
-                        self.text_layout_backend.identity(),
-                        self.text_layout_backend.capabilities(),
+                        backend.identity(),
+                        backend.capabilities(),
                         response,
                         portability,
                     ) {
@@ -4174,6 +4193,7 @@ mod tests {
         assert_eq!(released_report.layout_work_units(), 0);
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn embedded_font_theme() -> DiagramTheme {
         let bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -4192,6 +4212,7 @@ mod tests {
             .expect("embedded font theme should compile")
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn resource_rich_theme() -> DiagramTheme {
         let bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -4262,10 +4283,12 @@ mod tests {
     }
 
     #[derive(Default)]
+    #[cfg(feature = "embedded-fonts")]
     struct PrepareMustNotRunBackend {
         native: crate::text::NativeTextLayoutBackend,
     }
 
+    #[cfg(feature = "embedded-fonts")]
     impl crate::text::TextLayoutBackend for PrepareMustNotRunBackend {
         fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
             self.native.identity()
@@ -4283,12 +4306,14 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     struct CachedPreparedBackend {
         identity: crate::text::TextLayoutBackendIdentity,
         capabilities: crate::text::TextLayoutCapabilities,
         response: crate::text::PreparedTextLayoutResponse,
     }
 
+    #[cfg(feature = "embedded-fonts")]
     impl crate::text::TextLayoutBackend for CachedPreparedBackend {
         fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
             &self.identity
@@ -4307,6 +4332,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn themed_session_rejects_a_font_policy_without_an_allowed_intersection() {
         let environment_theme = embedded_font_theme();
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
@@ -4329,6 +4355,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn themed_session_intersects_environment_and_compiled_theme_policies() {
         let theme = embedded_font_theme();
         let environment = RenderEnvironment::deterministic()
@@ -4501,6 +4528,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn unthemed_session_preserves_environment_font_resources() {
         let environment_theme = embedded_font_theme();
         let catalog = environment_theme.font_catalog().clone();
@@ -4547,6 +4575,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn unthemed_session_revalidates_custom_font_catalog_before_text_preparation() {
         let catalog = embedded_font_theme().font_catalog().clone();
         let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
@@ -4572,6 +4601,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn cancelled_control_preempts_retained_resource_validation_and_text_preparation() {
         let catalog = embedded_font_theme().font_catalog().clone();
         let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
@@ -4597,6 +4627,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn expired_deadline_preempts_themed_resource_validation_and_text_preparation() {
         let theme = resource_rich_theme();
         let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
@@ -4690,6 +4721,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn themed_session_revalidates_retained_font_resources_before_text_preparation() {
         let theme = resource_rich_theme();
         let catalog = theme.font_catalog();
@@ -4758,6 +4790,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn themed_session_revalidates_retained_effect_resources_before_text_preparation() {
         let theme = resource_rich_theme();
         let cases = [
@@ -4808,6 +4841,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn assert_theme_resource_rejected_before_text_preparation(
         theme: &DiagramTheme,
         limit: crate::diagram_theme::ThemeResourceLimitId,
@@ -4838,6 +4872,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn mismatched_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {
         let requested = embedded_font_theme().font_catalog().clone();
         let other_bytes = include_bytes!(concat!(
@@ -4867,6 +4902,7 @@ mod tests {
         (requested, cached)
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn matching_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {
         let requested = embedded_font_theme().font_catalog().clone();
         let native = crate::text::NativeTextLayoutBackend::default();
@@ -4886,6 +4922,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn invalid_host_catalog_binding_falls_back_to_the_native_catalog() {
         let (requested, cached) = mismatched_catalog_backend();
 
@@ -4924,6 +4961,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn external_prepared_backend_is_host_dependent_only_after_actual_use() {
         let (requested, cached) = matching_catalog_backend();
         let session = RenderEnvironment::deterministic()
@@ -4961,6 +4999,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn portable_sessions_reject_external_prepared_backends() {
         let (requested, cached) = matching_catalog_backend();
         let session = RenderEnvironment::deterministic()
@@ -4982,6 +5021,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn invalid_host_catalog_binding_is_retained_when_fallbacks_are_disabled() {
         let (requested, cached) = mismatched_catalog_backend();
         let session = RenderEnvironment::deterministic()
@@ -4999,6 +5039,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn custom_catalog_does_not_hijack_the_legacy_host_measurer() {
         let catalog = embedded_font_theme().font_catalog().clone();
         let host_calls = Arc::new(AtomicUsize::new(0));

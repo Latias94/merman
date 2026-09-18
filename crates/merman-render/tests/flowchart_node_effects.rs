@@ -1105,10 +1105,12 @@ fn edge_glow_rejects_generated_ancestor_filter_and_geometry_overrides() {
     }
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn text_glow_theme(targets: &[ThemeTarget]) -> DiagramTheme {
     text_glow_theme_with_rules(targets, ThemeRuleSet::default())
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn text_glow_theme_with_rules(targets: &[ThemeTarget], rules: ThemeRuleSet) -> DiagramTheme {
     text_glow_theme_for(targets, rules, true)
 }
@@ -1164,6 +1166,7 @@ fn text_glow_theme_for(
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn native_label_glow_filters_text_without_its_background_or_shapes() {
     let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
     let rendered = render(
@@ -1225,6 +1228,7 @@ fn html_label_glow_retains_a_residual_without_filtering_the_background() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
     let targets = [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel];
     let mut clear = ThemeStylePatch::default();
@@ -1338,6 +1342,7 @@ fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn native_label_glow_rejects_unmeasured_structural_styles() {
     let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
     for declaration in ["font-weight:800", "stroke-width:20px", "transform:scale(2)"] {
@@ -1358,6 +1363,7 @@ fn native_label_glow_rejects_unmeasured_structural_styles() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn native_label_glow_keeps_shape_only_source_strokes_separate() {
     let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
     let rendered = render("flowchart LR\nA[Alpha] -->|Advance| B[Beta]\nstyle A stroke-width:4px\nlinkStyle 0 stroke-width:3px", &theme, "classic", true).unwrap();
@@ -1389,6 +1395,7 @@ fn label_glow_without_native_ink_bounds_retains_a_residual() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn special_node_label_placement_keeps_its_effect_residual() {
     let theme = text_glow_theme(&[ThemeTarget::NodeLabel]);
     let source = "flowchart LR\nA[/Alpha/]";

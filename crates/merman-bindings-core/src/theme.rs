@@ -235,6 +235,10 @@ pub(crate) fn compile_theme_with(
     let Some(selection) = selection else {
         return Ok(None);
     };
+    // Cargo may unify the renderer with a richer sibling artifact. Binding-core owns its leaf.
+    let compiler = compiler
+        .clone()
+        .with_embedded_fonts_allowed(cfg!(feature = "embedded-fonts"));
     let selection = match selection {
         BindingThemeOptionsJson::Recipe(recipe) => {
             return compiler
@@ -272,6 +276,12 @@ pub(crate) fn compile_theme_with(
 
 pub(crate) fn theme_compile_error(error: merman::svg::ThemeCompileError) -> BindingError {
     match error {
+        merman::svg::ThemeCompileError::FontCatalog(
+            merman::svg::FontCatalogError::EmbeddedFontsUnavailable,
+        ) => BindingError::missing_capability(
+            "embedded-fonts",
+            "embedded theme fonts are not enabled by this artifact",
+        ),
         merman::svg::ThemeCompileError::ResourceLimit(error)
         | merman::svg::ThemeCompileError::FontCatalog(
             merman::svg::FontCatalogError::ResourceLimit(error),
@@ -285,6 +295,12 @@ pub(crate) fn theme_definition_compile_error(
     error: merman::svg::ThemeCompileError,
 ) -> BindingError {
     match error {
+        merman::svg::ThemeCompileError::FontCatalog(
+            merman::svg::FontCatalogError::EmbeddedFontsUnavailable,
+        ) => BindingError::missing_capability(
+            "embedded-fonts",
+            "embedded theme fonts are not enabled by this artifact",
+        ),
         merman::svg::ThemeCompileError::ResourceLimit(error)
         | merman::svg::ThemeCompileError::FontCatalog(
             merman::svg::FontCatalogError::ResourceLimit(error),

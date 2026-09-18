@@ -31,6 +31,11 @@ const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
 const COMPILED_SVG_CAPABILITY_BITS: u64 = 0;
 
 const COMPILED_CAPABILITY_BITS: u64 = COMPILED_SVG_CAPABILITY_BITS
+    | if cfg!(feature = "embedded-fonts") {
+        CapabilityKey::EmbeddedFonts.compact_bit()
+    } else {
+        0
+    }
     | if cfg!(feature = "analysis") {
         CapabilityKey::Analysis.compact_bit()
     } else {

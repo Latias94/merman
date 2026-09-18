@@ -372,8 +372,11 @@ impl ValidatedArtifactContract {
         &self,
         policy: &merman::svg::ThemeResourcePolicy,
     ) -> Result<Vec<u8>, BindingError> {
-        let compiler =
-            merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy.clone());
+        let compiler = merman::svg::DiagramThemeCompiler::new()
+            .with_resource_policy(policy.clone())
+            .with_embedded_fonts_allowed(
+                self.exposes_capability(crate::CapabilityKey::EmbeddedFonts),
+            );
         self.metadata_json_with_theme_compiler(MetadataKey::ThemeCatalog.id(), &compiler)
     }
 
@@ -1127,6 +1130,10 @@ mod tests {
         let capabilities = full_native_contract().runtime_capabilities();
 
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            capabilities.has_capability("embedded-fonts"),
+            cfg!(feature = "embedded-fonts")
+        );
         assert_eq!(
             capabilities.has_capability("analysis"),
             cfg!(feature = "analysis")

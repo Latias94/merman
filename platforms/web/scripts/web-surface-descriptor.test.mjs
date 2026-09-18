@@ -31,9 +31,9 @@ test("checked-in Web descriptor owns one capability-complete default package gra
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["analysis", "ascii", "editor", "embedded-fonts", "layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["analysis", "ascii", "editor", "embedded-fonts", "layout-cytoscape", "layout-elk", "math", "svg"],
+    runtimeIds: ["analysis", "ascii", "editor", "embedded-fonts", "layout-cytoscape", "layout-elk", "math", "svg"],
     outputs: ["ascii", "svg"],
   });
   assertPackageContract("render", {

@@ -2532,20 +2532,25 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    #[cfg(feature = "embedded-fonts")]
     use crate::DiagramFamilyId;
+    #[cfg(feature = "embedded-fonts")]
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontSourcePolicy,
         FontStack, Specified, TextStylePatch, TextTransform, ThemeAssets, ThemeRule, ThemeRuleSet,
         ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     };
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    #[cfg(feature = "embedded-fonts")]
     use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
     use crate::math::MathRenderer;
+    #[cfg(feature = "embedded-fonts")]
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-    use crate::text::{
-        NativeTextLayoutBackend, PrepareCatalogRequest, PreparedTextCssTypographyOverrides,
-        TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    };
+    #[cfg(feature = "embedded-fonts")]
+    use crate::text::NativeTextLayoutBackend;
+    #[cfg(feature = "embedded-fonts")]
+    use crate::text::{PrepareCatalogRequest, PreparedTextCssTypographyOverrides};
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
     use merman_core::MermaidConfig;
 
     use super::*;
@@ -2848,6 +2853,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_paint_bounds_require_the_prepared_source_and_metrics_style() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2913,22 +2919,26 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn native_flowchart_text_fixture() -> (PreparedTextLayout, ResolvedDiagramTheme) {
         native_flowchart_text_fixture_with_options(TextTransform::None, None)
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn native_flowchart_text_fixture_with_transform(
         transform: TextTransform,
     ) -> (PreparedTextLayout, ResolvedDiagramTheme) {
         native_flowchart_text_fixture_with_options(transform, None)
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn native_flowchart_text_fixture_with_node_label_font_size(
         font_size_px: f32,
     ) -> (PreparedTextLayout, ResolvedDiagramTheme) {
         native_flowchart_text_fixture_with_options(TextTransform::None, Some(font_size_px))
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn native_flowchart_text_fixture_with_options(
         transform: TextTransform,
         node_label_font_size_px: Option<f32>,
@@ -3074,6 +3084,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_reuses_layout_geometry_without_legacy_measurement() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3156,6 +3167,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_swimlane_title_accepts_only_equivalent_plain_markdown() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3216,6 +3228,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn node_label_font_size_drives_native_measurement_and_the_consumed_writer() {
         let (default_prepared, default_theme) = native_flowchart_text_fixture();
         let (typed_prepared, typed_theme) =
@@ -3283,6 +3296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_retention_transfers_to_the_emitted_ledger() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3408,6 +3422,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_retention_rejection_is_structured() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3456,6 +3471,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_emits_only_catalog_admitted_source_families() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3519,6 +3535,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_uses_one_source_typography_for_measurement_and_emission() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3599,6 +3616,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_stops_after_the_first_terminal_error() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3652,6 +3670,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_label_materializes_transform_and_preserves_authored_entities() {
         let (prepared, theme) =
             native_flowchart_text_fixture_with_transform(TextTransform::Uppercase);
@@ -3703,6 +3722,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_narrow_wrap_keeps_entity_source_atomic() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -3753,6 +3773,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "embedded-fonts")]
     fn native_prepared_svg_emission_consumes_only_the_emitted_label_token() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();

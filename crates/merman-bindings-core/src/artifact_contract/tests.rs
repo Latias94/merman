@@ -748,3 +748,126 @@ fn descriptor_implications_are_closed_automatically() {
     assert!(CONTRACT.exposes_capability(CapabilityKey::Svg));
     assert!(CONTRACT.exposes_capability(CapabilityKey::LayoutElk));
 }
+
+#[cfg(feature = "svg")]
+#[test]
+fn embedded_fonts_are_rejected_by_the_artifact_before_decoding_even_when_unified() {
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .materialize();
+    // Keep the WOFF2 magic valid but omit the body: capability rejection precedes decoding.
+    let spec = serde_json::json!({"assets":{"fonts":[{"id":"caller-font","format":"woff2","data_base64":"d09GMg=="}]}});
+    let selections = [
+        serde_json::json!({"spec": spec}),
+        serde_json::json!({"schema_version":1,"kind":"complete_spec","complete_spec":spec}),
+    ];
+    let source = b"flowchart LR\nA --> B";
+    let engine = CONTRACT.create_engine(b"").unwrap();
+    for selection in selections {
+        let options = serde_json::to_vec(&serde_json::json!({"theme":selection})).unwrap();
+        let once = CONTRACT
+            .execute_once(
+                crate::BindingOperationRequest::new("svg", source).with_options_json(&options),
+            )
+            .unwrap_err();
+        let overlay = engine
+            .execute(crate::BindingOperationRequest::new("svg", source).with_options_json(&options))
+            .unwrap_err();
+        let constructor = CONTRACT
+            .create_engine(&options)
+            .err()
+            .expect("font resource must be denied");
+        for error in [once, overlay, constructor] {
+            assert_eq!(
+                error.kind(),
+                crate::BindingErrorKind::MissingCapability,
+                "{}",
+                error.message()
+            );
+            assert_eq!(error.capability_id(), Some("embedded-fonts"));
+        }
+    }
+    assert!(
+        !CONTRACT
+            .runtime_capabilities()
+            .has_capability("embedded-fonts")
+    );
+
+    let maximum = merman::svg::ThemeResourcePolicy::constrained()
+        .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+        .unwrap();
+    let padding = " ".repeat(maximum);
+    let limited = format!(
+        r#"{{"resources":{{"profile":"constrained"}},"theme":{{{padding}"spec":{{"assets":{{"fonts":[{{"id":"caller-font","format":"woff2","data_base64":"d09GMg=="}}]}}}}}}}}"#
+    );
+    let once = CONTRACT
+        .execute_once(
+            crate::BindingOperationRequest::new("svg", source)
+                .with_options_json(limited.as_bytes()),
+        )
+        .unwrap_err();
+    let overlay = engine
+        .execute(
+            crate::BindingOperationRequest::new("svg", source)
+                .with_options_json(limited.as_bytes()),
+        )
+        .unwrap_err();
+    let constructor = CONTRACT
+        .create_engine(limited.as_bytes())
+        .err()
+        .expect("theme budget must be enforced");
+    for error in [once, overlay, constructor] {
+        assert_eq!(
+            error.status(),
+            crate::BindingStatus::ResourceLimitExceeded,
+            "{}",
+            error.message()
+        );
+    }
+
+    // Fine-grained theme ceilings belong to the compiler, not ordinary render resource options.
+    let compiler = merman::svg::DiagramThemeCompiler::new()
+        .with_embedded_fonts_allowed(false)
+        .with_resource_policy(
+            merman::svg::ThemeResourcePolicy::interactive()
+                .with_limit(
+                    merman::svg::ThemeResourceLimitId::MaxFontAssetCompressedBytes,
+                    1,
+                )
+                .unwrap(),
+        );
+    let error = crate::compile_theme_selection_json_with(&compiler,
+        br#"{"spec":{"assets":{"fonts":[{"id":"caller-font","format":"woff2","data_base64":"d09GMg=="}]}}}"#,
+    ).unwrap_err();
+    assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn resource_free_font_stack_remains_available_without_embedded_fonts() {
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .materialize();
+    let options = br#"{"theme":{"spec":{"typography":{"default":{"font_stack":["Example Host Font","sans-serif"]}}}}}"#;
+    let engine = CONTRACT
+        .create_engine(options)
+        .expect("font-family names do not require font bytes");
+    assert!(engine.render_svg(b"flowchart LR\nA --> B").is_ok());
+}
+
+#[cfg(all(feature = "svg", feature = "embedded-fonts"))]
+#[test]
+fn embedded_font_capability_is_explicitly_discoverable() {
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .with_supplemental_capabilities(&[CapabilityKey::EmbeddedFonts])
+            .materialize();
+    assert!(
+        CONTRACT
+            .runtime_capabilities()
+            .has_capability("embedded-fonts")
+    );
+}

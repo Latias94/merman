@@ -27,7 +27,8 @@ wasm-inputs = ["assets/zenuml"]
 
 [features]
 default = []
-fuzzing = []
+fuzzing = ["embedded-fonts"]
+embedded-fonts = ["dep:rustybuzz", "dep:ttf-parser", "dep:wuff", "dep:brotli-decompressor", "dep:unicode-script"]
 system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]
@@ -44,7 +45,7 @@ math = [
 
 [dependencies]
 base64.workspace = true
-brotli-decompressor.workspace = true
+brotli-decompressor = { workspace = true, optional = true }
 cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true
@@ -61,7 +62,7 @@ ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
 rustc-hash.workspace = true
-rustybuzz.workspace = true
+rustybuzz = { workspace = true, optional = true }
 roxmltree.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
@@ -69,14 +70,14 @@ serde_json.workspace = true
 sha2.workspace = true
 svgtypes.workspace = true
 thiserror.workspace = true
-ttf-parser.workspace = true
+ttf-parser = { workspace = true, optional = true }
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
 unicode-linebreak.workspace = true
-unicode-script.workspace = true
+unicode-script = { workspace = true, optional = true }
 unicode-segmentation.workspace = true
-wuff.workspace = true
+wuff = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }

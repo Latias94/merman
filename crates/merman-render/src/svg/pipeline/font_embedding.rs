@@ -12,7 +12,7 @@ use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontContainer,
     FontEmbeddingRequirement, FontSource, FontStyle,
 };
-#[cfg(test)]
+#[cfg(all(test, feature = "embedded-fonts"))]
 use crate::resources::ResourceLimitPhase;
 use crate::text::{
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
@@ -527,7 +527,7 @@ impl SvgFontEmbeddingPlan {
         ))
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "embedded-fonts"))]
     fn inject_with_policy(
         &mut self,
         svg: &str,
@@ -547,7 +547,7 @@ impl SvgFontEmbeddingPlan {
         })
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "embedded-fonts"))]
     fn projected_injected_svg_bytes(&self, svg: &str) -> Result<usize> {
         projected_svg_with_typed_style_bytes(svg.len(), self.projected_css_bytes()?)
     }
@@ -1088,15 +1088,19 @@ fn font_embedding_error(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "embedded-fonts")]
     use crate::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeResourcePolicy};
+    #[cfg(feature = "embedded-fonts")]
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::text::PreparedTextLabelFamily;
 
+    #[cfg(feature = "embedded-fonts")]
     const EXCALIFONT_WOFF2: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
     ));
 
+    #[cfg(feature = "embedded-fonts")]
     fn embedded_catalog(requirement: FontEmbeddingRequirement) -> FontCatalog {
         FontCatalogSpec::new([FontAssetSpec::new("excalifont", EXCALIFONT_WOFF2)])
             .with_available_sources([FontSource::Embedded])
@@ -1105,6 +1109,7 @@ mod tests {
             .expect("embedded font fixture should compile")
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn first_used_face(catalog: &FontCatalog) -> UsedFontFace {
         let face = &catalog.faces()[0];
         let asset = catalog
@@ -1118,17 +1123,17 @@ mod tests {
         }
     }
 
-    fn prepared_label_font(catalog: &FontCatalog, line_count: usize) -> PreparedLabelFont {
-        let face = &catalog.faces()[0];
+    fn prepared_label_font(line_count: usize) -> PreparedLabelFont {
         PreparedLabelFont {
-            family_name: face.family_name().to_string(),
-            style: face.style(),
-            weight: face.weight(),
-            width: face.width(),
+            family_name: "Excalifont".to_string(),
+            style: FontStyle::Normal,
+            weight: 400,
+            width: 5,
             line_count,
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn full_font_plan_uses_canonical_sfnt_bytes_and_emits_a_complete_seal() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
@@ -1155,6 +1160,7 @@ mod tests {
         assert_eq!(seal.catalog_fingerprint(), Some(catalog.fingerprint()));
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn full_font_injection_admits_exact_projected_bytes_before_materializing_css() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
@@ -1198,6 +1204,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn font_face_rule_projection_matches_escaped_css_and_base64_bytes() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
@@ -1214,6 +1221,7 @@ mod tests {
         assert_eq!(css.len(), projected);
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn non_full_font_catalog_cannot_produce_a_typed_embedding_plan() {
         for requirement in [
@@ -1229,6 +1237,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn typed_style_validation_is_exact_and_detects_payload_tampering() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
@@ -1269,10 +1278,9 @@ mod tests {
 
     #[test]
     fn wrapped_label_lines_share_one_ledger_owner_without_leaving_unsealed_text() {
-        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let family_name = catalog.faces()[0].family_name().to_string();
+        let family_name = "Excalifont";
         let label_id = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 7);
-        let label_fonts = HashMap::from([(label_id, prepared_label_font(&catalog, 2))]);
+        let label_fonts = HashMap::from([(label_id, prepared_label_font(2))]);
         let svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot; !important;font-weight:400 !important;font-style:normal !important">first</text><text id="{}" style="font-family:&quot;{}&quot; !important;font-weight:400 !important;font-style:normal !important">second</text></svg>"#,
             label_id.as_svg_line_id(0),
@@ -1355,13 +1363,12 @@ mod tests {
 
     #[test]
     fn prepared_text_tracking_propagates_nested_and_deep_content() {
-        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let family_name = catalog.faces()[0].family_name().to_string();
+        let family_name = "Excalifont";
         let outer_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 70);
         let inner_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 71);
         let label_fonts = HashMap::from([
-            (outer_label, prepared_label_font(&catalog, 1)),
-            (inner_label, prepared_label_font(&catalog, 1)),
+            (outer_label, prepared_label_font(1)),
+            (inner_label, prepared_label_font(1)),
         ]);
         let nested_svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal"><g><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal"><tspan>&#xA0;</tspan></text></g></text></svg>"#,
@@ -1377,7 +1384,7 @@ mod tests {
         );
 
         let deep_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 72);
-        let deep_fonts = HashMap::from([(deep_label, prepared_label_font(&catalog, 1))]);
+        let deep_fonts = HashMap::from([(deep_label, prepared_label_font(1))]);
         let mut deep_svg = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal">"#,
             deep_label.as_svg_id(),
@@ -1418,17 +1425,16 @@ mod tests {
             })
         );
 
-        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let face = &catalog.faces()[0];
+        let face = prepared_label_font(1);
         let label_id = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 8);
-        let label_fonts = HashMap::from([(label_id, prepared_label_font(&catalog, 1))]);
-        let wrong_weight = if face.weight() == 700 { 400 } else { 700 };
+        let label_fonts = HashMap::from([(label_id, prepared_label_font(1))]);
+        let wrong_weight = if face.weight == 700 { 400 } else { 700 };
         let wrong_weight = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:{};font-style:{}">Alpha</text></svg>"#,
             label_id.as_svg_id(),
-            face.family_name(),
+            face.family_name,
             wrong_weight,
-            face.style().id(),
+            face.style.id(),
         );
         assert_eq!(
             scan_prepared_text_coverage(&wrong_weight, &label_fonts),
@@ -1439,8 +1445,8 @@ mod tests {
         let wrong_style = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:{};font-style:italic">Alpha</text></svg>"#,
             label_id.as_svg_id(),
-            face.family_name(),
-            face.weight(),
+            face.family_name,
+            face.weight,
         );
         assert_eq!(
             scan_prepared_text_coverage(&wrong_style, &label_fonts),
@@ -1448,15 +1454,15 @@ mod tests {
             "emitted style must select the exact face retained by the ledger"
         );
 
-        let mut condensed = prepared_label_font(&catalog, 1);
+        let mut condensed = prepared_label_font(1);
         condensed.width = 3;
         let condensed_fonts = HashMap::from([(label_id, condensed)]);
         let missing_stretch = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:{};font-style:{}">Alpha</text></svg>"#,
             label_id.as_svg_id(),
-            face.family_name(),
-            face.weight(),
-            face.style().id(),
+            face.family_name,
+            face.weight,
+            face.style.id(),
         );
         assert_eq!(
             scan_prepared_text_coverage(&missing_stretch, &condensed_fonts),
@@ -1464,8 +1470,8 @@ mod tests {
             "an omitted stretch descriptor can only prove a normal-width face"
         );
         let matching_stretch = missing_stretch.replace(
-            &format!("font-style:{}", face.style().id()),
-            &format!("font-style:{};font-stretch:condensed", face.style().id()),
+            &format!("font-style:{}", face.style.id()),
+            &format!("font-style:{};font-stretch:condensed", face.style.id()),
         );
         assert_eq!(
             scan_prepared_text_coverage(&matching_stretch, &condensed_fonts),
@@ -1474,6 +1480,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn only_terminal_validation_bound_to_the_exact_plan_can_issue_a_font_seal() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);

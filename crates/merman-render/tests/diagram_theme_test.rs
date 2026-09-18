@@ -1,8 +1,11 @@
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontStack,
-    TextLayoutCapability, TextTransform, ThemeAssets, ThemeCapability, ThemePreset, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
-    theme_preset_descriptors,
+    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontStack, TextTransform, ThemeCapability,
+    ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+    TypographySpec, theme_preset_descriptors,
+};
+#[cfg(feature = "embedded-fonts")]
+use merman_render::diagram_theme::{
+    FontAssetSpec, FontCatalogSpec, TextLayoutCapability, ThemeAssets,
 };
 
 #[test]
@@ -80,6 +83,7 @@ fn built_in_presets_compile_without_selecting_layout_or_look() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn custom_catalog_implies_prepared_text_capabilities() {
     let bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),

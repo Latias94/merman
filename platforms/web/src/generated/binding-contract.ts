@@ -24,6 +24,12 @@ export const CAPABILITY_SPECS = [
     "implication_ids": []
   },
   {
+    "id": "embedded-fonts",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "icons",
     "implication_ids": []
   },

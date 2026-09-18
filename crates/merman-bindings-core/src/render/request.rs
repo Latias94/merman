@@ -853,6 +853,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn theme_portability_strict_policy_accepts_native_svg_with_embedded_font_evidence() {
         let options = crate::common::parse_options(

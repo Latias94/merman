@@ -23,6 +23,7 @@ artifact-profile-required = true
 default = []
 analysis = ["merman-bindings-core/analysis"]
 svg = ["merman-bindings-core/svg"]
+embedded-fonts = ["svg", "merman-bindings-core/embedded-fonts"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 

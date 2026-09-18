@@ -743,6 +743,7 @@ mod tests {
         HostMeasurementFallbackPolicy::new(values.iter().copied()).unwrap()
     }
 
+    #[cfg(feature = "embedded-fonts")]
     fn custom_catalog() -> FontCatalog {
         let bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -760,7 +761,7 @@ mod tests {
         admission: &ThemeAdmissionPolicy,
         requirements: &ThemeRequirements,
     ) -> Result<ResolvedThemeAdmission, ThemeAdmissionError> {
-        let catalog = custom_catalog();
+        let catalog = FontCatalog::system_fonts();
         resolve_theme_admission(
             admission,
             &FontSourcePolicy::default(),
@@ -868,6 +869,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn accept_host_dependent_remains_reachable_in_best_effort_mode() {
         let policy = ThemeAdmissionPolicy::permissive();

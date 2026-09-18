@@ -1061,6 +1061,7 @@ fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
 
 #[cfg(feature = "svg")]
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn sequence_document_seals_prepared_text_with_the_embedded_full_font() {
     const SOURCE: &str = "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Prepared message\nNote over Alice,Bob: Prepared note";
 
@@ -1313,6 +1314,7 @@ fn require_portable_svg_target_rejects_actual_host_display_measurements() {
 
 #[cfg(feature = "svg")]
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn require_portable_svg_output_retains_the_exact_target_receipt() {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),

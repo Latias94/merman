@@ -309,12 +309,12 @@ jobs:
                     "--lib preset_qualification::", command,
                 )
 
-    def test_c_theme_consumer_runs_with_svg_in_ci_and_preflight(self) -> None:
+    def test_theme_authoring_and_font_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner in (("ci.yml", "cargo nextest run"),
                              ("release-preflight.yml", "cargo test")):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
-                    "      - name: Test C ABI theme authoring consumer\n", 1,
+                    "      - name: Test theme authoring and embedded-font capability boundaries\n", 1,
                 )[1].split("\n      - name:", 1)[0]
                 self.assertNotIn("continue-on-error", step)
                 self.assertNotIn("if:", step)
@@ -325,6 +325,24 @@ jobs:
                     f"{runner} --locked -p merman-ffi --no-default-features "
                     "--features svg --test c_consumer_smoke", command,
                 )
+                self.assertIn(
+                    f"{runner} --locked -p merman-render --no-default-features "
+                    "--test theme_font_capability --test flowchart_node_effects", command,
+                )
+                self.assertIn(
+                    f"{runner} --locked -p merman-render --no-default-features "
+                    "--features embedded-fonts --test theme_font_capability", command,
+                )
+                self.assertIn(
+                    f"{runner} --locked -p merman-cli --no-default-features "
+                    "--features svg,merman-bindings-core/embedded-fonts --bin merman-cli", command,
+                )
+                self.assertIn("cli_font_capability_is_not_widened", command)
+                for features in ("svg", "svg,embedded-fonts"):
+                    self.assertIn(
+                        f"{runner} --locked -p merman-bindings-core --no-default-features "
+                        f"--features {features} --lib", command,
+                    )
 
     def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):

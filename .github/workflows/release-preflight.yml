@@ -199,11 +199,34 @@ jobs:
       - name: Verify native ABI projections
         run: cargo run --locked -p xtask -- verify-native-abi
 
-      - name: Test C ABI theme authoring consumer
+      - name: Test theme authoring and embedded-font capability boundaries
         shell: bash
         run: |
           cargo test --locked -p merman-ffi --no-default-features \
             --features svg --test c_consumer_smoke
+          cargo test --locked -p merman-render --no-default-features \
+            --test theme_font_capability --test flowchart_node_effects
+          cargo test --locked -p merman-render --no-default-features \
+            --features embedded-fonts --test theme_font_capability --test diagram_theme_test \
+            --test flowchart_node_effects --test state_svg_test --test sequence_svg_test
+          cargo test --locked -p merman-bindings-core --no-default-features \
+            --features svg --lib embedded_font
+          cargo test --locked -p merman-bindings-core --no-default-features \
+            --features svg,embedded-fonts --lib embedded_font
+          cargo test --locked -p merman --no-default-features --features svg \
+            --test theme_font_capability --test flowchart_edge_label_theme
+          cargo test --locked -p merman-cli --no-default-features \
+            --features svg,merman-bindings-core/embedded-fonts --bin merman-cli \
+            cli_font_capability_is_not_widened
+          cargo test --locked -p merman-export --no-default-features \
+            --features png,jpeg,pdf --lib
+          cargo test --locked -p merman-export --no-default-features \
+            --features png,jpeg,pdf,embedded-fonts --lib
+
+      - name: Test native theme font consumers
+        run: |
+          cargo test --locked -p merman --no-default-features --features svg,png,pdf,embedded-fonts \
+            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation
 
       - name: Test optimized theme evidence and qualification rejection
         run: |

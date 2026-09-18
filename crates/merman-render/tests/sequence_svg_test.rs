@@ -4,11 +4,13 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec,
-    FontCatalogSpec, FontStack, FontStyle, InsetsPx, OrdinalSelector, Specified,
-    TextStylePatch as ThemeTextStylePatch, ThemeAssets, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, FontStyle,
+    InsetsPx, OrdinalSelector, Specified, TextStylePatch as ThemeTextStylePatch,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
 };
+#[cfg(feature = "embedded-fonts")]
+use merman_render::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeAssets};
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -502,6 +504,7 @@ fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender
         .expect("diagram detected")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn sequence_role_typography_theme() -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -550,6 +553,7 @@ fn sequence_role_typography_theme() -> DiagramTheme {
         .expect("compile Sequence role typography theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn sequence_role_font_stack_theme() -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -589,6 +593,7 @@ fn sequence_role_font_stack_theme() -> DiagramTheme {
         .expect("compile Sequence role font-stack theme")
 }
 
+#[cfg(feature = "embedded-fonts")]
 fn sequence_excalifont_asset_theme() -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -3758,6 +3763,7 @@ fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn sequence_role_typography_is_shared_by_layout_preparation_and_terminal_svg() {
     let theme = sequence_role_typography_theme();
     let source = r#"sequenceDiagram
@@ -3936,6 +3942,7 @@ end"#;
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn sequence_role_typography_overrides_base_without_shadowing_other_roles() {
     let latin = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -4085,6 +4092,7 @@ end"#;
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn sequence_role_font_stacks_yield_to_explicit_theme_variable_font_family() {
     const SOURCE: &str = r#"sequenceDiagram
 participant Alice as Config Actor
@@ -4218,6 +4226,7 @@ end"#;
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn sequence_explicit_root_font_size_wins_over_role_typography() {
     let theme = sequence_role_typography_theme();
     let source = r#"%%{init: {"fontSize": 23}}%%
@@ -4464,53 +4473,58 @@ end"#;
         }
     }
 
-    let theme = sequence_excalifont_asset_theme();
-    let render_engine =
-        merman_render::__private::install_parse_compatibility(&theme, engine.clone());
-    let rendered = family::prepare(
-        parse_sequence_for_render(&render_engine, source),
-        &LayoutOptions::default(),
-        RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session_with_theme(&theme)
-            .expect("begin portable Sequence CSSOM font session"),
-    )
-    .expect("prepare portable Sequence CSSOM font artifact")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render portable Sequence CSSOM font SVG");
-    let document =
-        roxmltree::Document::parse(rendered.svg()).expect("valid Sequence CSSOM font SVG");
+    #[cfg(feature = "embedded-fonts")]
+    {
+        let theme = sequence_excalifont_asset_theme();
+        let render_engine =
+            merman_render::__private::install_parse_compatibility(&theme, engine.clone());
+        let rendered = family::prepare(
+            parse_sequence_for_render(&render_engine, source),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin portable Sequence CSSOM font session"),
+        )
+        .expect("prepare portable Sequence CSSOM font artifact")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render portable Sequence CSSOM font SVG");
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid Sequence CSSOM font SVG");
 
-    for (class_name, text_fragment) in [
-        ("actor-box", "CSSOM Actor"),
-        ("messageText", "CSSOM Message"),
-        ("noteText", "CSSOM Note"),
-        ("loopText", "CSSOM Loop"),
-    ] {
-        let text = document
-            .descendants()
-            .find(|node| {
-                node.has_tag_name("text")
-                    && node.attribute("class").is_some_and(|classes| {
-                        classes
-                            .split_ascii_whitespace()
-                            .any(|class| class == class_name)
-                    })
-                    && node
-                        .descendants()
-                        .filter(|descendant| descendant.is_text())
-                        .filter_map(|descendant| descendant.text())
-                        .any(|text| text.contains(text_fragment))
-            })
-            .unwrap_or_else(|| panic!("missing {class_name} text containing {text_fragment:?}"));
-        let style = text
-            .attribute("style")
-            .expect("prepared Sequence terminal text style");
-        assert_eq!(
-            inline_style_value(style, "font-family"),
-            Some("Excalifont"),
-            "prepared terminal text must use the CSSOM-effective inherited theme font"
-        );
+        for (class_name, text_fragment) in [
+            ("actor-box", "CSSOM Actor"),
+            ("messageText", "CSSOM Message"),
+            ("noteText", "CSSOM Note"),
+            ("loopText", "CSSOM Loop"),
+        ] {
+            let text = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == class_name)
+                        })
+                        && node
+                            .descendants()
+                            .filter(|descendant| descendant.is_text())
+                            .filter_map(|descendant| descendant.text())
+                            .any(|text| text.contains(text_fragment))
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing {class_name} text containing {text_fragment:?}")
+                });
+            let style = text
+                .attribute("style")
+                .expect("prepared Sequence terminal text style");
+            assert_eq!(
+                inline_style_value(style, "font-family"),
+                Some("Excalifont"),
+                "prepared terminal text must use the CSSOM-effective inherited theme font"
+            );
+        }
     }
 }
 

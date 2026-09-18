@@ -67,6 +67,20 @@ profiles because npm package identity is its capability-selection mechanism.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 
+## Embedded Font Processing
+
+The `embedded-fonts` leaf admits caller-supplied theme font bytes and enables decoding and
+native prepared text layout. It does not bundle fonts. Font-family names and resource-free
+recipes remain available without it; complete-spec wire data can still be read and forwarded.
+A font-resource compilation request without this capability returns `missing-capability`
+with capability ID `embedded-fonts`, after input resource admission.
+
+The complete `cli-release`, `c-abi-native`, `rust-all`, `rust-native-sdk`,
+`rust-bindings-core-native-sdk`, and `web-full` profiles opt in. Basic and static SVG,
+`web-render`, Typst, Node, and the default Android/Apple/Python/Flutter native packages do not.
+Their runtime catalogs describe this distinction; custom source builds can select the leaf.
+Native PNG/PDF backends retain their ordinary system-font dependencies independently.
+
 ## Admitting A Public Leaf
 
 A public leaf uses a positive kebab-case name for an observable API, output, selectable engine, environment adapter, or compiled tool command. It must have:

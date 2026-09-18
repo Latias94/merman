@@ -2444,6 +2444,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn elk_cluster_title_retains_the_exact_native_emission_binding() {
         let bytes = include_bytes!(concat!(

@@ -47,6 +47,8 @@ const TYPST_OPERATIONS: &[OperationKey] = &[
     OperationKey::Svg,
 ];
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "embedded-fonts")]
+    CapabilityKey::EmbeddedFonts,
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
@@ -250,8 +252,8 @@ fn admit_typst_operation_id(
     if operation_id.is_empty() || operation_id.len() > TYPST_OPERATION_ID_MAX_UTF8_BYTES {
         return Err(merman_bindings_core::BindingError::invalid_argument(
             format!(
-            "theme operation id must contain 1 to {TYPST_OPERATION_ID_MAX_UTF8_BYTES} UTF-8 bytes"
-        ),
+                "theme operation id must contain 1 to {TYPST_OPERATION_ID_MAX_UTF8_BYTES} UTF-8 bytes"
+            ),
         ));
     }
     let operation_id = std::str::from_utf8(operation_id).map_err(|_| {
@@ -572,6 +574,10 @@ mod tests {
             cfg!(feature = "analysis")
         );
         assert_eq!(projected.has_operation("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            projected.has_capability("embedded-fonts"),
+            cfg!(feature = "embedded-fonts")
+        );
         assert_eq!(
             projected.has_operation("materialize-theme-json"),
             cfg!(feature = "svg")

@@ -114,6 +114,7 @@ fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
 }
 
 #[test]
+#[cfg(feature = "embedded-fonts")]
 fn text_only_glow_survives_native_png_and_pdf() {
     use merman::svg::{
         FontAssetSpec, FontCatalogSpec, FontStack, ThemeAssets, ThemeTextStyle, TypographySpec,

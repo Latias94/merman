@@ -694,11 +694,13 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         BlendMode, CanvasLayer, DiagramEffectSet, DiagramThemeCompiler, EffectBinding, EffectGraph,
-        FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient, MermaidThemeCompatibility,
-        OrdinalPalette, PatternSpec, RadialGradient, StrokeLineCap, StrokeLineJoin, ThemeAssets,
-        ThemeCapability, ThemeCompileValidationError, ThemeRule, ThemeRuleSet, ThemeTarget,
-        ThemeVariant, TypographySpec,
+        GradientStop, LinearGradient, MermaidThemeCompatibility, OrdinalPalette, PatternSpec,
+        RadialGradient, StrokeLineCap, StrokeLineJoin, ThemeCapability,
+        ThemeCompileValidationError, ThemeRule, ThemeRuleSet, ThemeTarget, ThemeVariant,
+        TypographySpec,
     };
+    #[cfg(feature = "embedded-fonts")]
+    use crate::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeAssets};
 
     fn compile(spec: DiagramThemeSpec) -> super::super::ThemeRecipeFingerprint {
         DiagramThemeCompiler::new()
@@ -2295,8 +2297,9 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
-    fn resource_and_requirement_domains_change_only_their_owned_identity() {
+    fn font_resources_change_only_their_owned_identity() {
         let latin = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
@@ -2351,7 +2354,10 @@ mod tests {
             cjk_a.recipe_fingerprint(),
             "catalog resources retained by a recipe must affect recipe identity"
         );
+    }
 
+    #[test]
+    fn requirements_change_only_their_owned_identity() {
         let left = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_requirements(
@@ -2414,10 +2420,12 @@ mod tests {
         let requirements = DiagramThemeSpec::new().with_requirements(
             ThemeRequirements::new().with_required_capabilities([ThemeCapability::Opacity]),
         );
+        #[cfg(feature = "embedded-fonts")]
         let font_bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
         ));
+        #[cfg(feature = "embedded-fonts")]
         let assets = DiagramThemeSpec::new().with_assets(ThemeAssets::default().with_font_catalog(
             FontCatalogSpec::new([FontAssetSpec::new("excalifont", font_bytes)]),
         ));
@@ -2429,6 +2437,7 @@ mod tests {
             ("canvas", canvas),
             ("effects", effects),
             ("requirements", requirements),
+            #[cfg(feature = "embedded-fonts")]
             ("assets", assets),
         ] {
             assert_ne!(

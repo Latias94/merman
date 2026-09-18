@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::diagram_theme::LineHeight;
-#[cfg(test)]
+#[cfg(all(test, feature = "embedded-fonts"))]
 use crate::diagram_theme::{ThemeResourcePolicy, ThemeTypographyProperty};
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::resources::{
@@ -631,7 +631,7 @@ fn validate_source(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "embedded-fonts"))]
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;

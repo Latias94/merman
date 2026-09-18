@@ -1138,6 +1138,7 @@ mod tests {
         assert!(artifact.text_fonts_are_self_contained());
     }
 
+    #[cfg(feature = "embedded-fonts")]
     #[test]
     fn sealed_svg_retains_and_fingerprints_the_authorized_font_catalog() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
