@@ -3231,20 +3231,22 @@ mod font_resolver_tests {
         let selected_for_resolver = Arc::clone(&selected);
         let resolver = browser_like_font_resolver();
         let select_font = resolver.select_font;
-        let mut options = usvg::Options::default();
-        options.fontdb = fontdb;
-        options.font_resolver = usvg::FontResolver {
-            select_font: Box::new(move |font, fontdb| {
-                let id = select_font(font, fontdb);
-                if let Some(id) = id {
-                    selected_for_resolver
-                        .lock()
-                        .expect("selected-font recorder lock")
-                        .push(id);
-                }
-                id
-            }),
-            select_fallback: resolver.select_fallback,
+        let options = usvg::Options {
+            fontdb,
+            font_resolver: usvg::FontResolver {
+                select_font: Box::new(move |font, fontdb| {
+                    let id = select_font(font, fontdb);
+                    if let Some(id) = id {
+                        selected_for_resolver
+                            .lock()
+                            .expect("selected-font recorder lock")
+                            .push(id);
+                    }
+                    id
+                }),
+                select_fallback: resolver.select_fallback,
+            },
+            ..Default::default()
         };
 
         let svg = format!(
