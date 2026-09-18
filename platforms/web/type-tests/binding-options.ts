@@ -1,3 +1,4 @@
+import type { ThemeEffectGraph } from "../src/index.js";
 import { withResourceOptions } from "../src/runtime-core.js";
 import {
   describeThemeSupport,
@@ -184,6 +185,45 @@ const compactTypographyWithLineHeight = {
   // @ts-expect-error compact authoring typography has no portable base line-height consumer.
   line_height: "normal",
 } satisfies ThemeAuthoringTypographyV1;
+
+const srgbEffectGraph: ThemeEffectGraph = {
+  kind: "graph",
+  id: "glow",
+  color_space: "srgb",
+  primitives: [{ kind: "gaussian-blur", std_deviation: 2 }],
+};
+const linearEffectGraph: ThemeEffectGraph = {
+  ...srgbEffectGraph,
+  color_space: "linear-rgb",
+};
+const defaultEffectGraph: ThemeEffectGraph = {
+  kind: "graph",
+  id: "default-glow",
+  primitives: [],
+};
+const invalidEffectColorSpace = {
+  ...srgbEffectGraph,
+  // @ts-expect-error only the Rust wire's interpolation spaces are supported.
+  color_space: "display-p3",
+} satisfies ThemeEffectGraph;
+const nullEffectColorSpace = {
+  ...srgbEffectGraph,
+  // @ts-expect-error omission selects the default, but explicit null is invalid.
+  color_space: null,
+} satisfies ThemeEffectGraph;
+const cyberpunkExport = exportThemePreset("cyberpunk");
+if (cyberpunkExport.kind === "complete_spec") {
+  for (const effect of cyberpunkExport.complete_spec.effects ?? []) {
+    if (effect.kind === "graph") {
+      const colorSpace: "linear-rgb" | "srgb" | undefined = effect.color_space;
+      void colorSpace;
+    }
+  }
+}
+void linearEffectGraph;
+void defaultEffectGraph;
+void invalidEffectColorSpace;
+void nullEffectColorSpace;
 
 const presetExport: ThemeRecipeV1 = exportThemePreset("editor-light");
 const exportedThemeOptions: SvgBindingOptions = { theme: presetExport };

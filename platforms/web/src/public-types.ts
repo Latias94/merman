@@ -497,6 +497,8 @@ export type ThemeEffectEntry = ThemeEffectGraph | ThemeEffectBinding;
 export interface ThemeEffectGraph {
   kind: "graph";
   id: string;
+  /** Color interpolation for all primitives; defaults to linear-rgb when omitted. */
+  color_space?: "linear-rgb" | "srgb";
   primitives: ThemeEffectPrimitive[];
 }
 
