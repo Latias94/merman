@@ -74,7 +74,7 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
 }
 
 #[test]
-fn public_cyberpunk_role_fonts_survive_preset_export_and_native_rendering() {
+fn public_cyberpunk_role_fonts_and_glow_survive_preset_exchange() {
     use merman::svg::ThemePreset;
 
     let compiler = DiagramThemeCompiler::new();
@@ -86,78 +86,111 @@ fn public_cyberpunk_role_fonts_survive_preset_export_and_native_rendering() {
             .compile_recipe(serde_json::from_slice(&saved).unwrap())
             .unwrap(),
     ];
-    for orientation in ["", "horizontal"] {
-        let source = format!(
-            "xychart {orientation}\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar Sales [4, 7]"
-        );
-        let mut svgs = Vec::new();
-        #[cfg(all(feature = "png", feature = "pdf"))]
-        let mut pixels = Vec::new();
-        for theme in &themes {
-            let renderer = Renderer::new();
-            let RenderOutput::Svg(Some(output)) = renderer
-                .render(
-                    RenderRequest::svg(&source, OperationControl::new(), Default::default())
-                        .with_theme(theme.clone()),
-                )
-                .unwrap()
-            else {
-                panic!("expected SVG")
-            };
-            let xml = roxmltree::Document::parse(output.svg()).unwrap();
-            for (text, size, weight) in [
-                ("TitleProbe", "18", Some("700")),
-                ("Month", "13", None),
-                ("Count", "13", None),
-                ("Sales", "12", None),
-            ] {
-                let node = xml
+    for [title, x_title, y_title, legend] in [
+        ["TitleProbe", "Month", "Count", "Sales"],
+        ["请求统计", "月份", "数量", "销售"],
+    ] {
+        for orientation in ["", "horizontal"] {
+            let source = format!(
+                "xychart {orientation}\ntitle \"{title}\"\nx-axis \"{x_title}\" [A, B]\ny-axis \"{y_title}\" 0 --> 10\nbar \"{legend}\" [4, 7]"
+            );
+            let mut svgs = Vec::new();
+            #[cfg(all(feature = "png", feature = "pdf"))]
+            let mut pixels = Vec::new();
+            for theme in &themes {
+                let renderer = Renderer::new();
+                let RenderOutput::Svg(Some(output)) = renderer
+                    .render(
+                        RenderRequest::svg(&source, OperationControl::new(), Default::default())
+                            .with_theme(theme.clone()),
+                    )
+                    .unwrap()
+                else {
+                    panic!("expected SVG")
+                };
+                let xml = roxmltree::Document::parse(output.svg()).unwrap();
+                for (text, size, weight, sigma, alpha) in [
+                    (title, "18", Some("700"), "7.5", "0.8"),
+                    (x_title, "13", None, "5", "0.6"),
+                    (y_title, "13", None, "5", "0.6"),
+                    (legend, "12", None, "4", "0.5"),
+                ] {
+                    let node = xml
+                        .descendants()
+                        .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                        .unwrap();
+                    assert_eq!(
+                        node.attribute("font-size"),
+                        Some(size),
+                        "{orientation}/{text}"
+                    );
+                    assert_eq!(
+                        node.attribute("font-weight"),
+                        weight,
+                        "{orientation}/{text}"
+                    );
+                    assert_eq!(
+                        node.attribute("fill"),
+                        Some("#00f2ff"),
+                        "{orientation}/{text}"
+                    );
+                    let reference = node
+                        .attribute("filter")
+                        .expect("public role glow must be bound");
+                    let id = reference
+                        .strip_prefix("url(#")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let filter = xml
+                        .descendants()
+                        .find(|n| n.has_tag_name("filter") && n.attribute("id") == Some(id))
+                        .unwrap();
+                    assert_eq!(
+                        filter.attribute("color-interpolation-filters"),
+                        Some("sRGB")
+                    );
+                    let blur = filter
+                        .descendants()
+                        .find(|n| n.has_tag_name("feGaussianBlur"))
+                        .unwrap();
+                    assert_eq!(blur.attribute("stdDeviation"), Some(sigma));
+                    let flood = filter
+                        .descendants()
+                        .find(|n| n.has_tag_name("feFlood"))
+                        .unwrap();
+                    let color = format!("rgba(0, 242, 255, {alpha})");
+                    assert_eq!(flood.attribute("flood-color"), Some(color.as_str()));
+                }
+                let tick = xml
                     .descendants()
-                    .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("A"))
                     .unwrap();
                 assert_eq!(
-                    node.attribute("font-size"),
-                    Some(size),
-                    "{orientation}/{text}"
+                    tick.attribute("font-size"),
+                    Some("14"),
+                    "axis-label recipe stays unchanged"
                 );
-                assert_eq!(
-                    node.attribute("font-weight"),
-                    weight,
-                    "{orientation}/{text}"
-                );
-                assert_eq!(
-                    node.attribute("fill"),
-                    Some("#00f2ff"),
-                    "{orientation}/{text}"
-                );
+                assert!(tick.attribute("filter").is_none());
+                svgs.push(output.svg().to_owned());
+                #[cfg(all(feature = "png", feature = "pdf"))]
+                {
+                    let (width, height, buffer) = native_role_pixels(&renderer, &source, theme);
+                    assert!(
+                        buffer
+                            .chunks_exact(4)
+                            .any(|pixel| pixel[..3] == [0, 242, 255])
+                    );
+                    pixels.push((width, height, buffer));
+                }
             }
-            let tick = xml
-                .descendants()
-                .find(|node| node.has_tag_name("text") && node.text() == Some("A"))
-                .unwrap();
-            assert_eq!(
-                tick.attribute("font-size"),
-                Some("14"),
-                "axis-label recipe stays unchanged"
-            );
-            svgs.push(output.svg().to_owned());
+            assert_eq!(svgs[0], svgs[1], "{orientation}: actual exported preset");
             #[cfg(all(feature = "png", feature = "pdf"))]
-            {
-                let (width, height, buffer) = native_role_pixels(&renderer, &source, theme);
-                assert!(
-                    buffer
-                        .chunks_exact(4)
-                        .any(|pixel| pixel[..3] == [0, 242, 255])
-                );
-                pixels.push((width, height, buffer));
-            }
+            assert_eq!(
+                pixels[0], pixels[1],
+                "{orientation}: native preset exchange"
+            );
         }
-        assert_eq!(svgs[0], svgs[1], "{orientation}: actual exported preset");
-        #[cfg(all(feature = "png", feature = "pdf"))]
-        assert_eq!(
-            pixels[0], pixels[1],
-            "{orientation}: native preset exchange"
-        );
     }
 }
 
@@ -184,12 +217,24 @@ fn native_role_pixels(
         .unwrap();
     for admission in [png.admission(), pdf.admission()] {
         assert!(
-            !admission
-                .reasons()
-                .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
-            "{admission:?}; {:?}",
-            document.evidence().theme_diagnostics()
+            matches!(
+                admission.status(),
+                merman::TargetAdmissionStatus::Portable
+                    | merman::TargetAdmissionStatus::HostDependent
+            ),
+            "unexpected native admission: {admission:?}"
         );
+        for reason in [
+            merman::TargetAdmissionReason::ThemeEvidenceIncomplete,
+            merman::TargetAdmissionReason::NativeFilterReceiptMismatch,
+            merman::TargetAdmissionReason::PdfNativeFilterNotLocalized,
+        ] {
+            assert!(
+                !admission.reasons().contains(&reason),
+                "{admission:?}; {:?}",
+                document.evidence().theme_diagnostics()
+            );
+        }
     }
     assert!(pdf.bytes().starts_with(b"%PDF-"));
     let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))

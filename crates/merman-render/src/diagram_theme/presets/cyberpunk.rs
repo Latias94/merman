@@ -124,16 +124,44 @@ pub(super) fn build_recipe(
 }
 
 fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
-    for (target, size, weight) in [
-        (ThemeTarget::Title, 18.0, Some(700)),
-        (ThemeTarget::AxisTitle, 13.0, None),
-        (ThemeTarget::Legend, 12.0, None),
+    // CSS text-shadow blur radii map to half as much SVG Gaussian sigma.
+    for (target, size, weight, sigma, color) in [
+        (
+            ThemeTarget::Title,
+            18.0,
+            Some(700),
+            7.5,
+            "rgba(0, 242, 255, 0.8)",
+        ),
+        (
+            ThemeTarget::AxisTitle,
+            13.0,
+            None,
+            5.0,
+            "rgba(0, 242, 255, 0.6)",
+        ),
+        (
+            ThemeTarget::Legend,
+            12.0,
+            None,
+            4.0,
+            "rgba(0, 242, 255, 0.5)",
+        ),
     ] {
+        let effect_id = format!("cyberpunk-xy-{}-glow", target.id());
+        spec.effects
+            .get_or_insert_default()
+            .push(ThemeEffectEntryWireV1::Graph {
+                id: effect_id.clone(),
+                color_space: Some("srgb".to_owned()),
+                primitives: vec![shadow("source-graphic", sigma, color)],
+            });
         spec.styles.get_or_insert_default().push(family_rule(
             DiagramFamilyId::XY_CHART,
             target,
             ThemeStylePatchWireV1 {
                 fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color("#00f2ff".to_owned())),
+                effect: SpecifiedWireV1::Value(effect_id),
                 typography: Some(ThemeTextStylePatchWireV1 {
                     font_size_px: SpecifiedWireV1::Value(size),
                     font_weight: weight

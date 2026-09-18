@@ -344,7 +344,9 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Public XY SVG/PNG/PDF scenes meet U1 and existing axis/ordinal/ownership regressions pass.
 
-**Text glow consumer increment (2026-09-19):** The [consumer verification](../knowledge/engineering/verification/2026-09-19-xychart-text-glow-consumer.md) records static Title/AxisTitle/Legend effects, unchanged layout measurement, writer-owned placement/filter observations and actual native containment checks. A bounded one-em paint reserve is not an ink guarantee; underestimated host metrics remain rejected by native export. Public recipe wiring, multilingual browser/native scenes and U10 allocation cost remain open; this increment does not close U8.
+**Text glow consumer increment (2026-09-19):** The [consumer verification](../knowledge/engineering/verification/2026-09-19-xychart-text-glow-consumer.md) records static Title/AxisTitle/Legend effects, unchanged layout measurement, writer-owned placement/filter observations and actual native containment checks. A bounded one-em paint reserve is not an ink guarantee; underestimated host metrics remain rejected by native export. At that baseline, public recipe wiring, multilingual browser/native scenes and U10 allocation cost remained open; this increment does not close U8.
+
+**Public text glow recipe increment (2026-09-19):** The [public recipe record](../knowledge/engineering/verification/2026-09-19-cyberpunk-xy-text-glow-recipe.md) connects the three XY roles through compile_preset and recipe exchange, with English/Chinese and both orientations. Actual SVG/PNG/PDF, Chromium and PDFium observations retain text glow; native admission remains host-dependent. Catalog identity is synchronized without increasing unpublished version numbers or promoting cells. Full reference comparison, axis/tick semantics, shared font provenance and U10 costs remain open.
 
 ### U9. Qualify public recipes and migrate consumers
 
