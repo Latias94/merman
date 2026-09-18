@@ -306,6 +306,7 @@ pub(super) fn render_flowchart_svg_model(
         options.work_meter(),
     )?;
     let ctx = FlowchartRenderCtx {
+        label_effects: std::cell::OnceCell::new(),
         node_effects: std::cell::OnceCell::new(),
         edge_effects: std::cell::OnceCell::new(),
         effect_evidence,
@@ -453,6 +454,10 @@ pub(super) fn render_flowchart_svg_model(
 
     expected_effect_applications.set(
         expected_effect_applications.get()
+            + ctx
+                .label_effects
+                .get()
+                .map_or(0, |effects| effects.expected_applications())
             + ctx
                 .edge_effects
                 .get()

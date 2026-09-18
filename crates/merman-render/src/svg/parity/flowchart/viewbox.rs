@@ -360,6 +360,23 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
             .expect("edge effects are prepared once");
     }
 
+    let label_effects = super::label_effect::FlowchartLabelEffects::prepare(
+        ctx,
+        hierarchy_plan,
+        render_edges,
+        edge_path_cache,
+        theme_resource_policy,
+    )?;
+    label_effects.include_bounds(&mut |min_x, min_y, max_x, max_y| {
+        bbox_min_x = bbox_min_x.min(min_x);
+        bbox_min_y = bbox_min_y.min(min_y);
+        bbox_max_x = bbox_max_x.max(max_x);
+        bbox_max_y = bbox_max_y.max(max_y);
+    });
+    ctx.label_effects
+        .set(label_effects)
+        .expect("label effects are prepared once");
+
     // Mermaid centers the title using the pre-title `getBBox()` of the rendered root group.
     let title_anchor_x = (bbox_min_x + bbox_max_x) / 2.0;
 

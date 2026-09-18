@@ -346,6 +346,7 @@ fn render_flowchart_node_label_with_wrapper(
     } else {
         "label"
     };
+    let mut label_effect_emitted = false;
     let mut text_paint_facts = None;
     let mut html_weight_verified = true;
     let mut html_typography_statuses = (
@@ -383,6 +384,22 @@ fn render_flowchart_node_label_with_wrapper(
             fmt_display(label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
+        let effect = ctx
+            .label_effects
+            .get()
+            .and_then(|plan| plan.node(common.node_id));
+        let effect_id = effect.map(|_| {
+            format!(
+                "{}-theme-label-effect",
+                ctx.document_ids
+                    .node(common.node_id)
+                    .expect("prepared node id")
+            )
+        });
+        if let (Some(effect), Some(id)) = (effect, effect_id.as_deref()) {
+            label_effect_emitted =
+                effect.open(out, id, (label.dx, -metrics.height / 2.0 + label_dy));
+        }
         if label.label_type == "markdown" {
             write_flowchart_svg_text_markdown_wrapped_with_style(
                 out,
@@ -402,6 +419,11 @@ fn render_flowchart_node_label_with_wrapper(
                 true,
                 typed_label_fill_style.as_deref(),
             );
+        }
+        if label_effect_emitted {
+            effect
+                .expect("opened effect")
+                .close(out, ctx, effect_id.as_deref().unwrap());
         }
         out.push_str("</g></g>");
     } else {
@@ -535,6 +557,7 @@ fn render_flowchart_node_label_with_wrapper(
     let typography_applicable =
         flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels);
     super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+        .with_effect_reach(typography_applicable, label_effect_emitted)
         .with_font_weight_reach(
             typography_applicable,
             html_weight_verified && label_weight_is_verified(ctx, label, None, &[], &[]),

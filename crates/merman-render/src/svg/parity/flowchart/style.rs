@@ -321,6 +321,40 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
 }
 
 impl FlowchartCompiledStyles {
+    pub(super) fn source_label_filter_status(
+        &self,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        if self
+            .label_sources
+            .iter()
+            .any(|source| source.prepared.property() == "filter")
+        {
+            crate::flowchart::FlowchartSourceFacetStatus::Unverified
+        } else {
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        }
+    }
+
+    pub(super) fn label_shadow_source_is_bounded(&self) -> bool {
+        // Shape-only stroke/filter declarations do not own the separate SVG text terminal.
+        self.label_sources.iter().all(|source| {
+            matches!(
+                source.prepared.property(),
+                "fill"
+                    | "color"
+                    | "opacity"
+                    | "fill-opacity"
+                    | "font-family"
+                    | "font-size"
+                    | "font-weight"
+                    | "font-style"
+            )
+        }) && !self
+            .invalid_sources
+            .iter()
+            .any(|source| source.channel == crate::diagram_theme::SourceStyleChannel::Label)
+    }
+
     pub(super) fn edge_shadow_source_is_bounded(&self) -> bool {
         !self.shape_sources.iter().any(|source| {
             matches!(
@@ -3609,4 +3643,28 @@ mod tests {
                 .is_empty()
         );
     }
+}
+
+// Structural classes are not part of the label's admitted typography request. Keep any
+// possible glyph geometry, inherited stroke, or filter override outside a positive receipt.
+pub(super) fn label_shadow_structural_styles_are_bounded(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[&str],
+) -> bool {
+    classes.iter().all(|class| {
+        class_defs.get(*class).is_none_or(|groups| {
+            groups.iter().all(|group| {
+                crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
+                        |declaration| {
+                            matches!(
+                                declaration.property(),
+                                "fill" | "color" | "opacity" | "fill-opacity"
+                            )
+                        },
+                    )
+                })
+            })
+        })
+    })
 }

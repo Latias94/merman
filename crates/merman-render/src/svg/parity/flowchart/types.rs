@@ -26,6 +26,8 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
 }
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) label_effects:
+        std::cell::OnceCell<super::label_effect::FlowchartLabelEffects>,
     pub(in crate::svg::parity::flowchart) node_effects:
         std::cell::OnceCell<super::node_effect::FlowchartNodeEffects>,
     pub(in crate::svg::parity::flowchart) edge_effects:

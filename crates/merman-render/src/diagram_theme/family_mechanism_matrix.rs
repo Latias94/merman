@@ -1260,6 +1260,8 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
             family,
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
         ) && matches!(target, ThemeTarget::Node | ThemeTarget::Edge))
+        || (family == DiagramFamilyId::FLOWCHART
+            && matches!(target, ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel))
     {
         FamilyThemeDisposition::TypedAdapter
     } else {
@@ -1541,6 +1543,23 @@ pub(super) fn classify_rule_facet(
             }
         )
         && (target == ThemeTarget::Node
+            || matches!(selector, FamilyThemeSelectorShape::Static { .. }))
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::FLOWCHART
+        && matches!(target, ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel)
+        && facet == FamilyThemeRuleFacet::Effect
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            } | FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            }
+        )
+        && (target == ThemeTarget::NodeLabel
             || matches!(selector, FamilyThemeSelectorShape::Static { .. }))
     {
         return FamilyThemeDisposition::TypedAdapter;
@@ -4890,6 +4909,55 @@ mod tests {
                 compile_ordinal_palette_route(family, ThemeTarget::Edge).disposition(),
                 FamilyThemeDisposition::Unsupported
             );
+        }
+    }
+
+    #[test]
+    fn flowchart_label_effect_routes_preserve_family_variant_and_ordinal_boundaries() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+                assert_eq!(
+                    classify_effect_binding(family, target),
+                    if family == DiagramFamilyId::FLOWCHART {
+                        FamilyThemeDisposition::TypedAdapter
+                    } else {
+                        FamilyThemeDisposition::Unsupported
+                    },
+                );
+                for variant in [
+                    None,
+                    Some(ThemeVariant::Default),
+                    Some(ThemeVariant::Active),
+                ] {
+                    for ordinal in [false, true] {
+                        let selector = if ordinal {
+                            FamilyThemeSelectorShape::Ordinal {
+                                variant,
+                                selector: OrdinalSelector::exact(1).unwrap(),
+                            }
+                        } else {
+                            FamilyThemeSelectorShape::Static { variant }
+                        };
+                        let typed = family == DiagramFamilyId::FLOWCHART
+                            && variant != Some(ThemeVariant::Active)
+                            && (!ordinal || target == ThemeTarget::NodeLabel);
+                        assert_eq!(
+                            classify_rule_facet(
+                                family,
+                                target,
+                                selector,
+                                FamilyThemeRuleFacet::Effect
+                            ),
+                            if typed {
+                                FamilyThemeDisposition::TypedAdapter
+                            } else {
+                                FamilyThemeDisposition::Unsupported
+                            },
+                            "family={family:?} target={target:?} selector={selector:?}",
+                        );
+                    }
+                }
+            }
         }
     }
 

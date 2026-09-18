@@ -1,7 +1,7 @@
 //! Flowchart SVG renderer (core drawing routines).
 
 mod cluster;
-mod edge_label;
+pub(in crate::svg::parity::flowchart) mod edge_label;
 mod edge_path;
 pub(in crate::svg::parity) mod node;
 mod root;

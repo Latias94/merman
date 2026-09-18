@@ -154,6 +154,34 @@ fn record_edge_label_emission(
     ctx.theme_evidence.record_edge_label_emission(
         ctx.edge_theme,
         crate::flowchart::FlowchartEdgeLabelThemeEmission {
+            effect: receipt.effect_reach().map(|reach| {
+                crate::flowchart::FlowchartThemeFacetEmission::new(
+                    crate::flowchart::FlowchartFacetPrecedence::new(
+                        compiled_styles.map_or(
+                            crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                            FlowchartCompiledStyles::source_label_filter_status,
+                        ),
+                        false,
+                    ),
+                    reach.is_verified()
+                        || (ctx.edge_theme.label_effect_is_cleared()
+                            && !ctx.edge_html_labels
+                            && compiled_styles.is_some_and(
+                                FlowchartCompiledStyles::label_shadow_source_is_bounded,
+                            )
+                            && super::super::style::label_shadow_structural_styles_are_bounded(
+                                ctx.class_defs,
+                                &[
+                                    "root",
+                                    "edgeLabels",
+                                    "edgeLabel",
+                                    "label",
+                                    "text-outer-tspan",
+                                    "row",
+                                ],
+                            )),
+                )
+            }),
             font_stack,
             font_size,
             font_weight,
@@ -188,9 +216,9 @@ fn centered_label_background(width: f64, height: f64) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct SvgEdgeLabelBox {
-    translate_x: f64,
-    translate_y: f64,
+pub(in crate::svg::parity::flowchart) struct SvgEdgeLabelBox {
+    pub(in crate::svg::parity::flowchart) translate_x: f64,
+    pub(in crate::svg::parity::flowchart) translate_y: f64,
     background_x: f64,
     background_y: f64,
     background_width: f64,
@@ -220,7 +248,7 @@ fn centered_svg_edge_label_box(
     }
 }
 
-fn flowchart_svg_edge_label_box(
+pub(in crate::svg::parity::flowchart) fn flowchart_svg_edge_label_box(
     layout_width: f64,
     layout_height: f64,
     text_bbox_y: f64,
@@ -260,7 +288,7 @@ fn position_flowchart_edge_label(
     )
 }
 
-fn resolve_flowchart_edge_label_position(
+pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
     ctx: &FlowchartRenderCtx<'_>,
     key: crate::flowchart::FlowchartEdgeKey,
     layout_edge: &crate::model::LayoutEdge,
@@ -390,6 +418,14 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         &label_text_plain,
         ctx.edge_html_labels,
     );
+    let label_effect = ctx.label_effects.get().and_then(|plan| plan.edge(key));
+    let label_effect_id = label_effect.map(|_| {
+        format!(
+            "{}-theme-label-effect",
+            ctx.document_ids.edge(key).expect("prepared edge id")
+        )
+    });
+    let label_effect_emitted = std::cell::Cell::new(false);
     let record_label_emission = |source_typography_verified,
                                  sanitized_xhtml: Option<&str>,
                                  visible: bool,
@@ -399,6 +435,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             typography_applicable,
             prepared_svg_label.as_ref(),
         )
+        .with_effect_reach(typography_applicable, label_effect_emitted.get())
         .with_font_weight_reach(
             typography_applicable,
             visible
@@ -489,6 +526,14 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             fmt_display(label_box.background_width),
                             fmt_display(label_box.background_height),
                         );
+                        if let (Some(effect), Some(id)) = (label_effect, label_effect_id.as_deref())
+                        {
+                            label_effect_emitted.set(effect.open(
+                                out,
+                                id,
+                                (label_box.translate_x, label_box.translate_y),
+                            ));
+                        }
                         if label_type == "markdown" {
                             write_flowchart_svg_text_markdown_wrapped_centered(
                                 out,
@@ -505,6 +550,13 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                                     "non-Markdown SVG edge labels are prepared before emission",
                                 ),
                                 svg_edge_label_text_style.as_ref(),
+                            );
+                        }
+                        if label_effect_emitted.get() {
+                            label_effect.unwrap().close(
+                                out,
+                                ctx,
+                                label_effect_id.as_deref().unwrap(),
                             );
                         }
                         out.push_str("</g></g></g>");
@@ -539,6 +591,13 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         fmt_display(label_box.background_width),
                         fmt_display(label_box.background_height)
                     );
+                    if let (Some(effect), Some(id)) = (label_effect, label_effect_id.as_deref()) {
+                        label_effect_emitted.set(effect.open(
+                            out,
+                            id,
+                            (label_box.translate_x, label_box.translate_y),
+                        ));
+                    }
                     if label_type == "markdown" {
                         write_flowchart_svg_text_markdown_wrapped_centered(
                             out,
@@ -556,6 +615,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             ),
                             svg_edge_label_text_style.as_ref(),
                         );
+                    }
+                    if label_effect_emitted.get() {
+                        label_effect
+                            .unwrap()
+                            .close(out, ctx, label_effect_id.as_deref().unwrap());
                     }
                     out.push_str("</g></g></g>");
                     record_label_emission(
@@ -601,6 +665,13 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     fmt_display(label_box.background_width),
                     fmt_display(label_box.background_height)
                 );
+                if let (Some(effect), Some(id)) = (label_effect, label_effect_id.as_deref()) {
+                    label_effect_emitted.set(effect.open(
+                        out,
+                        id,
+                        (label_box.translate_x, label_box.translate_y),
+                    ));
+                }
                 if label_type == "markdown" {
                     write_flowchart_svg_text_markdown_wrapped_centered(
                         out,
@@ -618,6 +689,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             .expect("non-Markdown SVG edge labels are prepared before emission"),
                         svg_edge_label_text_style.as_ref(),
                     );
+                }
+                if label_effect_emitted.get() {
+                    label_effect
+                        .unwrap()
+                        .close(out, ctx, label_effect_id.as_deref().unwrap());
                 }
                 out.push_str("</g></g></g>");
                 record_label_emission(

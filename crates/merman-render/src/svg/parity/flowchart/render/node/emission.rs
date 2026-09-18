@@ -105,6 +105,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeLabelEmissionReceipt {
     prepared_typography: Option<FlowchartNodeFacetReach>,
     label_fill: Option<FlowchartNodeFacetReach>,
     font_weight: Option<FlowchartNodeFacetReach>,
+    effect: Option<FlowchartNodeFacetReach>,
     text_paint_facts: Option<crate::flowchart::FlowchartTextPaintFacts>,
     background_has_area: bool,
     html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus,
@@ -130,6 +131,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             prepared_typography: None,
             label_fill: None,
             font_weight: None,
+            effect: None,
             text_paint_facts: None,
             background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -143,6 +145,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             prepared_typography: None,
             label_fill: None,
             font_weight: None,
+            effect: None,
             text_paint_facts: None,
             background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -166,6 +169,21 @@ impl FlowchartNodeLabelEmissionReceipt {
     ) -> Self {
         self.label_fill = Self::facet_reach(applicable, verified);
         self
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn with_effect_reach(
+        mut self,
+        applicable: bool,
+        verified: bool,
+    ) -> Self {
+        self.effect = Self::facet_reach(applicable, verified);
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn effect_reach(
+        self,
+    ) -> Option<FlowchartNodeFacetReach> {
+        self.effect
     }
 
     pub(in crate::svg::parity::flowchart) const fn with_font_weight_reach(

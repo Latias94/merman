@@ -1104,3 +1104,299 @@ fn edge_glow_rejects_generated_ancestor_filter_and_geometry_overrides() {
         }
     }
 }
+
+fn text_glow_theme(targets: &[ThemeTarget]) -> DiagramTheme {
+    text_glow_theme_with_rules(targets, ThemeRuleSet::default())
+}
+
+fn text_glow_theme_with_rules(targets: &[ThemeTarget], rules: ThemeRuleSet) -> DiagramTheme {
+    text_glow_theme_for(targets, rules, true)
+}
+
+fn text_glow_theme_for(
+    targets: &[ThemeTarget],
+    rules: ThemeRuleSet,
+    native_fonts: bool,
+) -> DiagramTheme {
+    let graph = EffectGraph::new(
+        "label-glow",
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            blur_radius: 8.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#ff2080").unwrap(),
+        }],
+    )
+    .unwrap()
+    .with_color_space(EffectColorSpace::Srgb);
+    let mut effects = DiagramEffectSet::default().with_graph(graph).unwrap();
+    for target in targets {
+        effects = effects
+            .with_binding(EffectBinding::new(*target, "label-glow").unwrap())
+            .unwrap();
+    }
+    use merman_render::diagram_theme::{
+        FontAssetSpec, FontCatalogSpec, FontStack, ThemeAssets, ThemeTextStyle, TypographySpec,
+    };
+    let mut spec = DiagramThemeSpec::new()
+        .with_styles(rules)
+        .with_effects(effects);
+    if native_fonts {
+        spec = spec
+            .with_typography(TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::FLOWCHART,
+                ThemeTextStyle::default().with_font_stack(FontStack::single("Excalifont").unwrap()),
+            ))
+            .with_assets(
+                ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
+                    FontAssetSpec::new(
+                        "excalifont",
+                        include_bytes!(
+                            "../../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+                        ),
+                    ),
+                ])),
+            );
+    }
+    DiagramThemeCompiler::new().compile(spec).unwrap()
+}
+
+#[test]
+fn native_label_glow_filters_text_without_its_background_or_shapes() {
+    let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
+    let rendered = render(
+        "flowchart LR\nA[Alpha] -->|Advance| B{Beta}",
+        &theme,
+        "classic",
+        true,
+    )
+    .unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let filtered: Vec<_> = xml
+        .descendants()
+        .filter(|node| node.attribute("filter").is_some())
+        .collect();
+    assert_eq!(filtered.len(), 3);
+    for terminal in filtered {
+        assert!(terminal.has_tag_name("g"));
+        assert!(terminal.descendants().any(|node| node.has_tag_name("text")));
+        assert!(!terminal.descendants().any(|node| {
+            matches!(
+                node.tag_name().name(),
+                "rect" | "polygon" | "circle" | "path" | "foreignObject"
+            )
+        }));
+        let id = terminal
+            .attribute("filter")
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let filter = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+    }
+}
+
+#[test]
+fn html_label_glow_retains_a_residual_without_filtering_the_background() {
+    let theme = text_glow_theme_for(
+        &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
+        ThemeRuleSet::default(),
+        false,
+    );
+    let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
+    assert!(render_with_html_labels(source, &theme, "classic", true, true).is_err());
+    let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        xml.descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    assert!(
+        !xml.descendants()
+            .any(|node| node.attribute("filter").is_some())
+    );
+}
+
+#[test]
+fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
+    let targets = [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel];
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let theme = text_glow_theme_with_rules(
+        &targets,
+        ThemeRuleSet::default().with_rule(
+            ThemeRule::new(ThemeTarget::NodeLabel, clear).with_ordinal(OrdinalSelector::Exact(1)),
+        ),
+    );
+    let rendered = render(
+        "flowchart LR\nsubgraph Group\nA[Alpha] -->|Advance| B[Beta]\nend",
+        &theme,
+        "classic",
+        true,
+    )
+    .unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let filtered: Vec<_> = xml
+        .descendants()
+        .filter(|node| node.attribute("filter").is_some())
+        .collect();
+    assert_eq!(filtered.len(), 2);
+    let visible: Vec<_> = filtered
+        .iter()
+        .flat_map(|node| node.descendants())
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .collect();
+    assert!(!visible.contains(&"Alpha"));
+    assert!(visible.contains(&"Beta"));
+    assert!(visible.contains(&"Advance"));
+    let viewport: Vec<f64> = xml
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    for terminal in &filtered {
+        let id = terminal
+            .attribute("filter")
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let filter = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        let mut translation = (0.0, 0.0);
+        for transform in terminal
+            .ancestors()
+            .filter_map(|node| node.attribute("transform"))
+        {
+            for token in svgtypes::TransformListParser::from(transform) {
+                let svgtypes::TransformListToken::Translate { tx, ty } = token.unwrap() else {
+                    panic!("this native fixture expects translation-only groups: {transform}");
+                };
+                translation.0 += tx;
+                translation.1 += ty;
+            }
+        }
+        let number = |name| filter.attribute(name).unwrap().parse::<f64>().unwrap();
+        let x = number("x") + translation.0;
+        let y = number("y") + translation.1;
+        assert!(
+            x >= viewport[0] - 0.001 && y >= viewport[1] - 0.001,
+            "nested text filter origin must fit the viewport: ({x}, {y}) vs {viewport:?}"
+        );
+        assert!(
+            x + number("width") <= viewport[0] + viewport[2] + 0.001
+                && y + number("height") <= viewport[1] + viewport[3] + 0.001,
+            "nested text filter extent must fit the viewport: ({x}, {y}) vs {viewport:?}"
+        );
+    }
+
+    let plain = text_glow_theme(&[]);
+    let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
+    let plain = render(source, &plain, "classic", true).unwrap();
+    let glow = render(source, &text_glow_theme(&targets), "classic", true).unwrap();
+    let plain_xml = roxmltree::Document::parse(plain.svg()).unwrap();
+    let glow_xml = roxmltree::Document::parse(glow.svg()).unwrap();
+    let viewbox = |xml: &roxmltree::Document<'_>| {
+        xml.root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let before = viewbox(&plain_xml);
+    let after = viewbox(&glow_xml);
+    assert!(
+        after[3] > before[3],
+        "text glow must expand the viewport: {before:?} -> {after:?}"
+    );
+    let positions = |xml: &roxmltree::Document<'_>| {
+        xml.descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("data-id").is_some())
+            .map(|node| {
+                (
+                    node.attribute("data-id").unwrap().to_owned(),
+                    node.attribute("transform").unwrap_or_default().to_owned(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(positions(&plain_xml), positions(&glow_xml));
+}
+
+#[test]
+fn native_label_glow_rejects_unmeasured_structural_styles() {
+    let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
+    for declaration in ["font-weight:800", "stroke-width:20px", "transform:scale(2)"] {
+        let source =
+            format!("flowchart LR\nA[Alpha] -->|Advance| B[Beta]\nclassDef label {declaration}");
+        assert!(
+            render(&source, &theme, "classic", true).is_err(),
+            "{declaration}"
+        );
+        let rendered = render(&source, &theme, "classic", false).unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("filter").is_some()),
+            "{declaration}"
+        );
+    }
+}
+
+#[test]
+fn native_label_glow_keeps_shape_only_source_strokes_separate() {
+    let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
+    let rendered = render("flowchart LR\nA[Alpha] -->|Advance| B[Beta]\nstyle A stroke-width:4px\nlinkStyle 0 stroke-width:3px", &theme, "classic", true).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        xml.descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn label_glow_without_native_ink_bounds_retains_a_residual() {
+    let theme = text_glow_theme_for(
+        &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
+        ThemeRuleSet::default(),
+        false,
+    );
+    let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
+    assert!(render(source, &theme, "classic", true).is_err());
+    let rendered = render(source, &theme, "classic", false).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        !xml.descendants()
+            .any(|node| node.attribute("filter").is_some())
+    );
+    assert!(xml.descendants().any(|node| node.has_tag_name("text")));
+}
+
+#[test]
+fn special_node_label_placement_keeps_its_effect_residual() {
+    let theme = text_glow_theme(&[ThemeTarget::NodeLabel]);
+    let source = "flowchart LR\nA[/Alpha/]";
+    assert!(render(source, &theme, "classic", true).is_err());
+    let rendered = render(source, &theme, "classic", false).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        !xml.descendants()
+            .any(|node| node.attribute("filter").is_some())
+    );
+}

@@ -541,6 +541,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         ctx.theme_evidence.record_node_emission(
             node_theme,
             crate::flowchart::FlowchartNodeThemeEmission {
+                label_effect: label_receipt.and_then(|receipt| receipt.effect_reach()).map(|reach| {
+                    crate::flowchart::FlowchartThemeFacetEmission::new(
+                        crate::flowchart::FlowchartFacetPrecedence::new(compiled_styles.source_label_filter_status(), false),
+                        reach.is_verified() || (node_theme.label_effect_is_cleared()
+                            && !ctx.node_html_labels && compiled_styles.label_shadow_source_is_bounded()
+                            && super::super::style::label_shadow_structural_styles_are_bounded(ctx.class_defs,
+                                &["root", "nodes", "node", "label", "nodeLabel", "text-outer-tspan", "row"])),
+                    )
+                }),
                 effect: crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(source_filter, false),
                     node_theme.effect().is_none() || effect_application.is_some(),

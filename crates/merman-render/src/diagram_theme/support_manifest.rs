@@ -229,7 +229,13 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "flowchart",
         target: "edge-label",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["font-size", "font-stack", "font-weight", "padding"],
+        facets: &[
+            "effect",
+            "font-size",
+            "font-stack",
+            "font-weight",
+            "padding",
+        ],
     },
     RuleClaim {
         family: "flowchart",
@@ -241,7 +247,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "flowchart",
         target: "node-label",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "font-size", "font-stack", "font-weight"],
+        facets: &["effect", "fill", "font-size", "font-stack", "font-weight"],
     },
     RuleClaim {
         family: "flowchart",

@@ -24,8 +24,8 @@ use crate::resources::{
 use crate::text::{
     CatalogAdmittedTextStyle, PendingPreparedTextLabelLedgerEntry, PrepareTextRequest,
     PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLabelId,
-    PreparedTextLabelLedgerEntry, PreparedTextLayout, PreparedTextWrap, TextLayoutError,
-    TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    PreparedTextLabelLedgerEntry, PreparedTextLayout, PreparedTextLine, PreparedTextWrap,
+    TextLayoutError, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
 };
 
@@ -565,11 +565,54 @@ pub(crate) struct PreparedFlowchartSvgLabel {
     binding: FlowchartSvgLabelBinding,
     wrapped_lines: Vec<Vec<String>>,
     metrics: TextMetrics,
+    native_centered_paint_bounds: Option<[f64; 4]>,
     admitted_typography: Option<CatalogAdmittedTextStyle>,
     pending_label_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     label_entry: Option<PreparedTextLabelLedgerEntry>,
     label_consumed: Cell<bool>,
     retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
+}
+
+/// Centers each shaped line by its advance and places it at the emitted outer tspan baseline.
+/// Horizontal extents conservatively retain the origin when glyphs have a positive side bearing.
+fn native_centered_svg_text_paint_bounds(
+    lines: &[PreparedTextLine],
+    font_size: f64,
+    line_height_em: f64,
+) -> Option<[f64; 4]> {
+    let round_em = |value: f64| (value * 1_000_000.0).round() / 1_000_000.0;
+    let mut bounds: Option<[f64; 4]> = None;
+    for (index, line) in lines.iter().enumerate() {
+        let (left, right) = line.bbox_x();
+        let vertical = line.vertical_extents();
+        if line.text().trim().is_empty() || left + right <= 0.0 || vertical.height_px() <= 0.0 {
+            continue;
+        }
+        let y_em = if index == 0 {
+            1.0 - line_height_em
+        } else {
+            1.0 + (index as f64 - 1.0) * line_height_em
+        };
+        // Absolute tspan y replaces the parent text y="-10.1"; only its own dy is added.
+        let baseline = font_size * (round_em(y_em) + round_em(line_height_em));
+        let anchor_offset = line.computed_length_px() / 2.0;
+        let line_bounds = [
+            -anchor_offset - left,
+            baseline + vertical.top_px(),
+            -anchor_offset + right,
+            baseline + vertical.bottom_px(),
+        ];
+        bounds = Some(match bounds {
+            Some(bounds) => [
+                bounds[0].min(line_bounds[0]),
+                bounds[1].min(line_bounds[1]),
+                bounds[2].max(line_bounds[2]),
+                bounds[3].max(line_bounds[3]),
+            ],
+            None => line_bounds,
+        });
+    }
+    bounds
 }
 
 #[derive(Debug)]
@@ -608,6 +651,7 @@ impl PreparedFlowchartSvgLabel {
             binding,
             wrapped_lines,
             metrics,
+            native_centered_paint_bounds: None,
             admitted_typography,
             pending_label_entry: None,
             label_entry: None,
@@ -627,6 +671,12 @@ impl PreparedFlowchartSvgLabel {
 
     pub(crate) fn metrics(&self) -> TextMetrics {
         self.metrics
+    }
+
+    fn native_centered_paint_bounds(&self, metrics_style: &TextStyle) -> Option<[f64; 4]> {
+        (self.binding.is_native() && self.binding.metrics_style.matches(metrics_style))
+            .then_some(self.native_centered_paint_bounds)
+            .flatten()
     }
 
     fn merge_emission_font_style(&self, existing: Option<&str>) -> Option<String> {
@@ -695,7 +745,8 @@ impl PreparedFlowchartSvgLabel {
     fn retained_bytes(&self) -> usize {
         const VEC_RECORD_BYTES: usize = 24;
         const STRING_RECORD_BYTES: usize = 24;
-        const LABEL_RECORD_BYTES: usize = 256;
+        // Includes the optional four-coordinate native paint region.
+        const LABEL_RECORD_BYTES: usize = 296;
 
         let wrapped_lines = self.wrapped_lines.iter().fold(0usize, |total, line| {
             line.iter().fold(
@@ -1591,13 +1642,19 @@ impl FlowchartSvgLabelSidecarBuilder {
                 .fold(0.0, f64::max);
         }
 
-        let label = PreparedFlowchartSvgLabel::new(
+        let native_centered_paint_bounds = native_centered_svg_text_paint_bounds(
+            prepared.lines(),
+            f64::from(metrics_typography.typography().font_size_px()),
+            metrics_typography.line_height_em(),
+        );
+        let mut label = PreparedFlowchartSvgLabel::new(
             binding.into_owned(),
             wrapped_lines,
             metrics,
             Some(metrics_typography),
         )
         .with_label_entry(label_entry);
+        label.native_centered_paint_bounds = native_centered_paint_bounds;
         if !self.reserve_prepared_label(&label, &source, render_id) {
             return Ok(failed_prepared_metrics());
         }
@@ -2221,6 +2278,21 @@ impl FlowchartSvgLabelSidecar {
             .unwrap_or_default()
     }
 
+    /// Returns native ink coverage in the centered text element's local coordinates.
+    pub(crate) fn native_centered_paint_bounds(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        raw_source: &str,
+        metrics_style: &TextStyle,
+    ) -> Option<[f64; 4]> {
+        self.sources
+            .get(owner)
+            .filter(|source| source.matches(raw_source))?;
+        self.prepared
+            .get(owner)?
+            .native_centered_paint_bounds(metrics_style)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepared_metrics(
         &self,
@@ -2727,6 +2799,118 @@ mod tests {
             panic!("prepared source-colored math occurrence");
         };
         assert!(prepared.browser_xhtml().contains("color:#f43f5e"));
+    }
+
+    #[test]
+    fn native_paint_bounds_preserve_overhang_and_blank_line_advance() {
+        use crate::text::{PreparedTextVerticalExtents, TextByteRange};
+
+        let first = PreparedTextLine::new(
+            "f",
+            TextByteRange::new(0, 1),
+            20.0,
+            (3.0, 25.0),
+            PreparedTextVerticalExtents::new(-8.0, 2.0).unwrap(),
+        )
+        .unwrap();
+        let blank = PreparedTextLine::new(
+            " ",
+            TextByteRange::new(1, 2),
+            200.0,
+            (0.0, 0.0),
+            PreparedTextVerticalExtents::new(0.0, 0.0).unwrap(),
+        )
+        .unwrap();
+        let last = PreparedTextLine::new(
+            "j",
+            TextByteRange::new(2, 3),
+            10.0,
+            (0.0, 10.0),
+            PreparedTextVerticalExtents::new(-6.0, 3.0).unwrap(),
+        )
+        .unwrap();
+        // At 10px/1.4em the visible baselines are 10px and 38px. A 20px advance
+        // anchors the first line at -10px, retaining its 3px left overhang.
+        let bounds = native_centered_svg_text_paint_bounds(
+            &[first, blank.clone(), last, blank.clone()],
+            10.0,
+            1.4,
+        )
+        .unwrap();
+        for (actual, expected) in bounds.into_iter().zip([-13.0, 2.0, 15.0, 41.0]) {
+            assert!((actual - expected).abs() < 1e-9, "{bounds:?}");
+        }
+        assert_eq!(
+            native_centered_svg_text_paint_bounds(&[blank], 10.0, 1.4),
+            None
+        );
+        assert_eq!(native_centered_svg_text_paint_bounds(&[], 10.0, 1.4), None);
+    }
+
+    #[test]
+    fn native_paint_bounds_require_the_prepared_source_and_metrics_style() {
+        let (prepared, theme) = native_flowchart_text_fixture();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let owner = FlowchartSvgLabelOwner::Node(0);
+        let raw_label = "Ag<br/>jp";
+        for native in [true, false] {
+            let builder = FlowchartSvgLabelSidecarBuilder::new(
+                native.then_some(&prepared),
+                native.then_some(&theme),
+            );
+            builder.measure_for_layout(
+                owner,
+                "node",
+                FlowchartLabelMetricsRequest {
+                    measurer: &measurer,
+                    raw_label,
+                    label_type: "text",
+                    style: &style,
+                    max_width_px: None,
+                    wrap_mode: WrapMode::SvgLike,
+                    config: &config,
+                    math_renderer: None,
+                },
+                true,
+                FlowchartSvgWidthMode::Bbox,
+            );
+            let sidecar = builder.finish();
+            assert_eq!(sidecar.prepared_error(), None);
+            let bounds = sidecar.native_centered_paint_bounds(owner, raw_label, &style);
+            assert_eq!(bounds.is_some(), native);
+            if let Some(bounds) = bounds {
+                assert!(bounds[0] < bounds[2] && bounds[1] < bounds[3], "{bounds:?}");
+            }
+            assert_eq!(
+                sidecar.native_centered_paint_bounds(owner, "stale", &style),
+                None
+            );
+            assert_eq!(
+                sidecar.native_centered_paint_bounds(
+                    FlowchartSvgLabelOwner::Node(1),
+                    raw_label,
+                    &style,
+                ),
+                None
+            );
+            for mismatch in [
+                TextStyle {
+                    font_size: style.font_size * 2.0,
+                    ..style.clone()
+                },
+                TextStyle {
+                    font_weight: Some("700".into()),
+                    ..style.clone()
+                },
+            ] {
+                assert_eq!(
+                    sidecar.native_centered_paint_bounds(owner, raw_label, &mismatch),
+                    None
+                );
+            }
+        }
     }
 
     fn native_flowchart_text_fixture() -> (PreparedTextLayout, ResolvedDiagramTheme) {

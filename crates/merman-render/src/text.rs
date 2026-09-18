@@ -43,12 +43,15 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
 };
+#[cfg(test)]
+pub(crate) use prepared::TextByteRange;
 pub(crate) use prepared::{
     CatalogAdmittedTextStyle, ParsedCssFontStack, PendingPreparedTextLabelLedgerEntry,
     PreparedText, PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLayout,
-    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, PreparedTextVerticalExtents,
-    TextLayoutBackend, TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutError,
-    TextProjection, merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
+    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, PreparedTextLine,
+    PreparedTextVerticalExtents, TextLayoutBackend, TextLayoutBackendIdentity,
+    TextLayoutCapabilities, TextLayoutError, TextProjection,
+    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
     resolve_css_font_weight, text_projection_layout_error,
 };
 #[cfg(feature = "fuzzing")]
@@ -65,8 +68,6 @@ pub(crate) use prepared::{
     PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
     PreparedTextLabelProvenance,
 };
-#[cfg(test)]
-pub(crate) use prepared::{PreparedTextLine, TextByteRange};
 pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 pub(crate) use visible_style::VisibleTextStyleFacts;
 
