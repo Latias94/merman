@@ -204,7 +204,10 @@ pub(in super::super) fn render_flowchart_shape(
             return Ok(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint));
         }
         FlowchartShape::RoundedRectangle => {
-            super::render_rounded_rect(out, ctx, common, details);
+            let receipt = super::render_rounded_rect(out, ctx, common, details);
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
+            );
         }
         FlowchartShape::ShadedProcess => {
             super::render_shaded_process(out, common, label, details);

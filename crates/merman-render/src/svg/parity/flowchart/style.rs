@@ -551,6 +551,19 @@ impl FlowchartCompiledStyles {
         self.inline_stroke_dasharray_status
     }
 
+    /// Numeric source winners transported directly to rectangle inline styles.
+    /// Materialize each axis as geometry too: native SVG readers may ignore CSS rx/ry.
+    pub(super) fn rectangle_source_radii(&self) -> [Option<f64>; 2] {
+        let mut radii = [None; 2];
+        for source in &self.radius_sources {
+            if source.admitted {
+                let axis = usize::from(source.prepared.property() == "ry");
+                radii[axis] = crate::mermaid_style::parse_svg_number_or_px(source.prepared.value());
+            }
+        }
+        radii
+    }
+
     pub(super) fn source_radius_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         self.radius_sources.iter().fold(
             crate::flowchart::FlowchartSourceFacetStatus::Absent,

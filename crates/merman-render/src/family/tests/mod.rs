@@ -2209,12 +2209,12 @@ fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
     assert!(source_style.contains("rx:4px !important"));
     assert!(source_style.contains("ry:6px !important"));
     assert_eq!(
-        flowchart_node_shape_attribute(source.svg(), "A", "rx"),
-        None
+        flowchart_node_shape_attribute(source.svg(), "A", "rx").as_deref(),
+        Some("4")
     );
     assert_eq!(
-        flowchart_node_shape_attribute(source.svg(), "A", "ry"),
-        None
+        flowchart_node_shape_attribute(source.svg(), "A", "ry").as_deref(),
+        Some("6")
     );
 
     let configured = render(

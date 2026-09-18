@@ -35,8 +35,9 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub stroke_color: &'a str,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
-    pub corner_radius: f64,
-    pub emit_corner_radius: bool,
+    pub typed_corner_radius: Option<f64>,
+    pub source_corner_radii: [Option<f64>; 2],
+    pub neo_corner_radius: f64,
     pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub wrapped_in_a: bool,
@@ -44,6 +45,36 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
 }
 
 impl FlowchartNodeRenderCommon<'_> {
+    pub(super) fn write_rectangle_radii(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+        fallback: Option<f64>,
+    ) {
+        for (axis, source) in ["rx", "ry"].into_iter().zip(self.source_corner_radii) {
+            if let Some(radius) = source.or(fallback) {
+                let _ = write!(
+                    out,
+                    " {axis}=\"{}\"",
+                    crate::svg::parity::fmt_display(radius)
+                );
+            }
+        }
+    }
+
+    pub(super) fn write_rectangle_corner_style(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+    ) {
+        // Keep admitted source winners and typed geometry consistent with native attributes.
+        // Neo defaults and differently cased source spellings must not override them in CSS.
+        for (axis, source) in ["rx", "ry"].into_iter().zip(self.source_corner_radii) {
+            if let Some(radius) = source.or(self.typed_corner_radius) {
+                let radius = crate::svg::parity::fmt_display(radius);
+                let _ = write!(out, ";{axis}:{radius}px !important");
+            }
+        }
+    }
+
     pub(super) fn look_is_neo(&self) -> bool {
         self.look == "neo"
     }
@@ -339,10 +370,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         stroke_color,
         stroke_width,
         stroke_dasharray,
-        corner_radius: typed_radius
-            .map(f64::from)
-            .unwrap_or(ctx.node_corner_radius),
-        emit_corner_radius: look == "neo" || typed_radius_selected,
+        typed_corner_radius: typed_radius.map(f64::from),
+        source_corner_radii: compiled_styles.rectangle_source_radii(),
+        neo_corner_radius: ctx.node_corner_radius,
         hand_drawn_seed: &ctx.hand_drawn_seed,
         work_meter: ctx.work_meter,
         wrapped_in_a,

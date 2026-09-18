@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let radius = 5.0;
@@ -109,16 +109,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             escape_attr(common.stroke_dasharray),
         );
         out.push_str("</g>");
+        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified()
     } else {
+        let radius = common
+            .typed_corner_radius
+            .or_else(|| common.look_is_neo().then_some(common.neo_corner_radius))
+            .unwrap_or(5.0);
         let _ = write!(
             out,
-            r#"<rect class="basic label-container"{} style="{}" x="{}" y="{}" width="{}" height="{}" rx="5" ry="5"/>"#,
+            r#"<rect class="basic label-container"{} style="{}"#,
             common.effect_filter_attr,
             escape_attr(common.style),
+        );
+        common.write_rectangle_corner_style(out);
+        let _ = write!(
+            out,
+            r#"" x="{}" y="{}" width="{}" height="{}""#,
             fmt(-w / 2.0),
             fmt(-h / 2.0),
             fmt(w),
-            fmt(h)
+            fmt(h),
         );
+        common.write_rectangle_radii(out, Some(radius));
+        out.push_str("/>");
+        super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(true)
     }
 }

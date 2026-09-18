@@ -486,3 +486,205 @@ fn diamond_paint_and_stroke_receipt_does_not_certify_unsupported_radius() {
         merman_render::__private::family_evidence(completion.report()).theme_residual_count() > 0
     );
 }
+
+#[test]
+fn rounded_rect_consumes_typed_radius_and_stroke_without_changing_its_default() {
+    let mut patch = ThemeStylePatch::default();
+    patch.geometry.radius = Specified::Value(10.0);
+    patch.stroke.width = Specified::Value(3.0);
+    let rules = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch));
+    let compiler = DiagramThemeCompiler::new();
+    let themed = compiler
+        .compile(DiagramThemeSpec::new().with_styles(rules.clone()))
+        .unwrap();
+    let baseline = compiler.compile(DiagramThemeSpec::new()).unwrap();
+    for look in ["classic", "neo"] {
+        for (selected, radius) in [(&baseline, "5"), (&themed, "10")] {
+            let rendered = render("flowchart LR\nA(Round)", selected, look, true).unwrap();
+            let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .unwrap();
+            assert_eq!(rect.attribute("rx"), Some(radius), "{look}");
+            assert_eq!(rect.attribute("ry"), Some(radius), "{look}");
+            if radius == "10" {
+                let style = rect.attribute("style").unwrap();
+                assert!(style.contains("stroke-width:3px"));
+                assert!(style.contains("rx:10px !important"));
+                assert!(style.contains("ry:10px !important"));
+            }
+        }
+    }
+    let glowing = render("flowchart LR\nA(Round)", &theme(rules), "classic", true).unwrap();
+    assert_eq!(applications(glowing.svg()), 1);
+}
+
+#[test]
+fn public_cyberpunk_recipe_exchange_keeps_flowchart_stroke_widths() {
+    use merman_render::diagram_theme::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+    let wire =
+        serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
+    let imported = DiagramThemeCompiler::new()
+        .compile_recipe(serde_json::from_slice(&wire).unwrap())
+        .unwrap();
+    let source =
+        include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd");
+    for theme in [&selected, &imported] {
+        let rendered = render(source, theme, "classic", true).unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let nodes: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "label-container")
+                })
+            })
+            .collect();
+        assert_eq!(nodes.len(), 4);
+        for node in nodes {
+            assert!(
+                node.attribute("style")
+                    .unwrap()
+                    .contains("stroke-width:3px")
+            );
+        }
+        let edges: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .collect();
+        assert_eq!(edges.len(), 3);
+        for edge in edges {
+            assert!(
+                edge.attribute("style")
+                    .unwrap()
+                    .contains("stroke-width:2px")
+            );
+        }
+    }
+}
+
+#[test]
+fn rounded_rect_radius_preserves_source_ownership_zero_and_unsupported_clear() {
+    let compile_radius = |radius| {
+        let mut patch = ThemeStylePatch::default();
+        patch.geometry.radius = radius;
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
+            ))
+            .unwrap()
+    };
+    let radius = compile_radius(Specified::Value(10.0));
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        let source = format!("{prefix}flowchart LR\nA(Round)\nstyle A rx:4px,ry:6px");
+        let rendered = render(&source, &radius, "classic", true).unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("basic label-container")
+            })
+            .unwrap();
+        assert_eq!(rect.attribute("rx"), Some("4"));
+        assert_eq!(rect.attribute("ry"), Some("6"));
+        let style = rect.attribute("style").unwrap();
+        assert!(style.contains("rx:4px !important"));
+        assert!(style.contains("ry:6px !important"));
+        let zero = compile_radius(Specified::Value(0.0));
+        let source = format!("{prefix}flowchart LR\nA(Round)");
+        let rendered = render(&source, &zero, "classic", true).unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("basic label-container")
+            })
+            .unwrap();
+        assert_eq!(rect.attribute("rx"), Some("0"));
+        assert_eq!(rect.attribute("ry"), Some("0"));
+        let clear = compile_radius(Specified::Clear);
+        assert!(render(&source, &clear, "classic", true).is_err());
+        assert!(render(&source, &radius, "handDrawn", true).is_err());
+    }
+}
+
+#[test]
+fn neo_configuration_keeps_actual_css_radius_ownership_for_both_rectangles() {
+    let mut patch = ThemeStylePatch::default();
+    patch.geometry.radius = Specified::Value(10.0);
+    let selected = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
+        ))
+        .unwrap();
+    for (shape, attribute) in [("[Rectangle]", "4"), ("(Rounded rectangle)", "4")] {
+        let source =
+            format!("---\nconfig:\n  themeVariables:\n    radius: 4\n---\nflowchart LR\nA{shape}");
+        let rendered = render(&source, &selected, "neo", true).unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("basic label-container")
+            })
+            .unwrap();
+        assert_eq!(rect.attribute("rx"), Some(attribute));
+        assert_eq!(rect.attribute("ry"), Some(attribute));
+        let style = rect.attribute("style").unwrap_or_default();
+        assert!(!style.contains("rx:10"));
+        assert!(!style.contains("ry:10"));
+        assert!(rendered.svg().contains("{rx:4px;ry:4px;}"));
+    }
+}
+
+#[test]
+fn rectangle_source_radius_keeps_each_axis_and_declaration_precedence() {
+    let mut patch = ThemeStylePatch::default();
+    patch.geometry.radius = Specified::Value(10.0);
+    let selected = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch)),
+        ))
+        .unwrap();
+    for look in ["classic", "neo"] {
+        for shape in ["[Rectangle]", "(Rounded rectangle)"] {
+            for (declarations, rx, ry) in [
+                ("style A rx:4px", Some("4"), None),
+                ("style A rx:4px!important,RX:6px", Some("4"), None),
+                ("style A rx:4px,RX:6px,rx:8px", Some("8"), None),
+                ("style A ry:6px", None, Some("6")),
+                (
+                    "classDef corner rx:4px,ry:6px\nclass A corner\nstyle A ry:2px",
+                    Some("4"),
+                    Some("2"),
+                ),
+                ("style A rx:4px!important,rx:8px,ry:0", Some("4"), Some("0")),
+            ] {
+                let source = format!("flowchart LR\nA{shape}\n{declarations}");
+                let rendered = render(&source, &selected, look, true).unwrap();
+                let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let rect = xml
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect")
+                            && node.attribute("class") == Some("basic label-container")
+                    })
+                    .unwrap();
+                let fallback = (look == "neo" || shape.starts_with('(')).then_some("5");
+                assert_eq!(rect.attribute("rx"), rx.or(fallback), "{look} {source}");
+                assert_eq!(rect.attribute("ry"), ry.or(fallback), "{look} {source}");
+            }
+        }
+    }
+}

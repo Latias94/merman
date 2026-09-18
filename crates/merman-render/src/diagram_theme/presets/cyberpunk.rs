@@ -4,7 +4,7 @@ use merman_theme_contract::{
     DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeCanvasLayerWireV1, ThemeCanvasPaintObjectWireV1,
     ThemeCanvasPaintWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1,
     ThemeGradientStopWireV1, ThemeLengthWireV1, ThemeLinearGradientRepetitionWireV1,
-    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
+    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
 };
 
 use super::catalog::{PresetPalette, build_cross_family_recipe};
@@ -53,8 +53,37 @@ pub(super) fn build_recipe(
     // Each writer must account for its actual terminals; selecting a preset does not
     // grant visual qualification or imply that every shape consumes the graph.
     spec.styles.get_or_insert_default().extend([
-        shape_glow_rule(DiagramFamilyId::FLOWCHART, ThemeTarget::Node),
-        shape_glow_rule(DiagramFamilyId::SEQUENCE, ThemeTarget::Actor),
+        family_rule(
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Node,
+            ThemeStylePatchWireV1 {
+                effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(3.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Edge,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Actor,
+            ThemeStylePatchWireV1 {
+                effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
     ]);
     Ok(spec)
 }
@@ -103,15 +132,16 @@ fn shadow(input: &str, blur_radius: f32, color: &str) -> ThemeEffectPrimitiveWir
     }
 }
 
-fn shape_glow_rule(family: DiagramFamilyId, target: ThemeTarget) -> ThemeRuleSetWireV1 {
+fn family_rule(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    style: ThemeStylePatchWireV1,
+) -> ThemeRuleSetWireV1 {
     ThemeRuleSetWireV1::Rule {
         target: target.id().to_owned(),
         family: Some(family.as_str().to_owned()),
         variant: None,
         ordinal: None,
-        style: ThemeStylePatchWireV1 {
-            effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
-            ..ThemeStylePatchWireV1::default()
-        },
+        style,
     }
 }

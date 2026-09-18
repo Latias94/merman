@@ -52,26 +52,25 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
         return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_process();
     }
 
+    let radius = common
+        .typed_corner_radius
+        .or_else(|| common.look_is_neo().then_some(common.neo_corner_radius));
     let _ = write!(
         out,
-        r#"<rect class="basic label-container"{} style="{}" x="{}" y="{}" width="{}" height="{}"{} />"#,
+        r#"<rect class="basic label-container"{} style="{}"#,
         common.effect_filter_attr,
         escape_attr(common.style),
+    );
+    common.write_rectangle_corner_style(out);
+    let _ = write!(
+        out,
+        r#"" x="{}" y="{}" width="{}" height="{}""#,
         fmt(-width / 2.0),
         fmt(-height / 2.0),
         fmt(width),
         fmt(height),
-        if common.emit_corner_radius {
-            format!(
-                r#" rx="{}" ry="{}""#,
-                fmt(common.corner_radius),
-                fmt(common.corner_radius)
-            )
-        } else {
-            String::new()
-        },
     );
-    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(
-        common.emit_corner_radius,
-    )
+    common.write_rectangle_radii(out, radius);
+    out.push_str(" />");
+    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
 }
