@@ -250,3 +250,91 @@ async fn edit_cancels_queued_semantic_request_before_computation_starts() {
     }
     session.wait_stopped().await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn closing_and_reopening_same_version_keeps_index_snapshots_isolated() {
+    use crate::client_profile::ClientProtocolProfile;
+    use crate::line_index::LineIndexBudget;
+    use crate::semantic_tokens::semantic_token_plan_for_document_with_profile;
+
+    let (session, uri) = opened_session().await;
+    let budget = session.line_index_budget();
+    let worker_budget = budget.clone();
+    let (old_snapshot, old_packed) = session
+        .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
+            let plan = semantic_token_plan_for_document_with_profile(
+                document,
+                cancellation,
+                &ClientProtocolProfile::permissive(),
+                &worker_budget,
+            )
+            .unwrap()
+            .unwrap();
+            Ok(Some(((document.clone(), plan.into_packed()), None)))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let old_charge = budget.used_bytes();
+    assert!(old_charge > 0);
+    session.close_document(&uri).await;
+    assert_eq!(budget.used_bytes(), old_charge);
+
+    let reopened_source = "flowchart TD\r\n\r\nA[\"😀\"] --> B\r\nB --> C\r\n";
+    assert!(
+        session
+            .open_document(
+                uri.clone(),
+                1,
+                reopened_source.into(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert_eq!(budget.used_bytes(), old_charge);
+    let worker_budget = budget.clone();
+    let (new_snapshot, new_packed) = session
+        .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
+            let plan = semantic_token_plan_for_document_with_profile(
+                document,
+                cancellation,
+                &ClientProtocolProfile::permissive(),
+                &worker_budget,
+            )
+            .unwrap()
+            .unwrap();
+            Ok(Some(((document.clone(), plan.into_packed()), None)))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(budget.used_bytes() > old_charge);
+    assert_ne!(old_packed, new_packed);
+
+    let cancellation = AnalysisCancellationToken::new();
+    let reference = SyntaxDocumentState::parse(
+        1,
+        DocumentKind::Diagram,
+        reopened_source.into(),
+        &cancellation,
+    )
+    .unwrap();
+    let reference_budget = LineIndexBudget::new(0);
+    let reference_packed = semantic_token_plan_for_document_with_profile(
+        &reference,
+        &cancellation,
+        &ClientProtocolProfile::permissive(),
+        &reference_budget,
+    )
+    .unwrap()
+    .unwrap()
+    .into_packed();
+    assert_eq!(new_packed, reference_packed);
+    assert_eq!(reference_budget.used_bytes(), 0);
+
+    session.close_document(&uri).await;
+    drop(new_snapshot);
+    assert_eq!(budget.used_bytes(), old_charge);
+    drop(old_snapshot);
+    assert_eq!(budget.used_bytes(), 0);
+}

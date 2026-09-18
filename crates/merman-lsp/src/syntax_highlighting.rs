@@ -1,3 +1,4 @@
+use crate::line_index::{LineIndex, LineIndexBudget, LineIndexCache};
 use merman_analysis::AnalysisCancellationToken;
 use merman_editor_core::DocumentKind;
 use std::ops::{ControlFlow, Range};
@@ -108,6 +109,7 @@ pub(crate) struct SyntaxDocumentState {
     kind: DocumentKind,
     source: Arc<str>,
     parsed: ParsedDocument,
+    line_index: LineIndexCache,
 }
 
 #[derive(Debug, Clone)]
@@ -184,6 +186,7 @@ impl SyntaxDocumentState {
             kind,
             source,
             parsed,
+            line_index: LineIndexCache::default(),
         })
     }
 
@@ -201,7 +204,16 @@ impl SyntaxDocumentState {
             kind,
             source,
             parsed,
+            line_index: LineIndexCache::default(),
         })
+    }
+
+    pub(crate) fn line_index(
+        &self,
+        budget: &LineIndexBudget,
+        build: impl FnOnce() -> Vec<usize>,
+    ) -> Arc<LineIndex> {
+        self.line_index.get_or_build(budget, build)
     }
 
     pub(crate) const fn version(&self) -> i32 {

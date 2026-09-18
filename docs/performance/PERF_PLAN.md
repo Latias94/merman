@@ -123,6 +123,20 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-18 bounded syntax-snapshot index reuse
+
+The [expanded attribution](lsp_index_reuse_attribution_2026-09-18.md) led to a snapshot-owned compact
+index with an independent 8 MiB per-session retention budget. Complete admitted indexes are reused
+across full/delta/range requests; contested initialization and budget denial use local construction.
+Accounting follows the last index reference, including older snapshots. There is no replacement
+policy or token-result cache. See the [bounded-reuse receipt](lsp_bounded_index_reuse_2026-09-18.md)
+for lifetime/concurrency tests, exact resource boundaries, and eight paired handler controls.
+
+All first/hot/edit controls pass; the ordinary 4 MiB hot-range observation is 2292.53 -> 22.66 us,
+while dense 4 MiB indexes are denied retention. This is a structural repeated-work/resource
+admission, not a separately admitted latency speedup. First-request preparation and source updates
+remain; real editor request frequency should inform any future budget or replacement policy.
+
 ### 2026-09-17 compact LSP line indexing
 
 The [baseline attribution](lsp_line_index_attribution_2026-09-17.md) identified whole-source

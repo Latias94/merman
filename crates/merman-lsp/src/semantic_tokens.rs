@@ -1,4 +1,5 @@
 use crate::client_profile::{ClientProtocolProfile, SemanticTokenProjection};
+use crate::line_index::{LineIndex, LineIndexBudget};
 #[cfg(test)]
 use crate::syntax_highlighting::SyntaxTokenKind;
 use crate::syntax_highlighting::{SyntaxCapture, SyntaxDocumentState, SyntaxHighlightError};
@@ -7,6 +8,7 @@ use std::cmp::Reverse;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::Range as ByteRange;
+use std::sync::Arc;
 use tower_lsp_server::ls_types::{
     Position, Range, SemanticToken, SemanticTokensDelta, SemanticTokensEdit,
     SemanticTokensFullDeltaResult, SemanticTokensOptions,
@@ -82,12 +84,13 @@ pub(crate) fn semantic_token_plan_for_document_with_profile(
     document: &SyntaxDocumentState,
     cancellation: &AnalysisCancellationToken,
     profile: &ClientProtocolProfile,
+    budget: &LineIndexBudget,
 ) -> Result<Option<SyntaxTokenPlan>, SemanticTokenError> {
     let projection = profile.semantic_tokens.as_ref();
     let Some(projection) = projection.filter(|projection| projection.supports_full()) else {
         return Ok(None);
     };
-    token_plan(document, None, cancellation, projection).map(Some)
+    token_plan(document, None, cancellation, projection, budget).map(Some)
 }
 
 pub(crate) fn semantic_token_plan_for_document_range_with_profile(
@@ -95,12 +98,13 @@ pub(crate) fn semantic_token_plan_for_document_range_with_profile(
     range: Range,
     cancellation: &AnalysisCancellationToken,
     profile: &ClientProtocolProfile,
+    budget: &LineIndexBudget,
 ) -> Result<Option<SyntaxTokenPlan>, SemanticTokenError> {
     let projection = profile.semantic_tokens.as_ref();
     let Some(projection) = projection.filter(|projection| projection.supports_range()) else {
         return Ok(None);
     };
-    token_plan(document, Some(range), cancellation, projection).map(Some)
+    token_plan(document, Some(range), cancellation, projection, budget).map(Some)
 }
 
 pub(crate) fn semantic_tokens_delta_result(
@@ -137,9 +141,13 @@ fn token_plan(
     requested: Option<Range>,
     cancellation: &AnalysisCancellationToken,
     projection: &SemanticTokenProjection,
+    budget: &LineIndexBudget,
 ) -> Result<SyntaxTokenPlan, SemanticTokenError> {
     let source = document.source();
-    let index = SourceIndex::new(source);
+    let index = SourceIndex {
+        source,
+        lines: document.line_index(budget, || SourceIndex::build_line_starts(source)),
+    };
     let requested = requested.map(|range| index.byte_range(range)).transpose()?;
     let captures = document.captures(requested, cancellation)?;
     let packed = project_captures(source, &index, &captures, projection)?;
@@ -376,11 +384,19 @@ struct SourceLine {
 #[derive(Debug)]
 struct SourceIndex<'a> {
     source: &'a str,
-    line_starts: Vec<usize>,
+    lines: Arc<LineIndex>,
 }
 
 impl<'a> SourceIndex<'a> {
+    #[cfg(test)]
     fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            lines: LineIndex::local(Self::build_line_starts(source)),
+        }
+    }
+
+    fn build_line_starts(source: &str) -> Vec<usize> {
         let bytes = source.as_bytes();
         let mut line_starts = vec![0];
         let mut cursor = 0usize;
@@ -401,16 +417,14 @@ impl<'a> SourceIndex<'a> {
                 _ => cursor += 1,
             }
         }
-        Self {
-            source,
-            line_starts,
-        }
+        line_starts
     }
 
     fn line(&self, line_index: usize) -> SourceLine {
-        let start = self.line_starts[line_index];
+        let start = self.lines.starts[line_index];
         let end = self
-            .line_starts
+            .lines
+            .starts
             .get(line_index + 1)
             .copied()
             .unwrap_or(self.source.len());
@@ -445,11 +459,11 @@ impl<'a> SourceIndex<'a> {
 
     fn byte_offset(&self, position: Position, endpoint: &str) -> Result<usize, SemanticTokenError> {
         let line_index = position.line as usize;
-        if line_index >= self.line_starts.len() {
+        if line_index >= self.lines.starts.len() {
             return Err(SemanticTokenError::InvalidRange(format!(
                 "semantic token range {endpoint} line {} is outside the {}-line document",
                 position.line,
-                self.line_starts.len()
+                self.lines.starts.len()
             )));
         }
         let line = self.line(line_index);
@@ -484,7 +498,8 @@ impl<'a> SourceIndex<'a> {
     }
 
     fn line_for_byte(&self, byte: usize) -> usize {
-        self.line_starts
+        self.lines
+            .starts
             .partition_point(|start| *start <= byte)
             .saturating_sub(1)
     }
@@ -598,16 +613,241 @@ mod tests {
     }
 
     #[test]
+    fn retained_and_local_indexes_preserve_full_range_and_exact_errors() {
+        let source = "flowchart TD\r\nA[\"😀e\u{301}\"] --> B\r\n";
+        let profile = ClientProtocolProfile::permissive();
+        let local = LineIndexBudget::new(0);
+        let reference = document(1, source);
+        let expected_full = semantic_token_plan_for_document_with_profile(
+            &reference,
+            &cancellation(),
+            &profile,
+            &local,
+        )
+        .unwrap()
+        .unwrap();
+        let ranges = [
+            Range::new(Position::new(0, 0), Position::new(2, 0)),
+            Range::new(Position::new(1, 0), Position::new(2, 0)),
+            Range::new(Position::new(2, 0), Position::new(2, 0)),
+        ];
+        let expected_ranges = ranges.map(|range| {
+            semantic_token_plan_for_document_range_with_profile(
+                &reference,
+                range,
+                &cancellation(),
+                &profile,
+                &local,
+            )
+            .unwrap()
+            .unwrap()
+        });
+        for limit in [0, 64 * 1024] {
+            let budget = LineIndexBudget::new(limit);
+            let snapshot = document(1, source);
+            for _ in 0..2 {
+                assert_eq!(
+                    semantic_token_plan_for_document_with_profile(
+                        &snapshot,
+                        &cancellation(),
+                        &profile,
+                        &budget,
+                    )
+                    .unwrap()
+                    .unwrap(),
+                    expected_full
+                );
+                for (range, expected) in ranges.iter().zip(&expected_ranges) {
+                    assert_eq!(
+                        semantic_token_plan_for_document_range_with_profile(
+                            &snapshot,
+                            *range,
+                            &cancellation(),
+                            &profile,
+                            &budget,
+                        )
+                        .unwrap()
+                        .as_ref(),
+                        Some(expected)
+                    );
+                }
+                for (range, message) in [
+                    (
+                        Range::new(Position::new(3, 0), Position::new(3, 0)),
+                        "semantic token range start line 3 is outside the 3-line document",
+                    ),
+                    (
+                        Range::new(Position::new(1, 4), Position::new(2, 0)),
+                        "semantic token range start character 4 splits a UTF-16 surrogate pair on line 1",
+                    ),
+                    (
+                        Range::new(Position::new(2, 1), Position::new(2, 1)),
+                        "semantic token range start character 1 is outside line 2 with UTF-16 length 0",
+                    ),
+                    (
+                        Range::new(Position::new(2, 0), Position::new(1, 0)),
+                        "semantic token range start 2:0 is after end 1:0",
+                    ),
+                ] {
+                    assert_eq!(
+                        semantic_token_plan_for_document_range_with_profile(
+                            &snapshot,
+                            range,
+                            &cancellation(),
+                            &profile,
+                            &budget,
+                        ),
+                        Err(SemanticTokenError::InvalidRange(message.into()))
+                    );
+                }
+            }
+            assert_eq!(budget.used_bytes() > 0, limit > 0);
+            drop(snapshot);
+            assert_eq!(budget.used_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn cancelled_callers_preserve_range_error_order_and_do_not_poison_indexes() {
+        let profile = ClientProtocolProfile::permissive();
+        for limit in [0, 64 * 1024] {
+            for warm in [false, true] {
+                let budget = LineIndexBudget::new(limit);
+                let snapshot = document(1, "flowchart TD\nA --> B\n");
+                if warm {
+                    semantic_token_plan_for_document_with_profile(
+                        &snapshot,
+                        &cancellation(),
+                        &profile,
+                        &budget,
+                    )
+                    .unwrap();
+                }
+                let cancelled = cancellation();
+                cancelled.cancel();
+                assert_eq!(
+                    semantic_token_plan_for_document_range_with_profile(
+                        &snapshot,
+                        Range::new(Position::new(3, 0), Position::new(3, 0)),
+                        &cancelled,
+                        &profile,
+                        &budget,
+                    ),
+                    Err(SemanticTokenError::InvalidRange(
+                        "semantic token range start line 3 is outside the 3-line document".into(),
+                    ))
+                );
+                assert_eq!(
+                    semantic_token_plan_for_document_range_with_profile(
+                        &snapshot,
+                        Range::new(Position::new(0, 0), Position::new(2, 0)),
+                        &cancelled,
+                        &profile,
+                        &budget,
+                    ),
+                    Err(SemanticTokenError::Syntax(SyntaxHighlightError::Cancelled))
+                );
+                assert_eq!(
+                    semantic_token_plan_for_document_with_profile(
+                        &snapshot, &cancelled, &profile, &budget,
+                    ),
+                    Err(SemanticTokenError::Syntax(SyntaxHighlightError::Cancelled))
+                );
+                let active = semantic_token_plan_for_document_with_profile(
+                    &snapshot,
+                    &cancellation(),
+                    &profile,
+                    &budget,
+                )
+                .unwrap()
+                .unwrap();
+                assert!(!active.packed().is_empty());
+                assert_eq!(budget.used_bytes() > 0, limit > 0);
+            }
+        }
+    }
+
+    #[test]
+    fn snapshot_clones_share_indexes_but_updates_release_their_own_charges() {
+        let source = "flowchart TD\nA --> B\n";
+        let profile = ClientProtocolProfile::permissive();
+        let budget = LineIndexBudget::new(64 * 1024);
+        let original = document(1, source);
+        let clone = original.clone();
+        semantic_token_plan_for_document_with_profile(
+            &original,
+            &cancellation(),
+            &profile,
+            &budget,
+        )
+        .unwrap();
+        let old_charge = budget.used_bytes();
+        assert!(old_charge > 0);
+        let original_index = original.line_index(&budget, || panic!("original index must exist"));
+        let clone_index =
+            clone.line_index(&budget, || panic!("clone must share the initialized cache"));
+        assert!(Arc::ptr_eq(&original_index, &clone_index));
+
+        let same_source = original
+            .update(2, DocumentKind::Diagram, Arc::from(source), &cancellation())
+            .unwrap();
+        let changed = original
+            .update(
+                3,
+                DocumentKind::Diagram,
+                Arc::from("flowchart TD\nA --> C\nC --> D\n"),
+                &cancellation(),
+            )
+            .unwrap();
+        assert_eq!(budget.used_bytes(), old_charge);
+        for updated in [&same_source, &changed] {
+            let mut built = false;
+            let updated_index = updated.line_index(&budget, || {
+                built = true;
+                SourceIndex::build_line_starts(updated.source())
+            });
+            assert!(built, "each update must start with an empty index cache");
+            assert!(!Arc::ptr_eq(&original_index, &updated_index));
+            assert!(
+                !semantic_token_plan_for_document_with_profile(
+                    updated,
+                    &cancellation(),
+                    &profile,
+                    &budget,
+                )
+                .unwrap()
+                .unwrap()
+                .packed()
+                .is_empty()
+            );
+        }
+        assert!(budget.used_bytes() > old_charge);
+        drop(same_source);
+        drop(changed);
+        assert_eq!(budget.used_bytes(), old_charge);
+        drop(original_index);
+        drop(clone_index);
+        drop(original);
+        assert_eq!(budget.used_bytes(), old_charge);
+        drop(clone);
+        assert_eq!(budget.used_bytes(), 0);
+    }
+
+    #[test]
     fn full_sequence_comes_from_tree_sitter_captures() {
         let profile = profile(
             serde_json::json!({ "full": true }),
             &["keyword", "variable"],
         );
         let document = document(1, "flowchart TD\nA --> B\n");
-        let plan =
-            semantic_token_plan_for_document_with_profile(&document, &cancellation(), &profile)
-                .unwrap()
-                .unwrap();
+        let plan = semantic_token_plan_for_document_with_profile(
+            &document,
+            &cancellation(),
+            &profile,
+            &LineIndexBudget::new(0),
+        )
+        .unwrap()
+        .unwrap();
         let tokens = semantic_tokens_from_packed(plan.packed());
 
         assert!(!tokens.is_empty());
@@ -621,9 +861,14 @@ mod tests {
         let range = Range::new(Position::new(0, 0), Position::new(2, 0));
         let range_only = profile(serde_json::json!({ "range": true }), &["keyword"]);
         assert!(
-            semantic_token_plan_for_document_with_profile(&document, &cancellation(), &range_only,)
-                .unwrap()
-                .is_none()
+            semantic_token_plan_for_document_with_profile(
+                &document,
+                &cancellation(),
+                &range_only,
+                &LineIndexBudget::new(0)
+            )
+            .unwrap()
+            .is_none()
         );
         assert!(
             semantic_token_plan_for_document_range_with_profile(
@@ -631,6 +876,7 @@ mod tests {
                 range,
                 &cancellation(),
                 &range_only,
+                &LineIndexBudget::new(0),
             )
             .unwrap()
             .is_some()
@@ -658,7 +904,7 @@ mod tests {
         ];
         for &(source, expected) in cases {
             let index = SourceIndex::new(source);
-            assert_eq!(index.line_starts.len(), expected.len(), "{source:?}");
+            assert_eq!(index.lines.starts.len(), expected.len(), "{source:?}");
             for (number, &(start, content_end, end)) in expected.iter().enumerate() {
                 let line = index.line(number);
                 assert_eq!(
@@ -957,6 +1203,7 @@ mod tests {
             Range::new(Position::new(6, 0), Position::new(10, 0)),
             &cancellation,
             &profile,
+            &LineIndexBudget::new(0),
         )
         .unwrap()
         .unwrap();
@@ -977,6 +1224,7 @@ mod tests {
             Range::new(Position::new(10, 0), Position::new(11, 0)),
             &cancellation(),
             &profile,
+            &LineIndexBudget::new(0),
         )
         .unwrap_err();
 

@@ -432,13 +432,18 @@ impl LanguageServer for MermanLanguageServer {
         };
         let supports_delta = projection.supports_delta();
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
             .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
-                let Some(plan) =
-                    semantic_token_plan_for_document_with_profile(document, cancellation, &profile)
-                        .map_err(|error| {
-                            semantic_token_planning_error(&error_uri, document.version(), error)
-                        })?
+                let Some(plan) = semantic_token_plan_for_document_with_profile(
+                    document,
+                    cancellation,
+                    &profile,
+                    &index_budget,
+                )
+                .map_err(|error| {
+                    semantic_token_planning_error(&error_uri, document.version(), error)
+                })?
                 else {
                     return Ok(None);
                 };
@@ -469,6 +474,7 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         }
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
             .query_semantic_tokens(
                 &uri,
@@ -478,6 +484,7 @@ impl LanguageServer for MermanLanguageServer {
                         document,
                         cancellation,
                         &profile,
+                        &index_budget,
                     )
                     .map_err(|error| {
                         semantic_token_planning_error(&error_uri, document.version(), error)
@@ -520,6 +527,7 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         }
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
             .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
                 let Some(plan) = semantic_token_plan_for_document_range_with_profile(
@@ -527,6 +535,7 @@ impl LanguageServer for MermanLanguageServer {
                     params.range,
                     cancellation,
                     &profile,
+                    &index_budget,
                 )
                 .map_err(|error| {
                     semantic_token_planning_error(&error_uri, document.version(), error)
