@@ -47,3 +47,8 @@ were not modified or staged.
   unchanged.
 - `python3 scripts/verify_crate_package_legal_materials.py` passed for 24 governed Cargo
   packages. This verifies tracked legal projections, not publication or registry availability.
+
+The complete (non-representative) dependency-closure run also passed for every declared target in
+all profiles, including Android, Apple, CLI, Flutter, LSP, Python, Typst and Web target sets.
+These are descriptor/lockfile closure checks on the current host; they do not replace cross-host
+compilation, package installation or device execution.
