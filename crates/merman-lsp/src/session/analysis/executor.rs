@@ -120,6 +120,15 @@ impl AnalysisTaskCapacity {
     }
 }
 
+/// Cancels only this syntax request when its waiting future is dropped.
+struct SyntaxRequestCancellation(AnalysisCancellationToken);
+
+impl Drop for SyntaxRequestCancellation {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
 /// Keeps one physical task slot until the spawned worker has completely unwound.
 struct AnalysisWorkerLease {
     capacity: Arc<AnalysisTaskCapacity>,
@@ -718,6 +727,43 @@ impl AnalysisExecutor {
         }
     }
 
+    /// Syntax queries share analysis budgets without entering its single-flight registry.
+    pub(in crate::session) async fn execute_syntax<T: Send + 'static>(
+        &self,
+        parent: &AnalysisCancellationToken,
+        compute: impl FnOnce(&AnalysisCancellationToken) -> T + Send + 'static,
+    ) -> Result<T, AnalysisExecutionError> {
+        let cancellation = parent.child();
+        let _cancel_on_drop = SyntaxRequestCancellation(cancellation.clone());
+        cancellation
+            .checkpoint()
+            .map_err(|_| AnalysisExecutionError::cancelled())?;
+        let task_permit = self.inner.task_capacity.acquire().await.map_err(|error| {
+            AnalysisExecutionError::new(format!("syntax task capacity closed: {error}"))
+        })?;
+        let cpu_permit = Arc::clone(&self.inner.cpu_permits)
+            .acquire_owned()
+            .await
+            .map_err(|error| {
+                AnalysisExecutionError::new(format!("syntax CPU capacity closed: {error}"))
+            })?;
+        cancellation
+            .checkpoint()
+            .map_err(|_| AnalysisExecutionError::cancelled())?;
+        let worker_lease = self.inner.task_capacity.start_worker(task_permit);
+        tokio::task::spawn_blocking(move || {
+            // Aborting the awaiting request must not release capacity held by live CPU work.
+            let _worker_lease = worker_lease;
+            let _cpu_permit = cpu_permit;
+            cancellation
+                .checkpoint()
+                .map_err(|_| AnalysisExecutionError::cancelled())?;
+            Ok(compute(&cancellation))
+        })
+        .await
+        .map_err(|error| AnalysisExecutionError::new(format!("syntax worker failed: {error}")))?
+    }
+
     pub(in crate::session) fn generation_for(&self, uri: &Uri) -> AnalysisJobGeneration {
         lock_recovering_poison(&self.inner.registry).generation_for(uri)
     }
@@ -1099,7 +1145,7 @@ impl AnalysisExecutor {
     }
 
     #[cfg(test)]
-    fn registry_state(&self) -> (usize, usize, usize) {
+    pub(in crate::session) fn registry_state(&self) -> (usize, usize, usize) {
         let registry = lock_recovering_poison(&self.inner.registry);
         (
             registry

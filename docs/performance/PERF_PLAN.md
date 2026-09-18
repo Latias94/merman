@@ -123,6 +123,57 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-18 bounded syntax-snapshot index reuse
+
+The [expanded attribution](lsp_index_reuse_attribution_2026-09-18.md) led to a snapshot-owned compact
+index with an independent 8 MiB per-session retention budget. Complete admitted indexes are reused
+across full/delta/range requests; contested initialization and budget denial use local construction.
+Accounting follows the last index reference, including older snapshots. There is no replacement
+policy or token-result cache. See the [bounded-reuse receipt](lsp_bounded_index_reuse_2026-09-18.md)
+for lifetime/concurrency tests, exact resource boundaries, and eight paired handler controls.
+
+All first/hot/edit controls pass; the ordinary 4 MiB hot-range observation is 2292.53 -> 22.66 us,
+while dense 4 MiB indexes are denied retention. This is a structural repeated-work/resource
+admission, not a separately admitted latency speedup. First-request preparation and source updates
+remain; real editor request frequency should inform any future budget or replacement policy.
+
+### 2026-09-17 compact LSP line indexing
+
+The [baseline attribution](lsp_line_index_attribution_2026-09-17.md) identified whole-source
+line-table construction in short-range semantic-token requests. The request-local index now stores
+one `usize` line-start offset instead of three offsets per line, deriving line ends as needed.
+Initialized index storage is reduced by two thirds; all registered reserved-capacity controls match
+that reduction, including 4 MiB dense Markdown at 96 -> 32 MiB and pure LF at 192 -> 64 MiB.
+See the [compact-index receipt](lsp_compact_line_index_2026-09-17.md) for semantic boundaries and
+eight paired handler non-regression controls. No whole-process memory or admitted latency speedup
+is claimed. Full-source scanning remains; snapshot reuse is a separate hypothesis requiring an
+explicit retained-memory policy and repeated-request evidence, especially against one request
+per edit.
+
+### 2026-09-17 layout image scanning
+
+The separate Flowchart layout image helper now compares fixed-size prefixes and consumes each
+searched tag span once. This removes the remaining quadratic suffix-lowercasing term from mixed
+image labels while preserving metric values and opaque measurer requests. See the
+[layout scanning receipt](layout_image_scan_2026-09-17.md) for the linear preparation bound,
+original-implementation behavior checks, and validation scope. No measured speedup is claimed.
+
+### 2026-09-17 LSP semantic-token scheduling
+
+Full, delta, and range token computation now leaves the transport poll and shares the analysis
+executor's two CPU permits and eight task slots. Cancellation retains permits until physical work
+exits and cannot cancel sibling requests. See the [scheduling repair receipt](lsp_syntax_scheduling_2026-09-17.md)
+for deterministic progress, resource-accounting evidence, and remaining cancellation latency limits.
+No measured latency improvement is claimed.
+
+### 2026-09-17 label work removal
+
+Flowchart image normalization uses a fixed-size ASCII prefix comparison instead of repeatedly
+lowercasing the remaining label, removing the helper's quadratic suffix-scanning term. Built-in
+RaTeX measurement retains display-list dimensions but skips discarded SVG serialization. Neither
+change adds a cache or changes custom callbacks. See the [structural repair receipt](label_scan_math_measurement_2026-09-17.md)
+for bounds, correctness evidence, and validation limits; no latency improvement is claimed.
+
 ### 2026-08-08 headless hardening decisions
 
 | Unit | Decision | Durable boundary |

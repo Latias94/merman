@@ -2560,6 +2560,31 @@ fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
 }
 
 #[test]
+fn flowchart_html_image_after_many_tags_matches_case_variants() {
+    let spans = "<span>α</span>".repeat(128);
+    let source = |image_tag: &str| format!("flowchart TB\nA[\"{spans}{image_tag}\"]\n");
+    let lower = render_flowchart_svg_from_text(&source("<img src='https://example.com/x.svg'>"));
+    let mixed = render_flowchart_svg_from_text(&source("<iMg src='https://example.com/x.svg'>"));
+    assert_eq!(mixed, lower);
+    let document = roxmltree::Document::parse(&mixed).expect("valid SVG with XHTML labels");
+    let images = document
+        .descendants()
+        .filter(|node| node.has_tag_name("img"))
+        .collect::<Vec<_>>();
+    assert_eq!(images.len(), 1);
+    assert_eq!(
+        images[0].attribute("src"),
+        Some("https://example.com/x.svg")
+    );
+    assert!(
+        images[0]
+            .attribute("style")
+            .unwrap()
+            .contains("width: 100%;")
+    );
+}
+
+#[test]
 fn flowchart_html_single_image_label_uses_paragraph_wrapper() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()

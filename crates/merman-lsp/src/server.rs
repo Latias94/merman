@@ -422,7 +422,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let profile = self.client_profile();
+        let profile = self.client_profile().clone();
         let Some(projection) = profile
             .semantic_tokens
             .as_ref()
@@ -432,13 +432,18 @@ impl LanguageServer for MermanLanguageServer {
         };
         let supports_delta = projection.supports_delta();
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
-            .query_semantic_tokens(&uri, None, |document, _, cancellation| {
-                let Some(plan) =
-                    semantic_token_plan_for_document_with_profile(document, cancellation, profile)
-                        .map_err(|error| {
-                            semantic_token_planning_error(&error_uri, document.version(), error)
-                        })?
+            .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
+                let Some(plan) = semantic_token_plan_for_document_with_profile(
+                    document,
+                    cancellation,
+                    &profile,
+                    &index_budget,
+                )
+                .map_err(|error| {
+                    semantic_token_planning_error(&error_uri, document.version(), error)
+                })?
                 else {
                     return Ok(None);
                 };
@@ -460,7 +465,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensDeltaParams,
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
-        let profile = self.client_profile();
+        let profile = self.client_profile().clone();
         if !profile
             .semantic_tokens
             .as_ref()
@@ -469,15 +474,17 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         }
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
             .query_semantic_tokens(
                 &uri,
                 Some(params.previous_result_id.as_str()),
-                |document, previous, cancellation| {
+                move |document, previous, cancellation| {
                     let Some(current_plan) = semantic_token_plan_for_document_with_profile(
                         document,
                         cancellation,
-                        profile,
+                        &profile,
+                        &index_budget,
                     )
                     .map_err(|error| {
                         semantic_token_planning_error(&error_uri, document.version(), error)
@@ -511,7 +518,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
-        let profile = self.client_profile();
+        let profile = self.client_profile().clone();
         if !profile
             .semantic_tokens
             .as_ref()
@@ -520,13 +527,15 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         }
         let error_uri = uri.clone();
+        let index_budget = self.session.line_index_budget();
         self.session
-            .query_semantic_tokens(&uri, None, |document, _, cancellation| {
+            .query_semantic_tokens(&uri, None, move |document, _, cancellation| {
                 let Some(plan) = semantic_token_plan_for_document_range_with_profile(
                     document,
                     params.range,
                     cancellation,
-                    profile,
+                    &profile,
+                    &index_budget,
                 )
                 .map_err(|error| {
                     semantic_token_planning_error(&error_uri, document.version(), error)

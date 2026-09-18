@@ -272,7 +272,7 @@ pub struct RatexMathRenderer;
 
 #[cfg(feature = "math")]
 #[derive(Debug, Clone)]
-struct RatexRenderedMath {
+struct RatexMathMetrics {
     width_em: f64,
     height_em: f64,
     line_count: usize,
@@ -305,15 +305,22 @@ impl RatexMathRenderer {
         }
     }
 
-    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
+    fn layout_formula_em(latex: &str) -> Option<(ratex_types::DisplayList, f64, f64)> {
         let ast = ratex_parser::parse(latex).ok()?;
         let layout_options = ratex_layout::LayoutOptions::default()
             .with_style(ratex_types::MathStyle::Display)
             .with_color(ratex_types::Color::BLACK);
         let layout_box = ratex_layout::layout(&ast, &layout_options);
+        // Display-list bounds include overflowing ink (for example, smash and lap commands).
+        // Measurement must use those same rounded bounds as the emitted SVG viewport.
         let display_list = ratex_layout::to_display_list(&layout_box);
         let width_em = Self::emitted_em_dimension(display_list.width.max(0.0));
         let height_em = Self::emitted_em_dimension(display_list.total_height().max(0.0));
+        Some((display_list, width_em, height_em))
+    }
+
+    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
+        let (display_list, width_em, height_em) = Self::layout_formula_em(latex)?;
         let svg = ratex_svg::render_to_svg(
             &display_list,
             &ratex_svg::SvgOptions {
@@ -348,18 +355,18 @@ impl RatexMathRenderer {
         )
     }
 
-    fn render_math_only_label(text: &str) -> Option<RatexRenderedMath> {
+    fn measure_math_only_label(text: &str) -> Option<RatexMathMetrics> {
         let formulas = Self::math_only_lines(text)?;
         let mut width_em: f64 = 0.0;
         let mut height_em: f64 = 0.0;
         let mut line_count = 0usize;
         for formula in formulas {
-            let (_svg, line_width_em, line_height_em) = Self::render_formula_svg_em(&formula)?;
+            let (_display_list, line_width_em, line_height_em) = Self::layout_formula_em(&formula)?;
             width_em = width_em.max(line_width_em);
             height_em += line_height_em;
             line_count += 1;
         }
-        Some(RatexRenderedMath {
+        Some(RatexMathMetrics {
             width_em,
             height_em,
             line_count: line_count.max(1),
@@ -401,12 +408,12 @@ impl RatexMathRenderer {
         saw_math.then_some(html)
     }
 
-    fn metrics_from_em(rendered: &RatexRenderedMath, font_size: f64) -> TextMetrics {
+    fn metrics_from_em(measured: &RatexMathMetrics, font_size: f64) -> TextMetrics {
         let font_size = font_size.max(1.0);
         TextMetrics {
-            width: rendered.width_em * font_size,
-            height: rendered.height_em * font_size,
-            line_count: rendered.line_count,
+            width: measured.width_em * font_size,
+            height: measured.height_em * font_size,
+            line_count: measured.line_count,
         }
     }
 
@@ -449,8 +456,8 @@ impl MathRenderer for RatexMathRenderer {
         if wrap_mode != WrapMode::HtmlLike || !text.contains("$$") {
             return None;
         }
-        let rendered = Self::render_math_only_label(text)?;
-        Some(Self::metrics_from_em(&rendered, style.font_size))
+        let measured = Self::measure_math_only_label(text)?;
+        Some(Self::metrics_from_em(&measured, style.font_size))
     }
 
     fn measure_sequence_html_label(
@@ -461,9 +468,9 @@ impl MathRenderer for RatexMathRenderer {
         if !text.contains("$$") {
             return None;
         }
-        let rendered = Self::render_math_only_label(text)?;
+        let measured = Self::measure_math_only_label(text)?;
         Some(Self::metrics_from_em(
-            &rendered,
+            &measured,
             TextStyle::default().font_size,
         ))
     }
@@ -865,7 +872,7 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn ratex_math_metrics_preserve_emitted_em_precision() {
-        let rendered = RatexRenderedMath {
+        let rendered = RatexMathMetrics {
             width_em: 0.6255,
             height_em: 1.2505,
             line_count: 1,
@@ -1068,6 +1075,110 @@ mod tests {
             crate::flowchart::flowchart_label_metrics_for_layout(flowchart_request);
         assert_eq!(through_flowchart.width, flowchart.width);
         assert_eq!(through_flowchart.height, flowchart.height);
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn ratex_math_measurements_match_svg_viewports_across_formulas_and_lines() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+        for label in [
+            "$$x^2$$",
+            r"$$\frac{1}{\sqrt{x}}$$",
+            "$$α+β$$",
+            r"$$\text{中文}$$",
+            r"$$\smash{x^2}$$",
+            r"$$\mathllap{x^2}$$",
+            r"$$x^2$$<BR />$$\frac{1}{\sqrt{x}}$$<br>$$α+β$$",
+        ] {
+            let html = renderer.render_html_label(label, &config).unwrap();
+            let document_source = format!("<div>{html}</div>");
+            let document = roxmltree::Document::parse(&document_source).unwrap();
+            let mut width_em = 0.0_f64;
+            let mut height_em = 0.0_f64;
+            let mut line_count = 0;
+            for svg in document
+                .descendants()
+                .filter(|node| node.has_tag_name("svg"))
+            {
+                let dimension = |name| {
+                    svg.attribute(name)
+                        .unwrap()
+                        .strip_suffix("em")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                };
+                width_em = width_em.max(dimension("width"));
+                height_em += dimension("height");
+                line_count += 1;
+            }
+            assert!(line_count > 0, "expected formula SVGs for {label}");
+
+            for font_size in [0.5, 16.0, 23.75] {
+                let style = TextStyle {
+                    font_size,
+                    ..TextStyle::default()
+                };
+                let metrics = renderer
+                    .measure_html_label(label, &config, &style, Some(1.0), WrapMode::HtmlLike)
+                    .unwrap();
+                assert_eq!(metrics.width, width_em * font_size.max(1.0), "{label}");
+                assert_eq!(metrics.height, height_em * font_size.max(1.0), "{label}");
+                assert_eq!(metrics.line_count, line_count, "{label}");
+            }
+
+            let sequence = renderer
+                .measure_sequence_html_label(label, &config)
+                .unwrap();
+            let font_size = TextStyle::default().font_size;
+            assert_eq!(sequence.width, width_em * font_size, "{label}");
+            assert_eq!(sequence.height, height_em * font_size, "{label}");
+            assert_eq!(sequence.line_count, line_count, "{label}");
+        }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn ratex_math_measurement_preserves_declined_labels() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        for label in ["$$x", r"$$\frac{1}{$$", r"$$x$$<br>$$\frac{1}{$$"] {
+            assert!(
+                renderer.render_html_label(label, &config).is_none(),
+                "{label}"
+            );
+            assert!(
+                renderer
+                    .measure_html_label(label, &config, &style, None, WrapMode::HtmlLike)
+                    .is_none(),
+                "{label}"
+            );
+            assert!(
+                renderer
+                    .measure_sequence_html_label(label, &config)
+                    .is_none(),
+                "{label}"
+            );
+        }
+        for label in ["value: $$x$$", "$$x$$ $$y$$"] {
+            assert!(
+                renderer.render_html_label(label, &config).is_some(),
+                "{label}"
+            );
+            assert!(
+                renderer
+                    .measure_html_label(label, &config, &style, None, WrapMode::HtmlLike)
+                    .is_none(),
+                "mixed labels must remain delegated to the existing fallback: {label}"
+            );
+            assert!(
+                renderer
+                    .measure_sequence_html_label(label, &config)
+                    .is_none()
+            );
+        }
     }
 
     #[test]
