@@ -35,3 +35,15 @@ local checks above:
 
 The two pre-existing untracked `docs/knowledge/engineering/{logs,registry}/2026-08/` directories
 were not modified or staged.
+
+## Additional static release evidence (2026-09-18)
+
+- `python3 scripts/verify_artifact_dependency_closures.py --representative-targets` passed for
+  all 36 declared profiles. The verifier checked descriptor-owned targets and runtime dependency
+  closures; this is profile-manifest evidence, not a build of every target.
+- `python3 scripts/release-version.py check --version 0.8.0-alpha.7` and `canonical` passed.
+  Workspace, Cargo.lock, Node, Web, Playground, Python, Android and Flutter projections all
+  resolve to the selected alpha.7 line; independent `roughr` and `tree-sitter` versions remain
+  unchanged.
+- `python3 scripts/verify_crate_package_legal_materials.py` passed for 24 governed Cargo
+  packages. This verifies tracked legal projections, not publication or registry availability.
