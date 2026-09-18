@@ -312,6 +312,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Progress (2026-09-18):** The [rectangle geometry record](../knowledge/engineering/verification/2026-09-18-flowchart-rectangle-geometry.md) covers typed rectangle radii, browser/native source/config consistency and public Node/Edge stroke widths. The [corner applicability record](../knowledge/engineering/verification/2026-09-18-flowchart-radius-applicability.md) defines Flowchart/Swimlane Node numeric radius as an existing corner-channel parameter: a concrete Diamond polygon reports NotApplicable for that facet, while unverified writers and unsupported Clear retain residuals. The ordinary public Cyberpunk recipe now carries radius 10 and preserves it through export/import. No global radius redefinition or shape selector is introduced. The [label-weight record](../knowledge/engineering/verification/2026-09-18-flowchart-label-weight.md) tracks the next increment: shared static NodeLabel/EdgeLabel weight consumption, source/config/Clear semantics, public Flowchart recipe weight600 and conditional discovery. Browser terminal weights, six native geometry/marker tests, four C6/qualification tests and 2,936 Renderer Release tests have passed; the qualification recheck and scoped lint are tracked in that record. U6 still requires text/edge effects and complete three-target scene acceptance.
 
+**Follow-up (2026-09-18, scoped validation complete):** The [admission and edge-effect record](../knowledge/engineering/verification/2026-09-18-theme-admission-and-edge-effects.md) tracks the external audit corrections (HTML weight ownership, raw transport admission, Web effect color space) and a separate bounded Edge filter consumer. The public Cyberpunk edge recipe and complete scene acceptance remain open; no U6 or C7a closure is claimed.
+
 ### U7. Deliver the complete Sequence scene
 
 **Goal:** Connect required Sequence styling and effects beyond palette changes.
@@ -354,6 +356,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 - Covers AE5/AE6. Switching families updates design scope without changing selection; semantic reply/cardinality/task-state distinctions and later-series styling remain correct.
 - The feature-disabled profile and the embedded-font profile advertise their actual different capabilities.
 - Qualified cells reject recipe/profile/source mismatch and cannot reuse the historical a5 palette-only receipt for the new recipe.
+- Web public-entry tests assert the exported Cyberpunk background colors, gradient positions/radii and layer order alongside visible glow; field/type checks alone do not qualify the scene.
 
 **Verification:** Public scene tests and shared vectors agree; basic usability findings for all ten IDs are resolved or explicitly bounded without weakening R1. Generated projections derive from their existing owner.
 
