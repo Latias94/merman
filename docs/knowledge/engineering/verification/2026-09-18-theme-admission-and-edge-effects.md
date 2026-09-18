@@ -83,3 +83,21 @@ and `/tmp/merman-flutter-raw-options-smoke.log`. They are session artifacts, not
 No full workspace run, all-platform rebuild, installed-package matrix or performance comparison
 is claimed by this increment. The existing Flutter bundled library reports alpha.6; this run
 explicitly loaded the fresh alpha.7 library without replacing that bundled artifact.
+
+## Follow-up review disposition (2026-09-18)
+
+A second review of the same `54f8398f4..6d9ef7c80` range reported three findings. They are
+already covered by later commits and are not new open defects on the current branch:
+
+- The Flowchart HTML weight ownership correction is `6728e7cdd`. Unmeasured nested HTML weight
+  keeps residual evidence; the renderer no longer treats fragment inspection alone as proof.
+- Raw WASM and Flutter option projection is `9bfb49e19`. Timeout/policy projection preserves the
+  original JSON members, duplicate keys and recipe byte accounting before shared admission.
+- The Web `ThemeEffectGraph.color_space` public type is `755ba9444`, including construction and
+  export/import type coverage.
+
+The public Cyberpunk recipe now also has an independent Flowchart Edge graph in `da7b94532`.
+It is a one-stage sRGB source-graphic shadow with a six-pixel blur, scoped only to Flowchart Edge;
+Node keeps its separate two-stage graph. The recipe exchange and native Flowchart regression now
+verify that scope. This remains a bounded consumer increment: label glow, Sequence and XY Chart
+scene qualification, catalog cells and C7a delivery evidence are still open.
