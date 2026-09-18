@@ -52,18 +52,29 @@ pub(super) fn write_theme_shadow_application(
                 };
                 let _ = write!(
                     out,
+                    r#"<feGaussianBlur in="{input}" stdDeviation="{}" result="merman-shadow-{index}-blur"/>"#,
+                    stage.std_deviation
+                );
+                let mask = if stage.offset_x == 0.0 && stage.offset_y == 0.0 {
+                    "blur"
+                } else {
+                    let _ = write!(
+                        out,
+                        r#"<feOffset in="merman-shadow-{index}-blur" dx="{}" dy="{}" result="merman-shadow-{index}-offset"/>"#,
+                        stage.offset_x, stage.offset_y
+                    );
+                    "offset"
+                };
+                let _ = write!(
+                    out,
                     concat!(
-                        r#"<feGaussianBlur in="{input}" stdDeviation="{blur}" result="merman-shadow-{index}-blur"/>"#,
-                        r#"<feOffset in="merman-shadow-{index}-blur" dx="{dx}" dy="{dy}" result="merman-shadow-{index}-offset"/>"#,
                         r#"<feFlood flood-color="{color}" result="merman-shadow-{index}-flood"/>"#,
-                        r#"<feComposite in="merman-shadow-{index}-flood" in2="merman-shadow-{index}-offset" operator="in" result="merman-shadow-{index}-shadow"/>"#,
+                        r#"<feComposite in="merman-shadow-{index}-flood" in2="merman-shadow-{index}-{mask}" operator="in" result="merman-shadow-{index}-shadow"/>"#,
                         r#"<feMerge result="merman-shadow-{index}-result"><feMergeNode in="merman-shadow-{index}-shadow"/><feMergeNode in="{input}"/></feMerge>"#
                     ),
                     input = input,
-                    blur = stage.std_deviation,
                     index = index,
-                    dx = stage.offset_x,
-                    dy = stage.offset_y,
+                    mask = mask,
                     color = color
                 );
             }

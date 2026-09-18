@@ -14,21 +14,37 @@ fn render(
     input: EffectInput,
     color_space: EffectColorSpace,
 ) -> merman::RenderedDocument {
+    render_with_offsets(
+        source,
+        target,
+        input,
+        color_space,
+        [[-12.0, 0.0], [12.0, 0.0]],
+    )
+}
+
+fn render_with_offsets(
+    source: &str,
+    target: ThemeTarget,
+    input: EffectInput,
+    color_space: EffectColorSpace,
+    offsets: [[f32; 2]; 2],
+) -> merman::RenderedDocument {
     let graph = EffectGraph::new(
         "composed",
         [
             EffectPrimitive::DropShadow {
                 input: EffectInput::SourceGraphic,
-                offset_x: -12.0,
-                offset_y: 0.0,
+                offset_x: offsets[0][0],
+                offset_y: offsets[0][1],
                 blur_radius: 2.0,
                 spread: 0.0,
                 color: ThemeColorValue::parse("rgba(128,48,32,0.5)").unwrap(),
             },
             EffectPrimitive::DropShadow {
                 input,
-                offset_x: 12.0,
-                offset_y: 0.0,
+                offset_x: offsets[1][0],
+                offset_y: offsets[1][1],
                 blur_radius: 2.0,
                 spread: 0.0,
                 color: ThemeColorValue::parse("rgba(32,64,128,0.6)").unwrap(),
@@ -178,6 +194,64 @@ fn assert_composed_shadows(source: &str, target: ThemeTarget, applications: u32)
                     .contains("max_svg_conversion_filter_primitives_per_filter"),
                 "{error}"
             );
+        }
+    }
+}
+
+#[test]
+fn shadow_writer_elides_only_srgb_identity_translations() {
+    for offsets in [
+        [[0.0, -0.0], [-0.0, 0.0]],
+        [[0.0, 6.0], [0.0, 0.0]],
+        [[0.0, 0.0], [-6.0, 0.0]],
+    ] {
+        for color_space in [EffectColorSpace::Srgb, EffectColorSpace::LinearRgb] {
+            let document = render_with_offsets(
+                "stateDiagram-v2\nReady --> Done",
+                ThemeTarget::State,
+                EffectInput::Previous,
+                color_space,
+                offsets,
+            );
+            let xml = roxmltree::Document::parse(document.svg()).unwrap();
+            let translated = offsets
+                .iter()
+                .filter(|[x, y]| *x != 0.0 || *y != 0.0)
+                .count();
+            assert_eq!(
+                xml.descendants()
+                    .filter(|node| node.has_tag_name("feOffset"))
+                    .count(),
+                if color_space == EffectColorSpace::Srgb {
+                    translated * 2
+                } else {
+                    0
+                }
+            );
+            let png = document
+                .export_png(&Default::default(), OperationControl::new())
+                .unwrap();
+            let pdf = document
+                .export_pdf(&Default::default(), OperationControl::new())
+                .unwrap();
+            let receipt = png.export_report().native_filter_receipt().unwrap();
+            assert_eq!(receipt.drop_shadow_count(), 4);
+            assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
+            assert_eq!(
+                png.export_report().conversion().filter_primitives,
+                if color_space == EffectColorSpace::Srgb {
+                    (8 + translated) * 2
+                } else {
+                    4
+                }
+            );
+            for admission in [png.admission(), pdf.admission()] {
+                assert!(
+                    !admission
+                        .reasons()
+                        .contains(&TargetAdmissionReason::NativeFilterReceiptMismatch)
+                );
+            }
         }
     }
 }

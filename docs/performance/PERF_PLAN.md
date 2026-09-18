@@ -7,6 +7,12 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+The [identity-shadow-offset checkpoint](zero_offset_shadow_2026-09-18.md) reduces actual filter
+work from 140 to 112 primitives for the fixed Cyberpunk XY scene, preserving PNG/PDF bytes and
+existing limits. It does not claim a latency improvement. Larger default-profile charts remain
+limited by conservative SVG reference-expansion accounting and conversion budgets, and native PDF
+cumulative allocation remains a U10 profiling target.
+
 The September 16 [theme capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
 adds confirmed alpha.6-to-alpha.7 default-SVG regressions and matched CPU samples. These are
 active work below; the earlier headless optimization decisions remain historical and unchanged.

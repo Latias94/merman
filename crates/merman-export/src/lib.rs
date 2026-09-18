@@ -429,7 +429,7 @@ pub const DEFAULT_MAX_TOTAL_EMBEDDED_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub const DEFAULT_MAX_SVG_ISOLATION_DEPTH: usize = 8;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-// Two sRGB shadows lower to ten standard SVG primitives. Keep this finite backend cap
+// Two sRGB shadows lower to at most ten standard SVG primitives. Keep this finite backend cap
 // aligned with that bounded composition; the separate total-primitive ceiling still applies.
 pub const DEFAULT_MAX_FILTER_PRIMITIVES_PER_FILTER: usize = 10;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

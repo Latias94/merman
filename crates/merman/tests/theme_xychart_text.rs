@@ -409,3 +409,82 @@ fn xy_role_glow_paint_reserve_does_not_certify_underestimated_host_metrics() {
         );
     }
 }
+
+#[cfg(all(feature = "png", feature = "pdf"))]
+#[test]
+fn complete_cyberpunk_xy_scene_fits_default_native_filter_budget() {
+    use merman::svg::{
+        ThemePreset,
+        export::{PdfOptions, RasterOptions, SvgConversionLimits},
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Cyberpunk)
+        .unwrap();
+    let source = include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd");
+    let RenderOutput::Document(Some(document)) = Renderer::new()
+        .render(
+            RenderRequest::document(source, OperationControl::new(), Default::default())
+                .with_theme(theme),
+        )
+        .unwrap()
+    else {
+        panic!("expected document")
+    };
+    let png = document
+        .export_png(&RasterOptions::default(), OperationControl::new())
+        .unwrap();
+    let pdf = document
+        .export_pdf(&PdfOptions::default(), OperationControl::new())
+        .unwrap();
+    // Eight bars, two lines, fifteen axis labels and three titles each retain one shadow.
+    let expected_filters = 8 + 2 + 15 + 3;
+    assert_eq!(
+        png.export_report().conversion().filtered_groups,
+        expected_filters
+    );
+    assert_eq!(
+        png.export_report().conversion().filter_primitives,
+        expected_filters * 4
+    );
+    assert_eq!(
+        png.export_report().conversion(),
+        pdf.export_report().conversion()
+    );
+    assert_eq!(
+        png.export_report().native_filter_receipt(),
+        pdf.export_report().native_filter_receipt()
+    );
+    assert_eq!(
+        png.export_report()
+            .native_filter_receipt()
+            .unwrap()
+            .drop_shadow_count(),
+        expected_filters as u32
+    );
+    for admission in [png.admission(), pdf.admission()] {
+        assert!(
+            admission
+                .reasons()
+                .iter()
+                .all(|reason| *reason == merman::TargetAdmissionReason::SystemOrHostFontDependency),
+            "{admission:?}"
+        );
+    }
+    let limits = SvgConversionLimits {
+        max_total_filter_primitives: Some(expected_filters * 4 - 1),
+        ..Default::default()
+    };
+    let error = document
+        .export_png(
+            &RasterOptions::default().with_conversion_limits(limits),
+            OperationControl::new(),
+        )
+        .err()
+        .expect("exact lower limit remains enforced");
+    assert!(
+        error
+            .to_string()
+            .contains("max_total_svg_conversion_filter_primitives"),
+        "{error}"
+    );
+}

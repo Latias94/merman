@@ -37,6 +37,7 @@ struct OpenFilter {
     color_space: Option<EffectColorSpace>,
     stages: Vec<DropShadowDefinition>,
     expanded_elements: Vec<Vec<String>>,
+    expanded_offset_omitted: bool,
     valid: bool,
 }
 
@@ -97,6 +98,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
                             filter.valid = false;
                         }
                         filter.expanded_elements.clear();
+                        filter.expanded_offset_omitted = false;
                     }
                 }
                 if open_filters
@@ -267,6 +269,7 @@ fn parse_filter(
         color_space,
         stages: Vec::new(),
         expanded_elements: Vec::new(),
+        expanded_offset_omitted: false,
         valid,
     })
 }
@@ -316,8 +319,9 @@ fn observe_filter_child(
     Ok(())
 }
 
-// This recognizes only the writer's five-primitive sRGB shadow expansion, not arbitrary
-// SVG filter programs. The two merge nodes are the last two elements of each stage.
+// Recognize only the writer's sRGB shadow expansion, with an optional identity offset.
+// The two merge nodes are the last two elements of each stage; this is not a general
+// SVG filter-program parser.
 fn observe_expanded_shadow(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
@@ -343,6 +347,10 @@ fn observe_expanded_shadow(
         &[b"in"],
     ];
     let position = filter.expanded_elements.len();
+    if position == 1 && is_svg_element(reader, element, b"feFlood") {
+        filter.expanded_offset_omitted = true;
+    }
+    let position = position + usize::from(filter.expanded_offset_omitted && position > 0);
     if filter.stages.len() >= MAX_NATIVE_SHADOW_STAGES
         || position >= ELEMENTS.len()
         || depth != filter.depth + if position < 5 { 1 } else { 2 }
@@ -383,18 +391,36 @@ fn observe_expanded_shadow(
 }
 
 fn finish_expanded_shadow(filter: &OpenFilter) -> Option<DropShadowDefinition> {
-    let [
-        blur,
-        offset,
-        flood,
-        composite,
-        merge,
-        shadow_node,
-        source_node,
-    ] = filter.expanded_elements.as_slice()
-    else {
-        return None;
-    };
+    let (blur, offset, flood, composite, merge, shadow_node, source_node) =
+        match filter.expanded_elements.as_slice() {
+            [
+                blur,
+                offset,
+                flood,
+                composite,
+                merge,
+                shadow_node,
+                source_node,
+            ] => (
+                blur,
+                Some(offset),
+                flood,
+                composite,
+                merge,
+                shadow_node,
+                source_node,
+            ),
+            [blur, flood, composite, merge, shadow_node, source_node] => (
+                blur,
+                None,
+                flood,
+                composite,
+                merge,
+                shadow_node,
+                source_node,
+            ),
+            _ => return None,
+        };
     let index = filter.stages.len();
     let prefix = format!("merman-shadow-{index}");
     let input = if blur[0] == "SourceGraphic" {
@@ -404,12 +430,24 @@ fn finish_expanded_shadow(filter: &OpenFilter) -> Option<DropShadowDefinition> {
     } else {
         return None;
     };
+    let (offset_value, mask) = if let Some(offset) = offset {
+        if offset[0] != blur[2] || offset[3] != format!("{prefix}-offset") {
+            return None;
+        }
+        (
+            [
+                parse_finite_number(&offset[1])?,
+                parse_finite_number(&offset[2])?,
+            ],
+            &offset[3],
+        )
+    } else {
+        ([0.0, 0.0], &blur[2])
+    };
     if blur[2] != format!("{prefix}-blur")
-        || offset[0] != blur[2]
-        || offset[3] != format!("{prefix}-offset")
         || flood[1] != format!("{prefix}-flood")
         || composite[0] != flood[1]
-        || composite[1] != offset[3]
+        || &composite[1] != mask
         || composite[2] != "in"
         || composite[3] != format!("{prefix}-shadow")
         || merge[0] != format!("{prefix}-result")
@@ -420,10 +458,7 @@ fn finish_expanded_shadow(filter: &OpenFilter) -> Option<DropShadowDefinition> {
     }
     Some(DropShadowDefinition {
         input,
-        offset: [
-            parse_finite_number(&offset[1])?,
-            parse_finite_number(&offset[2])?,
-        ],
+        offset: offset_value,
         std_deviation: parse_std_deviation(&blur[1])?,
         color_css: flood[0].clone(),
     })
@@ -679,73 +714,94 @@ fn resolved_expanded_filter_matches(
     application: &NativeSvgFilterApplication,
 ) -> bool {
     use usvg::filter::{ColorInterpolation, CompositeOperator, Input, Kind};
-    if filter.primitives().len() != application.stages().len() * 5 {
-        return false;
+    let mut remaining = filter.primitives();
+    for (index, stage) in application.stages().iter().enumerate() {
+        let count = if remaining
+            .get(1)
+            .is_some_and(|p| matches!(p.kind(), Kind::Offset(_)))
+        {
+            5
+        } else {
+            4
+        };
+        let Some((primitives, rest)) = remaining.split_at_checked(count) else {
+            return false;
+        };
+        remaining = rest;
+        let (blur, offset, flood, composite, merge) = match primitives {
+            [blur, offset, flood, composite, merge] => {
+                (blur, Some(offset), flood, composite, merge)
+            }
+            [blur, flood, composite, merge] => (blur, None, flood, composite, merge),
+            _ => return false,
+        };
+        if primitives
+            .iter()
+            .any(|p| p.color_interpolation() != ColorInterpolation::SRGB)
+        {
+            return false;
+        }
+        let prefix = format!("merman-shadow-{index}");
+        if [blur, flood, composite, merge]
+            .into_iter()
+            .zip(["blur", "flood", "shadow", "result"])
+            .any(|(primitive, suffix)| primitive.result() != format!("{prefix}-{suffix}"))
+        {
+            return false;
+        }
+        let (
+            Kind::GaussianBlur(blur_value),
+            Kind::Flood(flood_value),
+            Kind::Composite(composite_value),
+            Kind::Merge(merge_value),
+        ) = (blur.kind(), flood.kind(), composite.kind(), merge.kind())
+        else {
+            return false;
+        };
+        let input = match stage.input() {
+            EffectInput::SourceGraphic => Input::SourceGraphic,
+            EffectInput::Previous => {
+                let Some(previous) = index.checked_sub(1) else {
+                    return false;
+                };
+                Input::Reference(format!("merman-shadow-{previous}-result"))
+            }
+        };
+        let [dx, dy] = stage.offset();
+        let mask = if let Some(offset) = offset {
+            let Kind::Offset(value) = offset.kind() else {
+                return false;
+            };
+            if offset.result() != format!("{prefix}-offset")
+                || value.input() != &Input::Reference(blur.result().to_string())
+                || !same_f32(value.dx(), dx)
+                || !same_f32(value.dy(), dy)
+            {
+                return false;
+            }
+            offset.result()
+        } else {
+            if dx != 0.0 || dy != 0.0 {
+                return false;
+            }
+            blur.result()
+        };
+        let [std_x, std_y] = stage.std_deviation();
+        let [red, green, blue, alpha] = stage.color_rgba();
+        if blur_value.input() != &input
+            || !same_f32(blur_value.std_dev_x().get(), std_x)
+            || !same_f32(blur_value.std_dev_y().get(), std_y)
+            || flood_value.color() != usvg::Color::new_rgb(red, green, blue)
+            || flood_value.opacity() != usvg::Opacity::new_u8(alpha)
+            || composite_value.input1() != &Input::Reference(flood.result().to_string())
+            || composite_value.input2() != &Input::Reference(mask.to_string())
+            || composite_value.operator() != CompositeOperator::In
+            || merge_value.inputs() != [Input::Reference(composite.result().to_string()), input]
+        {
+            return false;
+        }
     }
-    filter
-        .primitives()
-        .chunks_exact(5)
-        .zip(application.stages())
-        .enumerate()
-        .all(|(index, (primitives, stage))| {
-            let [blur, offset, flood, composite, merge] = primitives else {
-                return false;
-            };
-            if primitives
-                .iter()
-                .any(|primitive| primitive.color_interpolation() != ColorInterpolation::SRGB)
-            {
-                return false;
-            }
-            let prefix = format!("merman-shadow-{index}");
-            if [blur, offset, flood, composite, merge]
-                .into_iter()
-                .zip(["blur", "offset", "flood", "shadow", "result"])
-                .any(|(primitive, suffix)| primitive.result() != format!("{prefix}-{suffix}"))
-            {
-                return false;
-            }
-            let (
-                Kind::GaussianBlur(blur_value),
-                Kind::Offset(offset_value),
-                Kind::Flood(flood_value),
-                Kind::Composite(composite_value),
-                Kind::Merge(merge_value),
-            ) = (
-                blur.kind(),
-                offset.kind(),
-                flood.kind(),
-                composite.kind(),
-                merge.kind(),
-            )
-            else {
-                return false;
-            };
-            let input = match stage.input() {
-                EffectInput::SourceGraphic => Input::SourceGraphic,
-                EffectInput::Previous => {
-                    let Some(previous) = index.checked_sub(1) else {
-                        return false;
-                    };
-                    Input::Reference(format!("merman-shadow-{previous}-result"))
-                }
-            };
-            let [dx, dy] = stage.offset();
-            let [std_x, std_y] = stage.std_deviation();
-            let [red, green, blue, alpha] = stage.color_rgba();
-            blur_value.input() == &input
-                && same_f32(blur_value.std_dev_x().get(), std_x)
-                && same_f32(blur_value.std_dev_y().get(), std_y)
-                && offset_value.input() == &Input::Reference(blur.result().to_string())
-                && same_f32(offset_value.dx(), dx)
-                && same_f32(offset_value.dy(), dy)
-                && flood_value.color() == usvg::Color::new_rgb(red, green, blue)
-                && flood_value.opacity() == usvg::Opacity::new_u8(alpha)
-                && composite_value.input1() == &Input::Reference(flood.result().to_string())
-                && composite_value.input2() == &Input::Reference(offset.result().to_string())
-                && composite_value.operator() == CompositeOperator::In
-                && merge_value.inputs() == [Input::Reference(composite.result().to_string()), input]
-        })
+    remaining.is_empty()
 }
 
 fn same_f32(left: f32, right: f32) -> bool {
@@ -1330,6 +1386,90 @@ mod tests {
             [color.red(), color.green(), color.blue(), color.alpha()],
             [17, 24, 39, 255]
         );
+    }
+
+    #[test]
+    fn srgb_identity_offset_elision_preserves_pixels_and_receipts() {
+        for offsets in [[(0, 0), (0, 0)], [(0, 0), (0, 6)], [(4, 0), (0, 0)]] {
+            for second_input in ["SourceGraphic", "merman-shadow-0-result"] {
+                let mut stages = String::new();
+                for (index, (dx, dy)) in offsets.into_iter().enumerate() {
+                    let input = if index == 0 {
+                        "SourceGraphic"
+                    } else {
+                        second_input
+                    };
+                    stages.push_str(
+                        &srgb_stage(index, input, dx, "rgba(17, 24, 39, 0.5)")
+                            .replace("dy=\"0\"", &format!("dy=\"{dy}\""))
+                            .replace("stdDeviation=\"0\"", "stdDeviation=\"2\""),
+                    );
+                }
+                let full = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs><filter id="{FIRST_ID}" filterUnits="objectBoundingBox" x="-1" y="-1" width="4" height="4" color-interpolation-filters="sRGB">{stages}</filter></defs><g filter="url(#{FIRST_ID})"><rect x="30" y="25" width="50" height="30" fill="#fff"/></g></svg>"##
+                );
+                let mut compact = full.clone();
+                for (index, offset) in offsets.into_iter().enumerate() {
+                    if offset == (0, 0) {
+                        compact = compact.replace(
+                            &format!(r#"<feOffset in="merman-shadow-{index}-blur" dx="0" dy="0" result="merman-shadow-{index}-offset"/>"#),
+                            "",
+                        ).replace(
+                            &format!(r#"in2="merman-shadow-{index}-offset""#),
+                            &format!(r#"in2="merman-shadow-{index}-blur""#),
+                        );
+                    }
+                }
+                assert_ne!(compact, full);
+                let full_tree = parse_tree(&full);
+                let compact_tree = parse_tree(&compact);
+                let expected = preflight_native_filter_receipt(&full, &full_tree).unwrap();
+                assert_eq!(
+                    preflight_native_filter_receipt(&compact, &compact_tree),
+                    Some(expected.clone())
+                );
+                assert_eq!(
+                    preflight_native_filter_receipt(&full, &compact_tree),
+                    Some(expected.clone())
+                );
+                assert_eq!(
+                    preflight_native_filter_receipt(&compact, &full_tree),
+                    Some(expected)
+                );
+                let mut full_pixels = tiny_skia::Pixmap::new(200, 100).unwrap();
+                let mut compact_pixels = tiny_skia::Pixmap::new(200, 100).unwrap();
+                resvg::render(
+                    &full_tree,
+                    tiny_skia::Transform::identity(),
+                    &mut full_pixels.as_mut(),
+                );
+                resvg::render(
+                    &compact_tree,
+                    tiny_skia::Transform::identity(),
+                    &mut compact_pixels.as_mut(),
+                );
+                assert_eq!(full_pixels.data(), compact_pixels.data());
+
+                let omitted = offsets.iter().position(|offset| *offset == (0, 0)).unwrap();
+                let wrong_mask = compact.replace(
+                    &format!(r#"in2="merman-shadow-{omitted}-blur""#),
+                    &format!(r#"in2="merman-shadow-{omitted}-offset""#),
+                );
+                assert!(
+                    preflight_native_filter_receipt(&wrong_mask, &parse_tree(&wrong_mask))
+                        .is_none()
+                );
+                let translated = full.replace(
+                    &format!(r#"in="merman-shadow-{omitted}-blur" dx="0" dy="0""#),
+                    &format!(r#"in="merman-shadow-{omitted}-blur" dx="1" dy="0""#),
+                );
+                assert_ne!(translated, full);
+                assert!(preflight_native_filter_receipt(&translated, &compact_tree).is_none());
+                assert!(
+                    preflight_native_filter_receipt(&compact, &parse_tree(&translated)).is_none()
+                );
+            }
+        }
     }
 
     #[test]
