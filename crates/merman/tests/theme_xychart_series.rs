@@ -178,3 +178,90 @@ fn saved_complete_recipe_reproduces_series_paint_in_a_fresh_renderer() {
     let imported = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
     assert_eq!(series_svg(imported), series_svg(series_theme(0.25, 4.0)));
 }
+
+#[test]
+fn imported_xy_series_effects_follow_winners_without_filtering_labels() {
+    let saved = serde_json::to_vec(&serde_json::json!({
+        "schema_version": 1,
+        "kind": "complete_spec",
+        "complete_spec": {
+            "effects": [
+                {"kind": "graph", "id": "glow", "color_space": "srgb", "primitives": [
+                    {"kind": "drop-shadow", "input": "source-graphic", "offset_x": 0,
+                     "offset_y": 0, "blur_radius": 3, "spread": 0, "color": "#00f2ff"},
+                    {"kind": "drop-shadow", "input": "previous", "offset_x": 0,
+                     "offset_y": 0, "blur_radius": 6, "spread": 0, "color": "#ff00ff"}
+                ]},
+                {"kind": "binding", "target": "chart-series", "effect_id": "glow"}
+            ],
+            "styles": [
+                {"kind": "rule", "target": "chart-series", "ordinal": {"exact": 2},
+                 "style": {"effect": null}}
+            ]
+        }
+    }))
+    .unwrap();
+    for orientation in ["", " horizontal"] {
+        let recipe = serde_json::from_slice(&saved).unwrap();
+        let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+        let source = format!(
+            "xychart{orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar Bars [4, 6]\nline Trend [7 \"Left\", 7 \"Right\"]"
+        );
+        let RenderOutput::Svg(Some(output)) = Renderer::new()
+            .render(
+                RenderRequest::svg(&source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("expected SVG")
+        };
+        let document = roxmltree::Document::parse(output.svg()).unwrap();
+        let filtered: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .collect();
+        assert_eq!(
+            filtered.len(),
+            3,
+            "two bars and their visible legend marker"
+        );
+        for node in filtered {
+            assert!(node.has_tag_name("rect"));
+            let id = node
+                .attribute("filter")
+                .unwrap()
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let definition = document
+                .descendants()
+                .find(|candidate| {
+                    candidate.has_tag_name("filter") && candidate.attribute("id") == Some(id)
+                })
+                .unwrap();
+            assert_eq!(
+                definition.attribute("color-interpolation-filters"),
+                Some("sRGB")
+            );
+            assert_eq!(
+                definition
+                    .children()
+                    .filter(|child| child.has_tag_name("feGaussianBlur"))
+                    .count(),
+                2
+            );
+        }
+        for text in document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+        {
+            assert!(
+                text.ancestors()
+                    .all(|node| node.attribute("filter").is_none()),
+                "geometry effect must not filter any label"
+            );
+        }
+    }
+}

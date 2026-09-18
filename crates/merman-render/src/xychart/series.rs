@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use merman_core::MermaidConfig;
 use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType};
@@ -7,8 +7,8 @@ use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType}
 use crate::chart_palette::plot_color_from_palette;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    ResolvedDiagramTheme, ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget,
-    ThemeVariant,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, SvgShadowEffect,
+    SvgShadowEvidenceRecorder, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -33,6 +33,8 @@ struct SeriesPaint {
     opacity: Option<f32>,
     fill_opacity: Option<f32>,
     stroke_opacity: Option<f32>,
+    effect: Option<Arc<SvgShadowEffect>>,
+    uses_effect_binding: bool,
     rules: BTreeMap<usize, RuleObservation>,
     palette_capabilities: BTreeSet<ThemeCapability>,
     expected_marks: usize,
@@ -47,6 +49,8 @@ pub(crate) struct XyChartSeriesPaintPlan {
     rules: BTreeSet<usize>,
     palette: Option<FamilyThemeDisposition>,
     effect_binding: Option<FamilyThemeMechanismKey>,
+    effect_evidence: SvgShadowEvidenceRecorder,
+    expected_effect_applications: OnceLock<usize>,
     legend_plots: OnceLock<[Vec<usize>; 2]>,
     terminal_receipt: OnceLock<()>,
 }
@@ -85,6 +89,8 @@ impl XyChartSeriesPaintPlan {
                         opacity: None,
                         fill_opacity: None,
                         stroke_opacity: None,
+                        effect: None,
+                        uses_effect_binding: false,
                         rules: BTreeMap::new(),
                         palette_capabilities: BTreeSet::new(),
                         expected_marks: if plot.plot_type == XyChartPlotType::Bar {
@@ -108,6 +114,8 @@ impl XyChartSeriesPaintPlan {
             rules: BTreeSet::new(),
             palette: None,
             effect_binding: None,
+            effect_evidence: SvgShadowEvidenceRecorder::default(),
+            expected_effect_applications: OnceLock::new(),
             legend_plots: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
         };
@@ -151,6 +159,7 @@ impl XyChartSeriesPaintPlan {
             config,
             "themeVariables.xyChart.plotColorPalette",
         );
+        let mut effects: BTreeMap<String, Option<Arc<SvgShadowEffect>>> = BTreeMap::new();
         for (index, paint) in plan.paints.iter_mut().enumerate() {
             let style = theme.style_with_work_meter(
                 ThemeTarget::ChartSeries,
@@ -256,6 +265,35 @@ impl XyChartSeriesPaintPlan {
                     consumed.insert(property, ThemeCapability::Opacity);
                 }
             }
+            match theme.resolve_effect(ThemeTarget::ChartSeries, style.effect_resolution()) {
+                Some(ResolvedThemeEffect::ClearedByRule) => {
+                    consumed.insert(
+                        ResolvedStyleProperty::Effect,
+                        ThemeCapability::SemanticRules,
+                    );
+                }
+                Some(ResolvedThemeEffect::Rule { graph }) => {
+                    paint.effect = graph.and_then(|graph| {
+                        effects
+                            .entry(graph.id().to_owned())
+                            .or_insert_with(|| SvgShadowEffect::from_graph(graph).map(Arc::new))
+                            .clone()
+                    });
+                    if paint.effect.is_some() {
+                        consumed.insert(ResolvedStyleProperty::Effect, ThemeCapability::Shadow);
+                    }
+                }
+                Some(ResolvedThemeEffect::Binding { graph, .. }) => {
+                    paint.uses_effect_binding = true;
+                    paint.effect = graph.and_then(|graph| {
+                        effects
+                            .entry(graph.id().to_owned())
+                            .or_insert_with(|| SvgShadowEffect::from_graph(graph).map(Arc::new))
+                            .clone()
+                    });
+                }
+                None => {}
+            }
             work_meter.charge(routes.len())?;
             for route in &routes {
                 let FamilyThemeMechanism::RuleFacet {
@@ -282,6 +320,9 @@ impl XyChartSeriesPaintPlan {
                 match (route.disposition(), consumed.get(&property)) {
                     (FamilyThemeDisposition::TypedAdapter, Some(capability)) => {
                         observation.capabilities.insert(*capability);
+                        if *capability == ThemeCapability::Shadow {
+                            observation.capabilities.insert(ThemeCapability::SvgFilter);
+                        }
                     }
                     _ => {
                         observation
@@ -292,6 +333,29 @@ impl XyChartSeriesPaintPlan {
             }
         }
         Ok(plan)
+    }
+
+    pub(crate) fn has_effect(&self) -> bool {
+        self.paints.iter().any(|paint| paint.effect.is_some())
+    }
+
+    pub(crate) fn effect(&self, index: usize) -> Option<&Arc<SvgShadowEffect>> {
+        self.paints.get(index)?.effect.as_ref()
+    }
+
+    pub(crate) fn effect_evidence(&self) -> &SvgShadowEvidenceRecorder {
+        &self.effect_evidence
+    }
+
+    pub(crate) fn record_expected_effect_applications(&self, count: usize) -> bool {
+        self.expected_effect_applications.set(count).is_ok()
+    }
+
+    pub(crate) fn expected_effect_applications(&self) -> usize {
+        self.expected_effect_applications
+            .get()
+            .copied()
+            .unwrap_or(0)
     }
 
     pub(crate) fn plot_count(&self) -> usize {
@@ -353,10 +417,12 @@ impl XyChartSeriesPaintPlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<XyChartSeriesPaintReceipt> {
-        (!self.rules.is_empty() || self.palette.is_some()).then(|| XyChartSeriesPaintReceipt {
-            plots: self.paints.iter().map(|_| PlotReceipt::default()).collect(),
-            attributes_match: true,
-        })
+        (!self.rules.is_empty() || self.palette.is_some() || self.effect_binding.is_some()).then(
+            || XyChartSeriesPaintReceipt {
+                plots: self.paints.iter().map(|_| PlotReceipt::default()).collect(),
+                attributes_match: true,
+            },
+        )
     }
 
     pub(crate) fn record_terminal(&self, receipt: XyChartSeriesPaintReceipt) -> bool {
@@ -417,10 +483,25 @@ impl XyChartSeriesPaintPlan {
             }
         }
         if let Some(key) = &self.effect_binding {
-            if has_terminal {
-                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedEffect);
-            } else {
+            let mut used = false;
+            let mut unsupported = false;
+            for (index, paint) in self.paints.iter().enumerate() {
+                if paint.uses_effect_binding
+                    && (paint.expected_marks != 0 || self.has_legend(index))
+                {
+                    used = true;
+                    unsupported |= paint.effect.is_none();
+                }
+            }
+            if !used {
                 evidence.mark_not_applicable(key.clone());
+            } else if unsupported {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedEffect);
+            } else if self.terminal_receipt.get().is_some() {
+                evidence.mark_applied_with_capabilities(
+                    key.clone(),
+                    [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                );
             }
         }
         evidence

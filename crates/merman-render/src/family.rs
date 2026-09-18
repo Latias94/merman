@@ -3435,6 +3435,10 @@ impl FamilyRenderArtifact {
                 artifact.effect_evidence().finish(),
                 artifact.expected_effect_applications().get(),
             )),
+            BuiltinFamilyArtifact::XyChart(artifact) => Some((
+                artifact.series_paint().effect_evidence().finish(),
+                artifact.series_paint().expected_effect_applications(),
+            )),
             _ => None,
         };
         let prepared_text_ledger = self.family.prepared_text_label_ledger();

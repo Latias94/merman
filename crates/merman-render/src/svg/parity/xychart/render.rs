@@ -25,11 +25,28 @@ struct Node {
     children: Vec<usize>,
     series_terminal: Option<SeriesTerminal>,
     paint_terminal: Option<crate::xychart::XyChartPaintTerminalId>,
+    shadow: Option<Box<SeriesShadow>>,
 }
 
 impl Node {
     fn attr(&mut self, name: &'static str, value: impl Into<String>) {
         self.attrs.push((name, value.into()));
+    }
+
+    fn attribute(&self, name: &str) -> Option<&str> {
+        self.attrs
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    fn observe_shadow(&self, recorder: &crate::diagram_theme::SvgShadowEvidenceRecorder) {
+        if let Some(shadow) = &self.shadow
+            && self.attribute("filter")
+                == Some(escape_xml(&format!("url(#{})", shadow.filter_id)).as_str())
+        {
+            recorder.record_application(&shadow.effect, &shadow.filter_id, shadow.region);
+        }
     }
 
     fn observe_paint(&self, receipt: &mut crate::xychart::XyChartPaintReceipt) {
@@ -96,6 +113,7 @@ fn node(tag: &'static str) -> Node {
         children: Vec::with_capacity(2),
         series_terminal: None,
         paint_terminal: None,
+        shadow: None,
     }
 }
 
@@ -114,6 +132,15 @@ fn render_node(
     observe: &mut impl FnMut(&Node),
 ) -> Result<()> {
     let n = &arena[id];
+    if let Some(shadow) = &n.shadow {
+        super::super::shadow::write_theme_shadow_application(
+            out,
+            &shadow.filter_id,
+            &shadow.effect,
+            shadow.region,
+        );
+        out.checkpoint()?;
+    }
     let _ = write!(out, "<{}", n.tag);
     out.checkpoint()?;
     for (k, v) in &n.attrs {
@@ -158,6 +185,120 @@ enum SeriesTerminal {
         plot: usize,
         plot_type: XyChartPlotType,
     },
+}
+
+/// Each filter belongs to one actual mark. The definition and reference share this immutable plan.
+struct SeriesShadow {
+    effect: std::sync::Arc<crate::diagram_theme::SvgShadowEffect>,
+    filter_id: String,
+    region: crate::diagram_theme::SvgFilterRegion,
+}
+
+fn prepare_series_shadows(
+    arena: &mut [Node],
+    series: &crate::xychart::XyChartSeriesPaintPlan,
+    diagram_id: &str,
+    layout: &XyChartDiagramLayout,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::DiagramBounds> {
+    if !series.has_effect() {
+        return Ok(root_svg::DiagramBounds::from_view_box(
+            0.0,
+            0.0,
+            layout.width,
+            layout.height,
+        ));
+    }
+    let resources = options.theme_resource_policy();
+    let mut bounds = [0.0_f64, 0.0_f64, layout.width, layout.height];
+    let mut expected = 0;
+    for (terminal, node) in arena.iter_mut().enumerate() {
+        let plot = match node.series_terminal {
+            Some(
+                SeriesTerminal::Bar { plot, .. }
+                | SeriesTerminal::Line { plot, .. }
+                | SeriesTerminal::Legend { plot, .. },
+            ) => plot,
+            _ => continue,
+        };
+        let Some(effect) = series.effect(plot) else {
+            continue;
+        };
+        expected += 1;
+        options
+            .work_meter()
+            .charge(node.attribute("d").map_or(1, str::len))?;
+        options
+            .work_meter()
+            .charge(effect.stages().len().saturating_mul(3))?;
+        let geometry = match node.tag {
+            "rect" => {
+                let number = |name| {
+                    node.attribute(name)
+                        .and_then(|value| value.parse::<f64>().ok())
+                };
+                number("x")
+                    .zip(number("y"))
+                    .zip(number("width").zip(number("height")))
+                    .filter(|((_, _), (width, height))| *width >= 0.0 && *height >= 0.0)
+                    .map(|((x, y), (width, height))| [x, y, x + width, y + height])
+            }
+            "path" => node
+                .attribute("d")
+                .and_then(svg_path_bounds_from_d)
+                .map(|path| [path.min_x, path.min_y, path.max_x, path.max_y]),
+            _ => None,
+        };
+        let Some([min_x, min_y, max_x, max_y]) = geometry else {
+            continue;
+        };
+        let Some(stroke_width) = node
+            .attribute("stroke-width")
+            .and_then(|value| value.parse::<f64>().ok())
+        else {
+            continue;
+        };
+        if !stroke_width.is_finite() || stroke_width < 0.0 {
+            continue;
+        }
+        // Paths use SVG's default miter limit of four; rectangles have right-angle corners.
+        let stroke_outset = stroke_width / 2.0 * if node.tag == "path" { 4.0 } else { 1.0 };
+        let source = crate::diagram_theme::EffectOutsets {
+            top: stroke_outset,
+            right: stroke_outset,
+            bottom: stroke_outset,
+            left: stroke_outset,
+        };
+        let Some(materialized) =
+            effect.materialize_user_space(&resources, min_x, min_y, max_x, max_y, source)?
+        else {
+            continue;
+        };
+        let region = materialized.region();
+        let [x, y, width, height] = region.as_array().map(f64::from);
+        bounds[0] = bounds[0].min(x);
+        bounds[1] = bounds[1].min(y);
+        bounds[2] = bounds[2].max(x + width);
+        bounds[3] = bounds[3].max(y + height);
+        let filter_id = format!(
+            "{diagram_id}-xychart-series-{plot}-terminal-{terminal}-theme-effect-{}",
+            effect.id()
+        );
+        node.attr("filter", escape_xml(&format!("url(#{filter_id})")));
+        node.shadow = Some(Box::new(SeriesShadow {
+            effect: effect.clone(),
+            filter_id,
+            region,
+        }));
+    }
+    if !series.record_expected_effect_applications(expected) {
+        return Err(crate::Error::InvalidModel {
+            message: "XY Chart effects were emitted more than once".into(),
+        });
+    }
+    Ok(root_svg::DiagramBounds::from_extents(
+        bounds[0], bounds[1], bounds[2], bounds[3], 0.0,
+    ))
 }
 
 pub(crate) fn render_xychart_diagram_svg(
@@ -250,57 +391,6 @@ pub(crate) fn render_xychart_diagram_svg(
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
     let mut paint_receipt = paint_theme.begin_terminal_receipt(escape_xml);
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
-
-    let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
-    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
-    root_chrome.aria_labelledby = aria_labelledby.as_deref();
-    root_chrome.aria_describedby = aria_describedby.as_deref();
-    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
-    root_chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::XY_CHART, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
-    out.checkpoint()?;
-
-    if let Some(title) = acc_title {
-        let _ = write!(
-            &mut out,
-            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
-            escape_xml(title)
-        );
-        out.checkpoint()?;
-    }
-    if let Some(description) = acc_descr {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
-            escape_xml(description)
-        );
-        out.checkpoint()?;
-    }
-
-    out.push_str("<style>");
-    out.checkpoint()?;
-    let mut css = String::new();
-    push_xychart_css(
-        &mut css,
-        diagram_id.semantic_str(),
-        typography_theme.font_family_css(),
-    );
-    out.push_str(&css);
-    drop(css);
-    out.checkpoint()?;
-    out.push_str("</style>");
-    out.checkpoint()?;
-    if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_css(typography_theme.font_family_css());
-    }
-
-    // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
-    out.push_str(r#"<g/>"#);
-    out.checkpoint()?;
 
     // Build the `.main` group as an ordered DOM tree, matching Mermaid's D3 `getGroup()` behavior.
     let mut arena: Vec<Node> = Vec::with_capacity(layout.drawables.len().saturating_mul(4) + 2);
@@ -527,7 +617,65 @@ pub(crate) fn render_xychart_diagram_svg(
         }
     }
 
+    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let root_bounds = prepare_series_shadows(
+        &mut arena,
+        series_paint,
+        diagram_id.semantic_str(),
+        layout,
+        options,
+    )?;
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::XY_CHART, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
+    out.checkpoint()?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
+            escape_xml(title)
+        );
+        out.checkpoint()?;
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
+            escape_xml(description)
+        );
+        out.checkpoint()?;
+    }
+
+    out.push_str("<style>");
+    out.checkpoint()?;
+    let mut css = String::new();
+    push_xychart_css(
+        &mut css,
+        diagram_id.semantic_str(),
+        typography_theme.font_family_css(),
+    );
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
+    out.push_str("</style>");
+    out.checkpoint()?;
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css(typography_theme.font_family_css());
+    }
+
+    // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
+    out.push_str(r#"<g/>"#);
+    out.checkpoint()?;
+
     render_node(&mut out, &arena, 0, &mut |emitted| {
+        emitted.observe_shadow(series_paint.effect_evidence());
         if let Some(receipt) = paint_receipt.as_mut() {
             emitted.observe_paint(receipt);
         }
@@ -1196,6 +1344,108 @@ mod tests {
             assert_eq!(
                 evidence.applied().len(),
                 usize::from(mutation == "none"),
+                "{mutation}"
+            );
+        }
+    }
+
+    #[test]
+    fn xychart_shadow_receipt_requires_each_written_definition_and_exact_filter_reference() {
+        use crate::diagram_theme::{
+            EffectGraph, EffectInput, EffectPrimitive, SvgFilterRegion, SvgShadowEffect,
+            SvgShadowEvidenceRecorder, ThemeColorValue,
+        };
+        let effect = std::sync::Arc::new(
+            SvgShadowEffect::from_graph(
+                &EffectGraph::new(
+                    "glow",
+                    [
+                        EffectPrimitive::DropShadow {
+                            input: EffectInput::SourceGraphic,
+                            offset_x: 2.0,
+                            offset_y: 3.0,
+                            blur_radius: 1.0,
+                            spread: 0.0,
+                            color: ThemeColorValue::parse("#ff0000").unwrap(),
+                        },
+                        EffectPrimitive::DropShadow {
+                            input: EffectInput::Previous,
+                            offset_x: -2.0,
+                            offset_y: -3.0,
+                            blur_radius: 2.0,
+                            spread: 0.0,
+                            color: ThemeColorValue::parse("#0000ff").unwrap(),
+                        },
+                    ],
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        for mutation in [
+            "none",
+            "missing-filter",
+            "changed-filter",
+            "missing-later-filter",
+            "missing-definition",
+            "detached",
+            "repeated",
+            "unwritten",
+        ] {
+            let recorder = SvgShadowEvidenceRecorder::default();
+            let mut arena = vec![node("g")];
+            for terminal in 0..2 {
+                let mut mark = node("path");
+                mark.attr("d", "M0,0 L20,0");
+                let filter_id = format!("chart-{terminal}");
+                mark.attr("filter", format!("url(#{filter_id})"));
+                mark.shadow = Some(Box::new(SeriesShadow {
+                    effect: effect.clone(),
+                    filter_id,
+                    region: SvgFilterRegion::try_bounded_user_space(-20.0, -20.0, 60.0, 40.0)
+                        .unwrap(),
+                }));
+                push_child(&mut arena, 0, mark);
+            }
+            match mutation {
+                "missing-filter" => arena[1].attrs.retain(|(name, _)| *name != "filter"),
+                "changed-filter" => {
+                    arena[1]
+                        .attrs
+                        .iter_mut()
+                        .find(|(name, _)| *name == "filter")
+                        .unwrap()
+                        .1 = "url(#other)".into()
+                }
+                "missing-later-filter" => arena[2].attrs.retain(|(name, _)| *name != "filter"),
+                "missing-definition" => arena[2].shadow = None,
+                "detached" => {
+                    arena[0].children.pop();
+                }
+                "repeated" => arena[0].children.push(2),
+                _ => {}
+            }
+            if mutation != "unwritten" {
+                render_node(&mut String::new(), &arena, 0, &mut |node| {
+                    node.observe_shadow(&recorder)
+                })
+                .unwrap();
+            } else {
+                let mut sink = RejectAfterWrites {
+                    allowed_writes: 1,
+                    ..Default::default()
+                };
+                assert!(
+                    render_node(&mut sink, &arena, 0, &mut |node| node
+                        .observe_shadow(&recorder))
+                    .is_err()
+                );
+            }
+            assert_eq!(
+                recorder.finish().is_some_and(
+                    |receipt| receipt.filter_count() == 2 && receipt.reference_count() == 2
+                ),
+                mutation == "none",
                 "{mutation}"
             );
         }

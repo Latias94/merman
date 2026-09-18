@@ -533,7 +533,11 @@ Important boundaries that a family-level count cannot express:
   Default selectors support static or global declaration ordinals. Point-label palette paint stays
   separate from geometry fill and alpha; explicit source palette ownership releases only color
   facets. Missing terminal receipts and unsupported winning siblings remain incomplete. This
-  does not add ChartSeries effects or qualify the complete Cyberpunk XY Chart scene.
+  does not qualify the complete Cyberpunk XY Chart scene. ChartSeries effect rules and bindings
+  consume bounded zero-spread shadow sequences on actual marks and visible legend markers;
+  Clear suppresses the binding. User-space regions cover flat lines and expand only the root
+  viewport. Native export reconciles the emitted filter applications with its target observation;
+  unsupported graphs, missing definitions and missing references cannot establish positive evidence.
 - Class shares base typography with layout and final CSS; fixed-size cardinality terminals do not
   acquire the base FontSize. Source-owned descendant fonts require their own measurement evidence.
 - Treemap shares its FontStack plan with text measurement and final output. Static unqualified and

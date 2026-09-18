@@ -1861,3 +1861,270 @@ fn xychart_series_opacity_preserves_small_and_near_one_values() {
         }
     }
 }
+
+fn xychart_shadow_theme(rules: ThemeRuleSet, unsupported: bool) -> DiagramTheme {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let graph = EffectGraph::new(
+        "series-shadow",
+        if unsupported {
+            vec![EffectPrimitive::GaussianBlur {
+                input: EffectInput::SourceGraphic,
+                std_deviation: 3.0,
+            }]
+        } else {
+            vec![
+                EffectPrimitive::DropShadow {
+                    input: EffectInput::SourceGraphic,
+                    offset_x: -300.0,
+                    offset_y: -300.0,
+                    blur_radius: 2.0,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("#ff0000").unwrap(),
+                },
+                EffectPrimitive::DropShadow {
+                    input: EffectInput::Previous,
+                    offset_x: 600.0,
+                    offset_y: 600.0,
+                    blur_radius: 2.0,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("#0000ff").unwrap(),
+                },
+            ]
+        },
+    )
+    .unwrap();
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(rules).with_effects(
+                DiagramEffectSet::default()
+                    .with_graph(graph)
+                    .unwrap()
+                    .with_binding(
+                        EffectBinding::new(ThemeTarget::ChartSeries, "series-shadow").unwrap(),
+                    )
+                    .unwrap(),
+            ),
+        )
+        .unwrap()
+}
+
+#[test]
+fn xychart_composed_shadows_cover_vertical_and_horizontal_flat_lines_without_relayout() {
+    let theme = xychart_shadow_theme(ThemeRuleSet::default(), false);
+    let plain = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for orientation in ["", " horizontal"] {
+        let source = format!(
+            "xychart-beta{orientation}\n x-axis [A, B]\n y-axis 0 --> 10\n bar [4, 6]\n line [7, 7]"
+        );
+        let (layout, result) = try_render_xychart_with_theme(
+            &source,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "chart",
+        )
+        .unwrap();
+        let (baseline, _) = try_render_xychart_with_theme(
+            &source,
+            &plain,
+            Engine::new(),
+            &RenderEnvironment::deterministic(),
+            "chart",
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&layout).unwrap(),
+            serde_json::to_value(&baseline).unwrap(),
+            "effects must not change layout"
+        );
+        let xml = roxmltree::Document::parse(result.svg()).unwrap();
+        let root = xml.root_element();
+        let bounds: Vec<f64> = root
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|part| part.parse().unwrap())
+            .collect();
+        assert!(bounds[0] < 0.0 && bounds[1] < 0.0);
+        let filters: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("filter"))
+            .collect();
+        assert_eq!(filters.len(), 3);
+        for filter in filters {
+            assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+            assert_eq!(
+                filter
+                    .children()
+                    .filter(|node| node.has_tag_name("feDropShadow"))
+                    .count(),
+                2
+            );
+            let value = |name| filter.attribute(name).unwrap().parse::<f64>().unwrap();
+            assert!(value("width") > 0.0 && value("height") > 0.0);
+            assert!(value("x") >= bounds[0] && value("y") >= bounds[1]);
+            assert!(value("x") + value("width") <= bounds[0] + bounds[2] + 0.01);
+            assert!(value("y") + value("height") <= bounds[1] + bounds[3] + 0.01);
+        }
+        assert!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .all(|node| node
+                    .ancestors()
+                    .all(|ancestor| ancestor.attribute("filter").is_none()))
+        );
+    }
+}
+
+#[test]
+fn xychart_shadow_clear_wins_and_unsupported_graph_is_not_certified() {
+    use merman_render::diagram_theme::{OrdinalSelector, Specified, ThemeRule, ThemeStylePatch};
+    let source = "xychart-beta\n x-axis [A, B]\n y-axis 0 --> 10\n bar [4, 6]\n line [7, 7]";
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let rules = ThemeRuleSet::default().with_rule(
+        ThemeRule::new(ThemeTarget::ChartSeries, clear.clone())
+            .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+    );
+    let rendered = render_xychart_with_theme_and_engine(
+        source,
+        &xychart_shadow_theme(rules, false),
+        Engine::new(),
+    );
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        xml.descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .count(),
+        2
+    );
+    assert!(
+        xml.descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .all(|node| node.has_tag_name("rect"))
+    );
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    assert!(
+        try_render_xychart_with_theme(
+            source,
+            &xychart_shadow_theme(ThemeRuleSet::default(), true),
+            Engine::new(),
+            &strict,
+            "chart"
+        )
+        .is_err()
+    );
+    let cleared = xychart_shadow_theme(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ChartSeries, clear)),
+        true,
+    );
+    let (_, rendered) =
+        try_render_xychart_with_theme(source, &cleared, Engine::new(), &strict, "chart").unwrap();
+    assert!(!rendered.svg().contains("<filter"));
+}
+
+#[test]
+fn xychart_shadow_filter_materialization_enforces_host_resource_ceiling() {
+    use merman_render::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
+    let theme = xychart_shadow_theme(ThemeRuleSet::default(), false);
+    let environment = RenderEnvironment::deterministic().with_theme_resource_ceiling(
+        ThemeResourcePolicy::default()
+            .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+            .unwrap(),
+    );
+    let error = try_render_xychart_with_theme(
+        "xychart-beta\n x-axis [A, B]\n line [7, 7]",
+        &theme,
+        Engine::new(),
+        &environment,
+        "chart",
+    )
+    .err()
+    .expect("materialized region exceeds host ceiling");
+    assert!(
+        error
+            .to_string()
+            .contains("max_effect_filter_region_magnitude"),
+        "{error}"
+    );
+}
+
+#[test]
+fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
+    use merman_render::diagram_theme::{OrdinalSelector, ThemeRule, ThemeStylePatch};
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 6]\nline [7, 7]";
+    let effect = ThemeStylePatch::default()
+        .with_effect("series-shadow")
+        .unwrap();
+    let theme = xychart_shadow_theme(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ChartSeries, effect.clone())),
+        false,
+    );
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(
+        evidence.not_applicable_count(),
+        1,
+        "the rule completely replaces the binding"
+    );
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let theme = xychart_shadow_theme(
+        ThemeRuleSet::default().with_rule(
+            ThemeRule::new(ThemeTarget::ChartSeries, effect.clone())
+                .with_ordinal(OrdinalSelector::Exact(9)),
+        ),
+        false,
+    );
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(
+        evidence.applied_count(),
+        1,
+        "the fallback binding still paints actual series"
+    );
+    assert_eq!(
+        evidence.not_applicable_count(),
+        1,
+        "the unmatched rule is not a residual"
+    );
+
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10",
+        &theme,
+        Engine::new(),
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 2);
+
+    let mixed = effect.with_stroke_dasharray([2.0, 1.0]).unwrap();
+    let theme = xychart_shadow_theme(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ChartSeries, mixed)),
+        false,
+    );
+    let (_, rendered) = try_render_xychart_with_theme(
+        source,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    assert!(
+        rendered.svg().contains("<filter"),
+        "supported sibling still renders"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert!(
+        evidence.theme_residual_count() > 0,
+        "the shadow cannot certify an unsupported dash"
+    );
+}

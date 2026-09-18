@@ -85,15 +85,24 @@ fn color_counts(bytes: &[u8]) -> (usize, usize) {
 
 #[test]
 fn composed_state_shadows_reach_png_and_localized_pdf() {
-    assert_composed_shadows("stateDiagram-v2\nReady --> Done", ThemeTarget::State);
+    assert_composed_shadows("stateDiagram-v2\nReady --> Done", ThemeTarget::State, 2);
 }
 
 #[test]
 fn composed_flowchart_node_shadows_reach_png_and_localized_pdf() {
-    assert_composed_shadows("flowchart LR\nReady --> Done", ThemeTarget::Node);
+    assert_composed_shadows("flowchart LR\nReady --> Done", ThemeTarget::Node, 2);
 }
 
-fn assert_composed_shadows(source: &str, target: ThemeTarget) {
+#[test]
+fn composed_xychart_series_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows(
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 6]\nline [7, 7]",
+        ThemeTarget::ChartSeries,
+        3,
+    );
+}
+
+fn assert_composed_shadows(source: &str, target: ThemeTarget, applications: u32) {
     for color_space in [EffectColorSpace::LinearRgb, EffectColorSpace::Srgb] {
         let previous = render(source, target, EffectInput::Previous, color_space);
         let reset = render(source, target, EffectInput::SourceGraphic, color_space);
@@ -137,7 +146,7 @@ fn assert_composed_shadows(source: &str, target: ThemeTarget) {
                 receipt.drop_shadow_count(),
                 receipt.reference_count()
             ),
-            (2, 4, 2)
+            (applications, applications * 2, applications)
         );
         assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
         let (red, blue) = color_counts(png.bytes());

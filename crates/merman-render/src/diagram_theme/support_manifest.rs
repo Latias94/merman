@@ -1265,6 +1265,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
             "opacity",
             "fill-opacity",
             "stroke-opacity",
+            "effect",
         ],
     },
     RuleClaim {

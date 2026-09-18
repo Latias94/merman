@@ -231,11 +231,18 @@ by its path. Do not use a line fill to change point-label text.
 theme-palette fallback. Baseline bars use the configuration palette and have no border;
 baseline lines have no fill and use a 2px stroke. Opacity clears to 1. An explicit source or
 site `themeVariables.xyChart.plotColorPalette` owns the series colors, while theme widths and
-opacity remain independently applicable. Unsupported winning properties, such as effects or
-dash arrays, still retain residuals even when another property in the same rule was applied.
+opacity remain independently applicable. Unsupported winning properties, such as dash arrays, still retain residuals even when another
+property in the same rule was applied.
 
-This paint support does not qualify the full Cyberpunk XY Chart design. Kind-specific recipe
-selection, glow, typography and final scene validation remain separate work.
+Series effect rules and target bindings support ordered zero-spread drop shadows. A rule's
+effect wins over a binding; explicit `null` removes that series effect. Filters attach to actual
+marks and visible legend markers, leaving labels independent. Paint outsets expand the SVG
+viewBox without changing the plot layout, including for horizontal or vertical flat lines.
+Unsupported effect primitives retain residuals; SVG emission alone does not certify a native
+export target.
+
+This support does not qualify the full Cyberpunk XY Chart design. Kind-specific recipe
+selection, text styling and final public scene validation remain separate work.
 
 ## Save and distribute
 
