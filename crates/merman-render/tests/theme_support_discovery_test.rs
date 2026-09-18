@@ -1810,3 +1810,21 @@ fn block_generic_text_discovery_reports_partial_typed_fill() {
         ]
     );
 }
+
+#[test]
+fn flowchart_label_weight_discovery_is_conditional() {
+    for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+            let query = ThemeSupportQueryV1::for_target(
+                family.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                ThemeRuleFacetV1::FontWeight,
+            );
+            assert_eq!(
+                describe_theme_support(&query).state(),
+                ThemeSupportStateV1::Conditional
+            );
+        }
+    }
+}

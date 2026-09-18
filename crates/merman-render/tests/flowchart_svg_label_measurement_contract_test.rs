@@ -52,6 +52,7 @@ struct RecordedRequest {
     phase: TextMeasurementPhase,
     text: String,
     font_size_bits: u64,
+    font_weight: Option<String>,
     max_width_bits: Option<u64>,
     wrap_mode: WrapMode,
 }
@@ -86,6 +87,7 @@ impl HostTextMeasurer for RecordingFlowchartHost {
                 phase: request.phase,
                 text: request.text.to_string(),
                 font_size_bits: request.style.font_size.to_bits(),
+                font_weight: request.style.font_weight.clone(),
                 max_width_bits: request.max_width.map(f64::to_bits),
                 wrap_mode: request.wrap_mode,
             });
@@ -434,4 +436,100 @@ A["math $$x$$ label words"] --> B
         HostOutcome::Success,
     );
     assert_eq!(second_trace, first_trace, "complete SVG math-like trace");
+}
+
+#[test]
+fn typed_label_weights_reach_layout_and_writer_measurements() {
+    use merman_render::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch,
+        ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+    let mut rules = ThemeRuleSet::default();
+    for (target, weight) in [(ThemeTarget::NodeLabel, 600), (ThemeTarget::EdgeLabel, 500)] {
+        rules = rules.with_rule(ThemeRule::new(
+            target,
+            ThemeStylePatch {
+                typography: TextStylePatch {
+                    font_weight: Specified::Value(weight),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ));
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap();
+    for (root_weight, source_weight, node_weight, edge_weight, source_result) in [
+        (None, "bolder", "600", "500", "900"),
+        (Some("900"), "lighter", "900", "900", "700"),
+        (Some("bolder"), "lighter", "700", "700", "400"),
+    ] {
+        for html in [false, true] {
+            let engine = merman_render::__private::install_parse_compatibility(
+                &theme,
+                Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+                    serde_json::json!({"htmlLabels": html, "fontWeight": root_weight}),
+                )),
+            );
+            let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                &format!("flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nclassDef emphasis font-weight:800!important\nclass B emphasis\nstyle B font-weight:{source_weight}!important"),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.flowchart-label-weight").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let host = Arc::new(RecordingFlowchartHost::new(HostOutcome::Success));
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ))
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let layout_count = host.snapshot().len();
+            artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let requests = host.snapshot();
+            for (phase, phase_requests) in [
+                ("layout", &requests[..layout_count]),
+                ("writer", &requests[layout_count..]),
+            ] {
+                for (label, weight) in [
+                    ("NodeAlpha", node_weight),
+                    ("EdgeGamma", edge_weight),
+                    ("NodeBeta", source_result),
+                ] {
+                    let matching: Vec<_> = phase_requests
+                        .iter()
+                        .filter(|request| request.text.contains(label))
+                        .collect();
+                    // HTML writers can reuse layout bounds without requesting a second measurement.
+                    if phase == "layout" || !html {
+                        assert!(
+                            !matching.is_empty(),
+                            "html={html}, phase={phase}: missing {label} measurement"
+                        );
+                    }
+                    for request in matching {
+                        assert_eq!(
+                            request.font_weight.as_deref(),
+                            Some(weight),
+                            "html={html}: {request:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

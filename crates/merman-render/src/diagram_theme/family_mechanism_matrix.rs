@@ -1635,7 +1635,9 @@ pub(super) fn classify_rule_facet(
         ) && matches!(
             facet,
             FamilyThemeRuleFacet::Typography(
-                ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+                ThemeTypographyProperty::FontStack
+                    | ThemeTypographyProperty::FontSize
+                    | ThemeTypographyProperty::FontWeight
             )
         )) || (matches!(
             family,
@@ -4896,6 +4898,7 @@ mod tests {
             typography: TextStylePatch {
                 font_stack: Specified::Value(font_stack),
                 font_size_px: Specified::Value(20.0),
+                font_weight: Specified::Value(700),
                 ..TextStylePatch::default()
             },
             ..ThemeStylePatch::default()
@@ -4927,18 +4930,18 @@ mod tests {
                     }));
                 }
 
-                let font_weight_rule = ThemeRule::new(
+                let letter_spacing_rule = ThemeRule::new(
                     target,
                     ThemeStylePatch {
                         typography: TextStylePatch {
-                            font_weight: Specified::Value(700),
+                            letter_spacing_px: Specified::Value(1.5),
                             ..TextStylePatch::default()
                         },
                         ..ThemeStylePatch::default()
                     },
                 );
                 assert!(
-                    compile_rule_routes(family, 0, &font_weight_rule)
+                    compile_rule_routes(family, 0, &letter_spacing_rule)
                         .iter()
                         .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
                 );

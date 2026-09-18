@@ -297,6 +297,7 @@ fn render_er_subgraph_cluster(
                 &lines,
                 &terminal_style,
                 false,
+                None,
             );
         } else {
             crate::svg::parity::label::write_svg_text_markdown_from_create_text_source_with_style(

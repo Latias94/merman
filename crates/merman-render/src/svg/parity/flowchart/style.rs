@@ -27,6 +27,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     inline_stroke_dasharray_status: crate::flowchart::FlowchartSourceFacetStatus,
     font_stack_source: Option<SourceFacetDeclaration>,
     font_size_source: Option<SourceFacetDeclaration>,
+    font_weight_source: Option<SourceFacetDeclaration>,
     shape_sources: Vec<PendingSourceDeclaration>,
     inline_shape_sources: Vec<PendingSourceDeclaration>,
     generated_shape_sources: Vec<PendingSourceDeclaration>,
@@ -597,6 +598,27 @@ impl FlowchartCompiledStyles {
             .as_ref()
             .map(SourceFacetDeclaration::status)
             .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
+    }
+
+    pub(super) fn source_font_weight_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
+        self.font_weight_source
+            .as_ref()
+            .map(SourceFacetDeclaration::status)
+            .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
+    }
+
+    pub(super) fn emitted_source_font_weight_status(
+        &self,
+        receipt: crate::svg::parity::flowchart::render::node::emission::FlowchartNodeLabelEmissionReceipt,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        if receipt
+            .font_weight_reach()
+            .is_some_and(|reach| reach.is_verified())
+        {
+            self.source_font_weight_status()
+        } else {
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        }
     }
 
     pub(super) fn source_label_foreground_status(
@@ -1306,6 +1328,97 @@ pub(super) fn sanitized_xhtml_typography_statuses(
     }
 
     (font_stack, font_size)
+}
+
+/// Checks inline weight ownership only when a writer requests a prepared weight.
+/// Inline weight changes are not yet represented in label measurement.
+pub(super) fn sanitized_xhtml_font_weight_status(
+    sanitized_xhtml: &str,
+) -> crate::flowchart::FlowchartSourceFacetStatus {
+    use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Unverified};
+
+    let mut reader = quick_xml::Reader::from_str(sanitized_xhtml);
+    reader.config_mut().enable_all_checks(true);
+    let mut depth = 0usize;
+
+    loop {
+        let decoder = reader.decoder();
+        let element = match reader.read_event() {
+            Ok(Event::Start(element)) => {
+                depth = depth.saturating_add(1);
+                element
+            }
+            Ok(Event::Empty(element)) => element,
+            Ok(Event::End(_)) => {
+                let Some(next_depth) = depth.checked_sub(1) else {
+                    return Unverified;
+                };
+                depth = next_depth;
+                continue;
+            }
+            Ok(Event::Eof) => return if depth == 0 { Absent } else { Unverified },
+            Ok(_) => continue,
+            Err(_) => return Unverified,
+        };
+        let name = element.local_name();
+        if [
+            b"b".as_slice(),
+            b"strong",
+            b"h1",
+            b"h2",
+            b"h3",
+            b"h4",
+            b"h5",
+            b"h6",
+            b"th",
+            b"button",
+            b"input",
+            b"select",
+            b"optgroup",
+            b"option",
+            b"textarea",
+            b"math",
+            b"svg",
+            b"style",
+        ]
+        .iter()
+        .any(|tag| name.as_ref().eq_ignore_ascii_case(tag))
+        {
+            return Unverified;
+        }
+
+        for attribute in element.attributes() {
+            let Ok(attribute) = attribute else {
+                return Unverified;
+            };
+            let name = attribute.key.local_name();
+            let Ok(value) =
+                attribute.decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+            else {
+                return Unverified;
+            };
+            if name.as_ref().eq_ignore_ascii_case(b"class") && !value.trim().is_empty()
+                || name
+                    .as_ref()
+                    .eq_ignore_ascii_case(b"data-merman-prepared-math-native")
+                || name
+                    .as_ref()
+                    .eq_ignore_ascii_case(b"data-merman-prepared-math-occurrence")
+            {
+                return Unverified;
+            }
+            if name.as_ref().eq_ignore_ascii_case(b"style") {
+                let mut affects_weight = false;
+                crate::mermaid_style::visit_parsed_style_declarations(&value, |declaration| {
+                    affects_weight |=
+                        matches!(declaration.property(), "font-weight" | "font" | "all");
+                });
+                if affects_weight {
+                    return Unverified;
+                }
+            }
+        }
+    }
 }
 
 fn inspect_sanitized_xhtml_element(
@@ -2081,6 +2194,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     let mut inline_stroke_dasharray_status = crate::flowchart::FlowchartSourceFacetStatus::Absent;
     let mut font_stack_source = None;
     let mut font_size_source = None;
+    let mut font_weight_source = None;
     let mut shape_sources = Vec::new();
     let mut inline_shape_sources = Vec::new();
     let mut generated_shape_sources = Vec::new();
@@ -2206,6 +2320,13 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                     admitted: crate::text::parse_css_font_stack(v).is_some(),
                 });
             }
+            "font-weight" if source_label_style => {
+                font_weight_source = Some(SourceFacetDeclaration {
+                    prepared: Arc::clone(&declaration.prepared),
+                    provenance: declaration.provenance.clone(),
+                    admitted: crate::mermaid_style::is_supported_css_font_weight_value(v),
+                });
+            }
             "font-size" if source_label_style => {
                 font_size_source = Some(SourceFacetDeclaration {
                     prepared: Arc::clone(&declaration.prepared),
@@ -2288,6 +2409,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         inline_stroke_dasharray_status,
         font_stack_source,
         font_size_source,
+        font_weight_source,
         shape_sources,
         inline_shape_sources,
         generated_shape_sources,
@@ -2411,6 +2533,85 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sanitized_html_font_weight_preserves_plain_text_inheritance() {
+        use crate::flowchart::FlowchartSourceFacetStatus::Absent;
+
+        for fragment in [
+            "",
+            "label",
+            "<p>first<br/>second</p>",
+            r#"<span title="strong font-weight class">label</span>"#,
+            r#"<span style="color:red;font-size:20px">label</span>"#,
+            r#"<span style="--font-weight:700">label</span>"#,
+            r#"<span class=" ">label</span>"#,
+        ] {
+            assert_eq!(
+                sanitized_xhtml_font_weight_status(fragment),
+                Absent,
+                "{fragment}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitized_html_font_weight_rejects_unmeasured_inline_ownership() {
+        use crate::flowchart::FlowchartSourceFacetStatus::Unverified;
+
+        for fragment in [
+            "<b>label</b>",
+            "<STRONG>label</STRONG>",
+            "<h1>label</h1>",
+            "<h2>label</h2>",
+            "<h3>label</h3>",
+            "<h4>label</h4>",
+            "<h5>label</h5>",
+            "<h6>label</h6>",
+            "<th>label</th>",
+            "<button>label</button>",
+            "<input value=\"label\"/>",
+            "<select><option>label</option></select>",
+            "<optgroup label=\"label\"/>",
+            "<textarea>label</textarea>",
+            r#"<span style="font-weight:600">label</span>"#,
+            r#"<span STYLE="FONT-WEIGHT:normal">label</span>"#,
+            r#"<span style="f\6f nt-weight:600">label</span>"#,
+            r#"<span style="font&#45;weight:600">label</span>"#,
+            r#"<span style="font:bold 20px Arial">label</span>"#,
+            r#"<span style="all:inherit">label</span>"#,
+            r#"<span CLASS="custom">label</span>"#,
+            "<math><mi>x</mi></math>",
+            "<SVG><text>label</text></SVG>",
+            r#"<span data-merman-prepared-math-native="v1">x</span>"#,
+            r#"<style>span { font-weight:700 }</style><span>label</span>"#,
+        ] {
+            assert_eq!(
+                sanitized_xhtml_font_weight_status(fragment),
+                Unverified,
+                "{fragment}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitized_html_font_weight_rejects_malformed_xml() {
+        use crate::flowchart::FlowchartSourceFacetStatus::Unverified;
+
+        for fragment in [
+            "<p>label",
+            "<p>label</span>",
+            "</p>",
+            r#"<span title="unterminated>label</span>"#,
+            r#"<span title="&unknown;">label</span>"#,
+        ] {
+            assert_eq!(
+                sanitized_xhtml_font_weight_status(fragment),
+                Unverified,
+                "{fragment}"
+            );
+        }
+    }
+
     fn color_style(value: &str) -> FlowchartCompiledStyles {
         FlowchartCompiledStyles {
             edge_class_declarations: Vec::new(),
@@ -2432,6 +2633,7 @@ mod tests {
             inline_stroke_dasharray_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             font_stack_source: None,
             font_size_source: None,
+            font_weight_source: None,
             shape_sources: Vec::new(),
             inline_shape_sources: Vec::new(),
             generated_shape_sources: Vec::new(),
@@ -3129,6 +3331,67 @@ mod tests {
             styles
                 .label_source_residuals("A", not_applicable)
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn source_font_weight_tracks_the_final_declaration_and_its_admission() {
+        use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Admitted, Unverified};
+
+        for (declarations, expected) in [
+            (vec![], Absent),
+            (vec!["font-weight:600"], Admitted),
+            (
+                vec!["font-weight:600", "font-weight:var(--weight)"],
+                Unverified,
+            ),
+            (
+                vec!["font-weight:var(--weight)", "font-weight:600"],
+                Admitted,
+            ),
+        ] {
+            let declarations = declarations
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let styles = flowchart_compile_styles(&IndexMap::new(), &[], &declarations, &[]);
+            assert_eq!(styles.source_font_weight_status(), expected);
+        }
+    }
+
+    #[test]
+    fn admitted_font_weight_requires_its_own_consumed_writer_receipt() {
+        use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Admitted, Unverified};
+        use crate::svg::parity::flowchart::render::node::emission::FlowchartNodeLabelEmissionReceipt;
+
+        let styles =
+            flowchart_compile_styles(&IndexMap::new(), &[], &["font-weight:600".to_string()], &[]);
+        let receipt = FlowchartNodeLabelEmissionReceipt::verified()
+            .with_prepared_typography_reach(true, true);
+        assert_eq!(styles.emitted_source_font_weight_status(receipt), Absent);
+        assert_eq!(
+            styles.emitted_source_font_weight_status(receipt.with_font_weight_reach(true, false)),
+            Absent,
+        );
+        assert_eq!(
+            styles.emitted_source_font_weight_status(receipt.with_font_weight_reach(false, true)),
+            Absent,
+        );
+        assert_eq!(
+            styles.emitted_source_font_weight_status(receipt.with_font_weight_reach(true, true)),
+            Admitted,
+        );
+
+        let unsupported = flowchart_compile_styles(
+            &IndexMap::new(),
+            &[],
+            &["font-weight:var(--weight)".to_string()],
+            &[],
+        );
+        assert_eq!(
+            unsupported
+                .emitted_source_font_weight_status(receipt.with_font_weight_reach(true, true)),
+            Unverified,
         );
     }
 

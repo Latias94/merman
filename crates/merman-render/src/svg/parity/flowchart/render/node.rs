@@ -525,6 +525,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 }),
             )
         });
+    let font_weight_emission = label_receipt.and_then(|receipt| {
+        receipt.font_weight_reach().map(|reach| {
+            let precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+                compiled_styles.emitted_source_font_weight_status(receipt),
+                ctx.node_typography_config_ownership.font_weight.is_some(),
+            );
+            crate::flowchart::FlowchartThemeFacetEmission::new(
+                precedence,
+                node_theme.font_weight_selected(precedence) && reach.is_verified(),
+            )
+        })
+    });
     if ctx.resolved_theme.is_some() || !source_evidence.residuals.is_empty() {
         ctx.theme_evidence.record_node_emission(
             node_theme,
@@ -573,6 +585,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 label_fill: label_fill_emission,
                 font_stack: font_stack_emission,
                 font_size: font_size_emission,
+                font_weight: font_weight_emission,
             },
             &source_evidence.residuals,
             ctx.work_meter,

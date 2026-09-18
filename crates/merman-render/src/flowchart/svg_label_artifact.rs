@@ -83,6 +83,16 @@ impl<'a> FlowchartLabelTypographyOverrides<'a> {
 }
 
 impl FlowchartSvgLabelOwner {
+    fn typography_target(self) -> ThemeTarget {
+        match self {
+            Self::Node(_) | Self::EmptySubgraphNode(_) | Self::SwimlaneNode(_) => {
+                ThemeTarget::NodeLabel
+            }
+            Self::Edge(_) | Self::SwimlaneEdgeLabel(_) => ThemeTarget::EdgeLabel,
+            Self::SubgraphTitle(_) | Self::SwimlaneGroupTitle(_) => ThemeTarget::ClusterLabel,
+        }
+    }
+
     fn semantic_index(self) -> usize {
         match self {
             Self::Node(index)
@@ -747,6 +757,7 @@ impl PreparedFlowchartSvgLabel {
 pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
     base_typography: Option<super::FlowchartBaseTypographyPlan>,
+    label_weights: super::FlowchartLabelWeights,
     math_backend: Option<ConfiguredMathBackend>,
     prepared_text_layout: Option<PreparedTextLayout>,
     work_meter: Option<Arc<OperationWorkMeter>>,
@@ -935,6 +946,8 @@ impl FlowchartSvgLabelSidecarBuilder {
         resolved_theme: Option<&ResolvedDiagramTheme>,
     ) -> Self {
         Self {
+            label_weights: super::FlowchartLabelWeights::resolve(resolved_theme, None)
+                .expect("unmetered static label weights cannot exceed work limits"),
             prepared_text_layout: prepared_text_layout.cloned(),
             resolved_theme: resolved_theme.cloned(),
             ..Self::default()
@@ -946,7 +959,14 @@ impl FlowchartSvgLabelSidecarBuilder {
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
+        let weights = super::FlowchartLabelWeights::resolve(resolved_theme, Some(&work_meter));
+        let (label_weights, work_error) = match weights {
+            Ok(weights) => (weights, None),
+            Err(error) => (super::FlowchartLabelWeights::default(), Some(error)),
+        };
         Self {
+            label_weights,
+            prepared_work_error: RefCell::new(work_error),
             prepared_text_layout: prepared_text_layout.cloned(),
             work_meter: Some(work_meter),
             resolved_theme: resolved_theme.cloned(),
@@ -959,6 +979,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     ) -> Self {
         self.typography_config_ownership = ownership;
+        self.label_weights = self.label_weights.with_config(ownership);
         self
     }
 
@@ -1158,6 +1179,17 @@ impl FlowchartSvgLabelSidecarBuilder {
         {
             return failed_prepared_metrics();
         }
+        let weighted_wrap = self
+            .label_weights
+            .apply(owner.typography_target(), request.style);
+        let weighted_metrics = self
+            .label_weights
+            .apply(owner.typography_target(), metrics_style);
+        let request = FlowchartLabelMetricsRequest {
+            style: &weighted_wrap,
+            ..request
+        };
+        let metrics_style = weighted_metrics.as_ref();
         // Base typography evidence covers every visible label shell, including HTML labels that
         // intentionally bypass native SVG source preparation. Retain their semantic owner before
         // any measurement fast path so the terminal writer can bind source-local typography to
@@ -1586,6 +1618,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.math,
             pending.render_ids,
             self.base_typography,
+            self.label_weights,
             self.edge_label_padding,
             self.prepared_error.into_inner(),
             self.prepared_resource_error.into_inner(),
@@ -1822,6 +1855,7 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
     base_typography: Option<super::FlowchartBaseTypographyPlan>,
+    label_weights: super::FlowchartLabelWeights,
     node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     empty_subgraph_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
@@ -1840,12 +1874,17 @@ pub(crate) struct FlowchartSvgLabelSidecar {
 }
 
 impl FlowchartSvgLabelSidecar {
+    pub(crate) fn label_weights(&self) -> super::FlowchartLabelWeights {
+        self.label_weights
+    }
+
     fn new(
         sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
         math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
         base_typography: Option<super::FlowchartBaseTypographyPlan>,
+        label_weights: super::FlowchartLabelWeights,
         edge_label_padding: super::FlowchartEdgeLabelPadding,
         mut prepared_error: Option<TextLayoutError>,
         prepared_resource_error: Option<ResourceLimitExceeded>,
@@ -1873,6 +1912,7 @@ impl FlowchartSvgLabelSidecar {
             prepared,
             math,
             base_typography,
+            label_weights,
             edge_label_padding,
             prepared_error,
             prepared_resource_error,
@@ -2230,11 +2270,13 @@ pub(crate) enum FlowchartSvgLabelRenderPlan<'a> {
     Prepared {
         source: &'a FlowchartSvgLabelSource,
         measured: &'a PreparedFlowchartSvgLabel,
+        font_weight: Option<u16>,
     },
     Source {
         source: Cow<'a, FlowchartSvgLabelSource>,
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
+        font_weight: Option<u16>,
         max_width_px: Option<f64>,
         break_long_words: bool,
     },
@@ -2272,11 +2314,20 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
         raw_source: &str,
         measurer: &'a dyn TextMeasurer,
         wrap_style: &'a TextStyle,
-        _metrics_style: &TextStyle,
+        metrics_style: &TextStyle,
         max_width_px: Option<f64>,
         break_long_words: bool,
         _width_mode: FlowchartSvgWidthMode,
     ) -> Self {
+        let font_weight = sidecar.zip(owner).and_then(|(sidecar, owner)| {
+            sidecar.label_weights.get(owner.typography_target())?;
+            metrics_style
+                .font_weight
+                .as_deref()?
+                .parse::<u16>()
+                .ok()
+                .filter(|weight| (1..=1000).contains(weight))
+        });
         // SVG emission consumes only the prepared source projection and wrapped rows. Final bbox
         // style and width-mode differences therefore must not trigger a second tokenize/wrap pass.
         // Exact metric reuse remains separately guarded by `prepared_metrics`.
@@ -2289,7 +2340,11 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
                 break_long_words,
             )
         }) {
-            return Self::Prepared { source, measured };
+            return Self::Prepared {
+                source,
+                measured,
+                font_weight,
+            };
         }
 
         let binding = FlowchartSvgLabelWrapBindingRequest::for_measurer(
@@ -2306,7 +2361,11 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
                     sidecar.prepared_wrapping(owner, raw_source, binding)
                 })
         {
-            Self::Prepared { source, measured }
+            Self::Prepared {
+                source,
+                measured,
+                font_weight,
+            }
         } else {
             let source = sidecar
                 .zip(owner)
@@ -2319,6 +2378,7 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
                 source,
                 measurer,
                 style: wrap_style,
+                font_weight,
                 max_width_px,
                 break_long_words,
             }
@@ -2343,10 +2403,24 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
         }
     }
 
-    pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> Option<String> {
+    pub(crate) fn font_weight(&self) -> Option<u16> {
         match self {
+            Self::Prepared { font_weight, .. } | Self::Source { font_weight, .. } => *font_weight,
+        }
+    }
+
+    pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> Option<String> {
+        let admitted = match self {
             Self::Prepared { measured, .. } => measured.merge_emission_font_style(existing),
             Self::Source { .. } => None,
+        };
+        if let Some(weight) = self.font_weight() {
+            use std::fmt::Write as _;
+            let mut style = admitted.unwrap_or_else(|| existing.unwrap_or_default().to_owned());
+            let _ = write!(style, ";font-weight:{weight} !important;");
+            Some(style)
+        } else {
+            admitted
         }
     }
 
@@ -2373,6 +2447,7 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
                 style,
                 max_width_px,
                 break_long_words,
+                ..
             } => {
                 Cow::Owned(source.wrapped_lines(*measurer, style, *max_width_px, *break_long_words))
             }

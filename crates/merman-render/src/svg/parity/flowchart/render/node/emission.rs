@@ -104,6 +104,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeLabelEmissionReceipt {
     source_typography: FlowchartNodeFacetReach,
     prepared_typography: Option<FlowchartNodeFacetReach>,
     label_fill: Option<FlowchartNodeFacetReach>,
+    font_weight: Option<FlowchartNodeFacetReach>,
     text_paint_facts: Option<crate::flowchart::FlowchartTextPaintFacts>,
     background_has_area: bool,
     html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus,
@@ -128,6 +129,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             source_typography: FlowchartNodeFacetReach::Verified,
             prepared_typography: None,
             label_fill: None,
+            font_weight: None,
             text_paint_facts: None,
             background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -140,6 +142,7 @@ impl FlowchartNodeLabelEmissionReceipt {
             source_typography: FlowchartNodeFacetReach::Unverified,
             prepared_typography: None,
             label_fill: None,
+            font_weight: None,
             text_paint_facts: None,
             background_has_area: false,
             html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -162,6 +165,15 @@ impl FlowchartNodeLabelEmissionReceipt {
         verified: bool,
     ) -> Self {
         self.label_fill = Self::facet_reach(applicable, verified);
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn with_font_weight_reach(
+        mut self,
+        applicable: bool,
+        verified: bool,
+    ) -> Self {
+        self.font_weight = Self::facet_reach(applicable, verified);
         self
     }
 
@@ -216,6 +228,12 @@ impl FlowchartNodeLabelEmissionReceipt {
         self,
     ) -> Option<FlowchartNodeFacetReach> {
         self.label_fill
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn font_weight_reach(
+        self,
+    ) -> Option<FlowchartNodeFacetReach> {
+        self.font_weight
     }
 
     pub(in crate::svg::parity::flowchart) const fn html_font_stack_status(

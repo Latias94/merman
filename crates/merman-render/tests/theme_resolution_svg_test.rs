@@ -138,3 +138,155 @@ fn font_only_theme_uses_one_resolved_palette_across_scale_consumers() {
         );
     }
 }
+
+fn render_flowchart_label_weights(
+    source: &str,
+    theme: &merman_render::diagram_theme::DiagramTheme,
+    html_labels: bool,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(
+        theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"htmlLabels": html_labels}),
+        )),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .unwrap()
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(
+            merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable,
+        )
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+fn label_weight_theme(clear_nodes: bool) -> merman_render::diagram_theme::DiagramTheme {
+    use merman_render::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+    let rule = |target, weight| {
+        ThemeRule::new(
+            target,
+            ThemeStylePatch {
+                typography: TextStylePatch {
+                    font_weight: weight,
+                    ..TextStylePatch::default()
+                },
+                ..ThemeStylePatch::default()
+            },
+        )
+    };
+    let mut rules = ThemeRuleSet::default()
+        .with_rule(rule(ThemeTarget::NodeLabel, Specified::Value(600)))
+        .with_rule(rule(ThemeTarget::EdgeLabel, Specified::Value(500)));
+    if clear_nodes {
+        rules = rules.with_rule(rule(ThemeTarget::NodeLabel, Specified::Clear));
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+}
+
+fn explicit_label_weight(svg: &str, label: &str) -> String {
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let text = document
+        .descendants()
+        .find(|node| node.is_text() && node.text() == Some(label))
+        .unwrap_or_else(|| panic!("missing label {label}: {svg}"));
+    for node in text.ancestors().filter(roxmltree::Node::is_element) {
+        if let Some(style) = node.attribute("style") {
+            for declaration in style.split(';').rev() {
+                if let Some(("font-weight", value)) = declaration.trim().split_once(':') {
+                    return value
+                        .trim()
+                        .trim_end_matches("!important")
+                        .trim()
+                        .to_owned();
+                }
+            }
+        }
+        if let Some(weight) = node.attribute("font-weight") {
+            return weight.to_owned();
+        }
+    }
+    panic!("no explicit weight for {label}: {svg}")
+}
+
+#[test]
+fn flowchart_label_weights_reach_svg_and_preserve_source_and_clear() {
+    for prefix in ["", "---\nconfig:\n  layout: swimlane\n---\n"] {
+        for html_labels in [false, true] {
+            for clear in [false, true] {
+                let theme = label_weight_theme(clear);
+                let source = format!(
+                    "{prefix}flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nstyle B font-weight:800"
+                );
+                let rendered = render_flowchart_label_weights(&source, &theme, html_labels)
+                    .unwrap_or_else(|error| panic!("html={html_labels}, clear={clear}: {error}"));
+                assert_eq!(
+                    explicit_label_weight(rendered.svg(), "NodeAlpha"),
+                    if clear { "400" } else { "600" }
+                );
+                assert_eq!(explicit_label_weight(rendered.svg(), "NodeBeta"), "800");
+                assert_eq!(explicit_label_weight(rendered.svg(), "EdgeGamma"), "500");
+                let completion = rendered.into_completion();
+                assert_eq!(
+                    merman_render::__private::family_evidence(completion.report())
+                        .theme_residual_count(),
+                    0
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_label_weight_rejects_unverified_content_and_preserves_relative_source() {
+    let theme = label_weight_theme(false);
+    for html in [false, true] {
+        let source =
+            "flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nstyle B font-weight:bolder";
+        let rendered = render_flowchart_label_weights(source, &theme, html).unwrap();
+        assert_eq!(explicit_label_weight(rendered.svg(), "NodeBeta"), "900");
+    }
+    for source in [
+        "flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nstyle B font-weight:banana",
+        "flowchart LR\nA[\"<strong>NodeAlpha</strong>\"] -->|EdgeGamma| B[NodeBeta]",
+        "flowchart LR\nA[\"<span style='font-weight:700'>NodeAlpha</span>\"] -->|EdgeGamma| B[NodeBeta]",
+        "flowchart LR\nA[NodeAlpha] -->|<b>EdgeGamma</b>| B[NodeBeta]",
+        "flowchart LR\nA[\"<h1>NodeAlpha</h1>\"] -->|EdgeGamma| B[NodeBeta]",
+        "flowchart LR\nA[\"<button>NodeAlpha</button>\"] -->|EdgeGamma| B[NodeBeta]",
+        "flowchart LR\nA[\"<textarea>NodeAlpha</textarea>\"] -->|EdgeGamma| B[NodeBeta]",
+        "flowchart LR\nA[NodeAlpha] -->|<button>EdgeGamma</button>| B[NodeBeta]",
+        "flowchart LR\nA[NodeAlpha] -->|<select><option>EdgeGamma</option></select>| B[NodeBeta]",
+    ] {
+        assert!(
+            render_flowchart_label_weights(source, &theme, true).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_label_weight_config_and_class_precedence_reach_terminals() {
+    let theme = label_weight_theme(false);
+    for html in [false, true] {
+        for (config, expected, relative) in [("900", "900", "700"), ("bolder", "700", "400")] {
+            let source = format!(
+                "---\nconfig:\n  fontWeight: '{config}'\n---\nflowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nclassDef emphasis font-weight:800!important\nclass B emphasis\nstyle B font-weight:lighter!important"
+            );
+            let rendered = render_flowchart_label_weights(&source, &theme, html).unwrap();
+            assert_eq!(explicit_label_weight(rendered.svg(), "NodeAlpha"), expected);
+            assert_eq!(explicit_label_weight(rendered.svg(), "EdgeGamma"), expected);
+            assert_eq!(explicit_label_weight(rendered.svg(), "NodeBeta"), relative);
+        }
+        let invalid = "---\nconfig:\n  fontWeight: banana\n---\nflowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]";
+        assert!(render_flowchart_label_weights(invalid, &theme, html).is_err());
+        let invalid_source = "---\nconfig:\n  fontWeight: '900'\n---\nflowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nstyle B font-weight:banana";
+        assert!(render_flowchart_label_weights(invalid_source, &theme, html).is_err());
+    }
+}

@@ -195,3 +195,6 @@ pub(crate) use text_surface_paint::FlowchartTextSurfacePaintPlan;
 
 mod label_background;
 pub(crate) use label_background::FlowchartLabelBackgroundPlan;
+
+mod label_weight;
+pub(crate) use label_weight::FlowchartLabelWeights;

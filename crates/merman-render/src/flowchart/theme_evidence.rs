@@ -299,6 +299,7 @@ pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) label_fill: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
+    pub(crate) font_weight: Option<FlowchartThemeFacetEmission>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -312,6 +313,7 @@ pub(crate) struct FlowchartEdgeThemeEmission {
 pub(crate) struct FlowchartEdgeLabelThemeEmission {
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
+    pub(crate) font_weight: Option<FlowchartThemeFacetEmission>,
     pub(crate) padding: Option<FlowchartThemeFacetEmission>,
 }
 
@@ -334,6 +336,7 @@ impl FlowchartNodeThemeEmission {
             label_fill: None,
             font_stack: None,
             font_size: None,
+            font_weight: None,
         }
     }
 }
@@ -343,6 +346,7 @@ struct FlowchartLabelThemeStyle {
     fill: Option<FlowchartPaintOutcome>,
     font_stack: Option<FlowchartTypographyOutcome>,
     font_size: Option<FlowchartTypographyOutcome>,
+    font_weight: Option<FlowchartTypographyOutcome>,
     padding: Option<FlowchartPaddingOutcome>,
     matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
@@ -514,6 +518,14 @@ impl FlowchartEdgeThemeStyle {
         !precedence.overrides_theme()
             && matches!(
                 self.label.font_size,
+                Some(FlowchartTypographyOutcome::Candidate { .. })
+            )
+    }
+
+    pub(crate) fn font_weight_selected(&self, precedence: FlowchartFacetPrecedence) -> bool {
+        !precedence.overrides_theme()
+            && matches!(
+                self.label.font_weight,
                 Some(FlowchartTypographyOutcome::Candidate { .. })
             )
     }
@@ -917,6 +929,14 @@ impl FlowchartNodeThemeStyle {
             )
     }
 
+    pub(crate) fn font_weight_selected(&self, precedence: FlowchartFacetPrecedence) -> bool {
+        !precedence.overrides_theme()
+            && matches!(
+                self.label.font_weight,
+                Some(FlowchartTypographyOutcome::Candidate { .. })
+            )
+    }
+
     pub(crate) fn label_fill_value(
         &self,
         precedence: FlowchartFacetPrecedence,
@@ -994,6 +1014,14 @@ fn resolve_label_theme_style(
                     rule_index,
                     &style.typography_resolution().patch().font_size_px,
                     ThemeTypographyProperty::FontSize,
+                );
+            }
+            ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontWeight) => {
+                resolved.font_weight = resolve_typography(
+                    theme,
+                    rule_index,
+                    &style.typography_resolution().patch().font_weight,
+                    ThemeTypographyProperty::FontWeight,
                 );
             }
             ResolvedStyleProperty::Padding => {
@@ -1229,6 +1257,10 @@ fn resolve_typography<T>(
         }),
         FamilyThemeDisposition::TypedAdapter => match property {
             Specified::Value(_) => Some(FlowchartTypographyOutcome::Candidate { rule_index }),
+            Specified::Clear if typography_property == ThemeTypographyProperty::FontWeight => {
+                // The writer verifies the effective base weight restored by resolution.
+                Some(FlowchartTypographyOutcome::Candidate { rule_index })
+            }
             Specified::Clear | Specified::Unspecified => {
                 Some(FlowchartTypographyOutcome::Residual {
                     rule_index,
@@ -1578,7 +1610,8 @@ impl FlowchartThemeEvidenceRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let label_emitted = emission.label_fill.is_some()
             || emission.font_stack.is_some()
-            || emission.font_size.is_some();
+            || emission.font_size.is_some()
+            || emission.font_weight.is_some();
         let work = state.node.provenance_work(&style.matched_rules)
             + if label_emitted {
                 state.node_label.provenance_work(&style.label.matched_rules)
@@ -1684,6 +1717,14 @@ impl FlowchartThemeEvidenceRecorder {
                     font_size_emission.verified,
                 );
             }
+            if let Some(font_weight_emission) = emission.font_weight {
+                record_typography_outcome(
+                    &mut state.node_label,
+                    style.label.font_weight.as_ref(),
+                    font_weight_emission.precedence,
+                    font_weight_emission.verified,
+                );
+            }
             state
                 .node_label
                 .incomplete_rules
@@ -1781,6 +1822,7 @@ impl FlowchartThemeEvidenceRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let label_emitted = emission.font_stack.is_some()
             || emission.font_size.is_some()
+            || emission.font_weight.is_some()
             || emission.padding.is_some();
         work_meter.charge_emit_work(if label_emitted {
             state.edge_label.provenance_work(&style.label.matched_rules)
@@ -1811,6 +1853,14 @@ impl FlowchartThemeEvidenceRecorder {
                     style.label.font_size.as_ref(),
                     font_size_emission.precedence,
                     font_size_emission.verified,
+                );
+            }
+            if let Some(font_weight_emission) = emission.font_weight {
+                record_typography_outcome(
+                    &mut state.edge_label,
+                    style.label.font_weight.as_ref(),
+                    font_weight_emission.precedence,
+                    font_weight_emission.verified,
                 );
             }
             if let Some(padding_emission) = emission.padding {
@@ -2843,6 +2893,7 @@ mod tests {
             label_fill: None,
             font_stack: None,
             font_size: None,
+            font_weight: None,
         }
     }
 
@@ -3192,6 +3243,29 @@ mod tests {
             .resolve(DiagramFamilyId::FLOWCHART)
     }
 
+    fn resolved_label_font_weight_theme(
+        target: ThemeTarget,
+        font_weight: Specified<u16>,
+    ) -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch {
+                            typography: TextStylePatch {
+                                font_weight,
+                                ..TextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ),
+                )),
+            )
+            .expect("compile Flowchart label font-weight theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
     fn resolved_edge_label_typography_theme() -> ResolvedDiagramTheme {
         DiagramThemeCompiler::new()
             .compile(
@@ -3285,6 +3359,7 @@ mod tests {
             font_size: font_size.map(|(precedence, verified)| {
                 FlowchartThemeFacetEmission::new(precedence, verified)
             }),
+            font_weight: None,
             padding: None,
         }
     }
@@ -3356,6 +3431,7 @@ mod tests {
                 FlowchartEdgeLabelThemeEmission {
                     font_stack: None,
                     font_size: None,
+                    font_weight: None,
                     padding: Some(FlowchartThemeFacetEmission::new(precedence, true)),
                 },
                 &[],
@@ -3526,6 +3602,147 @@ mod tests {
             ]
         );
         assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn label_font_weight_requires_each_writer_receipt_and_respects_source_precedence() {
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+            for font_weight in [Specified::Value(600), Specified::Clear] {
+                let theme = resolved_label_font_weight_theme(target, font_weight);
+                for (precedence, receipts, applied, residual) in [
+                    (no_override(), &[true][..], true, false),
+                    (no_override(), &[false][..], false, true),
+                    (no_override(), &[true, false][..], false, true),
+                    (no_override(), &[false, true][..], false, true),
+                    (
+                        FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
+                        &[false][..],
+                        false,
+                        false,
+                    ),
+                    (
+                        FlowchartFacetPrecedence::new(
+                            FlowchartSourceFacetStatus::Unverified,
+                            false,
+                        ),
+                        &[false][..],
+                        false,
+                        false,
+                    ),
+                    (
+                        FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, true),
+                        &[false][..],
+                        false,
+                        false,
+                    ),
+                ] {
+                    let recorder = FlowchartThemeEvidenceRecorder::default();
+                    match target {
+                        ThemeTarget::NodeLabel => {
+                            let style =
+                                FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter)
+                                    .expect("resolve node weight");
+                            assert_eq!(
+                                style.font_weight_selected(precedence),
+                                !precedence.overrides_theme()
+                            );
+                            for &verified in receipts {
+                                let mut emission = FlowchartNodeThemeEmission::none();
+                                emission.font_weight =
+                                    Some(FlowchartThemeFacetEmission::new(precedence, verified));
+                                recorder
+                                    .record_node_emission(&style, emission, &[], &meter)
+                                    .expect("record node weight");
+                            }
+                        }
+                        ThemeTarget::EdgeLabel => {
+                            let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+                                .expect("resolve edge weight");
+                            assert_eq!(
+                                style.font_weight_selected(precedence),
+                                !precedence.overrides_theme()
+                            );
+                            for &verified in receipts {
+                                let mut emission = edge_label_emission(None, None);
+                                emission.font_weight =
+                                    Some(FlowchartThemeFacetEmission::new(precedence, verified));
+                                recorder
+                                    .record_edge_label_emission(&style, emission, &[], &meter)
+                                    .expect("record edge weight");
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    let (evidence, source_residuals) = recorder.finish(Some(&theme));
+                    let key = FamilyThemeMechanismKey::Rule { index: 0, target };
+                    assert!(source_residuals.is_empty());
+                    assert_eq!(evidence.applied().contains(&key), applied);
+                    assert_eq!(evidence.residuals().len(), usize::from(residual));
+                    assert_eq!(
+                        evidence.not_applicable_mechanisms().contains(&key),
+                        !applied && !residual
+                    );
+                    if residual {
+                        assert_eq!(evidence.residuals()[0].key(), &key);
+                        assert_eq!(
+                            evidence.residuals()[0].reason(),
+                            FamilyThemeResidualReason::UnsupportedTypography
+                        );
+                    }
+                    if applied {
+                        assert_eq!(
+                            evidence.applied_capabilities(),
+                            BTreeSet::from([ThemeCapability::Typography])
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn only_font_weight_clear_is_a_label_typography_candidate() {
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+            let theme =
+                DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch {
+                                typography: TextStylePatch {
+                                    font_stack: Specified::Clear,
+                                    font_size_px: Specified::Clear,
+                                    font_weight: Specified::Clear,
+                                    ..TextStylePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                            },
+                        )),
+                    ))
+                    .expect("compile cleared label typography")
+                    .resolve(DiagramFamilyId::FLOWCHART);
+            let label = resolve_label_theme_style(&theme, target, None, &meter)
+                .expect("resolve cleared label typography");
+            assert!(matches!(
+                label.font_weight,
+                Some(FlowchartTypographyOutcome::Candidate { rule_index: 0 })
+            ));
+            for outcome in [label.font_stack, label.font_size] {
+                assert!(matches!(
+                    outcome,
+                    Some(FlowchartTypographyOutcome::Residual {
+                        rule_index: 0,
+                        reason: FamilyThemeResidualReason::UnsupportedTypography,
+                    })
+                ));
+            }
+        }
     }
 
     #[test]

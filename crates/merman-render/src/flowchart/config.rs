@@ -20,12 +20,20 @@ pub(crate) const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
 pub(crate) struct FlowchartTypographyConfigOwnership {
     pub(crate) font_stack: bool,
     pub(crate) font_size: bool,
+    pub(crate) font_weight: Option<u16>,
+    pub(crate) invalid_font_weight: bool,
 }
 
 pub(crate) fn flowchart_typography_config_ownership(
     config: &merman_core::MermaidConfig,
 ) -> FlowchartTypographyConfigOwnership {
+    let raw_weight = merman_core::__private::explicit_config_owns_path(config, "fontWeight")
+        .then(|| config.get_str("fontWeight"))
+        .flatten();
+    let font_weight = raw_weight.and_then(|raw| crate::text::resolve_css_font_weight(raw, 400));
     FlowchartTypographyConfigOwnership {
+        font_weight,
+        invalid_font_weight: raw_weight.is_some() && font_weight.is_none(),
         font_stack: merman_core::__private::explicit_config_owns_path(
             config,
             "themeVariables.fontFamily",
@@ -160,7 +168,7 @@ impl<'a> FlowchartConfigView<'a> {
         TextStyle {
             font_family: Some(font_family.to_string()),
             font_size,
-            font_weight: None,
+            font_weight: self.root_font_weight(),
             font_style: None,
         }
     }
@@ -229,11 +237,19 @@ impl<'a> FlowchartConfigView<'a> {
             .unwrap_or_else(|| fallback.to_string())
     }
 
+    fn root_font_weight(&self) -> Option<String> {
+        let raw = self.root_string("fontWeight")?;
+        Some(
+            crate::text::resolve_css_font_weight(&raw, 400)
+                .map_or(raw, |weight| weight.to_string()),
+        )
+    }
+
     fn layout_text_style(&self) -> TextStyle {
         TextStyle {
             font_family: Some(self.font_family()),
             font_size: self.theme_font_size_px().unwrap_or(16.0),
-            font_weight: self.root_string("fontWeight"),
+            font_weight: self.root_font_weight(),
             font_style: None,
         }
     }

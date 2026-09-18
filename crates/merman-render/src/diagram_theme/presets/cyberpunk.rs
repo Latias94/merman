@@ -5,6 +5,7 @@ use merman_theme_contract::{
     ThemeCanvasPaintWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1,
     ThemeGradientStopWireV1, ThemeLengthWireV1, ThemeLinearGradientRepetitionWireV1,
     ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
+    ThemeTextStylePatchWireV1,
 };
 
 use super::catalog::{PresetPalette, build_cross_family_recipe};
@@ -73,6 +74,28 @@ pub(super) fn build_recipe(
                 stroke: Some(ThemeStrokePatchWireV1 {
                     width: SpecifiedWireV1::Value(2.0),
                     ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::NodeLabel,
+            ThemeStylePatchWireV1 {
+                typography: Some(ThemeTextStylePatchWireV1 {
+                    font_weight: SpecifiedWireV1::Value(600),
+                    ..ThemeTextStylePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::EdgeLabel,
+            ThemeStylePatchWireV1 {
+                typography: Some(ThemeTextStylePatchWireV1 {
+                    font_weight: SpecifiedWireV1::Value(600),
+                    ..ThemeTextStylePatchWireV1::default()
                 }),
                 ..ThemeStylePatchWireV1::default()
             },

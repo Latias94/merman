@@ -22,13 +22,16 @@ fn write_svg_text_inner_word(
     word: &str,
     entity_mode: SvgTextEntityMode,
     reset_font_style: bool,
+    font_weight: Option<u16>,
 ) {
     out.push_str("<tspan");
     if reset_font_style {
         out.push_str(r#" font-style="normal""#);
     }
     out.push_str(r#" class="text-inner-tspan""#);
-    if reset_font_style {
+    if let Some(weight) = font_weight {
+        let _ = write!(out, r#" font-weight="{weight}""#);
+    } else if reset_font_style {
         out.push_str(r#" font-weight="normal""#);
     }
     out.push('>');
@@ -98,6 +101,7 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
         None,
         true,
         1.1,
+        None,
     );
 }
 
@@ -106,8 +110,18 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     lines: &[Vec<String>],
     style: &str,
     center_text: bool,
+    font_weight: Option<u16>,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, None, true, 1.1);
+    write_svg_text_source_word_lines_impl(
+        out,
+        lines,
+        Some(style),
+        center_text,
+        None,
+        true,
+        1.1,
+        font_weight,
+    );
 }
 
 pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
@@ -125,9 +139,11 @@ pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
         Some(label_id),
         true,
         1.1,
+        None,
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_style(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
@@ -136,6 +152,7 @@ pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_sty
     label_id: PreparedTextLabelId,
     inherit_font_style: bool,
     line_height_em: f64,
+    font_weight: Option<u16>,
 ) {
     write_svg_text_source_word_lines_impl(
         out,
@@ -145,9 +162,11 @@ pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_sty
         Some(label_id),
         !inherit_font_style,
         line_height_em,
+        font_weight,
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_svg_text_source_word_lines_impl(
     out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
@@ -156,6 +175,7 @@ fn write_svg_text_source_word_lines_impl(
     label_id: Option<PreparedTextLabelId>,
     reset_inner_font_style: bool,
     line_height_em: f64,
+    font_weight: Option<u16>,
 ) {
     open_svg_text(out, style, center_text, label_id);
 
@@ -174,6 +194,7 @@ fn write_svg_text_source_word_lines_impl(
                 word,
                 SvgTextEntityMode::CreateTextSource,
                 reset_inner_font_style,
+                font_weight,
             );
         }
         out.push_str("</tspan>");
@@ -298,7 +319,7 @@ fn write_svg_text_impl<'a>(
     for (index, line) in lines.iter().enumerate() {
         open_tspan(out, index, center_text, include_row_class, 1.1, false);
         for (word_index, word) in crate::text::non_markdown_svg_words(line).enumerate() {
-            write_svg_text_inner_word(out, word_index, word, entity_mode, true);
+            write_svg_text_inner_word(out, word_index, word, entity_mode, true, None);
         }
         out.push_str("</tspan>");
     }
@@ -625,6 +646,7 @@ mod tests {
             &[vec!["label".to_string()]],
             "color:#112233;fill:#112233",
             true,
+            None,
         );
 
         assert!(
@@ -723,6 +745,7 @@ mod tests {
             ),
             true,
             1.4,
+            None,
         );
 
         assert!(svg.contains(r#"y="-0.4em" dy="1.4em""#), "{svg}");

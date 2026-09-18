@@ -1,4 +1,4 @@
-//! Typed rectangle geometry must change actual native paint, not only SVG attributes.
+//! Flowchart theme geometry and label weight must reach actual native paint.
 
 #![cfg(all(feature = "svg", feature = "png"))]
 
@@ -205,4 +205,61 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
             );
         }
     }
+}
+
+#[test]
+fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
+    use merman::svg::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+    let strong = compiler.compile_recipe(recipe.clone()).unwrap();
+    let mut light_recipe = serde_json::to_value(recipe).unwrap();
+    let mut changed = 0;
+    for rule in light_recipe["complete_spec"]["styles"]
+        .as_array_mut()
+        .unwrap()
+    {
+        if rule["family"] == "flowchart"
+            && matches!(rule["target"].as_str(), Some("node-label" | "edge-label"))
+            && rule["style"]["typography"]["font_weight"] == 600
+        {
+            rule["style"]["typography"]["font_weight"] = serde_json::json!(400);
+            changed += 1;
+        }
+    }
+    assert_eq!(changed, 2, "both public label rules must carry weight 600");
+    let light = compiler
+        .compile_recipe(serde_json::from_value(light_recipe).unwrap())
+        .unwrap();
+    let source = "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nA[Weight Alpha] -->|Weight Gamma| B[Weight Beta]";
+    let overridden = format!(
+        "{source}\nstyle A font-weight:600\nstyle B font-weight:600\nlinkStyle 0 font-weight:600"
+    );
+    let render = |theme, source: &str| {
+        let RenderOutput::Document(Some(document)) = Renderer::new()
+            .render(
+                RenderRequest::document(source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("document required")
+        };
+        document_pixels(&document, 1.0)
+    };
+    let strong_pixels = render(strong, source);
+    let overridden_pixels = render(light.clone(), &overridden);
+    assert_eq!(
+        (strong_pixels.0, strong_pixels.1),
+        (overridden_pixels.0, overridden_pixels.1)
+    );
+    assert!(
+        strong_pixels.2 == overridden_pixels.2,
+        "source-owned and typed weight 600 must produce identical native paint"
+    );
+    let light_pixels = render(light, source);
+    assert!(
+        strong_pixels != light_pixels,
+        "changing both public label weights to 400 must affect native output"
+    );
 }

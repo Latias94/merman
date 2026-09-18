@@ -246,6 +246,18 @@ fn public_cyberpunk_recipe_exchange_retains_actual_node_glow() {
     let direct = render(source, &selected, "classic", true).unwrap();
     let exchanged = render(source, &imported, "classic", true).unwrap();
     assert_eq!(direct.svg(), exchanged.svg());
+    let document = roxmltree::Document::parse(direct.svg()).unwrap();
+    for label in ["Alpha", "Advance", "Beta"] {
+        let text = document
+            .descendants()
+            .find(|node| node.is_text() && node.text() == Some(label))
+            .unwrap();
+        assert_eq!(
+            text.parent_element().unwrap().attribute("font-weight"),
+            Some("600"),
+            "{label}"
+        );
+    }
     assert_eq!(applications(direct.svg()), 2);
     let xml = roxmltree::Document::parse(direct.svg()).unwrap();
     let deviations = xml
