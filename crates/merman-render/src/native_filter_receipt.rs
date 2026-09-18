@@ -138,6 +138,16 @@ impl NativeSvgFilterApplication {
     pub fn stages(&self) -> &[NativeSvgShadowStage] {
         &self.stages
     }
+    /// Finite paint envelope in top/right/bottom/left order, shared with SVG lowering.
+    pub fn paint_outsets(&self) -> Option<[f64; 4]> {
+        let outsets = crate::diagram_theme::EffectOutsets::default().with_shadow_stages(
+            self.stages
+                .iter()
+                .map(|stage| (stage.input(), stage.offset(), stage.std_deviation())),
+        )?;
+        Some([outsets.top, outsets.right, outsets.bottom, outsets.left])
+    }
+
     pub const fn reference_count(&self) -> u32 {
         self.reference_count
     }
@@ -353,6 +363,25 @@ mod tests {
         a.stages.reverse();
         assert_ne!(forward, NativeSvgFilterReceipt::from_applications([a]));
     }
+    #[test]
+    fn paint_outsets_preserve_axis_deviations_and_ordered_inputs() {
+        let mut value = application("text-glow", 0.0, 0.0, 1);
+        value.stages = vec![
+            NativeSvgShadowStage::new(
+                EffectInput::SourceGraphic,
+                [5.0, -7.0],
+                [2.0, 3.0],
+                "#00f2ff",
+            )
+            .unwrap(),
+            NativeSvgShadowStage::new(EffectInput::Previous, [-3.0, 4.0], [1.0, 2.0], "#00f2ff")
+                .unwrap(),
+        ];
+        assert_eq!(value.paint_outsets(), Some([27.0, 17.0, 24.0, 15.0]));
+        value.stages[1].input = EffectInput::SourceGraphic;
+        assert_eq!(value.paint_outsets(), Some([8.0, 4.0, 12.0, 7.0]));
+    }
+
     #[test]
     fn invalid_applications_are_rejected() {
         assert!(NativeSvgFilterReceipt::from_applications([]).is_none());

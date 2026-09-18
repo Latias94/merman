@@ -49,9 +49,10 @@ struct DefinitionSlot {
 pub(super) fn preflight_native_filter_receipt(
     svg: &str,
     tree: &usvg::Tree,
+    viewport: usvg::Rect,
 ) -> Option<NativeSvgFilterReceipt> {
     let shadows = parse_raw_drop_shadows(svg)?;
-    if !resolved_tree_matches(tree, &shadows) {
+    if !resolved_tree_matches(tree, &shadows, viewport) {
         return None;
     }
     NativeSvgFilterReceipt::from_applications(shadows)
@@ -585,7 +586,11 @@ fn is_svg_namespace(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> bool 
         || matches!(namespace, ResolveResult::Bound(namespace) if namespace.as_ref() == SVG_NAMESPACE)
 }
 
-fn resolved_tree_matches(tree: &usvg::Tree, shadows: &[NativeSvgFilterApplication]) -> bool {
+fn resolved_tree_matches(
+    tree: &usvg::Tree,
+    shadows: &[NativeSvgFilterApplication],
+    viewport: usvg::Rect,
+) -> bool {
     if tree.filters().len() != shadows.len() {
         return false;
     }
@@ -608,7 +613,16 @@ fn resolved_tree_matches(tree: &usvg::Tree, shadows: &[NativeSvgFilterApplicatio
         .map(|shadow| (shadow.filter_id().to_string(), 0usize))
         .collect::<BTreeMap<_, _>>();
     let mut visited = HashSet::<*const usvg::Group>::new();
-    if !visit_group(tree.root(), &expected, &mut group_references, &mut visited) {
+    if visit_group(
+        tree.root(),
+        &expected,
+        &mut group_references,
+        &mut visited,
+        viewport,
+        false,
+    )
+    .is_none()
+    {
         return false;
     }
     group_references.values().all(|count| *count == 1)
@@ -745,66 +759,139 @@ fn same_f32(left: f32, right: f32) -> bool {
     normalized_bits(left) == normalized_bits(right)
 }
 
+/// Text-only paint summary in the current group's local coordinates. Each subtree is visited
+/// once; ancestor effects cannot accidentally certify a previously filtered or clipped label.
+#[derive(Default)]
+struct TextPaint {
+    bounds: Option<usvg::Rect>,
+    restricted: bool,
+}
+
+impl TextPaint {
+    fn include(&mut self, bounds: usvg::Rect) -> Option<()> {
+        self.bounds = Some(match self.bounds {
+            Some(current) => current.join(&bounds)?,
+            None => bounds,
+        });
+        Some(())
+    }
+}
+
 fn visit_group(
     group: &usvg::Group,
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
-) -> bool {
+    viewport: usvg::Rect,
+    ancestor_clipped: bool,
+) -> Option<TextPaint> {
     if !visited.insert(std::ptr::from_ref(group)) {
-        return true;
+        return Some(TextPaint::default());
     }
-    if !group.filters().is_empty() {
-        let [filter] = group.filters() else {
-            return false;
-        };
-        let Some(shadow) = expected.get(filter.id()) else {
-            return false;
-        };
-        if !resolved_filter_region_matches(group, filter, shadow) {
-            return false;
-        }
-        let Some(count) = references.get_mut(filter.id()) else {
-            return false;
-        };
-        let Some(next_count) = count.checked_add(1) else {
-            return false;
-        };
-        *count = next_count;
-        if *count != 1 {
-            return false;
-        }
-    }
-
-    if let Some(clip_path) = group.clip_path() {
-        if !visit_clip_path(clip_path, expected, references, visited) {
-            return false;
-        }
-    }
-    if let Some(mask) = group.mask()
-        && !visit_mask(mask, expected, references, visited)
-    {
-        return false;
-    }
-
+    let clipped = ancestor_clipped || group.clip_path().is_some() || group.mask().is_some();
+    let mut text_paint = TextPaint {
+        restricted: clipped,
+        ..TextPaint::default()
+    };
     for node in group.children() {
-        if let usvg::Node::Group(child) = node {
-            if !visit_group(child, expected, references, visited) {
-                return false;
+        match node {
+            usvg::Node::Group(child) => {
+                let child_paint =
+                    visit_group(child, expected, references, visited, viewport, clipped)?;
+                if let Some(bounds) = child_paint.bounds {
+                    text_paint.include(bounds.transform(child.transform())?)?;
+                    text_paint.restricted |= child_paint.restricted;
+                }
             }
-        } else {
+            usvg::Node::Text(text) => {
+                // usvg derives this box from flattened outlines, unlike its SVG text-metrics
+                // objectBoundingBox. SVG element transforms are already represented by groups.
+                let bounds = text.stroke_bounding_box();
+                text_paint.include(bounds)?;
+            }
+            _ => {}
+        }
+        if !matches!(node, usvg::Node::Group(_)) {
             let mut subroots_match = true;
             node.subroots(|subroot| {
                 if subroots_match {
-                    subroots_match = visit_group(subroot, expected, references, visited);
+                    subroots_match =
+                        visit_group(subroot, expected, references, visited, viewport, true)
+                            .is_some();
                 }
             });
             if !subroots_match {
-                return false;
+                return None;
             }
         }
     }
-    true
+
+    if !group.filters().is_empty() {
+        // usvg can retain a filter group after discarding empty text or a missing font.
+        // Such a definition is not an observed paint terminal.
+        if group.children().is_empty() {
+            return None;
+        }
+        let [filter] = group.filters() else {
+            return None;
+        };
+        let shadow = expected.get(filter.id())?;
+        if !resolved_filter_region_matches(group, filter, shadow) {
+            return None;
+        }
+        if let Some(ink) = text_paint.bounds {
+            if text_paint.restricted {
+                return None;
+            }
+            let [top, right, bottom, left] = shadow.paint_outsets()?;
+            let paint = usvg::Rect::from_ltrb(
+                (f64::from(ink.left()) - left) as f32,
+                (f64::from(ink.top()) - top) as f32,
+                (f64::from(ink.right()) + right) as f32,
+                (f64::from(ink.bottom()) + bottom) as f32,
+            )?;
+            if !contains_with_roundoff(filter.rect().to_rect(), paint)
+                || !contains_with_roundoff(viewport, paint.transform(group.abs_transform())?)
+            {
+                return None;
+            }
+            text_paint.bounds = Some(paint);
+            text_paint.restricted = true;
+        }
+        let count = references.get_mut(filter.id())?;
+        *count = count.checked_add(1)?;
+        if *count != 1 {
+            return None;
+        }
+    }
+
+    if let Some(clip_path) = group.clip_path()
+        && !visit_clip_path(clip_path, expected, references, visited, viewport)
+    {
+        return None;
+    }
+    if let Some(mask) = group.mask()
+        && !visit_mask(mask, expected, references, visited, viewport)
+    {
+        return None;
+    }
+    Some(text_paint)
+}
+
+fn contains_with_roundoff(outer: usvg::Rect, inner: usvg::Rect) -> bool {
+    // Account only for f32 arithmetic at each compared edge. A large canvas width must not
+    // grant unrelated slack at its zero origin.
+    [
+        (inner.left(), outer.left()),
+        (inner.top(), outer.top()),
+        (outer.right(), inner.right()),
+        (outer.bottom(), inner.bottom()),
+    ]
+    .into_iter()
+    .all(|(value, minimum)| {
+        let tolerance = value.abs().max(minimum.abs()).max(1.0) * f32::EPSILON * 4.0;
+        value >= minimum - tolerance
+    })
 }
 
 fn resolved_filter_region_matches(
@@ -813,29 +900,36 @@ fn resolved_filter_region_matches(
     shadow: &NativeSvgFilterApplication,
 ) -> bool {
     let actual = filter.rect();
-    let actual_values = [actual.x(), actual.y(), actual.width(), actual.height()];
-    match shadow.units() {
-        NativeSvgFilterUnits::UserSpaceOnUse => actual_values
-            .into_iter()
-            .zip(shadow.region())
-            .all(|(actual, expected)| same_f32(actual, expected)),
-        NativeSvgFilterUnits::ObjectBoundingBox => {
-            let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
-                return false;
-            };
-            let [x, y, width, height] = shadow.region();
-            let expected = [
-                x * object_bbox.width() + object_bbox.x(),
-                y * object_bbox.height() + object_bbox.y(),
-                width * object_bbox.width(),
-                height * object_bbox.height(),
-            ];
-            actual_values
-                .into_iter()
-                .zip(expected)
-                .all(|(actual, expected)| same_f32(actual, expected))
-        }
+    let [x, y, width, height] = shadow.region();
+    let Some(mut expected) = usvg::NonZeroRect::from_xywh(x, y, width, height) else {
+        return false;
+    };
+    if shadow.units() == NativeSvgFilterUnits::ObjectBoundingBox {
+        let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
+            return false;
+        };
+        // usvg normalizes the fractional rectangle before scaling it to object coordinates.
+        let Some(mapped) = usvg::NonZeroRect::from_xywh(
+            expected.x() * object_bbox.width() + object_bbox.x(),
+            expected.y() * object_bbox.height() + object_bbox.y(),
+            expected.width() * object_bbox.width(),
+            expected.height() * object_bbox.height(),
+        ) else {
+            return false;
+        };
+        expected = mapped;
     }
+    // Compare the same native rectangle representation: xywh construction rounds right/bottom
+    // to f32, so subtracting x/y need not recover the original serialized width/height bits.
+    [actual.left(), actual.top(), actual.right(), actual.bottom()]
+        .into_iter()
+        .zip([
+            expected.left(),
+            expected.top(),
+            expected.right(),
+            expected.bottom(),
+        ])
+        .all(|(actual, expected)| same_f32(actual, expected))
 }
 
 fn visit_clip_path(
@@ -843,11 +937,20 @@ fn visit_clip_path(
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
+    viewport: usvg::Rect,
 ) -> bool {
-    visit_group(clip_path.root(), expected, references, visited)
+    visit_group(
+        clip_path.root(),
+        expected,
+        references,
+        visited,
+        viewport,
+        true,
+    )
+    .is_some()
         && clip_path
             .clip_path()
-            .is_none_or(|nested| visit_clip_path(nested, expected, references, visited))
+            .is_none_or(|nested| visit_clip_path(nested, expected, references, visited, viewport))
 }
 
 fn visit_mask(
@@ -855,11 +958,12 @@ fn visit_mask(
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
+    viewport: usvg::Rect,
 ) -> bool {
-    visit_group(mask.root(), expected, references, visited)
+    visit_group(mask.root(), expected, references, visited, viewport, true).is_some()
         && mask
             .mask()
-            .is_none_or(|nested| visit_mask(nested, expected, references, visited))
+            .is_none_or(|nested| visit_mask(nested, expected, references, visited, viewport))
 }
 
 #[cfg(test)]
@@ -885,6 +989,215 @@ mod tests {
 
     fn parse_tree(svg: &str) -> usvg::Tree {
         usvg::Tree::from_str(svg, &usvg::Options::default()).expect("valid SVG test tree")
+    }
+
+    fn preflight_native_filter_receipt(
+        svg: &str,
+        tree: &usvg::Tree,
+    ) -> Option<NativeSvgFilterReceipt> {
+        super::preflight_native_filter_receipt(svg, tree, tree.size().to_rect(0.0, 0.0)?)
+    }
+
+    fn parse_text_tree(svg: &str) -> usvg::Tree {
+        let mut options = usvg::Options::default();
+        std::sync::Arc::make_mut(&mut options.fontdb).load_font_data(
+            include_bytes!("../../merman-render/tests/fixtures/fonts/FontAwesome-4.6.3.otf")
+                .to_vec(),
+        );
+        usvg::Tree::from_str(svg, &options).expect("valid text filter fixture")
+    }
+
+    fn text_shadow_svg(units: &str, region: &str, size: u32, transform: &str) -> String {
+        format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}"><defs><filter id="{FIRST_ID}" filterUnits="{units}" {region} color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="8" flood-color="#00f2ff"/></filter></defs><g transform="{transform}"><text x="80" y="80" font-family="FontAwesome" font-size="40" filter="url(#{FIRST_ID})">&#xf000;</text></g></svg>"##
+        )
+    }
+
+    #[test]
+    fn text_shadow_receipt_rejects_a_region_that_cuts_off_native_glyph_glow() {
+        for (units, good, clipped) in [
+            (
+                "userSpaceOnUse",
+                r#"x="0" y="0" width="200" height="200""#,
+                r#"x="60" y="35" width="80" height="70""#,
+            ),
+            (
+                "objectBoundingBox",
+                r#"x="-2" y="-2" width="5" height="5""#,
+                r#"x="0" y="0" width="1" height="1""#,
+            ),
+        ] {
+            let svg = text_shadow_svg(units, good, 512, "translate(40 60) rotate(15)");
+            let tree = parse_text_tree(&svg);
+            assert!(
+                preflight_native_filter_receipt(&svg, &tree).is_some(),
+                "{units}"
+            );
+            let svg = text_shadow_svg(units, clipped, 512, "translate(40 60) rotate(15)");
+            let tree = parse_text_tree(&svg);
+            assert!(
+                preflight_native_filter_receipt(&svg, &tree).is_none(),
+                "{units}: matching filter attributes do not prove unclipped glyph paint"
+            );
+        }
+    }
+
+    #[test]
+    fn text_shadow_receipt_rejects_root_clipping_after_nested_transform() {
+        let region = r#"x="0" y="0" width="200" height="200""#;
+        let good = text_shadow_svg("userSpaceOnUse", region, 512, "translate(150 20)");
+        assert!(preflight_native_filter_receipt(&good, &parse_text_tree(&good)).is_some());
+        let clipped = text_shadow_svg("userSpaceOnUse", region, 256, "translate(150 20)");
+        assert!(
+            preflight_native_filter_receipt(&clipped, &parse_text_tree(&clipped)).is_none(),
+            "the root viewport must contain the transformed glyph glow"
+        );
+    }
+
+    #[test]
+    fn text_shadow_receipt_rejects_unobserved_ancestor_clipping_and_masks() {
+        let region = r#"x="0" y="0" width="200" height="200""#;
+        let source = text_shadow_svg("userSpaceOnUse", region, 512, "translate(40 60)");
+        for (definition, attribute) in [
+            (
+                r#"<clipPath id="clip"><circle cx="80" cy="80" r="80"/></clipPath>"#,
+                r#"clip-path="url(#clip)""#,
+            ),
+            (
+                r#"<mask id="mask"><rect width="512" height="512" fill="white"/></mask>"#,
+                r#"mask="url(#mask)""#,
+            ),
+        ] {
+            let svg = source
+                .replace("</defs>", &format!("{definition}</defs>"))
+                .replace("<g transform=", &format!("<g {attribute} transform="));
+            assert!(
+                preflight_native_filter_receipt(&svg, &parse_text_tree(&svg)).is_none(),
+                "{attribute}"
+            );
+        }
+    }
+
+    #[test]
+    fn text_shadow_receipt_uses_transformed_ink_with_negative_viewbox_origin() {
+        let source = text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(100 40) rotate(15) scale(1.25 0.75)",
+        )
+        .replace(r#"viewBox="0 0 512 512""#, r#"viewBox="-100 -120 512 512""#)
+        .replace(
+            r#"x="80" y="80" font-family"#,
+            r#"x="100" y="100" text-anchor="end" dominant-baseline="middle" font-family"#,
+        );
+        assert!(preflight_native_filter_receipt(&source, &parse_text_tree(&source)).is_some());
+        for text in ["", " "] {
+            let empty = source.replace("&#xf000;", text);
+            assert!(preflight_native_filter_receipt(&empty, &parse_text_tree(&empty)).is_none());
+        }
+        assert!(
+            preflight_native_filter_receipt(&source, &parse_tree(&source)).is_none(),
+            "a missing native font cannot certify a discarded text terminal"
+        );
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn text_shadow_receipt_uses_actual_content_crop_without_viewbox() {
+        let source = text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(40 60)",
+        )
+        .replace(r#" viewBox="0 0 512 512""#, "");
+        let tree = parse_text_tree(&source);
+        assert!(
+            preflight_native_filter_receipt(&source, &tree).is_some(),
+            "the declared viewport contains the effect"
+        );
+        let metadata =
+            crate::parse_root_svg_metadata(&source, &crate::OperationControl::new()).unwrap();
+        let (geometry, translated) = crate::raster_geometry_for_svg(metadata, &tree);
+        assert!(translated);
+        let actual_viewport = usvg::Rect::from_xywh(
+            geometry.min_x,
+            geometry.min_y,
+            geometry.width,
+            geometry.height,
+        )
+        .unwrap();
+        assert!(
+            super::preflight_native_filter_receipt(&source, &tree, actual_viewport).is_none(),
+            "the PNG content crop excludes glow, even though the declared SVG viewport contains it"
+        );
+    }
+
+    #[test]
+    fn text_shadow_receipt_uses_outline_bounds_instead_of_font_metrics() {
+        fn first_text(group: &usvg::Group) -> Option<&usvg::Text> {
+            group.children().iter().find_map(|node| match node {
+                usvg::Node::Text(text) => Some(text.as_ref()),
+                usvg::Node::Group(child) => first_text(child),
+                _ => None,
+            })
+        }
+        let source = text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(40 60)",
+        )
+        .replace("&#xf000;", "&#xf111;");
+        let tree = parse_text_tree(&source);
+        let text =
+            first_text(tree.root()).expect("the supplied test font must produce real glyphs");
+        let ink = text.stroke_bounding_box();
+        assert_ne!(
+            ink,
+            text.bounding_box(),
+            "this fixture distinguishes outline and metrics bounds"
+        );
+        let exact = format!(
+            r#"x="{}" y="{}" width="{}" height="{}""#,
+            ink.left() - 32.0,
+            ink.top() - 32.0,
+            ink.width() + 64.0,
+            ink.height() + 64.0
+        );
+        let source = source.replace(r#"x="0" y="0" width="200" height="200""#, &exact);
+        let exact_tree = parse_text_tree(&source);
+        assert!(
+            preflight_native_filter_receipt(&source, &exact_tree).is_some(),
+            "a region containing actual glyph ink plus four sigma must not require a font-metrics box"
+        );
+    }
+
+    #[test]
+    fn fractional_object_region_follows_both_native_rounding_steps() {
+        let source = text_shadow_svg(
+            "objectBoundingBox",
+            r#"x="-0.7" y="-1.1" width="2.7" height="3.1""#,
+            512,
+            "translate(40 60)",
+        )
+        .replace(r#"stdDeviation="8""#, r#"stdDeviation="0""#);
+        let tree = parse_text_tree(&source);
+        assert!(preflight_native_filter_receipt(&source, &tree).is_some());
+        let changed = source.replace(r#"width="2.7""#, r#"width="2.8""#);
+        assert!(preflight_native_filter_receipt(&changed, &tree).is_none());
+    }
+
+    #[test]
+    fn containment_roundoff_does_not_hide_clipping_at_a_large_canvas_origin() {
+        let canvas = usvg::Rect::from_xywh(0.0, 0.0, 1_000_000.0, 1_000_000.0).unwrap();
+        let clipped = usvg::Rect::from_xywh(-0.1, 10.0, 20.0, 20.0).unwrap();
+        assert!(!contains_with_roundoff(canvas, clipped));
+        let edge = usvg::Rect::from_xywh(10.0, 10.0, 20.0, 20.0).unwrap();
+        let rounded =
+            usvg::Rect::from_ltrb(10.0_f32.next_down(), 10.0, 30.0_f32.next_up(), 30.0).unwrap();
+        assert!(contains_with_roundoff(edge, rounded));
     }
 
     #[test]

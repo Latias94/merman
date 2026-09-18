@@ -49,8 +49,11 @@ ordinal edge effects remain unsupported, and Clear suppresses an effect binding.
 The public Cyberpunk recipe is unchanged by this edge increment. Connecting it still requires
 its complete visible scene checks, including text glow. This record does not certify a complete
 modern_mermaid reproduction or all diagram families.
-The suggested Web public-entry background checks (colors, positions, radii and layer order)
-remain an explicit U9 test requirement; they are not reclassified as confirmed runtime defects.
+At this increment, the suggested Web public-entry background checks (colors, positions, radii
+and layer order) remained an explicit U9 test requirement. They were subsequently implemented
+in `9d8438ca9`; see [the Web background and glow record](2026-09-18-cyberpunk-web-background-and-glow.md)
+for its freshly built full-profile smoke and Chromium result. That evidence belongs to its stated
+source baseline, not automatically to later HEADs or complete U9 qualification.
 
 ## Verification
 

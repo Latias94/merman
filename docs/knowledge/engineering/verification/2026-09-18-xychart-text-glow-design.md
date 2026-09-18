@@ -3,7 +3,39 @@
 Date: 2026-09-18. Investigated at `699933336` during U8.
 Status: design findings, not an implemented or qualified consumer.
 
-## Required production boundary
+## Follow-up correction: ordinary SVG and native observation
+
+A follow-up source review at `0bf29d0f9` found that requiring prepared native labels before
+ordinary SVG text glow would contradict R4 and AE2. The preparation proposal below is therefore
+conditional on an explicitly resource-backed text path, not a prerequisite for rendering glow.
+`RenderEnvironment::try_native()` changes runtime policy; it is not a native font measurement
+profile. Ordinary XY layout continues to use its selected `TextMeasurer` unchanged.
+
+The existing SVG host can resolve an object-bounding-box text filter. A region derived from
+layout dimensions allocates an effect surface; it does not attest actual glyph ink. Ordinary
+SVG can retain host-dependent text provenance without loading font resources. Region sizing and
+root paint expansion still need the actual browser scenes; a fixed oversized percentage is not
+an acceptable substitute.
+
+The existing native export stage already owns the final `usvg::Tree`, font database and filter
+receipt. Its object-bounding-box mapping check uses the correct SVG metrics rectangle, but does
+not establish that the actual glyph glow fits. Add text containment there, reusing native glyph
+outlines and the ordered four-sigma shadow envelope. `Text::stroke_bounding_box()` is populated
+from flattened glyph outlines; `Text::bounding_box()` instead follows SVG text-metrics semantics.
+Check the local filter rectangle and the actual exporter-selected output viewport. PNG with a
+viewBox and PDF use `tree.size()`; raster output without a viewBox uses the original-coordinate
+content crop selected by `raster_geometry_for_svg()`. usvg has already applied any root viewBox
+transform. Unknown ancestor clipping/masking cannot be certified
+from an axis-aligned clip bounding box. Keep traversal linear and shape-only behavior unchanged.
+This is an extension of existing target observation, not a new receipt system. System fonts
+remain host-dependent even when containment passes.
+
+The exporter containment correction and negative tests are recorded in the
+[native containment verification](2026-09-18-native-text-shadow-containment.md). They do not by
+themselves implement a text writer or close U8. A later exact resource-backed XY layout can use
+the preparation route below, but it must apply consistently with or without an effect.
+
+## Conditional resource-backed preparation boundary
 
 The current XY layout uses `execution.text_measurer()` through `max_text_dimension` and
 `single_text_height`. Its layout dimensions are not proof of font ink. The separate retained
@@ -66,7 +98,7 @@ Primary specifications checked:
 
 ## Acceptance constraints
 
-Initially implement only the requested Title, AxisTitle and Legend roles. Do not widen that
+For the XY writer, initially implement the requested Title, AxisTitle and Legend roles. Do not widen that
 claim to tick labels, point labels, arbitrary host backends or other families. Unknown ink or
 baseline ownership must remain Unsupported/Unverified rather than receiving a fabricated box.
 However, a Latin-only or single-face probe does **not** complete U8: the declared public scenes,

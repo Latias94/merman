@@ -1790,8 +1790,16 @@ fn prepare_raster_source_on_backend_stack(
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse);
     export_checkpoint(control)?;
     let tree = tree?;
-    let native_filter_receipt =
-        native_filter_receipt::preflight_native_filter_receipt(source, &tree);
+    let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
+    let native_filter_receipt = usvg::Rect::from_xywh(
+        geometry.min_x,
+        geometry.min_y,
+        geometry.width,
+        geometry.height,
+    )
+    .and_then(|viewport| {
+        native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
+    });
     let font_plan = font_plan.finish_with_tree(
         source,
         &tree,
@@ -1801,7 +1809,6 @@ fn prepare_raster_source_on_backend_stack(
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
-    let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
     let plan = raster_plan_for_geometry(geometry, options, control)?;
     export_checkpoint(control)?;
 
@@ -1870,8 +1877,9 @@ fn prepare_pdf_on_backend_stack(
         control,
     )?;
     let (tree, font_plan) = parse_pdf_tree(svg, control)?;
-    let native_filter_receipt =
-        native_filter_receipt::preflight_native_filter_receipt(source, &tree);
+    let native_filter_receipt = tree.size().to_rect(0.0, 0.0).and_then(|viewport| {
+        native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
+    });
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;

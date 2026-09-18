@@ -70,18 +70,40 @@ impl EffectOutsets {
         self.left = self.left.max(other.left);
     }
 
+    pub(crate) fn with_shadow_stages(
+        self,
+        stages: impl IntoIterator<Item = (EffectInput, [f32; 2], [f32; 2])>,
+    ) -> Option<Self> {
+        let mut outsets = self;
+        for (input, offset, deviation) in stages {
+            let input = match input {
+                EffectInput::SourceGraphic => self,
+                EffectInput::Previous => outsets,
+            };
+            let extension = Self::for_drop_shadow(0.0, offset[0], offset[1], deviation)?;
+            outsets = Self {
+                top: input.top + extension.top,
+                right: input.right + extension.right,
+                bottom: input.bottom + extension.bottom,
+                left: input.left + extension.left,
+            };
+        }
+        Some(outsets)
+    }
+
     fn for_drop_shadow(
         stroke_width: f64,
         offset_x: f32,
         offset_y: f32,
-        std_deviation: f32,
+        std_deviation: [f32; 2],
     ) -> Option<Self> {
         if !stroke_width.is_finite()
             || stroke_width < 0.0
             || !offset_x.is_finite()
             || !offset_y.is_finite()
-            || !std_deviation.is_finite()
-            || std_deviation < 0.0
+            || std_deviation
+                .into_iter()
+                .any(|value| !value.is_finite() || value < 0.0)
         {
             return None;
         }
@@ -91,12 +113,13 @@ impl EffectOutsets {
         let offset_y = f64::from(offset_y);
         // Gaussian support is mathematically unbounded. Merman deliberately materializes a finite
         // four-sigma paint envelope so every target receives the same bounded clipping contract.
-        let blur_support = f64::from(std_deviation) * DROP_SHADOW_PAINT_BOUNDS_SIGMAS;
+        let [blur_x, blur_y] =
+            std_deviation.map(|value| f64::from(value) * DROP_SHADOW_PAINT_BOUNDS_SIGMAS);
         let outsets = Self {
-            top: half_stroke + blur_support + (-offset_y).max(0.0),
-            right: half_stroke + blur_support + offset_x.max(0.0),
-            bottom: half_stroke + blur_support + offset_y.max(0.0),
-            left: half_stroke + blur_support + (-offset_x).max(0.0),
+            top: half_stroke + blur_y + (-offset_y).max(0.0),
+            right: half_stroke + blur_x + offset_x.max(0.0),
+            bottom: half_stroke + blur_y + offset_y.max(0.0),
+            left: half_stroke + blur_x + (-offset_x).max(0.0),
         };
         [outsets.top, outsets.right, outsets.bottom, outsets.left]
             .into_iter()
@@ -170,28 +193,13 @@ impl SvgShadowEffect {
     }
 
     fn paint_outsets(&self, source: EffectOutsets) -> Option<EffectOutsets> {
-        let mut outsets = source;
-        for stage in &self.stages {
-            let input = match stage.input {
-                EffectInput::SourceGraphic => source,
-                EffectInput::Previous => outsets,
-            };
-            let Some(extension) = EffectOutsets::for_drop_shadow(
-                0.0,
-                stage.offset_x,
-                stage.offset_y,
-                stage.std_deviation,
-            ) else {
-                return None;
-            };
-            outsets = EffectOutsets {
-                top: input.top + extension.top,
-                right: input.right + extension.right,
-                bottom: input.bottom + extension.bottom,
-                left: input.left + extension.left,
-            };
-        }
-        Some(outsets)
+        source.with_shadow_stages(self.stages.iter().map(|stage| {
+            (
+                stage.input,
+                [stage.offset_x, stage.offset_y],
+                [stage.std_deviation; 2],
+            )
+        }))
     }
 
     pub(crate) fn materialize_rect(
