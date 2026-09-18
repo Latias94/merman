@@ -344,6 +344,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Public XY SVG/PNG/PDF scenes meet U1 and existing axis/ordinal/ownership regressions pass.
 
+**Text glow consumer increment (2026-09-19):** The [consumer verification](../knowledge/engineering/verification/2026-09-19-xychart-text-glow-consumer.md) records static Title/AxisTitle/Legend effects, unchanged layout measurement, writer-owned placement/filter observations and actual native containment checks. A bounded one-em paint reserve is not an ink guarantee; underestimated host metrics remain rejected by native export. Public recipe wiring, multilingual browser/native scenes and U10 allocation cost remain open; this increment does not close U8.
+
 ### U9. Qualify public recipes and migrate consumers
 
 **Goal:** Make product claims agree with the recipes users actually obtain.

@@ -2896,3 +2896,280 @@ fn xychart_axis_typography_overridden_on_all_text_does_not_apply_to_paths() {
         "uncovered tick text retains the generic Axis font request"
     );
 }
+
+fn xychart_text_shadow_theme(rules: ThemeRuleSet) -> DiagramTheme {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let graph = EffectGraph::new(
+        "text-glow",
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            blur_radius: 7.5,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#00f2ff").unwrap(),
+        }],
+    )
+    .unwrap();
+    let mut effects = DiagramEffectSet::default().with_graph(graph).unwrap();
+    for target in [
+        ThemeTarget::Title,
+        ThemeTarget::AxisTitle,
+        ThemeTarget::Legend,
+    ] {
+        effects = effects
+            .with_binding(EffectBinding::new(target, "text-glow").unwrap())
+            .unwrap();
+    }
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(rules)
+                .with_effects(effects),
+        )
+        .unwrap()
+}
+
+#[test]
+fn xychart_text_glow_binds_real_roles_without_changing_layout() {
+    let theme = xychart_text_shadow_theme(ThemeRuleSet::default());
+    let plain = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for orientation in ["", " horizontal"] {
+        let source = format!(
+            "xychart{orientation}\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar Sales [4, 7]"
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let (baseline, _) =
+            try_render_xychart_with_theme(&source, &plain, Engine::new(), &environment, "chart")
+                .unwrap();
+        let (layout, rendered) =
+            try_render_xychart_with_theme(&source, &theme, Engine::new(), &environment, "chart")
+                .unwrap();
+        assert_eq!(
+            serde_json::to_value(layout).unwrap(),
+            serde_json::to_value(baseline).unwrap()
+        );
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let filters: Vec<_> = xml
+            .descendants()
+            .filter(|n| n.has_tag_name("filter"))
+            .collect();
+        assert_eq!(filters.len(), 4);
+        for text in xml.descendants().filter(|n| n.has_tag_name("text")) {
+            let expected = matches!(
+                text.text(),
+                Some("TitleProbe" | "Month" | "Count" | "Sales")
+            );
+            assert_eq!(
+                text.attribute("filter").is_some(),
+                expected,
+                "{:?}",
+                text.text()
+            );
+            if let Some(reference) = text.attribute("filter") {
+                assert!(filters.iter().any(
+                    |filter| reference == format!("url(#{})", filter.attribute("id").unwrap())
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn xychart_text_glow_preserves_clear_missing_roles_and_property_ownership() {
+    use merman_render::diagram_theme::{Specified, ThemeRule, ThemeStylePatch};
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    let source =
+        "xychart\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar Sales [4, 7]";
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let theme = xychart_text_shadow_theme(
+        ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_effect("text-glow").unwrap(),
+            ))
+            .with_rule(ThemeRule::new(ThemeTarget::Title, clear)),
+    );
+    let (_, rendered) =
+        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        xml.descendants()
+            .filter(|n| n.has_tag_name("filter"))
+            .count(),
+        3
+    );
+    let title = xml
+        .descendants()
+        .find(|n| n.has_tag_name("text") && n.text() == Some("TitleProbe"))
+        .unwrap();
+    assert!(title.attribute("filter").is_none());
+    let theme = xychart_text_shadow_theme(ThemeRuleSet::default());
+    let (_, absent) = try_render_xychart_with_theme(
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]",
+        &theme,
+        Engine::new(),
+        &strict,
+        "chart",
+    )
+    .unwrap();
+    assert!(!absent.svg().contains("<filter"));
+    let source = format!(
+        "---\nconfig:\n  themeVariables:\n    xyChart:\n      titleColor: '#ff0000'\n---\n{source}"
+    );
+    let (_, overridden) =
+        try_render_xychart_with_theme(&source, &theme, Engine::new(), &strict, "chart").unwrap();
+    let xml = roxmltree::Document::parse(overridden.svg()).unwrap();
+    let title = xml
+        .descendants()
+        .find(|n| n.has_tag_name("text") && n.text() == Some("TitleProbe"))
+        .unwrap();
+    assert_eq!(title.attribute("fill"), Some("#ff0000"));
+    assert!(title.attribute("filter").is_some());
+}
+
+#[test]
+fn xychart_text_glow_cannot_certify_unsupported_siblings_or_inherited_targets() {
+    use merman_render::diagram_theme::{OrdinalSelector, ThemeRule, ThemeStylePatch};
+    let source =
+        "xychart\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar Sales [4, 7]";
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    let effect = ThemeStylePatch::default().with_effect("text-glow").unwrap();
+    for rule in [
+        ThemeRule::new(
+            ThemeTarget::Title,
+            effect.clone().with_stroke_dasharray([2.0, 1.0]).unwrap(),
+        ),
+        ThemeRule::new(ThemeTarget::Title, effect.clone()).with_ordinal(OrdinalSelector::Exact(1)),
+        ThemeRule::new(ThemeTarget::Text, effect.clone()),
+        ThemeRule::new(ThemeTarget::Axis, effect),
+    ] {
+        let theme = xychart_text_shadow_theme(ThemeRuleSet::default().with_rule(rule));
+        assert!(
+            try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").is_err()
+        );
+    }
+    let theme = xychart_text_shadow_theme(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default()
+                .with_effect("text-glow")
+                .unwrap()
+                .with_stroke_dasharray([2.0, 1.0])
+                .unwrap(),
+        )),
+    );
+    let (_, rendered) = try_render_xychart_with_theme(
+        source,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    assert_eq!(
+        roxmltree::Document::parse(rendered.svg())
+            .unwrap()
+            .descendants()
+            .filter(|n| n.has_tag_name("filter"))
+            .count(),
+        4,
+        "best effort must retain the supported winning facet"
+    );
+}
+
+#[test]
+fn xychart_text_glow_unknown_dimensions_remain_unverified_in_best_effort() {
+    #[derive(Debug)]
+    struct ZeroWidth;
+    impl TextMeasurer for ZeroWidth {
+        fn measure(&self, _: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.zero-width").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            Arc::new(ZeroWidth),
+        )),
+    );
+    let theme = xychart_text_shadow_theme(ThemeRuleSet::default());
+    let source = "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
+    let (_, rendered) =
+        try_render_xychart_with_theme(source, &theme, Engine::new(), &environment, "chart")
+            .unwrap();
+    assert!(!rendered.svg().contains("<filter"));
+    let strict = environment
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    assert!(
+        try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart").is_err()
+    );
+}
+
+#[test]
+fn xychart_text_glow_unsupported_graph_is_residual_for_rules_and_bindings() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, ThemeRule,
+        ThemeStylePatch,
+    };
+    let source = "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]";
+    for binding in [false, true] {
+        let mut effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "unsupported",
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 3.0,
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let mut rules = ThemeRuleSet::default();
+        if binding {
+            effects = effects
+                .with_binding(EffectBinding::new(ThemeTarget::Title, "unsupported").unwrap())
+                .unwrap();
+        } else {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default()
+                    .with_effect("unsupported")
+                    .unwrap(),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(rules)
+                    .with_effects(effects),
+            )
+            .unwrap();
+        let strict = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let error = try_render_xychart_with_theme(source, &theme, Engine::new(), &strict, "chart")
+            .err()
+            .expect("unsupported graph must retain a residual");
+        assert!(
+            matches!(error, merman_render::Error::UnverifiedFamilyTheme { .. }),
+            "binding={binding}: {error:?}"
+        );
+    }
+}

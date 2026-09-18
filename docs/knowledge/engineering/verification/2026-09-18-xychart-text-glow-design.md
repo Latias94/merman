@@ -1,7 +1,7 @@
 # XY Chart text glow: preparation boundary
 
 Date: 2026-09-18. Investigated at `699933336` during U8.
-Status: design findings, not an implemented or qualified consumer.
+Status: historical design findings; see the [bounded consumer increment](2026-09-19-xychart-text-glow-consumer.md). Complete scene qualification remains open.
 
 ## Follow-up correction: ordinary SVG and native observation
 
@@ -11,7 +11,8 @@ conditional on an explicitly resource-backed text path, not a prerequisite for r
 `RenderEnvironment::try_native()` changes runtime policy; it is not a native font measurement
 profile. Ordinary XY layout continues to use its selected `TextMeasurer` unchanged.
 
-The existing SVG host can resolve an object-bounding-box text filter. A region derived from
+The existing SVG host can resolve a text filter. The subsequent bounded consumer uses absolute
+user-space allocation so host bbox scaling cannot shrink the requested blur margins. A region derived from
 layout dimensions allocates an effect surface; it does not attest actual glyph ink. Ordinary
 SVG can retain host-dependent text provenance without loading font resources. Region sizing and
 root paint expansion still need the actual browser scenes; a fixed oversized percentage is not

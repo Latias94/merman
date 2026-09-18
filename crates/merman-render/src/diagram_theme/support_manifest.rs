@@ -1286,13 +1286,13 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "xychart",
         target: "title",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "font-size", "font-weight"],
+        facets: &["fill", "font-size", "font-weight", "effect"],
     },
     RuleClaim {
         family: "xychart",
         target: "axis-title",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "font-size", "font-weight"],
+        facets: &["fill", "font-size", "font-weight", "effect"],
     },
     RuleClaim {
         family: "xychart",
@@ -1304,7 +1304,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "xychart",
         target: "legend",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "font-size", "font-weight"],
+        facets: &["fill", "font-size", "font-weight", "effect"],
     },
 ];
 

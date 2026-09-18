@@ -1640,6 +1640,8 @@ pub(crate) struct XyChartFamilyArtifact {
     series_paint: crate::xychart::XyChartSeriesPaintPlan,
     typography_theme: crate::xychart::XyChartTypographyThemePlan,
     paint_theme: crate::xychart::XyChartPaintPlan,
+    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
+    expected_effect_applications: std::sync::OnceLock<usize>,
 }
 
 #[derive(Debug)]
@@ -2056,6 +2058,13 @@ impl RadarFamilyArtifact {
 }
 
 impl XyChartFamilyArtifact {
+    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
+        &self.effect_evidence
+    }
+    pub(crate) fn expected_effect_applications(&self) -> &std::sync::OnceLock<usize> {
+        &self.expected_effect_applications
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout> {
@@ -3436,8 +3445,12 @@ impl FamilyRenderArtifact {
                 artifact.expected_effect_applications().get(),
             )),
             BuiltinFamilyArtifact::XyChart(artifact) => Some((
-                artifact.series_paint().effect_evidence().finish(),
-                artifact.series_paint().expected_effect_applications(),
+                artifact.effect_evidence().finish(),
+                artifact
+                    .expected_effect_applications()
+                    .get()
+                    .copied()
+                    .unwrap_or(0),
             )),
             _ => None,
         };

@@ -901,6 +901,7 @@ fn prepare_xy_chart_family(
         &meta.effective_config,
         &mut layout,
         &typography_theme,
+        execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::XyChart(Box::new(
@@ -909,6 +910,8 @@ fn prepare_xy_chart_family(
             series_paint,
             typography_theme,
             paint_theme,
+            effect_evidence: Default::default(),
+            expected_effect_applications: Default::default(),
         },
     )))
 }

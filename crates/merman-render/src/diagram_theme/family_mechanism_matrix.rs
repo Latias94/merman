@@ -1256,7 +1256,14 @@ pub(super) fn compile_effect_binding_route(
 
 fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
     if (family == DiagramFamilyId::STATE && target == ThemeTarget::State)
-        || (family == DiagramFamilyId::XY_CHART && target == ThemeTarget::ChartSeries)
+        || (family == DiagramFamilyId::XY_CHART
+            && matches!(
+                target,
+                ThemeTarget::ChartSeries
+                    | ThemeTarget::Title
+                    | ThemeTarget::AxisTitle
+                    | ThemeTarget::Legend
+            ))
         || (matches!(
             family,
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -1526,6 +1533,21 @@ pub(super) fn classify_rule_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::XY_CHART
+        && matches!(
+            target,
+            ThemeTarget::Title | ThemeTarget::AxisTitle | ThemeTarget::Legend
+        )
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && facet == FamilyThemeRuleFacet::Effect
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::XY_CHART
         && matches!(
             target,

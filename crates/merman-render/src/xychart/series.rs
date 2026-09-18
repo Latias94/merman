@@ -8,8 +8,7 @@ use crate::chart_palette::plot_color_from_palette;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect,
-    Specified, SvgShadowEffect, SvgShadowEvidenceRecorder, ThemeCapability, ThemeTarget,
-    ThemeVariant,
+    Specified, SvgShadowEffect, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -50,8 +49,6 @@ pub(crate) struct XyChartSeriesPaintPlan {
     rules: BTreeSet<usize>,
     palette: Option<FamilyThemeDisposition>,
     effect_binding: Option<FamilyThemeMechanismKey>,
-    effect_evidence: SvgShadowEvidenceRecorder,
-    expected_effect_applications: OnceLock<usize>,
     legend_plots: OnceLock<[Vec<usize>; 2]>,
     terminal_receipt: OnceLock<()>,
 }
@@ -115,8 +112,6 @@ impl XyChartSeriesPaintPlan {
             rules: BTreeSet::new(),
             palette: None,
             effect_binding: None,
-            effect_evidence: SvgShadowEvidenceRecorder::default(),
-            expected_effect_applications: OnceLock::new(),
             legend_plots: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
         };
@@ -373,21 +368,6 @@ impl XyChartSeriesPaintPlan {
 
     pub(crate) fn effect(&self, index: usize) -> Option<&Arc<SvgShadowEffect>> {
         self.paints.get(index)?.effect.as_ref()
-    }
-
-    pub(crate) fn effect_evidence(&self) -> &SvgShadowEvidenceRecorder {
-        &self.effect_evidence
-    }
-
-    pub(crate) fn record_expected_effect_applications(&self, count: usize) -> bool {
-        self.expected_effect_applications.set(count).is_ok()
-    }
-
-    pub(crate) fn expected_effect_applications(&self) -> usize {
-        self.expected_effect_applications
-            .get()
-            .copied()
-            .unwrap_or(0)
     }
 
     pub(crate) fn plot_count(&self) -> usize {

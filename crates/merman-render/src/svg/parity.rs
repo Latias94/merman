@@ -1231,14 +1231,9 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::XyChart(artifact) => xychart::render_xychart_diagram_svg(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.series_paint(),
-            artifact.paint_theme(),
-            artifact.typography_theme(),
-            options,
-        ),
+        BuiltinFamilyArtifact::XyChart(artifact) => {
+            xychart::render_xychart_diagram_svg(artifact, options)
+        }
         BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
