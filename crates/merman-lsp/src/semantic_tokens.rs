@@ -273,7 +273,7 @@ fn split_token_by_line(
     let mut cursor = token.start_byte;
     while cursor < token.end_byte {
         let line_index = index.line_for_byte(cursor);
-        let line = index.lines[line_index];
+        let line = index.line(line_index);
         if cursor >= line.content_end {
             cursor = line.end.max(cursor.saturating_add(1)).min(token.end_byte);
             continue;
@@ -376,49 +376,57 @@ struct SourceLine {
 #[derive(Debug)]
 struct SourceIndex<'a> {
     source: &'a str,
-    lines: Vec<SourceLine>,
+    line_starts: Vec<usize>,
 }
 
 impl<'a> SourceIndex<'a> {
     fn new(source: &'a str) -> Self {
         let bytes = source.as_bytes();
-        let mut lines = Vec::new();
-        let mut line_start = 0usize;
+        let mut line_starts = vec![0];
         let mut cursor = 0usize;
         while cursor < bytes.len() {
             match bytes[cursor] {
                 b'\n' => {
-                    lines.push(SourceLine {
-                        start: line_start,
-                        content_end: cursor,
-                        end: cursor + 1,
-                    });
                     cursor += 1;
-                    line_start = cursor;
+                    line_starts.push(cursor);
                 }
                 b'\r' => {
-                    let end = if bytes.get(cursor + 1) == Some(&b'\n') {
-                        cursor + 2
+                    cursor += if bytes.get(cursor + 1) == Some(&b'\n') {
+                        2
                     } else {
-                        cursor + 1
+                        1
                     };
-                    lines.push(SourceLine {
-                        start: line_start,
-                        content_end: cursor,
-                        end,
-                    });
-                    cursor = end;
-                    line_start = cursor;
+                    line_starts.push(cursor);
                 }
                 _ => cursor += 1,
             }
         }
-        lines.push(SourceLine {
-            start: line_start,
-            content_end: source.len(),
-            end: source.len(),
-        });
-        Self { source, lines }
+        Self {
+            source,
+            line_starts,
+        }
+    }
+
+    fn line(&self, line_index: usize) -> SourceLine {
+        let start = self.line_starts[line_index];
+        let end = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or(self.source.len());
+        let bytes = self.source.as_bytes();
+        let mut content_end = end;
+        if content_end > start && bytes[content_end - 1] == b'\n' {
+            content_end -= 1;
+        }
+        if content_end > start && bytes[content_end - 1] == b'\r' {
+            content_end -= 1;
+        }
+        SourceLine {
+            start,
+            content_end,
+            end,
+        }
     }
 
     fn byte_range(&self, range: Range) -> Result<ByteRange<usize>, SemanticTokenError> {
@@ -437,13 +445,14 @@ impl<'a> SourceIndex<'a> {
 
     fn byte_offset(&self, position: Position, endpoint: &str) -> Result<usize, SemanticTokenError> {
         let line_index = position.line as usize;
-        let Some(line) = self.lines.get(line_index).copied() else {
+        if line_index >= self.line_starts.len() {
             return Err(SemanticTokenError::InvalidRange(format!(
                 "semantic token range {endpoint} line {} is outside the {}-line document",
                 position.line,
-                self.lines.len()
+                self.line_starts.len()
             )));
-        };
+        }
+        let line = self.line(line_index);
         let source = self.source_line(line);
         let target = position.character as usize;
         let mut utf16 = 0usize;
@@ -475,10 +484,9 @@ impl<'a> SourceIndex<'a> {
     }
 
     fn line_for_byte(&self, byte: usize) -> usize {
-        self.lines
-            .partition_point(|line| line.start <= byte)
+        self.line_starts
+            .partition_point(|start| *start <= byte)
             .saturating_sub(1)
-            .min(self.lines.len().saturating_sub(1))
     }
 }
 
@@ -626,6 +634,158 @@ mod tests {
             )
             .unwrap()
             .is_some()
+        );
+    }
+
+    #[test]
+    fn source_index_preserves_line_boundaries_and_byte_ownership() {
+        type LineBounds = (usize, usize, usize);
+        let cases: &[(&str, &[LineBounds])] = &[
+            ("", &[(0, 0, 0)]),
+            ("a", &[(0, 1, 1)]),
+            ("\n", &[(0, 0, 1), (1, 1, 1)]),
+            ("\r", &[(0, 0, 1), (1, 1, 1)]),
+            ("\r\n", &[(0, 0, 2), (2, 2, 2)]),
+            ("a\nb", &[(0, 1, 2), (2, 3, 3)]),
+            ("a\rb", &[(0, 1, 2), (2, 3, 3)]),
+            ("a\r\nb", &[(0, 1, 3), (3, 4, 4)]),
+            ("\r\r\n\n", &[(0, 0, 1), (1, 1, 3), (3, 3, 4), (4, 4, 4)]),
+            ("a\n\rb\r\n", &[(0, 1, 2), (2, 2, 3), (3, 4, 6), (6, 6, 6)]),
+            (
+                "😀e\u{301}\r\nZ\r\n",
+                &[(0, 7, 9), (9, 10, 12), (12, 12, 12)],
+            ),
+        ];
+        for &(source, expected) in cases {
+            let index = SourceIndex::new(source);
+            assert_eq!(index.line_starts.len(), expected.len(), "{source:?}");
+            for (number, &(start, content_end, end)) in expected.iter().enumerate() {
+                let line = index.line(number);
+                assert_eq!(
+                    (line.start, line.content_end, line.end),
+                    (start, content_end, end),
+                    "{source:?}, line {number}"
+                );
+                for byte in start..end {
+                    assert_eq!(index.line_for_byte(byte), number, "{source:?}, byte {byte}");
+                }
+                assert_eq!(
+                    index
+                        .byte_offset(Position::new(number as u32, 0), "start")
+                        .unwrap(),
+                    start
+                );
+                let units = source[start..content_end].encode_utf16().count() as u32;
+                assert_eq!(
+                    index
+                        .byte_offset(Position::new(number as u32, units), "end")
+                        .unwrap(),
+                    content_end
+                );
+            }
+            assert_eq!(
+                index.line_for_byte(source.len()),
+                expected.len() - 1,
+                "{source:?}, EOF"
+            );
+            let &(start, content_end, _) = expected.last().unwrap();
+            let eof = Position::new(
+                (expected.len() - 1) as u32,
+                source[start..content_end].encode_utf16().count() as u32,
+            );
+            assert_eq!(
+                index.byte_range(Range::new(eof, eof)).unwrap(),
+                source.len()..source.len()
+            );
+        }
+    }
+
+    #[test]
+    fn source_index_preserves_utf16_positions_and_exact_range_errors() {
+        let index = SourceIndex::new("😀e\u{301}\r\nZ\r\n");
+        for (character, byte) in [(0, 0), (2, 4), (3, 5), (4, 7)] {
+            assert_eq!(
+                index
+                    .byte_offset(Position::new(0, character), "start")
+                    .unwrap(),
+                byte
+            );
+        }
+        assert_eq!(index.byte_offset(Position::new(1, 1), "end").unwrap(), 10);
+        assert_eq!(index.byte_offset(Position::new(2, 0), "end").unwrap(), 12);
+
+        for (position, endpoint, message) in [
+            (
+                Position::new(0, 1),
+                "start",
+                "semantic token range start character 1 splits a UTF-16 surrogate pair on line 0",
+            ),
+            (
+                Position::new(0, 1),
+                "end",
+                "semantic token range end character 1 splits a UTF-16 surrogate pair on line 0",
+            ),
+            (
+                Position::new(0, 5),
+                "end",
+                "semantic token range end character 5 is outside line 0 with UTF-16 length 4",
+            ),
+            (
+                Position::new(2, 1),
+                "end",
+                "semantic token range end character 1 is outside line 2 with UTF-16 length 0",
+            ),
+            (
+                Position::new(3, 0),
+                "start",
+                "semantic token range start line 3 is outside the 3-line document",
+            ),
+        ] {
+            assert_eq!(
+                index.byte_offset(position, endpoint),
+                Err(SemanticTokenError::InvalidRange(message.into()))
+            );
+        }
+        for (range, message) in [
+            (
+                Range::new(Position::new(1, 0), Position::new(0, 4)),
+                "semantic token range start 1:0 is after end 0:4",
+            ),
+            (
+                Range::new(Position::new(0, 4), Position::new(0, 2)),
+                "semantic token range start 0:4 is after end 0:2",
+            ),
+        ] {
+            assert_eq!(
+                index.byte_range(range),
+                Err(SemanticTokenError::InvalidRange(message.into()))
+            );
+        }
+    }
+
+    #[test]
+    fn projection_splits_mixed_terminators_without_emitting_empty_lines() {
+        let source = "😀a\r\ne\u{301}\r\r\n\nZ\n";
+        let index = SourceIndex::new(source);
+        let profile = ClientProtocolProfile::permissive();
+        let projection = profile.semantic_tokens.as_ref().unwrap();
+        let token_type = projection.token_type(SyntaxTokenKind::String).unwrap();
+        let captures = [SyntaxCapture {
+            start_byte: 0,
+            end_byte: source.len(),
+            kind: SyntaxTokenKind::String,
+            specificity: 1,
+            pattern_index: 0,
+            capture_name_rank: 0,
+        }];
+        let packed = project_captures(source, &index, &captures, projection).unwrap();
+        assert_eq!(
+            decode_tokens(&semantic_tokens_from_packed(&packed)),
+            vec![
+                (0, 0, 3, token_type, 0),
+                (1, 0, 2, token_type, 0),
+                (4, 0, 1, token_type, 0),
+            ]
         );
     }
 

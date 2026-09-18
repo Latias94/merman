@@ -123,6 +123,19 @@ closed. XYChart is not a valid cross-runner priority until both runners use the 
 
 ## Completed work
 
+### 2026-09-17 compact LSP line indexing
+
+The [baseline attribution](lsp_line_index_attribution_2026-09-17.md) identified whole-source
+line-table construction in short-range semantic-token requests. The request-local index now stores
+one `usize` line-start offset instead of three offsets per line, deriving line ends as needed.
+Initialized index storage is reduced by two thirds; all registered reserved-capacity controls match
+that reduction, including 4 MiB dense Markdown at 96 -> 32 MiB and pure LF at 192 -> 64 MiB.
+See the [compact-index receipt](lsp_compact_line_index_2026-09-17.md) for semantic boundaries and
+eight paired handler non-regression controls. No whole-process memory or admitted latency speedup
+is claimed. Full-source scanning remains; snapshot reuse is a separate hypothesis requiring an
+explicit retained-memory policy and repeated-request evidence, especially against one request
+per edit.
+
 ### 2026-09-17 layout image scanning
 
 The separate Flowchart layout image helper now compares fixed-size prefixes and consumes each
