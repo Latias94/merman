@@ -6,6 +6,7 @@ mod defs;
 mod document;
 mod document_ids;
 mod edge;
+mod edge_effect;
 mod edge_geom;
 mod edge_style_plan;
 mod hierarchy;

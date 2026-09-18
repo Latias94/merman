@@ -1259,7 +1259,7 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
         || (matches!(
             family,
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-        ) && target == ThemeTarget::Node)
+        ) && matches!(target, ThemeTarget::Node | ThemeTarget::Edge))
     {
         FamilyThemeDisposition::TypedAdapter
     } else {
@@ -1529,7 +1529,7 @@ pub(super) fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    ) && target == ThemeTarget::Node
+    ) && matches!(target, ThemeTarget::Node | ThemeTarget::Edge)
         && facet == FamilyThemeRuleFacet::Effect
         && matches!(
             selector,
@@ -1540,6 +1540,8 @@ pub(super) fn classify_rule_facet(
                 ..
             }
         )
+        && (target == ThemeTarget::Node
+            || matches!(selector, FamilyThemeSelectorShape::Static { .. }))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }

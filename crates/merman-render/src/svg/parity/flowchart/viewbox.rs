@@ -27,6 +27,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBoundsRequest<
     pub font_family: &'borrow str,
     pub title_top_margin: f64,
     pub timing: RenderTiming,
+    pub theme_resource_policy: &'borrow crate::diagram_theme::ThemeResourcePolicy,
+    pub marker_plan: &'borrow super::defs::FlowchartMarkerEmissionPlan,
     pub viewbox_edge_curve_bounds: &'borrow mut std::time::Duration,
     pub detail: &'borrow mut FlowchartRenderDetails,
     pub edge_path_cache:
@@ -183,6 +185,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
         font_family,
         title_top_margin,
         timing,
+        theme_resource_policy,
+        marker_plan,
         viewbox_edge_curve_bounds,
         detail,
         edge_path_cache,
@@ -324,6 +328,36 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                 }
             }
         }
+
+        let edge_effects = super::edge_effect::FlowchartEdgeEffects::prepare(
+            ctx,
+            render_edges,
+            edge_path_cache,
+            theme_resource_policy,
+            marker_plan,
+        )?;
+        if edge_effects.expected_applications() != 0 {
+            for edge in render_edges {
+                let edge = edge.as_ref();
+                let Some(cache_entry) = edge_path_cache.get(&edge.key) else {
+                    continue;
+                };
+                edge_effects.include_bounds(
+                    edge.key,
+                    cache_entry.origin_x,
+                    cache_entry.abs_top_transform,
+                    &mut |min_x, min_y, max_x, max_y| {
+                        bbox_min_x = bbox_min_x.min(min_x);
+                        bbox_min_y = bbox_min_y.min(min_y);
+                        bbox_max_x = bbox_max_x.max(max_x);
+                        bbox_max_y = bbox_max_y.max(max_y);
+                    },
+                );
+            }
+        }
+        ctx.edge_effects
+            .set(edge_effects)
+            .expect("edge effects are prepared once");
     }
 
     // Mermaid centers the title using the pre-title `getBBox()` of the rendered root group.

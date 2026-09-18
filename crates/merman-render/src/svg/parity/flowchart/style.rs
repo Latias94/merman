@@ -321,6 +321,22 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
 }
 
 impl FlowchartCompiledStyles {
+    pub(super) fn edge_shadow_source_is_bounded(&self) -> bool {
+        !self.shape_sources.iter().any(|source| {
+            matches!(
+                source.prepared.property(),
+                "stroke-miterlimit"
+                    | "vector-effect"
+                    | "transform"
+                    | "transform-origin"
+                    | "marker"
+                    | "marker-start"
+                    | "marker-mid"
+                    | "marker-end"
+            )
+        })
+    }
+
     pub(super) fn source_filter_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         if self
             .shape_sources
@@ -1328,6 +1344,48 @@ pub(super) fn sanitized_xhtml_typography_statuses(
     }
 
     (font_stack, font_size)
+}
+
+/// Generated selectors on the actual edge ancestors can override path filters or enlarge their
+/// source geometry. These declarations have no writer-owned geometry receipt yet.
+pub(super) fn edge_shadow_structural_styles_are_bounded(
+    class_defs: &IndexMap<String, Vec<String>>,
+    ancestor_classes: &[&str],
+) -> bool {
+    !ancestor_classes.iter().any(|class| {
+        class_defs.get(*class).is_some_and(|declarations| {
+            declarations.iter().any(|group| {
+                crate::flowchart::flowchart_split_mermaid_style_decls(group).any(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
+                        |declaration| {
+                            matches!(
+                                declaration.property(),
+                                "filter"
+                                    | "transform"
+                                    | "transform-origin"
+                                    | "transform-box"
+                                    | "translate"
+                                    | "rotate"
+                                    | "scale"
+                                    | "perspective"
+                                    | "vector-effect"
+                                    | "stroke-miterlimit"
+                                    | "stroke-width"
+                                    | "stroke-linejoin"
+                                    | "stroke-linecap"
+                                    | "marker"
+                                    | "marker-start"
+                                    | "marker-mid"
+                                    | "marker-end"
+                                    | "all"
+                                    | "d"
+                            )
+                        },
+                    )
+                })
+            })
+        })
+    })
 }
 
 /// Generated class selectors can style descendants of the label shell without appearing in

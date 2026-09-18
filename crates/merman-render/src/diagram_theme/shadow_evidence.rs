@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
-use crate::__private::{NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgShadowStage};
+use crate::__private::{
+    NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits, NativeSvgShadowStage,
+};
 
 use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect};
 
@@ -37,8 +39,16 @@ impl SvgShadowEvidenceRecorder {
             })
             .collect::<Option<Vec<_>>>();
         let application = stages.and_then(|stages| {
-            NativeSvgFilterApplication::new(
+            NativeSvgFilterApplication::new_with_units(
                 scoped_filter_id,
+                match region.units() {
+                    crate::diagram_theme::SvgFilterUnits::ObjectBoundingBox => {
+                        NativeSvgFilterUnits::ObjectBoundingBox
+                    }
+                    crate::diagram_theme::SvgFilterUnits::UserSpaceOnUse => {
+                        NativeSvgFilterUnits::UserSpaceOnUse
+                    }
+                },
                 region.as_array(),
                 effect.color_space(),
                 stages,

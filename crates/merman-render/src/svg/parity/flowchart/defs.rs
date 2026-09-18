@@ -60,6 +60,31 @@ struct FlowchartMarkerShapeSpec {
     marker_class: &'static str,
     shape: &'static str,
     paint: FlowchartMarkerPaint,
+    viewport: FlowchartMarkerViewport,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartMarkerViewport {
+    view_box: [f64; 2],
+    reference: [f64; 2],
+    size: [f64; 2],
+}
+
+impl FlowchartMarkerViewport {
+    fn rotation_radius(self) -> f64 {
+        // All built-in markers use a zero-origin viewBox and the SVG default
+        // xMidYMid meet mapping. The default hidden overflow clips to this viewport.
+        let scale = (self.size[0] / self.view_box[0]).min(self.size[1] / self.view_box[1]);
+        let reference_x =
+            self.reference[0] * scale + (self.size[0] - self.view_box[0] * scale) / 2.0;
+        let reference_y =
+            self.reference[1] * scale + (self.size[1] - self.view_box[1] * scale) / 2.0;
+        // The farthest viewport corner bounds the marker under any path tangent rotation.
+        reference_x
+            .abs()
+            .max((self.size[0] - reference_x).abs())
+            .hypot(reference_y.abs().max((self.size[1] - reference_y).abs()))
+    }
 }
 
 const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
@@ -69,6 +94,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::StrokeAndFill,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [5.0, 5.0],
+            size: [8.0, 8.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::PointStart,
@@ -76,6 +106,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::StrokeAndFill,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [4.5, 5.0],
+            size: [8.0, 8.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::PointEnd,
@@ -83,6 +118,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::StrokeAndFill,
+        viewport: FlowchartMarkerViewport {
+            view_box: [11.5, 14.0],
+            reference: [11.5, 7.0],
+            size: [10.5, 14.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::PointStart,
@@ -90,6 +130,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::None,
+        viewport: FlowchartMarkerViewport {
+            view_box: [11.5, 14.0],
+            reference: [1.0, 7.0],
+            size: [11.5, 14.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CircleEnd,
@@ -97,6 +142,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [11.0, 5.0],
+            size: [11.0, 11.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CircleStart,
@@ -104,6 +154,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [-1.0, 5.0],
+            size: [11.0, 11.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CircleEnd,
@@ -111,6 +166,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [12.25, 5.0],
+            size: [14.0, 14.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CircleStart,
@@ -118,6 +178,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker",
         shape: r#" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [-2.0, 5.0],
+            size: [14.0, 14.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CrossEnd,
@@ -125,6 +190,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker cross",
         shape: r#" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [11.0, 11.0],
+            reference: [12.0, 5.2],
+            size: [11.0, 11.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CrossStart,
@@ -132,6 +202,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker cross",
         shape: r#" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [11.0, 11.0],
+            reference: [-1.0, 5.2],
+            size: [11.0, 11.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CrossEnd,
@@ -139,6 +214,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker cross",
         shape: r#" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [15.0, 15.0],
+            reference: [17.7, 7.5],
+            size: [12.0, 12.0],
+        },
     },
     FlowchartMarkerShapeSpec {
         base: FlowchartMarkerBase::CrossStart,
@@ -146,6 +226,11 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
         marker_class: "marker cross",
         shape: r#" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;""#,
         paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [15.0, 15.0],
+            reference: [-3.5, 7.5],
+            size: [12.0, 12.0],
+        },
     },
 ];
 
@@ -738,6 +823,28 @@ impl FlowchartMarkerEmissionPlan {
         out.checkpoint()
     }
 
+    /// Bounds the selected marker paint around either endpoint under any rotation.
+    pub(in crate::svg::parity::flowchart) fn edge_paint_outset_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> Option<f64> {
+        if self.hand_drawn {
+            return None;
+        }
+        let references = self.edge_occurrences.get(&key)?;
+        Some(
+            [references.start, references.end]
+                .into_iter()
+                .flatten()
+                .map(|reference| {
+                    flowchart_marker_shape_spec(reference.base, reference.margin)
+                        .viewport
+                        .rotation_radius()
+                })
+                .fold(0.0, f64::max),
+        )
+    }
+
     pub(in crate::svg::parity::flowchart) fn push_edge_marker_attributes_for(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -1061,6 +1168,96 @@ mod tests {
         let start = svg.find(&needle).expect("marker id");
         let end = svg[start..].find("</marker>").expect("marker end") + start + 9;
         &svg[start..end]
+    }
+
+    #[test]
+    fn marker_paint_viewports_match_emitted_marker_geometry() {
+        let mut defs = String::new();
+        push_base_markers(&mut defs, "diagram", "flowchart-v2");
+        let svg = format!("<svg>{defs}</svg>");
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        for spec in FLOWCHART_MARKER_SHAPE_SPECS {
+            let id = format!(
+                "diagram_flowchart-v2-{}{}",
+                spec.base.id_suffix(),
+                if spec.margin { "-margin" } else { "" },
+            );
+            let marker = doc
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id.as_str()))
+                .unwrap();
+            let number = |name| marker.attribute(name).unwrap().parse::<f64>().unwrap();
+            let view_box = marker
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|value| value.parse::<f64>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                view_box,
+                [
+                    0.0,
+                    0.0,
+                    spec.viewport.view_box[0],
+                    spec.viewport.view_box[1]
+                ]
+            );
+            assert_eq!(spec.viewport.reference, [number("refX"), number("refY")]);
+            assert_eq!(
+                spec.viewport.size,
+                [number("markerWidth"), number("markerHeight")]
+            );
+            assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
+            assert_eq!(marker.attribute("orient"), Some("auto"));
+            assert_eq!(marker.attribute("preserveAspectRatio"), None);
+            assert_eq!(marker.attribute("overflow"), None);
+            assert_eq!(marker.attribute("style"), None);
+        }
+    }
+
+    #[test]
+    fn edge_marker_paint_outsets_follow_selected_marker_occurrences() {
+        let meter = meter();
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        for (index, (edge_type, margin, x, y)) in [
+            ("double_arrow_point", false, 4.4_f64, 4.0_f64),
+            ("double_arrow_circle", false, 12.1, 5.5),
+            ("double_arrow_cross", false, 12.0, 5.8),
+            ("double_arrow_point", true, 10.5, 7.0),
+            ("double_arrow_circle", true, 17.15, 7.0),
+            ("double_arrow_cross", true, 14.8, 6.0),
+            ("arrow_open", false, 0.0, 0.0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let key = crate::flowchart::FlowchartEdgeKey::new(index);
+            plan.register_edge_with_identity(
+                key,
+                &edge("duplicate", edge_type),
+                Some("#00f2ff"),
+                false,
+                margin,
+                "diagram",
+                "flowchart-v2",
+                &meter,
+            )
+            .unwrap();
+            let radius = plan.edge_paint_outset_for(key).unwrap();
+            assert!(
+                (radius - x.hypot(y)).abs() < 1e-12,
+                "{edge_type}/{margin}: {radius}"
+            );
+        }
+        assert_eq!(
+            plan.edge_paint_outset_for(crate::flowchart::FlowchartEdgeKey::new(99)),
+            None
+        );
+        plan.hand_drawn = true;
+        assert_eq!(
+            plan.edge_paint_outset_for(crate::flowchart::FlowchartEdgeKey::new(0)),
+            None
+        );
     }
 
     #[test]

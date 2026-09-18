@@ -1828,3 +1828,24 @@ fn flowchart_label_weight_discovery_is_conditional() {
         }
     }
 }
+
+#[test]
+fn flowchart_edge_effect_discovery_is_conditional() {
+    for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        let query = ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Edge.id(),
+            ThemeRuleFacetV1::Effect,
+        );
+        let support = describe_theme_support(&query);
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
+    }
+}

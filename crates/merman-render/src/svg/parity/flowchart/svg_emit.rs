@@ -307,6 +307,7 @@ pub(super) fn render_flowchart_svg_model(
     )?;
     let ctx = FlowchartRenderCtx {
         node_effects: std::cell::OnceCell::new(),
+        edge_effects: std::cell::OnceCell::new(),
         effect_evidence,
         text_surface_paint: &text_surface_paint,
         model,
@@ -395,11 +396,9 @@ pub(super) fn render_flowchart_svg_model(
     text_surface_paint
         .begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
-    let node_effects = node_effect::FlowchartNodeEffects::prepare(
-        &ctx,
-        &hierarchy_plan,
-        &options.theme_resource_policy(),
-    )?;
+    let theme_resource_policy = options.theme_resource_policy();
+    let node_effects =
+        node_effect::FlowchartNodeEffects::prepare(&ctx, &hierarchy_plan, &theme_resource_policy)?;
     expected_effect_applications.set(node_effects.expected_applications());
     ctx.node_effects
         .set(node_effects)
@@ -443,12 +442,22 @@ pub(super) fn render_flowchart_svg_model(
             font_family: &font_family,
             title_top_margin,
             timing: render_timing,
+            theme_resource_policy: &theme_resource_policy,
+            marker_plan: &marker_plan,
             viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
             detail: &mut detail,
             edge_path_cache: &mut edge_path_cache,
         },
         &hierarchy_plan,
     )?;
+
+    expected_effect_applications.set(
+        expected_effect_applications.get()
+            + ctx
+                .edge_effects
+                .get()
+                .map_or(0, |effects| effects.expected_applications()),
+    );
 
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_id: if swimlane_layout.is_some() {

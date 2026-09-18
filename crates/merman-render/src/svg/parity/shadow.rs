@@ -1,7 +1,9 @@
 //! SVG emission for bounded shadow sequences; families own the painted terminals.
 
 use super::{SvgOutput, escape_attr};
-use crate::diagram_theme::{EffectColorSpace, EffectInput, SvgFilterRegion, SvgShadowEffect};
+use crate::diagram_theme::{
+    EffectColorSpace, EffectInput, SvgFilterRegion, SvgFilterUnits, SvgShadowEffect,
+};
 
 pub(super) fn write_theme_shadow_application(
     out: &mut impl SvgOutput,
@@ -11,10 +13,15 @@ pub(super) fn write_theme_shadow_application(
 ) -> String {
     let [x, y, width, height] = region.as_array();
     let id = escape_attr(scoped_filter_id);
+    let filter_units = match region.units() {
+        SvgFilterUnits::ObjectBoundingBox => "objectBoundingBox",
+        SvgFilterUnits::UserSpaceOnUse => "userSpaceOnUse",
+    };
     let _ = write!(
         out,
-        r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="{}">"#,
+        r#"<defs><filter id="{}" filterUnits="{}" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="{}">"#,
         id,
+        filter_units,
         x,
         y,
         width,

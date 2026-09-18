@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use merman_render::__private::{
     EffectColorSpace, EffectInput, MAX_NATIVE_SHADOW_STAGES, NativeSvgFilterApplication,
-    NativeSvgFilterReceipt, NativeSvgShadowStage,
+    NativeSvgFilterReceipt, NativeSvgFilterUnits, NativeSvgShadowStage,
 };
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
@@ -14,6 +14,7 @@ const TYPED_FILTER_ID_MARKER: &str = "-theme-effect-";
 
 #[derive(Debug)]
 struct FilterDefinition {
+    units: NativeSvgFilterUnits,
     region: [f32; 4],
     color_space: EffectColorSpace,
     stages: Vec<DropShadowDefinition>,
@@ -31,6 +32,7 @@ struct DropShadowDefinition {
 struct OpenFilter {
     depth: usize,
     id: Option<String>,
+    units: Option<NativeSvgFilterUnits>,
     region: Option<[f32; 4]>,
     color_space: Option<EffectColorSpace>,
     stages: Vec<DropShadowDefinition>,
@@ -150,8 +152,9 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
                 )
             })
             .collect::<Option<Vec<_>>>()?;
-        shadows.push(NativeSvgFilterApplication::new(
+        shadows.push(NativeSvgFilterApplication::new_with_units(
             filter_id,
+            definition.units,
             definition.region,
             definition.color_space,
             stages,
@@ -240,7 +243,12 @@ fn parse_filter(
         valid &= accepted;
     }
 
-    valid &= filter_units.as_deref() == Some("objectBoundingBox");
+    let units = match filter_units.as_deref() {
+        Some("objectBoundingBox") => Some(NativeSvgFilterUnits::ObjectBoundingBox),
+        Some("userSpaceOnUse") => Some(NativeSvgFilterUnits::UserSpaceOnUse),
+        _ => None,
+    };
+    valid &= units.is_some();
     let color_space = match color_interpolation.as_deref() {
         Some("linearRGB") => Some(EffectColorSpace::LinearRgb),
         Some("sRGB") => Some(EffectColorSpace::Srgb),
@@ -253,6 +261,7 @@ fn parse_filter(
     Ok(OpenFilter {
         depth,
         id,
+        units,
         region,
         color_space,
         stages: Vec::new(),
@@ -518,6 +527,7 @@ fn record_definition(
 ) -> Option<()> {
     let OpenFilter {
         id,
+        units,
         region,
         color_space,
         stages,
@@ -534,7 +544,9 @@ fn record_definition(
     let definition = if valid && !stages.is_empty() && expanded_elements.is_empty() {
         region
             .zip(color_space)
-            .map(|(region, color_space)| FilterDefinition {
+            .zip(units)
+            .map(|((region, color_space), units)| FilterDefinition {
+                units,
                 region,
                 color_space,
                 stages,
@@ -800,21 +812,30 @@ fn resolved_filter_region_matches(
     filter: &usvg::filter::Filter,
     shadow: &NativeSvgFilterApplication,
 ) -> bool {
-    let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
-        return false;
-    };
-    let [x, y, width, height] = shadow.region();
-    let expected = [
-        x * object_bbox.width() + object_bbox.x(),
-        y * object_bbox.height() + object_bbox.y(),
-        width * object_bbox.width(),
-        height * object_bbox.height(),
-    ];
     let actual = filter.rect();
-    [actual.x(), actual.y(), actual.width(), actual.height()]
-        .into_iter()
-        .zip(expected)
-        .all(|(actual, expected)| same_f32(actual, expected))
+    let actual_values = [actual.x(), actual.y(), actual.width(), actual.height()];
+    match shadow.units() {
+        NativeSvgFilterUnits::UserSpaceOnUse => actual_values
+            .into_iter()
+            .zip(shadow.region())
+            .all(|(actual, expected)| same_f32(actual, expected)),
+        NativeSvgFilterUnits::ObjectBoundingBox => {
+            let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
+                return false;
+            };
+            let [x, y, width, height] = shadow.region();
+            let expected = [
+                x * object_bbox.width() + object_bbox.x(),
+                y * object_bbox.height() + object_bbox.y(),
+                width * object_bbox.width(),
+                height * object_bbox.height(),
+            ];
+            actual_values
+                .into_iter()
+                .zip(expected)
+                .all(|(actual, expected)| same_f32(actual, expected))
+        }
+    }
 }
 
 fn visit_clip_path(
@@ -874,6 +895,52 @@ mod tests {
 
         assert_eq!(receipt.drop_shadow_count(), 2);
         assert_eq!(receipt.reference_count(), 2);
+    }
+
+    #[test]
+    fn user_space_filters_preserve_line_geometry_and_nested_coordinates() {
+        for path in ["M 40 60 L 140 60", "M 80 30 L 80 120"] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="220" height="190"><defs><filter id="{FIRST_ID}" filterUnits="userSpaceOnUse" x="15" y="5" width="150" height="140" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="6" flood-color="#00f2ff"/></filter></defs><g transform="translate(13 17)"><path d="{path}" stroke="#fff" stroke-width="2" filter="url(#{FIRST_ID})"/></g></svg>"##
+            );
+            let tree = parse_tree(&svg);
+            let applications = parse_raw_drop_shadows(&svg).unwrap();
+            assert_eq!(
+                applications[0].units(),
+                NativeSvgFilterUnits::UserSpaceOnUse
+            );
+            let receipt =
+                preflight_native_filter_receipt(&svg, &tree).expect("line filter survives usvg");
+            assert_eq!(receipt.reference_count(), 1);
+            let changed = svg.replacen("x=\"15\"", "x=\"16\"", 1);
+            assert!(preflight_native_filter_receipt(&changed, &tree).is_none());
+            let wrong_units = svg.replace(
+                "filterUnits=\"userSpaceOnUse\"",
+                "filterUnits=\"objectBoundingBox\"",
+            );
+            assert!(preflight_native_filter_receipt(&wrong_units, &tree).is_none());
+
+            #[cfg(feature = "png")]
+            {
+                let mut pixels = tiny_skia::Pixmap::new(220, 190).unwrap();
+                resvg::render(
+                    &tree,
+                    tiny_skia::Transform::identity(),
+                    &mut pixels.as_mut(),
+                );
+                // Sample outside the white path, where only the cyan shadow can paint.
+                let (x, y) = if path.starts_with("M 40") {
+                    (93, 83)
+                } else {
+                    (99, 87)
+                };
+                let pixel = pixels.pixel(x, y).unwrap();
+                assert!(
+                    pixel.alpha() > 0 && pixel.blue() > pixel.red(),
+                    "line glow must paint native pixels: {pixel:?}"
+                );
+            }
+        }
     }
 
     #[test]

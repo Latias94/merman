@@ -56,10 +56,20 @@ fn render(
     look: &str,
     strict: bool,
 ) -> merman_render::Result<RenderedFamilySvg> {
+    render_with_html_labels(source, theme, look, strict, false)
+}
+
+fn render_with_html_labels(
+    source: &str,
+    theme: &DiagramTheme,
+    look: &str,
+    strict: bool,
+    html_labels: bool,
+) -> merman_render::Result<RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
         Engine::new().with_site_config(MermaidConfig::from_value(
-            json!({"htmlLabels":false, "look":look}),
+            json!({"htmlLabels":html_labels, "look":look}),
         )),
     )
     .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -820,5 +830,275 @@ fn node_radius_applies_only_to_verified_corner_channels() {
             )
             .unwrap();
         assert!(render(&diamonds, &unsupported_sibling, "classic", true).is_err());
+    }
+}
+
+fn edge_glow_theme_with_rules(rules: ThemeRuleSet, include_node_binding: bool) -> DiagramTheme {
+    let graph = EffectGraph::new(
+        "edge-glow",
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            blur_radius: 6.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("rgba(0, 242, 255, 0.6)").unwrap(),
+        }],
+    )
+    .unwrap()
+    .with_color_space(EffectColorSpace::Srgb);
+    let mut effects = DiagramEffectSet::default().with_graph(graph).unwrap();
+    // Deliberately insert Node first to catch accidentally selecting another target's binding.
+    if include_node_binding {
+        effects = effects
+            .with_binding(EffectBinding::new(ThemeTarget::Node, "edge-glow").unwrap())
+            .unwrap();
+    }
+    effects = effects
+        .with_binding(EffectBinding::new(ThemeTarget::Edge, "edge-glow").unwrap())
+        .unwrap();
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(rules)
+                .with_effects(effects),
+        )
+        .unwrap()
+}
+
+fn edge_glow_theme() -> DiagramTheme {
+    edge_glow_theme_with_rules(ThemeRuleSet::default(), false)
+}
+
+#[test]
+fn edge_glow_reaches_horizontal_and_vertical_paths_without_filtering_labels() {
+    let theme = edge_glow_theme();
+    for direction in ["LR", "TB"] {
+        let rendered = render(
+            &format!("flowchart {direction}\nA[Alpha] -->|Advance| B[Beta]"),
+            &theme,
+            "classic",
+            true,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edge = xml
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        let reference = edge
+            .attribute("filter")
+            .expect("edge must reference its glow");
+        let filter_id = reference
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let filter = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(filter_id))
+            .unwrap();
+        assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+        assert!(filter.attribute("width").unwrap().parse::<f64>().unwrap() > 0.0);
+        assert!(filter.attribute("height").unwrap().parse::<f64>().unwrap() > 0.0);
+        let label = xml
+            .descendants()
+            .find(|node| node.is_text() && node.text() == Some("Advance"))
+            .unwrap();
+        assert!(
+            label
+                .ancestors()
+                .all(|node| node.attribute("filter").is_none())
+        );
+        assert_eq!(applications(rendered.svg()), 1);
+    }
+}
+
+#[test]
+fn edge_glow_clear_suppresses_binding_and_ordinal_requests_remain_residual() {
+    let source = "flowchart LR\nA --> B --> C";
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let clear_theme = edge_glow_theme_with_rules(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, clear.clone())),
+        false,
+    );
+    let cleared = render(source, &clear_theme, "classic", true).unwrap();
+    assert_eq!(applications(cleared.svg()), 0);
+    let completion = cleared.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).theme_residual_count(),
+        0
+    );
+
+    for effect in [Specified::Clear, Specified::Value("edge-glow".to_owned())] {
+        let mut patch = ThemeStylePatch::default();
+        patch.effects.effect = effect;
+        let ordinal = edge_glow_theme_with_rules(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Edge, patch).with_ordinal(OrdinalSelector::Exact(2)),
+            ),
+            false,
+        );
+        let rendered = render(source, &ordinal, "classic", false).unwrap();
+        let completion = rendered.into_completion();
+        assert!(
+            merman_render::__private::family_evidence(completion.report()).theme_residual_count()
+                > 0
+        );
+        assert!(render(source, &ordinal, "classic", true).is_err());
+    }
+}
+
+#[test]
+fn edge_glow_static_rule_owns_its_filter_and_preserves_path_geometry() {
+    let source = "flowchart LR\nA --> B --> C";
+    let plain = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let baseline = render(source, &plain, "classic", true).unwrap();
+    let mut patch = ThemeStylePatch::default();
+    patch.effects.effect = Specified::Value("edge-glow".to_owned());
+    let theme = edge_glow_theme_with_rules(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
+        false,
+    );
+    let glow = render(source, &theme, "classic", true).unwrap();
+    let base_xml = roxmltree::Document::parse(baseline.svg()).unwrap();
+    let glow_xml = roxmltree::Document::parse(glow.svg()).unwrap();
+    let paths = |xml: &roxmltree::Document<'_>| {
+        xml.descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .map(|node| node.attribute("d").unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(paths(&base_xml), paths(&glow_xml));
+    assert_eq!(applications(glow.svg()), 2);
+    let completion = glow.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn edge_glow_failure_is_not_hidden_by_stroke_from_the_same_rule() {
+    use merman_render::diagram_theme::CanvasPaint;
+
+    let source = "flowchart LR\nA --> B";
+    let mut patch = ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123abc").unwrap());
+    patch.effects.effect = Specified::Value("edge-glow".to_owned());
+    let theme = edge_glow_theme_with_rules(
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
+        false,
+    );
+    assert!(render(source, &theme, "classic", true).is_ok());
+
+    // Neo consumes the stroke but cannot certify this rule's sibling effect facet.
+    let rendered = render(source, &theme, "neo", false).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let edge = xml
+        .descendants()
+        .find(|node| node.attribute("data-edge") == Some("true"))
+        .unwrap();
+    assert!(edge.attribute("style").unwrap().contains("stroke:#123abc"));
+    assert_eq!(edge.attribute("filter"), None);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert!(render(source, &theme, "neo", true).is_err());
+}
+
+#[test]
+fn edge_glow_preserves_multiple_binding_ownership_in_nested_roots() {
+    let theme = edge_glow_theme_with_rules(ThemeRuleSet::default(), true);
+    let source = "flowchart LR\nsubgraph Outer\nA --> B\nend\nB --> C";
+    let rendered = render(source, &theme, "classic", true).unwrap();
+    assert_eq!(applications(rendered.svg()), 5);
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        xml.descendants()
+            .filter(|node| node.has_tag_name("filter")
+                && node.attribute("filterUnits") == Some("userSpaceOnUse"))
+            .count(),
+        2
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn edge_glow_rejects_unbounded_source_geometry_and_nonclassic_looks() {
+    let theme = edge_glow_theme();
+    for (source, look) in [
+        ("flowchart LR\nA --> B", "handDrawn"),
+        ("flowchart LR\nA --> B", "neo"),
+        (
+            "flowchart LR\nA --> B\nlinkStyle 0 stroke-width:2em",
+            "classic",
+        ),
+        (
+            "flowchart LR\nA --> B\nlinkStyle 0 stroke-miterlimit:20",
+            "classic",
+        ),
+        (
+            "flowchart LR\nA --> B\nlinkStyle 0 vector-effect:non-scaling-stroke",
+            "classic",
+        ),
+        (
+            "flowchart LR\nA --> B\nlinkStyle 0 filter:blur(2px)",
+            "classic",
+        ),
+    ] {
+        let rendered = render(source, &theme, look, false).unwrap();
+        assert_eq!(applications(rendered.svg()), 0, "{source} ({look})");
+        assert!(
+            render(source, &theme, look, true).is_err(),
+            "{source} ({look})"
+        );
+    }
+}
+
+#[test]
+fn edge_glow_rejects_generated_ancestor_filter_and_geometry_overrides() {
+    let theme = edge_glow_theme();
+    for html in [false, true] {
+        for declaration in [
+            "classDef edgePaths filter:none",
+            "classDef root filter:none",
+            "classDef edgePaths stroke-width:80px",
+            "classDef root stroke-miterlimit:100",
+            "classDef edgePaths transform:scale(2)",
+        ] {
+            let source = format!("flowchart LR\nA --> B\n{declaration}");
+            let rendered =
+                render_with_html_labels(&source, &theme, "classic", false, html).unwrap();
+            assert_eq!(
+                applications(rendered.svg()),
+                0,
+                "{declaration}, html={html}"
+            );
+            let completion = rendered.into_completion();
+            assert!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count()
+                    > 0
+            );
+            assert!(render_with_html_labels(&source, &theme, "classic", true, html).is_err());
+        }
+        for declaration in [
+            "classDef unused filter:none",
+            "classDef edgePaths fill:#123456",
+        ] {
+            let source = format!("flowchart LR\nA --> B\n{declaration}");
+            let rendered = render_with_html_labels(&source, &theme, "classic", true, html).unwrap();
+            assert_eq!(
+                applications(rendered.svg()),
+                1,
+                "{declaration}, html={html}"
+            );
+        }
     }
 }

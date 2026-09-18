@@ -51,10 +51,18 @@ impl NativeSvgShadowStage {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[doc(hidden)]
+pub enum NativeSvgFilterUnits {
+    ObjectBoundingBox,
+    UserSpaceOnUse,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[doc(hidden)]
 pub struct NativeSvgFilterApplication {
     filter_id: String,
+    units: NativeSvgFilterUnits,
     region_bits: [u32; 4],
     color_space: EffectColorSpace,
     stages: Vec<NativeSvgShadowStage>,
@@ -64,6 +72,24 @@ pub struct NativeSvgFilterApplication {
 impl NativeSvgFilterApplication {
     pub fn new(
         filter_id: impl Into<String>,
+        region: [f32; 4],
+        color_space: EffectColorSpace,
+        stages: Vec<NativeSvgShadowStage>,
+        reference_count: usize,
+    ) -> Option<Self> {
+        Self::new_with_units(
+            filter_id,
+            NativeSvgFilterUnits::ObjectBoundingBox,
+            region,
+            color_space,
+            stages,
+            reference_count,
+        )
+    }
+
+    pub fn new_with_units(
+        filter_id: impl Into<String>,
+        units: NativeSvgFilterUnits,
         region: [f32; 4],
         color_space: EffectColorSpace,
         stages: Vec<NativeSvgShadowStage>,
@@ -90,6 +116,7 @@ impl NativeSvgFilterApplication {
         }
         Some(Self {
             filter_id,
+            units,
             region_bits: region.map(normalized_f32_bits),
             color_space,
             stages,
@@ -101,6 +128,9 @@ impl NativeSvgFilterApplication {
     }
     pub fn region(&self) -> [f32; 4] {
         self.region_bits.map(f32::from_bits)
+    }
+    pub const fn units(&self) -> NativeSvgFilterUnits {
+        self.units
     }
     pub const fn color_space(&self) -> EffectColorSpace {
         self.color_space
@@ -155,6 +185,10 @@ impl NativeSvgFilterReceipt {
         hasher.update(reference_count.to_le_bytes());
         for application in applications {
             update_len_prefixed(&mut hasher, application.filter_id.as_bytes());
+            hasher.update([match application.units {
+                NativeSvgFilterUnits::ObjectBoundingBox => 0,
+                NativeSvgFilterUnits::UserSpaceOnUse => 1,
+            }]);
             for bits in application.region_bits {
                 hasher.update(bits.to_le_bytes());
             }
@@ -215,6 +249,24 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn filter_coordinate_units_participate_in_the_receipt_identity() {
+        let object = application("units-theme-effect-glow", 0.0, 6.0, 1);
+        let user_space = NativeSvgFilterApplication::new_with_units(
+            object.filter_id(),
+            NativeSvgFilterUnits::UserSpaceOnUse,
+            object.region(),
+            object.color_space(),
+            object.stages().to_vec(),
+            object.reference_count() as usize,
+        )
+        .unwrap();
+        assert_ne!(
+            NativeSvgFilterReceipt::from_applications([object]),
+            NativeSvgFilterReceipt::from_applications([user_space]),
+        );
+    }
+
     fn application(
         id: &str,
         offset: f32,

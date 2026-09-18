@@ -80,7 +80,8 @@ pub mod __private {
 
     pub use crate::diagram_theme::{EffectColorSpace, EffectInput};
     pub use crate::native_filter_receipt::{
-        NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgShadowStage,
+        NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits,
+        NativeSvgShadowStage,
     };
     pub const MAX_NATIVE_SHADOW_STAGES: usize =
         crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;

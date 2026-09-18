@@ -43,6 +43,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.edge_stroke_config_override,
     );
     let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
+    let effect_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        emitted_styles.source_filter_status(),
+        false,
+    );
     let stroke_width = ctx.edge_style_plan.resolve_edge_stroke_width_for(
         key,
         edge,
@@ -96,6 +100,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 ctx.theme_evidence.record_edge_emission(
                     ctx.edge_theme,
                     crate::flowchart::FlowchartEdgeThemeEmission {
+                        effect: crate::flowchart::FlowchartThemeFacetEmission::new(
+                            effect_precedence,
+                            false,
+                        ),
                         stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                             stroke_precedence,
                             false,
@@ -157,6 +165,21 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.work_meter,
     )?;
     let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
+    let effect_application = ctx
+        .edge_effects
+        .get()
+        .and_then(|effects| effects.edge(key))
+        .zip(ctx.edge_theme.effect())
+        .map(|(shadow, effect)| {
+            let id = format!("{}-theme-effect-{}", edge_dom_id, effect.id());
+            let reference = crate::svg::parity::shadow::write_theme_shadow_application(
+                out,
+                &id,
+                effect,
+                shadow.region(),
+            );
+            (id, effect, shadow.region(), reference)
+        });
     let edge_receipt = FlowchartEdgeSvgEmission {
         edge_dom_id,
         edge,
@@ -168,6 +191,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         typed_stroke,
         typed_stroke_width,
         typed_stroke_dasharray,
+        effect_reference: effect_application
+            .as_ref()
+            .map(|(_, _, _, reference)| reference.as_str()),
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: &ctx.default_edge_style,
@@ -175,6 +201,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     };
     ctx.checkpoint_emit()?;
     let edge_receipt = edge_receipt.append_to(out, source_style_svg_bytes, ctx.work_meter)?;
+    if let Some((id, effect, region, _)) = &effect_application {
+        ctx.effect_evidence.record_application(effect, id, *region);
+    }
     marker_plan.record_edge_checkpoint(
         super::super::defs::FlowchartMarkerPathCheckpoint {
             key,
@@ -194,6 +223,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.theme_evidence.record_edge_emission(
             ctx.edge_theme,
             crate::flowchart::FlowchartEdgeThemeEmission {
+                effect: crate::flowchart::FlowchartThemeFacetEmission::new(
+                    effect_precedence,
+                    !d.is_empty()
+                        && (edge_receipt.typed_effect || ctx.edge_theme.effect_is_cleared()),
+                ),
                 stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                     stroke_precedence,
                     edge_receipt.typed_stroke_verified(),
@@ -232,6 +266,7 @@ struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
     typed_stroke: Option<&'a str>,
     typed_stroke_width: Option<f32>,
     typed_stroke_dasharray: Option<&'a str>,
+    effect_reference: Option<&'a str>,
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
@@ -244,6 +279,7 @@ struct FlowchartEdgePathEmissionReceipt {
     typed_stroke: bool,
     typed_stroke_width: bool,
     typed_stroke_dasharray: bool,
+    typed_effect: bool,
 }
 
 impl FlowchartEdgePathEmissionReceipt {
@@ -327,6 +363,7 @@ where
             typed_stroke: self.typed_stroke.is_some(),
             typed_stroke_width: self.typed_stroke_width.is_some(),
             typed_stroke_dasharray: self.typed_stroke_dasharray.is_some(),
+            typed_effect: self.effect_reference.is_some(),
         })
     }
 
@@ -386,6 +423,9 @@ where
             self.data_points_b64,
             escape_xml_display(self.data_look.as_str()),
         )?;
+        if let Some(reference) = self.effect_reference {
+            write!(out, r#" filter="{}""#, escape_xml_display(reference))?;
+        }
         out.write_str(self.marker_attrs)?;
         out.write_str(" />")
     }
@@ -710,6 +750,7 @@ mod tests {
             typed_stroke: Some("#0f172a"),
             typed_stroke_width: Some(2.5),
             typed_stroke_dasharray: Some("7 3"),
+            effect_reference: None,
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,

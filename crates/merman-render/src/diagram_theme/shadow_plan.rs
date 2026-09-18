@@ -13,6 +13,13 @@ pub(crate) struct SvgFilterRegion {
     y: f32,
     width: f32,
     height: f32,
+    units: SvgFilterUnits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SvgFilterUnits {
+    ObjectBoundingBox,
+    UserSpaceOnUse,
 }
 
 impl SvgFilterRegion {
@@ -22,6 +29,7 @@ impl SvgFilterRegion {
             y,
             width,
             height,
+            units: SvgFilterUnits::ObjectBoundingBox,
         };
         ([region.x, region.y, region.width, region.height]
             .into_iter()
@@ -33,6 +41,16 @@ impl SvgFilterRegion {
 
     pub(crate) const fn as_array(self) -> [f32; 4] {
         [self.x, self.y, self.width, self.height]
+    }
+
+    pub(crate) const fn units(self) -> SvgFilterUnits {
+        self.units
+    }
+
+    pub(crate) fn try_bounded_user_space(x: f32, y: f32, width: f32, height: f32) -> Option<Self> {
+        let mut region = Self::try_bounded(x, y, width, height)?;
+        region.units = SvgFilterUnits::UserSpaceOnUse;
+        Some(region)
     }
 }
 
@@ -151,6 +169,31 @@ impl SvgShadowEffect {
         &self.id
     }
 
+    fn paint_outsets(&self, source: EffectOutsets) -> Option<EffectOutsets> {
+        let mut outsets = source;
+        for stage in &self.stages {
+            let input = match stage.input {
+                EffectInput::SourceGraphic => source,
+                EffectInput::Previous => outsets,
+            };
+            let Some(extension) = EffectOutsets::for_drop_shadow(
+                0.0,
+                stage.offset_x,
+                stage.offset_y,
+                stage.std_deviation,
+            ) else {
+                return None;
+            };
+            outsets = EffectOutsets {
+                top: input.top + extension.top,
+                right: input.right + extension.right,
+                bottom: input.bottom + extension.bottom,
+                left: input.left + extension.left,
+            };
+        }
+        Some(outsets)
+    }
+
     pub(crate) fn materialize_rect(
         &self,
         resources: &ThemeResourcePolicy,
@@ -193,27 +236,9 @@ impl SvgShadowEffect {
         {
             return Ok(None);
         }
-        let mut outsets = source;
-        for stage in &self.stages {
-            let input = match stage.input {
-                EffectInput::SourceGraphic => source,
-                EffectInput::Previous => outsets,
-            };
-            let Some(extension) = EffectOutsets::for_drop_shadow(
-                0.0,
-                stage.offset_x,
-                stage.offset_y,
-                stage.std_deviation,
-            ) else {
-                return Ok(None);
-            };
-            outsets = EffectOutsets {
-                top: input.top + extension.top,
-                right: input.right + extension.right,
-                bottom: input.bottom + extension.bottom,
-                left: input.left + extension.left,
-            };
-        }
+        let Some(outsets) = self.paint_outsets(source) else {
+            return Ok(None);
+        };
         let min_x = -outsets.left / width;
         let min_y = -outsets.top / height;
         let max_x = 1.0 + outsets.right / width;
@@ -250,6 +275,59 @@ impl SvgShadowEffect {
             .fold(0.0_f32, f32::max);
         resources.check_materialized_filter_region_magnitude(magnitude)?;
 
+        Ok(Some(MaterializedShadowEffect { region, outsets }))
+    }
+
+    /// Materializes a filter in the path's local user-space coordinates. This is required for
+    /// line-like terminals whose object bounding box has a zero width or height.
+    pub(crate) fn materialize_user_space(
+        &self,
+        resources: &ThemeResourcePolicy,
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+        source: EffectOutsets,
+    ) -> Result<Option<MaterializedShadowEffect>, ThemeResourceLimitExceeded> {
+        if ![min_x, min_y, max_x, max_y].into_iter().all(f64::is_finite)
+            || min_x > max_x
+            || min_y > max_y
+            || ![source.top, source.right, source.bottom, source.left]
+                .into_iter()
+                .all(|v| v.is_finite() && v >= 0.0)
+        {
+            return Ok(None);
+        }
+        let Some(outsets) = self.paint_outsets(source) else {
+            return Ok(None);
+        };
+        let Some(x) = round_down_f32(min_x - outsets.left) else {
+            return Ok(None);
+        };
+        let Some(y) = round_down_f32(min_y - outsets.top) else {
+            return Ok(None);
+        };
+        let Some(max_x) = round_up_f32(max_x + outsets.right) else {
+            return Ok(None);
+        };
+        let Some(max_y) = round_up_f32(max_y + outsets.bottom) else {
+            return Ok(None);
+        };
+        let Some(width) = round_up_f32(f64::from(max_x) - f64::from(x)) else {
+            return Ok(None);
+        };
+        let Some(height) = round_up_f32(f64::from(max_y) - f64::from(y)) else {
+            return Ok(None);
+        };
+        let Some(region) = SvgFilterRegion::try_bounded_user_space(x, y, width, height) else {
+            return Ok(None);
+        };
+        let magnitude = region
+            .as_array()
+            .into_iter()
+            .map(f32::abs)
+            .fold(0.0_f32, f32::max);
+        resources.check_materialized_filter_region_magnitude(magnitude)?;
         Ok(Some(MaterializedShadowEffect { region, outsets }))
     }
 }
@@ -297,6 +375,116 @@ fn round_up_f32(value: f64) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn glow(blur_radius: f32) -> SvgShadowEffect {
+        SvgShadowEffect::from_graph(
+            &EffectGraph::new(
+                "glow",
+                [EffectPrimitive::DropShadow {
+                    input: EffectInput::SourceGraphic,
+                    offset_x: 3.0,
+                    offset_y: -2.0,
+                    blur_radius,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("#00f2ff").unwrap(),
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn user_space_filter_bounds_enclose_horizontal_vertical_and_point_sources() {
+        let effect = glow(6.0);
+        for [min_x, min_y, max_x, max_y] in [
+            [10.125, 20.125, 110.625, 20.125],
+            [20.125, 10.125, 20.125, 110.625],
+            [20.125, 20.125, 20.125, 20.125],
+        ] {
+            let materialized = effect
+                .materialize_user_space(
+                    &ThemeResourcePolicy::default(),
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
+                    EffectOutsets {
+                        top: 2.0,
+                        right: 2.0,
+                        bottom: 2.0,
+                        left: 2.0,
+                    },
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                materialized.region().units(),
+                SvgFilterUnits::UserSpaceOnUse
+            );
+            let [x, y, width, height] = materialized.region().as_array().map(f64::from);
+            assert!(width > 0.0 && height > 0.0);
+            assert!(x <= min_x - 26.0 && y <= min_y - 28.0);
+            assert!(x + width >= max_x + 29.0 && y + height >= max_y + 26.0);
+        }
+    }
+
+    #[test]
+    fn user_space_filter_rejects_invalid_geometry_without_fabricating_an_extent() {
+        let effect = glow(6.0);
+        for bounds in [
+            [f64::NAN, 0.0, 10.0, 10.0],
+            [0.0, 0.0, f64::INFINITY, 10.0],
+            [10.0, 0.0, 0.0, 10.0],
+            [0.0, 10.0, 10.0, 0.0],
+        ] {
+            assert!(
+                effect
+                    .materialize_user_space(
+                        &ThemeResourcePolicy::default(),
+                        bounds[0],
+                        bounds[1],
+                        bounds[2],
+                        bounds[3],
+                        EffectOutsets::default(),
+                    )
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(
+            effect
+                .materialize_user_space(
+                    &ThemeResourcePolicy::default(),
+                    0.0,
+                    0.0,
+                    10.0,
+                    0.0,
+                    EffectOutsets {
+                        left: -1.0,
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+                .is_none()
+        );
+        let mut zero_effect = glow(0.0);
+        zero_effect.stages[0].offset_x = 0.0;
+        zero_effect.stages[0].offset_y = 0.0;
+        assert!(
+            zero_effect
+                .materialize_user_space(
+                    &ThemeResourcePolicy::default(),
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    EffectOutsets::default(),
+                )
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn source_graphic_resets_accumulated_shadow_outsets() {

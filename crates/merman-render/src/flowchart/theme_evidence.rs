@@ -307,6 +307,7 @@ pub(crate) struct FlowchartEdgeThemeEmission {
     pub(crate) stroke: FlowchartThemeFacetEmission,
     pub(crate) stroke_width: FlowchartThemeFacetEmission,
     pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
+    pub(crate) effect: FlowchartThemeFacetEmission,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -359,6 +360,7 @@ pub(crate) struct FlowchartEdgeThemeStyle {
     stroke: Option<FlowchartPaintOutcome>,
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
+    effect: Option<FlowchartEffectOutcome>,
     matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
@@ -366,6 +368,16 @@ pub(crate) struct FlowchartEdgeThemeStyle {
 }
 
 impl FlowchartEdgeThemeStyle {
+    pub(crate) fn effect_is_cleared(&self) -> bool {
+        matches!(self.effect, Some(FlowchartEffectOutcome::Cleared { .. }))
+    }
+
+    pub(crate) fn effect(&self) -> Option<&SvgShadowEffect> {
+        self.effect
+            .as_ref()
+            .and_then(FlowchartEffectOutcome::effect)
+    }
+
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
@@ -386,7 +398,7 @@ impl FlowchartEdgeThemeStyle {
         Ok(resolved)
     }
 
-    fn resolve_shape(
+    pub(crate) fn resolve_shape(
         theme: &ResolvedDiagramTheme,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
@@ -444,12 +456,7 @@ impl FlowchartEdgeThemeStyle {
                     rule_index,
                     FamilyThemeRuleFacet::Typography(property),
                 ),
-                ResolvedStyleProperty::Effect => record_incomplete_edge_facet(
-                    theme,
-                    &mut resolved,
-                    rule_index,
-                    FamilyThemeRuleFacet::Effect,
-                ),
+                ResolvedStyleProperty::Effect => {}
                 ResolvedStyleProperty::StrokeLinecap
                 | ResolvedStyleProperty::StrokeLinejoin
                 | ResolvedStyleProperty::Opacity
@@ -463,6 +470,12 @@ impl FlowchartEdgeThemeStyle {
                     non_paint_facet(property),
                 ),
             }
+        }
+
+        resolved.effect =
+            resolve_effect_for_target(theme, ThemeTarget::Edge, style.effect_resolution());
+        if let Some(effect) = resolved.effect() {
+            work_meter.charge(effect.stages().len())?;
         }
 
         Ok(resolved)
@@ -811,7 +824,8 @@ impl FlowchartNodeThemeStyle {
             }
         }
 
-        resolved.effect = resolve_node_effect(theme, style.effect_resolution());
+        resolved.effect =
+            resolve_effect_for_target(theme, ThemeTarget::Node, style.effect_resolution());
         if let Some(effect) = resolved.effect() {
             work_meter.charge(effect.stages().len())?;
         }
@@ -1271,11 +1285,12 @@ fn resolve_typography<T>(
     }
 }
 
-fn resolve_node_effect(
+fn resolve_effect_for_target(
     theme: &ResolvedDiagramTheme,
+    target: ThemeTarget,
     property: &ResolvedProperty<String>,
 ) -> Option<FlowchartEffectOutcome> {
-    let (key, graph, disposition) = match theme.resolve_effect(ThemeTarget::Node, property)? {
+    let (key, graph, disposition) = match theme.resolve_effect(target, property)? {
         ResolvedThemeEffect::ClearedByRule => {
             let rule_index = property.winner()?.rule_index();
             return match theme.rule_facet_disposition(rule_index, FamilyThemeRuleFacet::Effect)? {
@@ -1285,7 +1300,7 @@ fn resolve_node_effect(
                 FamilyThemeDisposition::Unsupported => Some(FlowchartEffectOutcome::Residual {
                     key: FamilyThemeMechanismKey::Rule {
                         index: rule_index,
-                        target: ThemeTarget::Node,
+                        target,
                     },
                 }),
                 FamilyThemeDisposition::LegacyCompatibility => None,
@@ -1296,7 +1311,7 @@ fn resolve_node_effect(
             (
                 FamilyThemeMechanismKey::Rule {
                     index: rule_index,
-                    target: ThemeTarget::Node,
+                    target,
                 },
                 graph,
                 theme.rule_facet_disposition(rule_index, FamilyThemeRuleFacet::Effect)?,
@@ -1307,9 +1322,9 @@ fn resolve_node_effect(
                 matches!(
                     route.mechanism(),
                     FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Node,
+                        target: binding_target,
                         ..
-                    }
+                    } if binding_target == target
                 )
             })?;
             (
@@ -1495,6 +1510,7 @@ struct FlowchartThemeEvidenceState {
     marker: Option<FamilyThemeEvidence>,
     node_ordinal_palette: FlowchartMechanismObservation,
     node_effect_bindings: BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
+    edge_effect_bindings: BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
     source_residuals: BTreeMap<FlowchartSourceResidualKey, SourceStyleResidual>,
 }
 
@@ -1678,7 +1694,15 @@ impl FlowchartThemeEvidenceRecorder {
             radius_emission.verified,
             ThemeCapability::RoundedGeometry,
         );
-        record_node_effect_outcome(&mut state, style.effect.as_ref(), emission.effect);
+        {
+            let state = &mut *state;
+            record_effect_outcome(
+                &mut state.node,
+                &mut state.node_effect_bindings,
+                style.effect.as_ref(),
+                emission.effect,
+            );
+        }
         state
             .node
             .incomplete_rules
@@ -1801,6 +1825,23 @@ impl FlowchartThemeEvidenceRecorder {
             emission.stroke_dasharray.verified
                 && (static_only || style.stroke_dasharray == emitted_style.stroke_dasharray),
         );
+        {
+            let state = &mut *state;
+            record_effect_outcome(
+                &mut state.edge,
+                &mut state.edge_effect_bindings,
+                style.effect.as_ref(),
+                FlowchartThemeFacetEmission::new(
+                    emission.effect.precedence,
+                    emission.effect.verified
+                        && (static_only
+                            || same_effect_outcome(
+                                style.effect.as_ref(),
+                                emitted_style.effect.as_ref(),
+                            )),
+                ),
+            );
+        }
         state
             .edge
             .incomplete_rules
@@ -1969,6 +2010,30 @@ impl FlowchartThemeEvidenceRecorder {
                     {
                         FlowchartMechanismObservation::NotObserved => {
                             evidence.mark_not_applicable(key);
+                        }
+                        FlowchartMechanismObservation::Applied => evidence
+                            .mark_applied_with_capabilities(
+                                key,
+                                [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                            ),
+                        FlowchartMechanismObservation::Residual(reason) => {
+                            evidence.mark_residual(key, reason);
+                        }
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Edge,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    match state
+                        .edge_effect_bindings
+                        .get(&key)
+                        .copied()
+                        .unwrap_or_default()
+                    {
+                        FlowchartMechanismObservation::NotObserved => {
+                            evidence.mark_not_applicable(key)
                         }
                         FlowchartMechanismObservation::Applied => evidence
                             .mark_applied_with_capabilities(
@@ -2242,8 +2307,41 @@ fn record_typography_outcome(
     }
 }
 
-fn record_node_effect_outcome(
-    state: &mut FlowchartThemeEvidenceState,
+fn same_effect_outcome(
+    left: Option<&FlowchartEffectOutcome>,
+    right: Option<&FlowchartEffectOutcome>,
+) -> bool {
+    match (left, right) {
+        (
+            Some(FlowchartEffectOutcome::Candidate {
+                key: left_key,
+                effect: left_effect,
+            }),
+            Some(FlowchartEffectOutcome::Candidate {
+                key: right_key,
+                effect: right_effect,
+            }),
+        ) => left_key == right_key && left_effect.id() == right_effect.id(),
+        (
+            Some(FlowchartEffectOutcome::Residual { key: left_key }),
+            Some(FlowchartEffectOutcome::Residual { key: right_key }),
+        ) => left_key == right_key,
+        (
+            Some(FlowchartEffectOutcome::Cleared {
+                rule_index: left_index,
+            }),
+            Some(FlowchartEffectOutcome::Cleared {
+                rule_index: right_index,
+            }),
+        ) => left_index == right_index,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn record_effect_outcome(
+    state: &mut FlowchartRuleEvidenceState,
+    bindings: &mut BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
     outcome: Option<&FlowchartEffectOutcome>,
     emission: FlowchartThemeFacetEmission,
 ) {
@@ -2253,50 +2351,45 @@ fn record_node_effect_outcome(
     let Some(outcome) = outcome else {
         return;
     };
-    if let FlowchartEffectOutcome::Cleared { rule_index } = outcome {
-        if emission.verified {
-            state.node.applied_rules.insert(*rule_index);
-        } else {
-            state
-                .node
-                .residual_rules
-                .entry(*rule_index)
-                .or_insert(FamilyThemeResidualReason::UnsupportedEffect);
-        }
-        return;
-    }
     let (key, applied) = match outcome {
         FlowchartEffectOutcome::Candidate { key, .. } => (key, emission.verified),
         FlowchartEffectOutcome::Residual { key } => (key, false),
-        FlowchartEffectOutcome::Cleared { .. } => unreachable!("clear was handled above"),
-    };
-    match key {
-        FamilyThemeMechanismKey::Rule { index, .. } => {
-            if applied {
-                state.node.applied_rules.insert(*index);
-                state
-                    .node
-                    .applied_rule_capabilities
-                    .entry(*index)
-                    .or_default()
-                    .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+        FlowchartEffectOutcome::Cleared { rule_index } => {
+            if emission.verified {
+                state.applied_rules.insert(*rule_index);
             } else {
                 state
-                    .node
                     .residual_rules
-                    .entry(*index)
+                    .entry(*rule_index)
                     .or_insert(FamilyThemeResidualReason::UnsupportedEffect);
             }
+            return;
+        }
+    };
+    match key {
+        FamilyThemeMechanismKey::Rule { index, .. } if applied => {
+            state.applied_rules.insert(*index);
+            state
+                .applied_rule_capabilities
+                .entry(*index)
+                .or_default()
+                .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+        }
+        FamilyThemeMechanismKey::Rule { index, .. } => {
+            state
+                .residual_rules
+                .entry(*index)
+                .or_insert(FamilyThemeResidualReason::UnsupportedEffect);
         }
         FamilyThemeMechanismKey::EffectBinding { .. } => {
-            let observation = state.node_effect_bindings.entry(key.clone()).or_default();
+            let observation = bindings.entry(key.clone()).or_default();
             if applied {
                 observation.observe_applied();
             } else {
                 observation.observe_residual(FamilyThemeResidualReason::UnsupportedEffect);
             }
         }
-        _ => unreachable!("node effects belong to a rule or effect binding"),
+        _ => unreachable!("effects belong to a rule or effect binding"),
     }
 }
 
@@ -2979,6 +3072,7 @@ mod tests {
             stroke: FlowchartThemeFacetEmission::new(precedence, verified),
             stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
+            effect: FlowchartThemeFacetEmission::absent(),
         }
     }
 
@@ -2990,6 +3084,7 @@ mod tests {
             stroke: FlowchartThemeFacetEmission::absent(),
             stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::new(precedence, verified),
+            effect: FlowchartThemeFacetEmission::absent(),
         }
     }
 
@@ -3001,6 +3096,7 @@ mod tests {
             stroke: FlowchartThemeFacetEmission::absent(),
             stroke_width: FlowchartThemeFacetEmission::new(precedence, verified),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
+            effect: FlowchartThemeFacetEmission::absent(),
         }
     }
 

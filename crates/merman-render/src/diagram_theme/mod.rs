@@ -153,7 +153,7 @@ pub use semantic::{
 };
 pub(crate) use shadow_evidence::SvgShadowEvidenceRecorder;
 pub(crate) use shadow_plan::{
-    EffectOutsets, MaterializedShadowEffect, SvgFilterRegion, SvgShadowEffect,
+    EffectOutsets, MaterializedShadowEffect, SvgFilterRegion, SvgFilterUnits, SvgShadowEffect,
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 pub use support::describe_theme_support;
