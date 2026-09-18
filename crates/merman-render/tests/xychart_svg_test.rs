@@ -1114,7 +1114,7 @@ fn xychart_text_and_axis_paint_are_portable_on_every_existing_consumer() {
                             legend_labels
                                 .children()
                                 .filter(|node| node.has_tag_name("text"))
-                                .all(|node| node.attribute("fill") != Some(expected))
+                                .all(|node| node.attribute("fill") == Some(expected))
                         );
                         // The pinned upstream renderer also emits data labels for legend rectangles.
                         let markers = legend
@@ -1322,7 +1322,7 @@ fn xychart_text_and_axis_unsupported_winners_do_not_hide_inside_mixed_rules() {
 }
 
 #[test]
-fn xychart_no_text_consumers_does_not_promote_legend_or_point_label_paint() {
+fn xychart_text_fill_reaches_legend_without_promoting_point_labels() {
     use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
     let theme = xychart_paint_rules([ThemeRule::new(
         ThemeTarget::Text,
@@ -1340,14 +1340,17 @@ fn xychart_no_text_consumers_does_not_promote_legend_or_point_label_paint() {
         .filter(|node| node.has_tag_name("text"))
         .collect::<Vec<_>>();
     assert!(!texts.is_empty());
-    assert!(
-        texts
-            .iter()
-            .all(|node| node.attribute("fill") != Some("#c12345"))
-    );
+    for text in texts {
+        assert_eq!(
+            text.attribute("fill") == Some("#c12345"),
+            text.text() == Some("Trend"),
+            "only the legend inherits Text paint: {:?}",
+            text.text()
+        );
+    }
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
 }
 
 #[test]
@@ -2453,7 +2456,7 @@ fn xychart_public_cyberpunk_series_keep_complete_family_evidence() {
 }
 
 #[test]
-fn xychart_legend_requests_distinguish_absence_source_ownership_and_unsupported_winners() {
+fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winners() {
     use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
     let theme = xychart_paint_rules([ThemeRule::new(
         ThemeTarget::Legend,
@@ -2461,7 +2464,7 @@ fn xychart_legend_requests_distinguish_absence_source_ownership_and_unsupported_
     )]);
     for (source, engine, residuals) in [
         ("xychart\nx-axis [A]\nbar [4]", Engine::new(), 0),
-        ("xychart\nx-axis [A]\nbar \"Sales\" [4]", Engine::new(), 1),
+        ("xychart\nx-axis [A]\nbar \"Sales\" [4]", Engine::new(), 0),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
             Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
@@ -2506,4 +2509,390 @@ fn xychart_legend_requests_distinguish_absence_source_ownership_and_unsupported_
         );
         assert_eq!(strict.is_err(), residuals != 0);
     }
+}
+
+#[test]
+fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
+    struct TitleProbe(std::sync::atomic::AtomicUsize);
+    impl TextMeasurer for TitleProbe {
+        fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).height
+        }
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            if text == "TitleProbe" {
+                assert_eq!(style.font_size, 18.0);
+                assert_eq!(style.font_weight.as_deref(), Some("700"));
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            TextMetrics {
+                width: text.len() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+    let recipe = serde_json::from_value(serde_json::json!({
+        "schema_version": 1, "kind": "complete_spec", "complete_spec": {"styles": [
+            {"kind":"rule", "family":"xychart", "target":"title", "style": {
+                "fill":"#ff0000", "typography":{"font_size_px":18,"font_weight":700}
+            }}
+        ]}
+    }))
+    .unwrap();
+    let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+    let probe = Arc::new(TitleProbe(std::sync::atomic::AtomicUsize::new(0)));
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("xy-title-test").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            probe.clone(),
+        )),
+    );
+    let (_, rendered) = try_render_xychart_with_theme(
+        "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]",
+        &theme,
+        Engine::new(),
+        &environment,
+        "chart",
+    )
+    .unwrap();
+    assert!(probe.0.load(std::sync::atomic::Ordering::Relaxed) > 0);
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = xychart_plot_group(&xml, "chart-title")
+        .children()
+        .find(|n| n.has_tag_name("text"))
+        .unwrap();
+    assert_eq!(title.attribute("font-size"), Some("18"));
+    assert_eq!(title.attribute("font-weight"), Some("700"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), evidence.accounted_count());
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+fn xychart_role_recipe(styles: serde_json::Value) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile_recipe(
+            serde_json::from_value(serde_json::json!({
+                "schema_version": 1, "kind": "complete_spec", "complete_spec": {"styles": styles}
+            }))
+            .unwrap(),
+        )
+        .unwrap()
+}
+
+#[test]
+fn xychart_text_roles_keep_size_weight_and_paint_separate_from_axis_geometry() {
+    let theme = xychart_role_recipe(serde_json::json!([
+        {"kind":"rule","target":"title","style":{"fill":"#ff0000","typography":{"font_size_px":18,"font_weight":700}}},
+        {"kind":"rule","target":"axis-title","style":{"fill":"#00ff00","typography":{"font_size_px":13,"font_weight":600}}},
+        {"kind":"rule","target":"axis-label","style":{"fill":"#0000ff","typography":{"font_size_px":11,"font_weight":500}}},
+        {"kind":"rule","target":"legend","style":{"fill":"#aabbcc","typography":{"font_size_px":12,"font_weight":600}}}
+    ]));
+    for orientation in ["", "horizontal"] {
+        let source = format!(
+            "xychart {orientation}\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar \"Sales\" [4, 7]"
+        );
+        let rendered = render_xychart_with_theme_and_engine(&source, &theme, Engine::new());
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (text, size, weight, fill) in [
+            ("TitleProbe", "18", "700", "#ff0000"),
+            ("Month", "13", "600", "#00ff00"),
+            ("Count", "13", "600", "#00ff00"),
+            ("A", "11", "500", "#0000ff"),
+            ("Sales", "12", "600", "#aabbcc"),
+        ] {
+            let label = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                .unwrap();
+            assert_eq!(
+                label.attribute("font-size"),
+                Some(size),
+                "{orientation}/{text}"
+            );
+            assert_eq!(
+                label.attribute("font-weight"),
+                Some(weight),
+                "{orientation}/{text}"
+            );
+            assert_eq!(label.attribute("fill"), Some(fill), "{orientation}/{text}");
+        }
+        assert!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("path"))
+                .all(|node| {
+                    ![Some("#00ff00"), Some("#0000ff")].contains(&node.attribute("stroke"))
+                        && node.attribute("font-weight").is_none()
+                })
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 4);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_role_typography_clear_and_source_size_preserve_other_properties() {
+    for clear in [false, true] {
+        let mut styles = serde_json::json!([
+            {"kind":"rule","target":"title","style":{"typography":{"font_size_px":18,"font_weight":700}}},
+            {"kind":"rule","target":"axis-title","style":{"typography":{"font_size_px":16,"font_weight":600}}}
+        ]);
+        if clear {
+            styles.as_array_mut().unwrap().push(serde_json::json!({
+                "kind":"rule","target":"title","style":{"typography":{"font_size_px":null,"font_weight":null}}
+            }));
+        }
+        let theme = xychart_role_recipe(styles);
+        let rendered = render_xychart_with_theme_and_engine(
+            "xychart\ntitle TitleProbe\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4, 7]",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "xyChart":{"titleFontSize":23,"xAxis":{"titleFontSize":19}}
+            }))),
+        );
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (text, size, weight) in [
+            ("TitleProbe", "23", if clear { None } else { Some("700") }),
+            ("Month", "19", Some("600")),
+            ("Count", "16", Some("600")),
+        ] {
+            let label = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                .unwrap();
+            assert_eq!(label.attribute("font-size"), Some(size));
+            assert_eq!(label.attribute("font-weight"), weight);
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.required_count(), evidence.accounted_count());
+    }
+}
+
+#[test]
+fn xychart_axis_role_fill_keeps_author_order_and_mixed_font_residuals() {
+    for role_last in [false, true] {
+        let axis = serde_json::json!({"kind":"rule","target":"axis","style":{"fill":"#aabbcc"}});
+        let role =
+            serde_json::json!({"kind":"rule","target":"axis-title","style":{"fill":"#ff0000"}});
+        let theme = xychart_role_recipe(if role_last {
+            serde_json::json!([axis, role])
+        } else {
+            serde_json::json!([role, axis])
+        });
+        let rendered = render_xychart_with_theme_and_engine(
+            "xychart\nx-axis Month [A, B]\ny-axis Count 0 --> 10\nbar [4,7]",
+            &theme,
+            Engine::new(),
+        );
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = xml
+            .descendants()
+            .find(|n| n.has_tag_name("text") && n.text() == Some("Month"))
+            .unwrap();
+        assert_eq!(
+            title.attribute("fill"),
+            Some(if role_last { "#ff0000" } else { "#aabbcc" })
+        );
+    }
+    let theme = xychart_role_recipe(serde_json::json!([
+        {"kind":"rule","target":"title","style":{"fill":"#ff0000","typography":{"font_size_px":18,"letter_spacing_px":2}}}
+    ]));
+    let source = "xychart\ntitle TitleProbe\nx-axis [A]\nbar [4]";
+    let (_, rendered) = try_render_xychart_with_theme(
+        source,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    assert_eq!(
+        merman_render::__private::family_evidence(rendered.into_completion().report())
+            .theme_residual_count(),
+        1
+    );
+    assert!(
+        try_render_xychart_with_theme(
+            source,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "chart"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn xychart_source_font_size_ownership_is_independent_of_absent_role_rules() {
+    for absent_legend in [false, true] {
+        let mut styles = serde_json::json!([
+            {"kind":"rule","target":"text","style":{"typography":{"font_size_px":18}}}
+        ]);
+        if absent_legend {
+            styles.as_array_mut().unwrap().push(serde_json::json!({
+                "kind":"rule","target":"legend","style":{"typography":{"font_weight":600}}
+            }));
+        }
+        let theme = xychart_role_recipe(styles);
+        let axis = serde_json::json!({"showLabel":false,"showTitle":false,"showTick":false,"showAxisLine":false});
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "xyChart":{"titleFontSize":23,"showLegend":false,"showDataLabel":false,"xAxis":axis,"yAxis":axis}
+        })));
+        let (_, rendered) = try_render_xychart_with_theme(
+            "xychart\ntitle TitleProbe\nx-axis [A]\nbar [4]",
+            &theme,
+            engine,
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "chart",
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if absent_legend { 2 } else { 1 }
+        );
+    }
+}
+
+#[test]
+fn xychart_role_typography_requires_supported_selectors_and_visible_text() {
+    let source = "xychart\ntitle TitleProbe\nx-axis [A]\nbar [4]";
+    let environment = RenderEnvironment::deterministic();
+    for (ordinal, show_title, residual) in [(1, true, 1), (9, true, 0), (1, false, 0)] {
+        let theme = xychart_role_recipe(serde_json::json!([
+            {"kind":"rule","target":"title","ordinal":{"exact":ordinal},"style":{"typography":{"font_size_px":16,"font_weight":600}}}
+        ]));
+        let (_, rendered) = try_render_xychart_with_theme(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "xyChart":{"showTitle":show_title}
+            }))),
+            &environment,
+            "chart",
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            residual,
+            "ordinal={ordinal}, visible={show_title}"
+        );
+        assert_eq!(evidence.applied_count(), 0);
+    }
+    for clear in [false, true] {
+        let mut styles = serde_json::json!([
+            {"kind":"rule","target":"title","style":{"typography":{"font_size_px":16,"font_weight":600}}}
+        ]);
+        if clear {
+            styles.as_array_mut().unwrap().push(serde_json::json!({
+                "kind":"rule","target":"title","style":{"typography":{"font_size_px":null,"font_weight":null}}
+            }));
+        }
+        let theme = xychart_role_recipe(styles);
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = xychart_plot_group(&xml, "chart-title")
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(
+            title.attribute("font-size"),
+            Some(if clear { "20" } else { "16" })
+        );
+        assert_eq!(
+            title.attribute("font-weight"),
+            if clear { None } else { Some("600") }
+        );
+    }
+}
+
+#[test]
+fn xychart_role_fill_clear_restores_baseline_and_keeps_typography_evidence() {
+    let source =
+        "xychart\ntitle TitleProbe\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar Sales [4]";
+    let baseline =
+        render_xychart_with_theme_and_engine(source, &xychart_paint_rules([]), Engine::new());
+    let baseline_doc = roxmltree::Document::parse(baseline.svg()).unwrap();
+    for (target, text) in [
+        ("title", "TitleProbe"),
+        ("axis-title", "Month"),
+        ("axis-label", "A"),
+        ("legend", "Sales"),
+    ] {
+        let theme = xychart_role_recipe(serde_json::json!([
+            {"kind":"rule","target":target,"style":{"fill":"#ff0000"}},
+            {"kind":"rule","target":target,"style":{"fill":null,"typography":{"font_weight":600}}}
+        ]));
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+            .unwrap();
+        let baseline_label = baseline_doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+            .unwrap();
+        assert_eq!(
+            label.attribute("fill"),
+            baseline_label.attribute("fill"),
+            "{target}"
+        );
+        assert_eq!(label.attribute("font-weight"), Some("600"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1, "{target}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{target}");
+    }
+}
+
+#[test]
+fn xychart_axis_typography_overridden_on_all_text_does_not_apply_to_paths() {
+    let theme = xychart_role_recipe(serde_json::json!([
+        {"kind":"rule","target":"axis","style":{"typography":{"font_size_px":24}}},
+        {"kind":"rule","target":"axis-title","style":{"typography":{"font_size_px":13}}},
+        {"kind":"rule","target":"axis-label","style":{"typography":{"font_size_px":11}}}
+    ]));
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar [4]",
+        &theme,
+        Engine::new(),
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    let partial = xychart_role_recipe(serde_json::json!([
+        {"kind":"rule","target":"axis","style":{"typography":{"font_size_px":24}}},
+        {"kind":"rule","target":"axis-title","style":{"typography":{"font_size_px":13}}}
+    ]));
+    let (_, rendered) = try_render_xychart_with_theme(
+        "xychart\nx-axis Month [A]\ny-axis Count 0 --> 10\nbar [4]",
+        &partial,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(
+        evidence.theme_residual_count(),
+        1,
+        "uncovered tick text retains the generic Axis font request"
+    );
 }

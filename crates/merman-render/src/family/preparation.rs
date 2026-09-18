@@ -878,7 +878,8 @@ fn prepare_xy_chart_family(
     let typography_theme = crate::xychart::XyChartTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+        execution.work_meter_ref(),
+    )?;
     let mut layout = crate::xychart::layout_xychart_diagram_typed(
         &model,
         meta.title.as_deref(),
@@ -899,6 +900,7 @@ fn prepare_xy_chart_family(
         execution.resolved_theme(),
         &meta.effective_config,
         &mut layout,
+        &typography_theme,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::XyChart(Box::new(

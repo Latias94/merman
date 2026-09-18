@@ -18,7 +18,7 @@ mod theme;
 pub(crate) use paint::{XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId};
 
 pub(crate) use series::{XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt};
-pub(crate) use theme::XyChartTypographyThemePlan;
+pub(crate) use theme::{XyChartTextRole, XyChartTypographyThemePlan};
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -32,9 +32,11 @@ struct AxisThemeConfig {
 struct AxisConfig {
     show_label: bool,
     label_font_size: f64,
+    label_font_weight: Option<String>,
     label_padding: f64,
     show_title: bool,
     title_font_size: f64,
+    title_font_weight: Option<String>,
     title_padding: f64,
     show_tick: bool,
     tick_length: f64,
@@ -53,9 +55,11 @@ struct ChartConfig {
     show_data_label_outside_bar: bool,
     show_title: bool,
     title_font_size: f64,
+    title_font_weight: Option<String>,
     title_padding: f64,
     show_legend: bool,
     legend_font_size: f64,
+    legend_font_weight: Option<String>,
     legend_padding: f64,
     chart_orientation: String,
     x_axis: AxisConfig,
@@ -98,9 +102,11 @@ fn default_axis_config() -> AxisConfig {
     AxisConfig {
         show_label: true,
         label_font_size: 14.0,
+        label_font_weight: None,
         label_padding: 5.0,
         show_title: true,
         title_font_size: 16.0,
+        title_font_weight: None,
         title_padding: 5.0,
         show_tick: true,
         tick_length: 5.0,
@@ -132,12 +138,14 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
             .unwrap_or(base.show_label),
         label_font_size: config_f64(effective_config, &["xyChart", axis_key, "labelFontSize"])
             .unwrap_or(base.label_font_size),
+        label_font_weight: None,
         label_padding: config_f64(effective_config, &["xyChart", axis_key, "labelPadding"])
             .unwrap_or(base.label_padding),
         show_title: config_bool(effective_config, &["xyChart", axis_key, "showTitle"])
             .unwrap_or(base.show_title),
         title_font_size: config_f64(effective_config, &["xyChart", axis_key, "titleFontSize"])
             .unwrap_or(base.title_font_size),
+        title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", axis_key, "titlePadding"])
             .unwrap_or(base.title_padding),
         show_tick: config_bool(effective_config, &["xyChart", axis_key, "showTick"])
@@ -174,11 +182,13 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
         show_title: config_bool(effective_config, &["xyChart", "showTitle"]).unwrap_or(true),
         title_font_size: config_f64(effective_config, &["xyChart", "titleFontSize"])
             .unwrap_or(20.0),
+        title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", "titlePadding"]).unwrap_or(10.0),
         show_legend: config_bool(effective_config, &["xyChart", "showLegend"]).unwrap_or(true),
         legend_font_size: config_f64(effective_config, &["xyChart", "legendFontSize"])
             .unwrap_or(14.0)
             .max(1.0),
+        legend_font_weight: None,
         legend_padding: config_f64(effective_config, &["xyChart", "legendPadding"])
             .unwrap_or(10.0)
             .max(0.0),
@@ -195,11 +205,13 @@ fn max_text_dimension(
     texts: &[String],
     font_size: f64,
     font_family: &str,
+    font_weight: Option<&str>,
     measurer: &dyn TextMeasurer,
 ) -> Dimension {
     let style = TextStyle {
         font_family: Some(font_family.to_string()),
         font_size,
+        font_weight: font_weight.map(str::to_owned),
         ..Default::default()
     };
     let mut max_w: f64 = 0.0;
@@ -228,17 +240,26 @@ fn single_text_height(
     text: &str,
     font_size: f64,
     font_family: &str,
+    font_weight: Option<&str>,
     measurer: &dyn TextMeasurer,
 ) -> f64 {
     if text.trim().is_empty() {
         return 0.0;
     }
     if text.contains('\n') || text.contains("<br") {
-        return max_text_dimension(&[text.to_string()], font_size, font_family, measurer).height;
+        return max_text_dimension(
+            &[text.to_string()],
+            font_size,
+            font_family,
+            font_weight,
+            measurer,
+        )
+        .height;
     }
     let style = TextStyle {
         font_family: Some(font_family.to_string()),
         font_size,
+        font_weight: font_weight.map(str::to_owned),
         ..Default::default()
     };
     measurer.measure_svg_simple_text_bbox_height_px(text, &style)
@@ -270,6 +291,7 @@ fn calculate_legend_space(
         &titles,
         chart_config.legend_font_size,
         font_family,
+        chart_config.legend_font_weight.as_deref(),
         measurer,
     );
     let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
@@ -730,6 +752,7 @@ impl Axis {
                     ticks,
                     self.axis_config.label_font_size,
                     font_family,
+                    self.axis_config.label_font_weight.as_deref(),
                     measurer,
                 );
                 self.label_dimension = dim;
@@ -752,6 +775,7 @@ impl Axis {
                     &self.title,
                     self.axis_config.title_font_size,
                     font_family,
+                    self.axis_config.title_font_weight.as_deref(),
                     measurer,
                 );
                 let width_required = title_height + self.axis_config.title_padding * 2.0;
@@ -784,6 +808,7 @@ impl Axis {
                     ticks,
                     self.axis_config.label_font_size,
                     font_family,
+                    self.axis_config.label_font_weight.as_deref(),
                     measurer,
                 );
                 self.label_dimension = dim;
@@ -813,6 +838,7 @@ impl Axis {
                     &self.title,
                     self.axis_config.title_font_size,
                     font_family,
+                    self.axis_config.title_font_weight.as_deref(),
                     measurer,
                 );
                 let height_required = title_height + self.axis_config.title_padding * 2.0;
@@ -1173,7 +1199,37 @@ pub(crate) fn layout_xychart_diagram_typed(
         });
     }
 
-    let chart_cfg = parse_chart_config(effective_config, model);
+    let mut chart_cfg = parse_chart_config(effective_config, model);
+    typography_theme.apply_font(
+        XyChartTextRole::Title,
+        &mut chart_cfg.title_font_size,
+        &mut chart_cfg.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::Legend,
+        &mut chart_cfg.legend_font_size,
+        &mut chart_cfg.legend_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::XAxisTitle,
+        &mut chart_cfg.x_axis.title_font_size,
+        &mut chart_cfg.x_axis.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::YAxisTitle,
+        &mut chart_cfg.y_axis.title_font_size,
+        &mut chart_cfg.y_axis.title_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::XAxisLabel,
+        &mut chart_cfg.x_axis.label_font_size,
+        &mut chart_cfg.x_axis.label_font_weight,
+    );
+    typography_theme.apply_font(
+        XyChartTextRole::YAxisLabel,
+        &mut chart_cfg.y_axis.label_font_size,
+        &mut chart_cfg.y_axis.label_font_weight,
+    );
     let theme_cfg = MermaidThemeAdapter::new(effective_config).xychart();
 
     let title = model
@@ -1192,6 +1248,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         &title,
         chart_cfg.title_font_size,
         typography_theme.font_family_css(),
+        chart_cfg.title_font_weight.as_deref(),
         text_measurer,
     ) + 2.0 * chart_cfg.title_padding;
     let show_chart_title =

@@ -256,6 +256,40 @@ and repeats after the third series. Saving the preset includes these rules and e
 This is not qualification of the full Cyberpunk XY Chart design: role-specific text styling
 and final public scene validation remain open. Public qualification cells remain empty.
 
+## Style XY Chart text roles
+
+Use `title`, `axis-title`, `axis-label`, and `legend` for independently sized text. The two
+axis targets refer to logical axes, so their meaning survives horizontal orientation.
+These targets accept solid/transparent fill and static `font_size_px` / `font_weight` rules,
+with an omitted or `default` variant. For example:
+
+```json
+{
+  "kind": "rule",
+  "family": "xychart",
+  "target": "axis-title",
+  "style": {
+    "fill": "#00f2ff",
+    "typography": { "font_size_px": 13, "font_weight": 600 }
+  }
+}
+```
+
+Font sizes and weights participate in measurement before layout and in the final SVG.
+`text` paint is inherited by these roles; axis text additionally inherits `axis` paint.
+Properties merge in author order: a later `axis` fill can override an earlier `axis-title`
+fill. Axis-title/axis-label styles do not paint axis lines or ticks. Legend text inherits
+`text` paint independently of its marker, which uses the series style. Point labels retain
+their separate paint behavior.
+
+Source or site role-specific font-size configuration owns that size without suppressing
+a theme's weight or fill. Clearing a role's size restores its configured baseline; clearing
+its weight removes the explicit weight. Explicit default values such as 16px are still
+requests. Generic `text` / `axis` typography, ordinal role typography, and unimplemented
+properties retain residuals when they win on visible text. An absent or hidden role does
+not certify a rule as applied. Query support for the selected family and inspect the render
+report; the new axis target names do not imply support in other families.
+
 ## Save and distribute
 
 Save the complete `ThemeRecipeV1` document as JSON. A fresh consumer imports it directly; it does

@@ -48,6 +48,8 @@ const MANIFEST_TARGET_IDS: &[&str] = &[
     "title",
     "text",
     "axis",
+    "axis-title",
+    "axis-label",
     "legend",
     "table",
     "task",
@@ -1284,7 +1286,25 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "xychart",
         target: "title",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill"],
+        facets: &["fill", "font-size", "font-weight"],
+    },
+    RuleClaim {
+        family: "xychart",
+        target: "axis-title",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill", "font-size", "font-weight"],
+    },
+    RuleClaim {
+        family: "xychart",
+        target: "axis-label",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill", "font-size", "font-weight"],
+    },
+    RuleClaim {
+        family: "xychart",
+        target: "legend",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill", "font-size", "font-weight"],
     },
 ];
 

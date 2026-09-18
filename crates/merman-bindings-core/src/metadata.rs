@@ -1810,12 +1810,15 @@ mod tests {
                 catalog["known_font_source_ids"],
                 serde_json::json!(["embedded", "system"])
             );
-            assert!(
-                catalog["known_semantic_target_ids"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&serde_json::json!("state-label"))
-            );
+            for target in ["state-label", "axis-title", "axis-label"] {
+                assert!(
+                    catalog["known_semantic_target_ids"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(target)),
+                    "missing {target} discovery"
+                );
+            }
             assert!(
                 catalog["known_variant_ids"]
                     .as_array()

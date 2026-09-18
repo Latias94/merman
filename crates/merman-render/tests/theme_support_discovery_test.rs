@@ -1849,3 +1849,31 @@ fn flowchart_edge_effect_discovery_is_conditional() {
         );
     }
 }
+
+#[test]
+fn xy_axis_text_roles_are_discoverable_without_promising_other_families() {
+    for target in [ThemeTarget::AxisTitle, ThemeTarget::AxisLabel] {
+        assert_eq!(ThemeTarget::from_id(target.id()), Some(target));
+        assert!(ThemeTarget::ALL.contains(&target));
+        let query = ThemeSupportQueryV1::for_target(
+            DiagramFamilyId::XY_CHART.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+        assert_eq!(
+            describe_theme_support(&query).state(),
+            ThemeSupportStateV1::Conditional
+        );
+        let query = ThemeSupportQueryV1::for_target(
+            DiagramFamilyId::FLOWCHART.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+        assert_eq!(
+            describe_theme_support(&query).state(),
+            ThemeSupportStateV1::NotApplicable
+        );
+    }
+}

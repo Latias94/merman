@@ -3,14 +3,14 @@ use std::sync::{Arc, OnceLock};
 
 use merman_core::MermaidConfig;
 
+use super::theme::{XyChartTextRole, XyChartTypographyThemePlan, logical_axis, resolve_text_style};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRoute,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -30,9 +30,10 @@ struct PaintTerminal {
     content: Box<str>,
     paint: Box<str>,
     dimension: f64,
+    font_weight: Option<String>,
 }
 
-/// Title, shared Text, and Axis paint retain author order while each config path owns its terminal.
+/// Role paint and typography retain author order and property-local source ownership.
 #[derive(Debug, Default)]
 pub(crate) struct XyChartPaintPlan {
     terminals: Arc<BTreeMap<XyChartPaintTerminalId, PaintTerminal>>,
@@ -54,6 +55,7 @@ impl XyChartPaintPlan {
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
         layout: &mut XyChartDiagramLayout,
+        typography: &XyChartTypographyThemePlan,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut plan = Self {
@@ -74,66 +76,20 @@ impl XyChartPaintPlan {
         let Some(theme) = theme else {
             return Ok(plan);
         };
-        if theme.family_mechanism_routes().iter().any(|route| {
-            matches!(
-                route.mechanism(),
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Legend,
-                    ..
-                } | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Legend
-                } | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Legend,
-                    ..
-                }
-            )
-        }) {
-            // Legend text has no typed writer yet; absence is different from an ignored winner.
-            let mut visible_labels = 0;
-            work_meter.charge(layout.drawables.len())?;
-            for drawable in &layout.drawables {
-                if let XyChartDrawableElem::Text { group_texts, data } = drawable
-                    && group_texts.first().is_some_and(|group| group == "legend")
-                {
-                    work_meter.charge(data.len())?;
-                    visible_labels += data
-                        .iter()
-                        .filter(|label| {
-                            visible_dimension(label.font_size) && !label.text.trim().is_empty()
-                        })
-                        .count();
-                }
-            }
-            let source_owned = if source_owns(config, "legendTextColor") {
-                work_meter.charge(visible_labels)?;
-                vec![true; visible_labels]
-            } else {
-                Vec::new()
-            };
-            let domain = UnsupportedTerminalDomain::direct(
-                ThemeTarget::Legend,
-                TerminalVariantDomain::uniform(visible_labels, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned);
-            reconcile_unsupported_terminal_domains(
-                theme,
-                &mut plan.evidence,
-                &[domain],
-                work_meter,
-            )?;
-        }
         let mut accounting = PaintAccounting::new(theme, work_meter);
         if accounting.routes.is_empty() {
             return Ok(plan);
         }
-        let text_styles = [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis]
-            .into_iter()
-            .map(|target| {
-                theme
-                    .text_style_with_work_meter(target, ThemeVariant::Default, None, work_meter)
-                    .map(|style| (target, style))
-            })
-            .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
+        let text_styles = [
+            ThemeTarget::Text,
+            ThemeTarget::Title,
+            ThemeTarget::AxisTitle,
+            ThemeTarget::AxisLabel,
+            ThemeTarget::Legend,
+        ]
+        .into_iter()
+        .map(|target| resolve_text_style(theme, target, work_meter).map(|style| (target, style)))
+        .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
         // Axis geometry never inherits generic Text paint.
         let line_style = theme.style_with_work_meter(
             ThemeTarget::Axis,
@@ -156,7 +112,14 @@ impl XyChartPaintPlan {
                             resolve_direct_static_fill(
                                 theme,
                                 style,
-                                &[ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis],
+                                &[
+                                    ThemeTarget::Text,
+                                    ThemeTarget::Title,
+                                    ThemeTarget::Axis,
+                                    ThemeTarget::AxisTitle,
+                                    ThemeTarget::AxisLabel,
+                                    ThemeTarget::Legend,
+                                ],
                                 DirectStaticSelectorDomain::Default,
                             )
                         })
@@ -170,10 +133,14 @@ impl XyChartPaintPlan {
                             accounting.observe(
                                 target,
                                 channel,
-                                false,
                                 source_owned,
                                 style,
                                 paint.as_ref(),
+                                XyChartTextRole::from_groups(
+                                    group_texts,
+                                    &layout.chart_orientation,
+                                )
+                                .map(|role| (typography, role)),
                             )?;
                         }
                     }
@@ -215,10 +182,10 @@ impl XyChartPaintPlan {
                             accounting.observe(
                                 ThemeTarget::Axis,
                                 channel,
-                                true,
                                 source_owned,
                                 &line_style,
                                 paint.as_ref(),
+                                None,
                             )?;
                         }
                     }
@@ -254,10 +221,10 @@ impl XyChartPaintPlan {
                             accounting.observe(
                                 ThemeTarget::Text,
                                 channel,
-                                false,
                                 source_owned,
                                 style,
                                 paint.as_ref(),
+                                None,
                             )?;
                         }
                     }
@@ -266,12 +233,16 @@ impl XyChartPaintPlan {
         }
         accounting.finish(&mut plan);
         if !plan.pending.is_empty() {
-            plan.capture_terminals(layout);
+            plan.capture_terminals(layout, typography);
         }
         Ok(plan)
     }
 
-    fn capture_terminals(&mut self, layout: &XyChartDiagramLayout) {
+    fn capture_terminals(
+        &mut self,
+        layout: &XyChartDiagramLayout,
+        typography: &XyChartTypographyThemePlan,
+    ) {
         // Source-owned, absent, and unsupported requests need no writer receipt payload.
         let mut terminals = BTreeMap::new();
         for (drawable, shape) in layout.drawables.iter().enumerate() {
@@ -286,6 +257,12 @@ impl XyChartPaintPlan {
                                 content: label.text.clone().into_boxed_str(),
                                 paint: label.fill.clone().into_boxed_str(),
                                 dimension: label.font_size,
+                                font_weight: XyChartTextRole::from_groups(
+                                    group_texts,
+                                    &layout.chart_orientation,
+                                )
+                                .and_then(|role| typography.font_weight(role))
+                                .map(str::to_owned),
                             },
                         );
                     }
@@ -300,6 +277,7 @@ impl XyChartPaintPlan {
                                 content: path.path.clone().into_boxed_str(),
                                 paint: path.stroke_fill.clone().into_boxed_str(),
                                 dimension: path.stroke_width,
+                                font_weight: None,
                             },
                         );
                     }
@@ -320,6 +298,7 @@ impl XyChartPaintPlan {
                                 content: label.label.into(),
                                 paint: self.data_label_color.clone().into_boxed_str(),
                                 dimension: labels.font_size,
+                                font_weight: None,
                             },
                         );
                     }
@@ -354,6 +333,7 @@ impl XyChartPaintPlan {
                             escape_xml(&terminal.content),
                             escape_xml(&terminal.paint),
                             terminal_dimension(id, terminal.dimension),
+                            terminal.font_weight.clone(),
                         ),
                     )
                 })
@@ -407,12 +387,27 @@ impl<'a> PaintAccounting<'a> {
                 matches!(
                     route.mechanism(),
                     FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
+                        target: ThemeTarget::Text
+                            | ThemeTarget::Title
+                            | ThemeTarget::Axis
+                            | ThemeTarget::AxisTitle
+                            | ThemeTarget::AxisLabel
+                            | ThemeTarget::Legend,
                         ..
                     } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis
+                        target: ThemeTarget::Text
+                            | ThemeTarget::Title
+                            | ThemeTarget::Axis
+                            | ThemeTarget::AxisTitle
+                            | ThemeTarget::AxisLabel
+                            | ThemeTarget::Legend
                     } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
+                        target: ThemeTarget::Text
+                            | ThemeTarget::Title
+                            | ThemeTarget::Axis
+                            | ThemeTarget::AxisTitle
+                            | ThemeTarget::AxisLabel
+                            | ThemeTarget::Legend,
                         ..
                     }
                 )
@@ -458,16 +453,29 @@ impl<'a> PaintAccounting<'a> {
         &mut self,
         target: ThemeTarget,
         channel: &'static str,
-        line: bool,
         source_owned: bool,
         static_style: &ResolvedThemeStyle,
         paint: Option<&DirectStaticPaint>,
+        typography: Option<(&XyChartTypographyThemePlan, XyChartTextRole)>,
     ) -> crate::Result<()> {
+        // Axis text uses its concrete roles; only geometry retains the Axis target here.
+        let line = target == ThemeTarget::Axis;
         if !line {
             self.text_ordinal += 1;
         }
+        let axis_ordinal = if matches!(target, ThemeTarget::AxisTitle | ThemeTarget::AxisLabel) {
+            let ordinal = self
+                .role_ordinals
+                .entry((ThemeTarget::Axis, false))
+                .or_default();
+            *ordinal += 1;
+            Some(*ordinal)
+        } else {
+            None
+        };
         let ordinal = self.role_ordinals.entry((target, line)).or_default();
         *ordinal += 1;
+        let ordinal = *ordinal;
         if !self.has_ordinal && !self.static_channels.insert((channel, line)) {
             return Ok(());
         }
@@ -477,7 +485,7 @@ impl<'a> PaintAccounting<'a> {
                 dynamic = self.theme.style_with_work_meter(
                     target,
                     ThemeVariant::Default,
-                    Some(*ordinal),
+                    Some(ordinal),
                     self.meter,
                 )?;
             } else {
@@ -487,11 +495,19 @@ impl<'a> PaintAccounting<'a> {
                     Some(self.text_ordinal),
                     self.meter,
                 )?;
+                if let Some(axis_ordinal) = axis_ordinal {
+                    dynamic.merge_from(&self.theme.style_with_work_meter(
+                        ThemeTarget::Axis,
+                        ThemeVariant::Default,
+                        Some(axis_ordinal),
+                        self.meter,
+                    )?);
+                }
                 if target != ThemeTarget::Text {
                     let role = self.theme.style_with_work_meter(
                         target,
                         ThemeVariant::Default,
-                        Some(*ordinal),
+                        Some(ordinal),
                         self.meter,
                     )?;
                     dynamic.merge_from(&role);
@@ -514,6 +530,8 @@ impl<'a> PaintAccounting<'a> {
             &[ThemeTarget::Axis]
         } else if target == ThemeTarget::Text {
             &[ThemeTarget::Text]
+        } else if matches!(target, ThemeTarget::AxisTitle | ThemeTarget::AxisLabel) {
+            &[ThemeTarget::Text, ThemeTarget::Axis, target]
         } else {
             &[ThemeTarget::Text, target]
         };
@@ -544,6 +562,11 @@ impl<'a> PaintAccounting<'a> {
                 continue;
             }
             let candidate = resolved_style_property_for_facet(facet);
+            // Typography has no terminal on an axis path. Its real text winners are
+            // reconciled separately, including any overriding role-local rules.
+            if line && matches!(candidate, ResolvedStyleProperty::Typography(_)) {
+                continue;
+            }
             // Axis stroke owns geometry; it never paints the text terminal itself.
             if !line
                 && route_target == ThemeTarget::Axis
@@ -558,6 +581,9 @@ impl<'a> PaintAccounting<'a> {
                 )
                 && candidate != property)
                 || (source_owned && candidate == property)
+                || (candidate
+                    == ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize)
+                    && typography.is_some_and(|(plan, role)| plan.source_owns_size(role)))
             {
                 continue;
             }
@@ -584,6 +610,21 @@ impl<'a> PaintAccounting<'a> {
                     observation
                         .pending
                         .insert(paint.expect("matched terminal paint").capability());
+                }
+                FamilyThemeDisposition::TypedAdapter
+                    if !line
+                        && candidate == ResolvedStyleProperty::Fill
+                        && matches!(style.fill_resolution().specified(), Specified::Clear) =>
+                {
+                    // The layout keeps its configured fill when the winning rule clears paint.
+                    // Its unchanged terminal still needs to be observed by the writer.
+                    observation.pending.insert(ThemeCapability::SemanticRules);
+                }
+                FamilyThemeDisposition::TypedAdapter
+                    if matches!(candidate, ResolvedStyleProperty::Typography(property)
+                        if typography.is_some_and(|(plan, role)| plan.consumes(role, property, rule_index))) =>
+                {
+                    observation.pending.insert(ThemeCapability::Typography);
                 }
                 _ => observation.incomplete = true,
             }
@@ -679,32 +720,17 @@ fn source_owns(config: &MermaidConfig, channel: &str) -> bool {
     )
 }
 
-fn logical_axis(group: &str, orientation: &str) -> Option<bool> {
-    match (orientation == "horizontal", group) {
-        (true, "left-axis") | (false, "bottom-axis") => Some(true),
-        (true, "top-axis") | (false, "left-axis") => Some(false),
-        _ => None,
-    }
-}
-
 fn text_channel(groups: &[String], orientation: &str) -> Option<(ThemeTarget, &'static str)> {
-    if groups.len() == 1 && groups[0] == "chart-title" {
-        return Some((ThemeTarget::Title, "titleColor"));
-    }
-    if groups.len() != 2 {
-        return None;
-    }
-    let x = logical_axis(&groups[0], orientation)?;
-    Some((
-        ThemeTarget::Axis,
-        match (x, groups[1].as_str()) {
-            (true, "title") => "xAxisTitleColor",
-            (true, "label") => "xAxisLabelColor",
-            (false, "title") => "yAxisTitleColor",
-            (false, "label") => "yAxisLabelColor",
-            _ => return None,
-        },
-    ))
+    let role = XyChartTextRole::from_groups(groups, orientation)?;
+    let channel = match role {
+        XyChartTextRole::Title => "titleColor",
+        XyChartTextRole::XAxisTitle => "xAxisTitleColor",
+        XyChartTextRole::YAxisTitle => "yAxisTitleColor",
+        XyChartTextRole::XAxisLabel => "xAxisLabelColor",
+        XyChartTextRole::YAxisLabel => "yAxisLabelColor",
+        XyChartTextRole::Legend => "legendTextColor",
+    };
+    Some((role.target(), channel))
 }
 
 fn line_channel(groups: &[String], orientation: &str) -> Option<&'static str> {
@@ -724,7 +750,7 @@ fn line_channel(groups: &[String], orientation: &str) -> Option<&'static str> {
 #[derive(Debug)]
 pub(crate) struct XyChartPaintReceipt {
     owner: Arc<BTreeMap<XyChartPaintTerminalId, PaintTerminal>>,
-    expected: BTreeMap<XyChartPaintTerminalId, (String, String, String)>,
+    expected: BTreeMap<XyChartPaintTerminalId, (String, String, String, Option<String>)>,
     seen: BTreeSet<XyChartPaintTerminalId>,
     valid: bool,
 }
@@ -737,6 +763,7 @@ impl XyChartPaintReceipt {
         content: Option<&str>,
         paint: Option<&str>,
         dimension: Option<&str>,
+        font_weight: Option<&str>,
     ) {
         let expected_tag = if matches!(id, XyChartPaintTerminalId::Path { .. }) {
             "path"
@@ -746,10 +773,11 @@ impl XyChartPaintReceipt {
         self.valid &= tag == expected_tag
             && self.seen.insert(id)
             && self.expected.get(&id).is_some_and(
-                |(expected_content, expected_paint, expected_dimension)| {
+                |(expected_content, expected_paint, expected_dimension, expected_weight)| {
                     content == Some(expected_content.as_str())
                         && paint == Some(expected_paint.as_str())
                         && dimension == Some(expected_dimension.as_str())
+                        && font_weight == expected_weight.as_deref()
                 },
             );
     }
@@ -777,6 +805,12 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::XY_CHART);
+        let typography = XyChartTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
+        )
+        .unwrap();
         let source_config = merman_core::Engine::new()
             .with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "themeVariables": {"xyChart": {"titleColor": "black"}}
@@ -809,6 +843,7 @@ mod tests {
                 Some(&theme),
                 &source_config,
                 &mut layout,
+                &typography,
                 &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
             )
             .unwrap();
@@ -834,6 +869,7 @@ mod tests {
                 Some(&theme),
                 &MermaidConfig::default(),
                 &mut layout,
+                &typography,
                 &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
             )
             .unwrap();
@@ -863,6 +899,12 @@ mod tests {
             )
             .unwrap()
             .resolve(crate::DiagramFamilyId::XY_CHART);
+        let typography = XyChartTypographyThemePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
+        )
+        .unwrap();
         let mut layout: XyChartDiagramLayout = serde_json::from_value(serde_json::json!({
             "width": 700.0, "height": 500.0, "chartOrientation": "vertical",
             "showDataLabel": true, "showDataLabelOutsideBar": false,
@@ -885,6 +927,7 @@ mod tests {
             Some(&theme),
             &MermaidConfig::default(),
             &mut layout,
+            &typography,
             &OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive()),
         )
         .unwrap();

@@ -1527,6 +1527,36 @@ pub(super) fn classify_rule_facet(
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
     if family == DiagramFamilyId::XY_CHART
+        && matches!(
+            target,
+            ThemeTarget::Title
+                | ThemeTarget::AxisTitle
+                | ThemeTarget::AxisLabel
+                | ThemeTarget::Legend
+        )
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+                    | FamilyThemePaintKind::Clear
+            ) | FamilyThemeRuleFacet::Typography(
+                ThemeTypographyProperty::FontSize | ThemeTypographyProperty::FontWeight
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(target, ThemeTarget::AxisTitle | ThemeTarget::AxisLabel) {
+        return FamilyThemeDisposition::Unsupported;
+    }
+    if family == DiagramFamilyId::XY_CHART
         && target == ThemeTarget::ChartSeries
         && matches!(
             selector,

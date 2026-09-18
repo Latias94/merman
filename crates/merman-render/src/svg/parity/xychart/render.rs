@@ -73,7 +73,14 @@ impl Node {
                     attribute("font-size"),
                 )
             };
-        receipt.record(id, self.tag, content, paint, dimension);
+        receipt.record(
+            id,
+            self.tag,
+            content,
+            paint,
+            dimension,
+            attribute("font-weight"),
+        );
     }
 
     fn observe_series_paint(
@@ -547,6 +554,14 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("y", "0");
                     n.attr("fill", escape_xml(&t.fill));
                     n.attr("font-size", fmt_string(t.font_size));
+                    if let Some(weight) = crate::xychart::XyChartTextRole::from_groups(
+                        group_texts,
+                        &layout.chart_orientation,
+                    )
+                    .and_then(|role| typography_theme.font_weight(role))
+                    {
+                        n.attr("font-weight", weight);
+                    }
                     n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
                     n.attr("text-anchor", text_anchor(&t.horizontal_pos));
                     let rot = t.rotation;
@@ -823,18 +838,23 @@ mod tests {
             CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
             ThemeStylePatch, ThemeTarget,
         };
+        let mut style =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        style.typography.font_weight = crate::diagram_theme::Specified::Value(700);
         let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Title,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                    )),
-                ),
-            )
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, style)),
+            ))
             .unwrap();
         let theme = theme.resolve(crate::DiagramFamilyId::XY_CHART);
+        let typography = crate::xychart::XyChartTypographyThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::default(),
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::interactive(),
+            ),
+        )
+        .unwrap();
         let prepare = || {
             let mut layout: crate::model::XyChartDiagramLayout =
                 serde_json::from_value(serde_json::json!({
@@ -862,6 +882,7 @@ mod tests {
                 Some(&theme),
                 &merman_core::MermaidConfig::default(),
                 &mut layout,
+                &typography,
                 &crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::interactive(),
                 ),
@@ -874,6 +895,8 @@ mod tests {
             "missing-fill",
             "missing-font-size",
             "wrong-font-size",
+            "missing-font-weight",
+            "wrong-font-weight",
             "wrong-text",
             "repeated",
             "wrong-role",
@@ -893,6 +916,7 @@ mod tests {
             let mut title = node("text");
             title.attr("fill", "#123456");
             title.attr("font-size", "20");
+            title.attr("font-weight", "700");
             title.text = Some(escape_xml("A & B"));
             title.paint_terminal = Some(crate::xychart::XyChartPaintTerminalId::Text {
                 drawable: 0,
@@ -910,6 +934,15 @@ mod tests {
                         .find(|(key, _)| *key == "font-size")
                         .unwrap()
                         .1 = "0".into()
+                }
+                "missing-font-weight" => arena[id].attrs.retain(|(key, _)| *key != "font-weight"),
+                "wrong-font-weight" => {
+                    arena[id]
+                        .attrs
+                        .iter_mut()
+                        .find(|(key, _)| *key == "font-weight")
+                        .unwrap()
+                        .1 = "400".into();
                 }
                 "wrong-text" => arena[id].text = Some("Other".into()),
                 "repeated" => arena[0].children.push(id),
@@ -956,6 +989,14 @@ mod tests {
             ))
             .unwrap()
             .resolve(crate::DiagramFamilyId::XY_CHART);
+        let typography = crate::xychart::XyChartTypographyThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::default(),
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::interactive(),
+            ),
+        )
+        .unwrap();
         let prepare = || {
             let mut layout: crate::model::XyChartDiagramLayout =
                 serde_json::from_value(serde_json::json!({
@@ -1016,6 +1057,7 @@ mod tests {
                 Some(&theme),
                 &merman_core::MermaidConfig::default(),
                 &mut layout,
+                &typography,
                 &crate::resources::OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::interactive(),
                 ),
