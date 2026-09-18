@@ -46,7 +46,7 @@ pub(crate) struct XyChartTextEffect {
 fn supports_text_effect(target: ThemeTarget) -> bool {
     matches!(
         target,
-        ThemeTarget::Title | ThemeTarget::AxisTitle | ThemeTarget::Legend
+        ThemeTarget::Title | ThemeTarget::AxisTitle | ThemeTarget::AxisLabel | ThemeTarget::Legend
     )
 }
 

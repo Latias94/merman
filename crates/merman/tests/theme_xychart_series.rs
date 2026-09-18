@@ -405,10 +405,12 @@ fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
             }
         }
         let receipt = png.export_report().native_filter_receipt().unwrap();
-        // Four bars and two lines each consume one single-stage graph.
-        assert_eq!(receipt.filter_count(), 6);
-        assert_eq!(receipt.drop_shadow_count(), 6);
-        assert_eq!(receipt.reference_count(), 6);
+        // Four bars, two lines, two category labels and eleven numeric labels.
+        // Each terminal consumes one single-stage graph.
+        let expected_filters = 4 + 2 + 2 + 11;
+        assert_eq!(receipt.filter_count(), expected_filters);
+        assert_eq!(receipt.drop_shadow_count(), expected_filters);
+        assert_eq!(receipt.reference_count(), expected_filters);
         assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
         assert!(pdf.bytes().starts_with(b"%PDF-"));
         let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))

@@ -2897,7 +2897,7 @@ fn xychart_axis_typography_overridden_on_all_text_does_not_apply_to_paths() {
     );
 }
 
-fn xychart_text_shadow_theme(rules: ThemeRuleSet) -> DiagramTheme {
+fn xychart_text_shadow_spec(rules: ThemeRuleSet) -> DiagramThemeSpec {
     use merman_render::diagram_theme::{
         DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
     };
@@ -2923,12 +2923,14 @@ fn xychart_text_shadow_theme(rules: ThemeRuleSet) -> DiagramTheme {
             .with_binding(EffectBinding::new(target, "text-glow").unwrap())
             .unwrap();
     }
+    DiagramThemeSpec::new()
+        .with_styles(rules)
+        .with_effects(effects)
+}
+
+fn xychart_text_shadow_theme(rules: ThemeRuleSet) -> DiagramTheme {
     DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_styles(rules)
-                .with_effects(effects),
-        )
+        .compile(xychart_text_shadow_spec(rules))
         .unwrap()
 }
 
@@ -3050,6 +3052,12 @@ fn xychart_text_glow_cannot_certify_unsupported_siblings_or_inherited_targets() 
         ),
         ThemeRule::new(ThemeTarget::Title, effect.clone()).with_ordinal(OrdinalSelector::Exact(1)),
         ThemeRule::new(ThemeTarget::Text, effect.clone()),
+        ThemeRule::new(ThemeTarget::AxisLabel, effect.clone())
+            .with_ordinal(OrdinalSelector::Exact(1)),
+        ThemeRule::new(
+            ThemeTarget::AxisLabel,
+            effect.clone().with_stroke_width(3.0).unwrap(),
+        ),
         ThemeRule::new(ThemeTarget::Axis, effect),
     ] {
         let theme = xychart_text_shadow_theme(ThemeRuleSet::default().with_rule(rule));
@@ -3433,5 +3441,64 @@ fn xychart_axis_tick_keeps_the_combined_axis_geometry_ordinal_sequence() {
             ordinal > count,
             "Axis ordinal {ordinal} across {count} geometry terminals"
         );
+    }
+}
+
+#[test]
+fn xychart_axis_label_glow_keeps_source_style_and_clear_semantics() {
+    use merman_render::diagram_theme::{EffectBinding, Specified, ThemeRule, ThemeStylePatch};
+    let strict = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+    for binding in [false, true] {
+        for clear in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            if !binding {
+                rules = rules.with_rule(ThemeRule::new(
+                    ThemeTarget::AxisLabel,
+                    ThemeStylePatch::default().with_effect("text-glow").unwrap(),
+                ));
+            }
+            if clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = Specified::Clear;
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::AxisLabel, patch));
+            }
+            let mut spec = xychart_text_shadow_spec(rules);
+            if binding {
+                let effects = spec
+                    .effects()
+                    .clone()
+                    .with_binding(EffectBinding::new(ThemeTarget::AxisLabel, "text-glow").unwrap())
+                    .unwrap();
+                spec = spec.with_effects(effects);
+            }
+            let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+            for orientation in ["", " horizontal"] {
+                let source =
+                    format!("xychart{orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 7]");
+                let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "xyChart":{"xAxis":{"labelFontSize":19},"yAxis":{"labelFontSize":19}},
+                    "themeVariables":{"xyChart":{"xAxisLabelColor":"#ff0000","yAxisLabelColor":"#ff0000"}}
+                })));
+                let (_, rendered) =
+                    try_render_xychart_with_theme(&source, &theme, engine, &strict, "labels")
+                        .unwrap();
+                let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let labels = xml
+                    .descendants()
+                    .filter(|n| n.has_tag_name("text"))
+                    .collect::<Vec<_>>();
+                assert!(labels.len() > 2);
+                for label in labels {
+                    assert_eq!(label.attribute("font-size"), Some("19"));
+                    assert_eq!(label.attribute("fill"), Some("#ff0000"));
+                    assert_eq!(
+                        label.attribute("filter").is_some(),
+                        !clear,
+                        "binding={binding}, clear={clear}"
+                    );
+                }
+            }
+        }
     }
 }

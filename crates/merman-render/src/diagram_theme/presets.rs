@@ -864,7 +864,7 @@ mod tests {
             Some("cyberpunk-shape-glow")
         );
         assert_eq!(theme.spec().canvas().layers().len(), 3);
-        assert_eq!(theme.spec().effects().graphs().len(), 11);
+        assert_eq!(theme.spec().effects().graphs().len(), 12);
     }
 
     #[test]

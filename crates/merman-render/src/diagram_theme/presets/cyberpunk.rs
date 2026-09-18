@@ -140,23 +140,30 @@ fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
     for (target, size, weight, sigma, color) in [
         (
             ThemeTarget::Title,
-            18.0,
+            Some(18.0),
             Some(700),
             7.5,
             "rgba(0, 242, 255, 0.8)",
         ),
         (
             ThemeTarget::AxisTitle,
-            13.0,
+            Some(13.0),
             None,
             5.0,
             "rgba(0, 242, 255, 0.6)",
         ),
         (
             ThemeTarget::Legend,
-            12.0,
+            Some(12.0),
             None,
             4.0,
+            "rgba(0, 242, 255, 0.5)",
+        ),
+        (
+            ThemeTarget::AxisLabel,
+            None,
+            Some(600),
+            5.0,
             "rgba(0, 242, 255, 0.5)",
         ),
     ] {
@@ -175,7 +182,7 @@ fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
                 fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color("#00f2ff".to_owned())),
                 effect: SpecifiedWireV1::Value(effect_id),
                 typography: Some(ThemeTextStylePatchWireV1 {
-                    font_size_px: SpecifiedWireV1::Value(size),
+                    font_size_px: size.map_or(SpecifiedWireV1::Unspecified, SpecifiedWireV1::Value),
                     font_weight: weight
                         .map_or(SpecifiedWireV1::Unspecified, SpecifiedWireV1::Value),
                     ..ThemeTextStylePatchWireV1::default()

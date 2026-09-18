@@ -1855,16 +1855,18 @@ fn xy_axis_text_roles_are_discoverable_without_promising_other_families() {
     for target in [ThemeTarget::AxisTitle, ThemeTarget::AxisLabel] {
         assert_eq!(ThemeTarget::from_id(target.id()), Some(target));
         assert!(ThemeTarget::ALL.contains(&target));
-        let query = ThemeSupportQueryV1::for_target(
-            DiagramFamilyId::XY_CHART.as_str(),
-            ThemeSupportOutputV1::StandaloneSvg,
-            target.id(),
-            ThemeRuleFacetV1::Fill,
-        );
-        assert_eq!(
-            describe_theme_support(&query).state(),
-            ThemeSupportStateV1::Conditional
-        );
+        for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::Effect] {
+            let query = ThemeSupportQueryV1::for_target(
+                DiagramFamilyId::XY_CHART.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                target.id(),
+                facet,
+            );
+            assert_eq!(
+                describe_theme_support(&query).state(),
+                ThemeSupportStateV1::Conditional
+            );
+        }
         let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::FLOWCHART.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,

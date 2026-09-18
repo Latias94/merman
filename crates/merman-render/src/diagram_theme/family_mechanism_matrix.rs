@@ -1262,6 +1262,7 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
                 ThemeTarget::ChartSeries
                     | ThemeTarget::Title
                     | ThemeTarget::AxisTitle
+                    | ThemeTarget::AxisLabel
                     | ThemeTarget::Legend
             ))
         || (matches!(
@@ -1536,21 +1537,6 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::XY_CHART
         && matches!(
             target,
-            ThemeTarget::Title | ThemeTarget::AxisTitle | ThemeTarget::Legend
-        )
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
-        && facet == FamilyThemeRuleFacet::Effect
-    {
-        return FamilyThemeDisposition::TypedAdapter;
-    }
-    if family == DiagramFamilyId::XY_CHART
-        && matches!(
-            target,
             ThemeTarget::Title
                 | ThemeTarget::AxisTitle
                 | ThemeTarget::AxisLabel
@@ -1564,13 +1550,15 @@ pub(super) fn classify_rule_facet(
         )
         && matches!(
             facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Solid
-                    | FamilyThemePaintKind::Transparent
-                    | FamilyThemePaintKind::Clear
-            ) | FamilyThemeRuleFacet::Typography(
-                ThemeTypographyProperty::FontSize | ThemeTypographyProperty::FontWeight
-            )
+            FamilyThemeRuleFacet::Effect
+                | FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Solid
+                        | FamilyThemePaintKind::Transparent
+                        | FamilyThemePaintKind::Clear
+                )
+                | FamilyThemeRuleFacet::Typography(
+                    ThemeTypographyProperty::FontSize | ThemeTypographyProperty::FontWeight
+                )
         )
     {
         return FamilyThemeDisposition::TypedAdapter;

@@ -114,6 +114,10 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                     (x_title, "13", None, "5", "0.6"),
                     (y_title, "13", None, "5", "0.6"),
                     (legend, "12", None, "4", "0.5"),
+                    ("A", "14", Some("600"), "5", "0.5"),
+                    ("B", "14", Some("600"), "5", "0.5"),
+                    ("0", "14", Some("600"), "5", "0.5"),
+                    ("10", "14", Some("600"), "5", "0.5"),
                 ] {
                     let node = xml
                         .descendants()
@@ -169,9 +173,9 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                 assert_eq!(
                     tick.attribute("font-size"),
                     Some("14"),
-                    "axis-label recipe stays unchanged"
+                    "axis-label size keeps the source default"
                 );
-                assert!(tick.attribute("filter").is_none());
+                assert!(tick.attribute("filter").is_some());
                 assert!(tick.attribute("opacity").is_none());
                 let mut tick_count = 0;
                 for path in xml.descendants().filter(|n| n.has_tag_name("path")) {

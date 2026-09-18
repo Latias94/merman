@@ -1299,7 +1299,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "xychart",
         target: "axis-label",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "font-size", "font-weight"],
+        facets: &["fill", "font-size", "font-weight", "effect"],
     },
     RuleClaim {
         family: "xychart",

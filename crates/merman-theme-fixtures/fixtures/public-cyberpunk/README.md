@@ -97,6 +97,7 @@ before its visual expectation is promoted.
 | Other terminal / selector | Declared expectation | Applicability to verify |
 | --- | --- | --- |
 | Tick paths, `.ticks path` | Cyan stroke, whole-element opacity .3. | This does not declare all axis lines or tick-label text cyan. |
+| Axis tick-label text, inherited `.label` | Cyan color, weight 600 and cyan text shadow `(0,0,10,.5)`; no label font size is declared by this selector. | The controlled-font 11.17.2 capture at Merman `b205f03c9` confirms that the generic `.label` rule also matches XY labels, despite its Flowchart source comment. It reaches all four category labels and eleven numeric labels. Their resolved 14px default stays configurable. |
 | Chart title, `.chart-title text` | Cyan fill, weight 700, 18px, cyan text shadow `(0,0,15,.8)`. | Confirm title text matches and remains visible. |
 | Axis titles, `.left-axis .title text, .bottom-axis .title text` | Cyan fill, 13px, cyan text shadow `(0,0,10,.6)`. | Verify both Window and Requests titles. |
 | Legend text, `.legend text` | Cyan fill, 12px, cyan text shadow `(0,0,8,.5)`. | This scene does not request a legend. Zero matches do not create a missing-terminal requirement. |

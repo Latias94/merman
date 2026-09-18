@@ -352,6 +352,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Tick paint increment:** The [AxisTick record](../knowledge/engineering/verification/2026-09-18-xychart-axis-tick-paint.md) tracks the bounded tick consumer, writer opacity checks, separate support discovery and public Cyberpunk recipe. Full scene comparison, qualification and U10 costs remain open.
 
+**Reference axis-label correction:** The [controlled-font scene record](../knowledge/engineering/verification/2026-09-18-xychart-axis-label-glow.md) identifies the reference's cross-family `.label` rule on XY category/numeric text. Static AxisLabel effects and the public Cyberpunk recipe now retain that glow and weight while leaving configured label sizes intact. This bounded correction does not close full-scene qualification or U10 costs. The complete fixed scene now needs 140 native conversion filter primitives and is rejected by the default ceiling of 128; an explicit 256 experiment succeeds without changing the default. Measure this scene and larger workloads before deciding on repeated-work reduction or a justified budget change. This remains an open U8 native-export gate, not a qualified default-profile result.
+
 ### U9. Qualify public recipes and migrate consumers
 
 **Goal:** Make product claims agree with the recipes users actually obtain.
