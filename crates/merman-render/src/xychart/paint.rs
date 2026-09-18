@@ -10,6 +10,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -73,6 +74,54 @@ impl XyChartPaintPlan {
         let Some(theme) = theme else {
             return Ok(plan);
         };
+        if theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Legend,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Legend
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Legend,
+                    ..
+                }
+            )
+        }) {
+            // Legend text has no typed writer yet; absence is different from an ignored winner.
+            let mut visible_labels = 0;
+            work_meter.charge(layout.drawables.len())?;
+            for drawable in &layout.drawables {
+                if let XyChartDrawableElem::Text { group_texts, data } = drawable
+                    && group_texts.first().is_some_and(|group| group == "legend")
+                {
+                    work_meter.charge(data.len())?;
+                    visible_labels += data
+                        .iter()
+                        .filter(|label| {
+                            visible_dimension(label.font_size) && !label.text.trim().is_empty()
+                        })
+                        .count();
+                }
+            }
+            let source_owned = if source_owns(config, "legendTextColor") {
+                work_meter.charge(visible_labels)?;
+                vec![true; visible_labels]
+            } else {
+                Vec::new()
+            };
+            let domain = UnsupportedTerminalDomain::direct(
+                ThemeTarget::Legend,
+                TerminalVariantDomain::uniform(visible_labels, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned);
+            reconcile_unsupported_terminal_domains(
+                theme,
+                &mut plan.evidence,
+                &[domain],
+                work_meter,
+            )?;
+        }
         let mut accounting = PaintAccounting::new(theme, work_meter);
         if accounting.routes.is_empty() {
             return Ok(plan);

@@ -2128,3 +2128,382 @@ fn xychart_shadow_rule_winners_preserve_binding_and_sibling_accounting() {
         "the shadow cannot certify an unsupported dash"
     );
 }
+
+#[test]
+fn xychart_series_kind_variants_apply_without_replacing_default_rules() {
+    let recipe = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
+        "kind": "complete_spec",
+        "complete_spec": {"styles": [
+            {"kind": "rule", "target": "chart-series", "variant": "default",
+             "style": {"stroke": {"width": 1}, "opacity": 0.75}},
+            {"kind": "rule", "target": "chart-series", "variant": "bar",
+             "style": {"fill": "#ff0000", "stroke": {"width": 2}}},
+            {"kind": "rule", "target": "chart-series", "variant": "line",
+             "style": {"stroke": {"paint": "#0000ff", "width": 3}}}
+        ]}
+    }))
+    .unwrap();
+    let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 6]\nline [7, 8]",
+        &theme,
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let bar = xychart_plot_group(&document, "bar-plot-0")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert_eq!(bar.attribute("fill"), Some("#ff0000"));
+    assert_eq!(bar.attribute("stroke-width"), Some("2"));
+    let line = xychart_plot_group(&document, "line-plot-1")
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .unwrap();
+    assert_eq!(line.attribute("stroke"), Some("#0000ff"));
+    assert_eq!(line.attribute("stroke-width"), Some("3"));
+    assert_eq!(line.attribute("fill"), Some("none"));
+    assert_eq!(bar.attribute("opacity"), Some("0.75"));
+    assert_eq!(line.attribute("opacity"), Some("0.75"));
+}
+
+#[test]
+fn xychart_series_kind_and_default_rules_keep_author_order_and_clear() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, Specified, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let source = "xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\nline [6]";
+    let plain = xychart_paint_rules([]);
+    let baseline = render_xychart_with_theme_and_engine(source, &plain, Engine::new());
+    let baseline_doc = roxmltree::Document::parse(baseline.svg()).unwrap();
+    let baseline_fill = xychart_plot_group(&baseline_doc, "bar-plot-0")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap()
+        .attribute("fill");
+    let default = ThemeRule::new(
+        ThemeTarget::ChartSeries,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+            .with_stroke_width(5.0)
+            .unwrap(),
+    )
+    .with_variant(ThemeVariant::Default);
+    let mut clear = ThemeStylePatch::default();
+    clear.paint.fill = Specified::Clear;
+    clear.stroke.width = Specified::Clear;
+    let bar = ThemeRule::new(ThemeTarget::ChartSeries, clear).with_variant(ThemeVariant::Bar);
+    for (rules, fill, width) in [
+        ([default.clone(), bar.clone()], baseline_fill, "0"),
+        ([bar, default], Some("#ff0000"), "5"),
+    ] {
+        let theme = xychart_paint_rules(rules);
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let bar = xychart_plot_group(&xml, "bar-plot-0")
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(bar.attribute("fill"), fill);
+        assert_eq!(bar.attribute("stroke-width"), Some(width));
+        let line = xychart_plot_group(&xml, "line-plot-1")
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        assert_eq!(line.attribute("fill"), Some("#ff0000"));
+        assert_eq!(line.attribute("stroke-width"), Some("5"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_series_kind_ordinals_follow_global_declaration_order() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, OrdinalSelector, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let theme = xychart_paint_rules([
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
+        )
+        .with_variant(ThemeVariant::Bar)
+        .with_ordinal(OrdinalSelector::Exact(2)),
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::Transparent)
+                .with_stroke_width(3.0)
+                .unwrap(),
+        )
+        .with_variant(ThemeVariant::Bar)
+        .with_ordinal(OrdinalSelector::Cycle {
+            period: 3,
+            offset: 2,
+        }),
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#0000ff").unwrap()),
+        )
+        .with_variant(ThemeVariant::Line)
+        .with_ordinal(OrdinalSelector::Exact(5)),
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#00ff00").unwrap()),
+        )
+        .with_variant(ThemeVariant::Bar)
+        .with_ordinal(OrdinalSelector::Exact(1)),
+    ]);
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\nx-axis [A]\ny-axis 0 --> 10\nline [1]\nbar [2]\nbar [3]\nline [4]\nline [5]\nbar [6]",
+        &theme,
+        Engine::new(),
+    );
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for (group, color, width) in [
+        ("bar-plot-1", "#ff0000", "0"),
+        ("bar-plot-2", "#00000000", "3"),
+        ("bar-plot-5", "#00000000", "3"),
+    ] {
+        let bar = xychart_plot_group(&xml, group)
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(bar.attribute("fill"), Some(color));
+        assert_eq!(bar.attribute("stroke-width"), Some(width));
+    }
+    for (group, targeted) in [
+        ("line-plot-0", false),
+        ("line-plot-3", false),
+        ("line-plot-4", true),
+    ] {
+        let line = xychart_plot_group(&xml, group)
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        assert_eq!(line.attribute("stroke") == Some("#0000ff"), targeted);
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 3);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn xychart_series_kind_rules_preserve_source_color_ownership() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, Specified, ThemeRule, ThemeStylePatch, ThemeVariant,
+    };
+    let mut patch = ThemeStylePatch::default()
+        .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+        .with_stroke(CanvasPaint::Transparent)
+        .with_stroke_width(4.0)
+        .unwrap();
+    patch.paint.fill_opacity = Specified::Value(0.2);
+    let theme = xychart_paint_rules([ThemeVariant::Bar, ThemeVariant::Line].map(|variant| {
+        ThemeRule::new(ThemeTarget::ChartSeries, patch.clone()).with_variant(variant)
+    }));
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\nline [7]",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":"#fedcba"}}}),
+        )),
+    );
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for (group, tag, fill) in [
+        ("bar-plot-0", "rect", "#fedcba"),
+        ("line-plot-1", "path", "none"),
+    ] {
+        let mark = xychart_plot_group(&xml, group)
+            .children()
+            .find(|node| node.has_tag_name(tag))
+            .unwrap();
+        assert_eq!(mark.attribute("fill"), Some(fill));
+        assert_eq!(mark.attribute("stroke"), Some("#fedcba"));
+        assert_eq!(mark.attribute("stroke-width"), Some("4"));
+        assert_eq!(mark.attribute("fill-opacity"), Some("0.2"));
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn xychart_series_kind_shadow_clear_and_unsupported_siblings_keep_evidence() {
+    use merman_render::diagram_theme::{Specified, ThemeRule, ThemeStylePatch, ThemeVariant};
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nbar [4, 6]\nline [7, 7]";
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let rules = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::ChartSeries,
+                ThemeStylePatch::default()
+                    .with_effect("series-shadow")
+                    .unwrap(),
+            )
+            .with_variant(ThemeVariant::Default),
+        )
+        .with_rule(
+            ThemeRule::new(ThemeTarget::ChartSeries, clear).with_variant(ThemeVariant::Line),
+        );
+    let theme = xychart_shadow_theme(rules, false);
+    let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        xml.descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .count(),
+        2
+    );
+    assert!(
+        xml.descendants()
+            .filter(|node| node.attribute("filter").is_some())
+            .all(|node| node.has_tag_name("rect"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    let mixed = ThemeRule::new(
+        ThemeTarget::ChartSeries,
+        ThemeStylePatch::default()
+            .with_effect("series-shadow")
+            .unwrap()
+            .with_stroke_dasharray([2.0, 1.0])
+            .unwrap(),
+    )
+    .with_variant(ThemeVariant::Bar);
+    let theme = xychart_shadow_theme(ThemeRuleSet::default().with_rule(mixed), false);
+    let (_, rendered) = try_render_xychart_with_theme(
+        source,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    assert!(rendered.svg().contains("<filter"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert!(
+        try_render_xychart_with_theme(
+            source,
+            &theme,
+            Engine::new(),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "chart"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn xychart_series_absent_kind_is_not_applicable() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch, ThemeVariant};
+    for (source, variant) in [
+        ("xychart\nx-axis [A]\nbar [4]", ThemeVariant::Line),
+        ("xychart\nx-axis [A]\nline [4]", ThemeVariant::Bar),
+    ] {
+        let theme = xychart_paint_rules([ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#ff0000").unwrap())
+                .with_stroke_dasharray([2.0, 1.0])
+                .unwrap(),
+        )
+        .with_variant(variant)]);
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, Engine::new());
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_public_cyberpunk_series_keep_complete_family_evidence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(merman_render::diagram_theme::ThemePreset::Cyberpunk)
+        .unwrap();
+    let (_, rendered) = try_render_xychart_with_theme(
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nline [7, 8]\nbar [4, 6]\nbar [2, 3]\nline [1, 2]",
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "chart",
+    )
+    .unwrap();
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(
+        evidence.required_count(),
+        evidence.accounted_count(),
+        "{:#?}",
+        completion.report()
+    );
+    assert_eq!(
+        evidence.theme_residual_count(),
+        0,
+        "{:#?}",
+        completion.report()
+    );
+}
+
+#[test]
+fn xychart_legend_requests_distinguish_absence_source_ownership_and_unsupported_winners() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+    let theme = xychart_paint_rules([ThemeRule::new(
+        ThemeTarget::Legend,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
+    )]);
+    for (source, engine, residuals) in [
+        ("xychart\nx-axis [A]\nbar [4]", Engine::new(), 0),
+        ("xychart\nx-axis [A]\nbar \"Sales\" [4]", Engine::new(), 1),
+        (
+            "xychart\nx-axis [A]\nbar \"Sales\" [4]",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "xyChart": {"showLegend": false}
+            }))),
+            0,
+        ),
+        (
+            "xychart\nx-axis [A]\nbar \"A very long legend title that does not fit\" [4]",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "xyChart": {"width": 80, "height": 80}
+            }))),
+            0,
+        ),
+        (
+            "xychart\nx-axis [A]\nbar \"Sales\" [4]",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {"xyChart": {"legendTextColor": "#123456"}}
+            }))),
+            0,
+        ),
+    ] {
+        let (_, rendered) = try_render_xychart_with_theme(
+            source,
+            &theme,
+            engine.clone(),
+            &RenderEnvironment::deterministic(),
+            "chart",
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), evidence.accounted_count());
+        assert_eq!(evidence.theme_residual_count(), residuals);
+        let strict = try_render_xychart_with_theme(
+            source,
+            &theme,
+            engine,
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "chart",
+        );
+        assert_eq!(strict.is_err(), residuals != 0);
+    }
+}

@@ -649,6 +649,7 @@ mod tests {
                 primitives: edge_primitives,
                 color_space: edge_color_space,
             },
+            ..,
         ] = effects.as_slice()
         else {
             panic!("independent family-scoped shape and edge glow graphs are expected")
@@ -834,7 +835,7 @@ mod tests {
             Some("cyberpunk-shape-glow")
         );
         assert_eq!(theme.spec().canvas().layers().len(), 3);
-        assert_eq!(theme.spec().effects().graphs().len(), 2);
+        assert_eq!(theme.spec().effects().graphs().len(), 8);
     }
 
     #[test]

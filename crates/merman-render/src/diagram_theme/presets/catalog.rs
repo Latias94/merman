@@ -53,7 +53,7 @@ const BRUTALIST_RECIPE_FINGERPRINT: &str =
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
     "c177e9885bb2ad7ccaf59f83702c43a01b913b6a4964f24abdc00c1c6b2a346b";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "1583f2a8e9d1a249624873741825f6df6b864cdb042dd832223dde8dbdb57ff9";
+    "97b90ce1e6c8c732e69aef017a3ee5840431f3dc329346d933b33f878d2ee048";
 type PresetRecipeBuilder = fn(
     PresetPalette,
     &ThemeResourcePolicy,

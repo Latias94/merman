@@ -1531,9 +1531,11 @@ pub(super) fn classify_rule_facet(
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
+                variant: None
+                    | Some(ThemeVariant::Default | ThemeVariant::Bar | ThemeVariant::Line)
             } | FamilyThemeSelectorShape::Ordinal {
-                variant: None | Some(ThemeVariant::Default),
+                variant: None
+                    | Some(ThemeVariant::Default | ThemeVariant::Bar | ThemeVariant::Line),
                 ..
             }
         )
@@ -1555,6 +1557,19 @@ pub(super) fn classify_rule_facet(
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
+    }
+
+    // Plot-kind variants have no corresponding terminal in other family/target domains.
+    if matches!(
+        selector,
+        FamilyThemeSelectorShape::Static {
+            variant: Some(ThemeVariant::Bar | ThemeVariant::Line)
+        } | FamilyThemeSelectorShape::Ordinal {
+            variant: Some(ThemeVariant::Bar | ThemeVariant::Line),
+            ..
+        }
+    ) {
+        return FamilyThemeDisposition::Unsupported;
     }
 
     if family == DiagramFamilyId::STATE {
@@ -3083,6 +3098,60 @@ mod tests {
     use crate::diagram_theme::{
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemePaintPatch, ThemeStylePatch,
     };
+
+    #[test]
+    fn plot_kind_variants_are_confined_to_xychart_series_terminals() {
+        for variant in [ThemeVariant::Bar, ThemeVariant::Line] {
+            for selector in [
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(variant),
+                },
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: Some(variant),
+                    selector: OrdinalSelector::Exact(2),
+                },
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: Some(variant),
+                    selector: OrdinalSelector::Cycle {
+                        period: 3,
+                        offset: 2,
+                    },
+                },
+            ] {
+                for &family in DiagramFamilyId::all() {
+                    for &target in ThemeTarget::ALL {
+                        for facet in [
+                            FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+                            FamilyThemeRuleFacet::StrokeWidth,
+                            FamilyThemeRuleFacet::Effect,
+                        ] {
+                            let expected = if family == DiagramFamilyId::XY_CHART
+                                && target == ThemeTarget::ChartSeries
+                            {
+                                FamilyThemeDisposition::TypedAdapter
+                            } else {
+                                FamilyThemeDisposition::Unsupported
+                            };
+                            assert_eq!(
+                                classify_rule_facet(family, target, selector, facet),
+                                expected,
+                                "{family:?}/{target:?}/{selector:?}/{facet:?}"
+                            );
+                        }
+                    }
+                }
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::XY_CHART,
+                        ThemeTarget::ChartSeries,
+                        selector,
+                        FamilyThemeRuleFacet::StrokeDasharray
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                );
+            }
+        }
+    }
 
     #[test]
     fn selector_ordinal_domain_intersection_handles_exact_and_cycle_boundaries() {
@@ -5265,6 +5334,16 @@ mod tests {
             ),
         ] {
             for_each_matrix_selector(|selector| {
+                let expected = match selector {
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Bar | ThemeVariant::Line),
+                    }
+                    | FamilyThemeSelectorShape::Ordinal {
+                        variant: Some(ThemeVariant::Bar | ThemeVariant::Line),
+                        ..
+                    } => Unsupported,
+                    _ => expected,
+                };
                 assert_eq!(
                     classify_rule_facet(DiagramFamilyId::STATE, target, selector, facet),
                     expected,

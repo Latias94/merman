@@ -203,6 +203,14 @@ source declaration order across both bar and line series. For `bar, line, bar, l
 line is ordinal 4. A cyclic selector keeps that same order; it is not tied to DOM children or
 numbered independently by plot kind.
 
+Set `"variant": "bar"` or `"variant": "line"` to address only that plot kind. Combine it
+with an ordinal to intersect both conditions: `"variant": "bar", "ordinal": {"exact": 2}`
+selects the second declared series only if it is a bar. Omitting the variant or selecting
+`"default"` addresses both kinds. These rules merge property by property in author order;
+a later default rule can override an earlier bar rule. Kind selectors currently have terminal
+consumers only for XY Chart `chart-series`; their presence in discovery is not an all-family
+support promise.
+
 For example, this complete-spec rule styles the first series with a translucent red interior
 and an opaque green border:
 
@@ -241,8 +249,12 @@ viewBox without changing the plot layout, including for horizontal or vertical f
 Unsupported effect primitives retain residuals; SVG emission alone does not certify a native
 export target.
 
-This support does not qualify the full Cyberpunk XY Chart design. Kind-specific recipe
-selection, text styling and final public scene validation remain separate work.
+The public Cyberpunk recipe uses these kind selectors and a three-color cycle: cyan
+`#6cc6cb`, purple `#c77dff`, green `#7ce38b`. Bars have 20% fill opacity, a 2px border and an
+8px shadow; lines have a 3px stroke and a 6px shadow. The cycle follows global series order
+and repeats after the third series. Saving the preset includes these rules and effect graphs.
+This is not qualification of the full Cyberpunk XY Chart design: role-specific text styling
+and final public scene validation remain open. Public qualification cells remain empty.
 
 ## Save and distribute
 

@@ -309,6 +309,8 @@ pub enum ThemeVariant {
     Error,
     Warning,
     Success,
+    Bar,
+    Line,
 }
 
 impl ThemeVariant {
@@ -327,6 +329,8 @@ impl ThemeVariant {
         Self::Error,
         Self::Warning,
         Self::Success,
+        Self::Bar,
+        Self::Line,
     ];
 
     pub const fn id(self) -> &'static str {
@@ -345,6 +349,8 @@ impl ThemeVariant {
             Self::Error => "error",
             Self::Warning => "warning",
             Self::Success => "success",
+            Self::Bar => "bar",
+            Self::Line => "line",
         }
     }
 }

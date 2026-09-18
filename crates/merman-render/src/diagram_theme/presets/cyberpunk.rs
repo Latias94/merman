@@ -4,13 +4,13 @@ use merman_theme_contract::{
     DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeCanvasLayerWireV1, ThemeCanvasPaintObjectWireV1,
     ThemeCanvasPaintWireV1, ThemeEffectEntryWireV1, ThemeEffectPrimitiveWireV1,
     ThemeGradientStopWireV1, ThemeLengthWireV1, ThemeLinearGradientRepetitionWireV1,
-    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
-    ThemeTextStylePatchWireV1,
+    ThemeMaterializationErrorV1, ThemeOrdinalCycleWireV1, ThemeOrdinalSelectorWireV1,
+    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStylePatchWireV1,
 };
 
 use super::catalog::{PresetPalette, build_cross_family_recipe};
 use crate::DiagramFamilyId;
-use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
+use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget, ThemeVariant};
 
 const SHAPE_GLOW: &str = "cyberpunk-shape-glow";
 const EDGE_GLOW: &str = "cyberpunk-edge-glow";
@@ -118,7 +118,69 @@ pub(super) fn build_recipe(
             },
         ),
     ]);
+    append_xy_series(&mut spec);
     Ok(spec)
+}
+
+fn append_xy_series(spec: &mut DiagramThemeSpecWireV1) {
+    let colors = [
+        ("#6cc6cb", "108, 198, 203"),
+        ("#c77dff", "199, 125, 255"),
+        ("#7ce38b", "124, 227, 139"),
+    ];
+    for (offset, (color, rgb)) in colors.into_iter().enumerate() {
+        for (kind, width, blur, alpha) in [
+            (ThemeVariant::Bar, 2.0, 8.0, 0.4),
+            (ThemeVariant::Line, 3.0, 6.0, 0.5),
+        ] {
+            let effect_id = format!("cyberpunk-xy-{}-{offset}-glow", kind.id());
+            spec.effects
+                .get_or_insert_default()
+                .push(ThemeEffectEntryWireV1::Graph {
+                    id: effect_id.clone(),
+                    color_space: Some("srgb".to_owned()),
+                    primitives: vec![shadow(
+                        "source-graphic",
+                        blur,
+                        &format!("rgba({rgb}, {alpha})"),
+                    )],
+                });
+            spec.styles
+                .get_or_insert_default()
+                .push(ThemeRuleSetWireV1::Rule {
+                    target: ThemeTarget::ChartSeries.id().to_owned(),
+                    family: Some(DiagramFamilyId::XY_CHART.as_str().to_owned()),
+                    variant: Some(kind.id().to_owned()),
+                    ordinal: Some(ThemeOrdinalSelectorWireV1::Cycle {
+                        cycle: ThemeOrdinalCycleWireV1 {
+                            period: 3,
+                            offset: offset as u32,
+                        },
+                    }),
+                    style: ThemeStylePatchWireV1 {
+                        fill: if kind == ThemeVariant::Bar {
+                            SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(color.to_owned()))
+                        } else {
+                            SpecifiedWireV1::Unspecified
+                        },
+                        fill_opacity: if kind == ThemeVariant::Bar {
+                            SpecifiedWireV1::Value(0.2)
+                        } else {
+                            SpecifiedWireV1::Unspecified
+                        },
+                        stroke: Some(ThemeStrokePatchWireV1 {
+                            paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+                                color.to_owned(),
+                            )),
+                            width: SpecifiedWireV1::Value(width),
+                            ..ThemeStrokePatchWireV1::default()
+                        }),
+                        effect: SpecifiedWireV1::Value(effect_id),
+                        ..ThemeStylePatchWireV1::default()
+                    },
+                });
+        }
+    }
 }
 
 fn screen_layer(paint: ThemeCanvasPaintObjectWireV1) -> ThemeCanvasLayerWireV1 {

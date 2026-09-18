@@ -265,3 +265,165 @@ fn imported_xy_series_effects_follow_winners_without_filtering_labels() {
         }
     }
 }
+
+#[test]
+fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
+    use merman::svg::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let exported =
+        serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
+    let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+    let imported = DiagramThemeCompiler::new()
+        .compile_recipe(serde_json::from_slice(&exported).unwrap())
+        .unwrap();
+    let source =
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nline [7, 8]\nbar [4, 6]\nbar [2, 3]\nline [1, 2]";
+    let mut outputs = Vec::new();
+    for theme in [selected, imported] {
+        let RenderOutput::Svg(Some(output)) = Renderer::new()
+            .render(
+                RenderRequest::svg(source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("expected SVG")
+        };
+        let document = roxmltree::Document::parse(output.svg()).unwrap();
+        for (index, kind, color) in [
+            (0, "line", "#6cc6cb"),
+            (1, "bar", "#c77dff"),
+            (2, "bar", "#7ce38b"),
+            (3, "line", "#6cc6cb"),
+        ] {
+            let class = format!("{kind}-plot-{index}");
+            let group = document
+                .descendants()
+                .find(|n| n.attribute("class") == Some(class.as_str()))
+                .unwrap();
+            let marks: Vec<_> = group
+                .children()
+                .filter(|n| n.has_tag_name(if kind == "bar" { "rect" } else { "path" }))
+                .collect();
+            assert_eq!(marks.len(), if kind == "bar" { 2 } else { 1 });
+            for mark in marks {
+                assert_eq!(mark.attribute("stroke"), Some(color));
+                assert_eq!(
+                    mark.attribute("stroke-width"),
+                    Some(if kind == "bar" { "2" } else { "3" })
+                );
+                assert_eq!(
+                    mark.attribute("fill-opacity"),
+                    if kind == "bar" { Some("0.2") } else { None }
+                );
+                assert_eq!(
+                    mark.attribute("fill"),
+                    Some(if kind == "bar" { color } else { "none" })
+                );
+                let id = mark
+                    .attribute("filter")
+                    .expect("every actual series mark has its glow")
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let filter = document
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(id))
+                    .unwrap();
+                assert_eq!(
+                    filter.attribute("color-interpolation-filters"),
+                    Some("sRGB")
+                );
+                let blur = filter
+                    .children()
+                    .find(|n| n.has_tag_name("feGaussianBlur"))
+                    .unwrap();
+                assert_eq!(
+                    blur.attribute("stdDeviation"),
+                    Some(if kind == "bar" { "8" } else { "6" })
+                );
+            }
+        }
+        outputs.push(output.svg().to_owned());
+    }
+    assert_eq!(outputs[0], outputs[1], "saved recipe is self-contained");
+}
+
+#[cfg(all(feature = "png", feature = "pdf"))]
+#[test]
+fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
+    use merman::TargetAdmissionReason;
+    use merman::svg::ThemePreset;
+
+    let compiler = DiagramThemeCompiler::new();
+    let saved =
+        serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
+    let themes = [
+        compiler.compile_preset(ThemePreset::Cyberpunk).unwrap(),
+        DiagramThemeCompiler::new()
+            .compile_recipe(serde_json::from_slice(&saved).unwrap())
+            .unwrap(),
+    ];
+    let source =
+        "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nline [7, 8]\nbar [4, 6]\nbar [2, 3]\nline [1, 2]";
+    let mut pixels = Vec::new();
+    for theme in themes {
+        let RenderOutput::Document(Some(document)) = Renderer::new()
+            .render(
+                RenderRequest::document(source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("expected document")
+        };
+        let png = document
+            .export_png(
+                &merman::svg::export::RasterOptions::default(),
+                OperationControl::new(),
+            )
+            .unwrap();
+        let pdf = document
+            .export_pdf(
+                &merman::svg::export::PdfOptions::default(),
+                OperationControl::new(),
+            )
+            .unwrap();
+        for admission in [png.admission(), pdf.admission()] {
+            for reason in [
+                TargetAdmissionReason::ThemeEvidenceIncomplete,
+                TargetAdmissionReason::NativeFilterReceiptMismatch,
+                TargetAdmissionReason::PdfNativeFilterNotLocalized,
+            ] {
+                assert!(
+                    !admission.reasons().contains(&reason),
+                    "{admission:?}; diagnostics: {:?}; evidence: {:?}",
+                    document.evidence().theme_diagnostics(),
+                    document.evidence().theme_evidence(),
+                );
+            }
+        }
+        let receipt = png.export_report().native_filter_receipt().unwrap();
+        // Four bars and two lines each consume one single-stage graph.
+        assert_eq!(receipt.filter_count(), 6);
+        assert_eq!(receipt.drop_shadow_count(), 6);
+        assert_eq!(receipt.reference_count(), 6);
+        assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
+        assert!(pdf.bytes().starts_with(b"%PDF-"));
+        let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
+            .read_info()
+            .unwrap();
+        let mut buffer = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buffer).unwrap();
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        buffer.truncate(info.buffer_size());
+        assert!(
+            buffer
+                .chunks_exact(4)
+                .any(|pixel| pixel[..3] == [108, 198, 203])
+        );
+        pixels.push((info.width, info.height, buffer));
+    }
+    assert_eq!(pixels[0], pixels[1], "saved recipe retains native output");
+}

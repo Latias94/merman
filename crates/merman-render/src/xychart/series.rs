@@ -7,8 +7,9 @@ use merman_core::diagrams::xychart::{XyChartDiagramRenderModel, XyChartPlotType}
 use crate::chart_palette::plot_color_from_palette;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect, Specified, SvgShadowEffect,
-    SvgShadowEvidenceRecorder, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeEffect,
+    Specified, SvgShadowEffect, SvgShadowEvidenceRecorder, ThemeCapability, ThemeTarget,
+    ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -136,9 +137,27 @@ impl XyChartSeriesPaintPlan {
                 )
             })
             .collect::<Vec<_>>();
+        let mut kind_rules = [false; 2];
         for route in &routes {
-            if let FamilyThemeMechanism::RuleFacet { rule_index, .. } = route.mechanism() {
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                selector,
+                ..
+            } = route.mechanism()
+            {
                 plan.rules.insert(rule_index);
+                match selector {
+                    FamilyThemeSelectorShape::Static { variant }
+                    | FamilyThemeSelectorShape::Ordinal { variant, .. } => match variant {
+                        Some(ThemeVariant::Bar) => {
+                            kind_rules[plot_kind(XyChartPlotType::Bar)] = true
+                        }
+                        Some(ThemeVariant::Line) => {
+                            kind_rules[plot_kind(XyChartPlotType::Line)] = true
+                        }
+                        _ => {}
+                    },
+                }
             }
         }
         plan.effect_binding = theme.family_mechanism_routes().iter().find_map(|route| {
@@ -161,12 +180,25 @@ impl XyChartSeriesPaintPlan {
         );
         let mut effects: BTreeMap<String, Option<Arc<SvgShadowEffect>>> = BTreeMap::new();
         for (index, paint) in plan.paints.iter_mut().enumerate() {
-            let style = theme.style_with_work_meter(
+            let mut style = theme.style_with_work_meter(
                 ThemeTarget::ChartSeries,
                 ThemeVariant::Default,
                 Some(index + 1),
                 work_meter,
             )?;
+            if kind_rules[plot_kind(paint.plot_type)] {
+                let variant = match paint.plot_type {
+                    XyChartPlotType::Bar => ThemeVariant::Bar,
+                    XyChartPlotType::Line => ThemeVariant::Line,
+                };
+                // Default and the concrete kind share author order, not selector specificity.
+                style.merge_from(&theme.style_with_work_meter(
+                    ThemeTarget::ChartSeries,
+                    variant,
+                    Some(index + 1),
+                    work_meter,
+                )?);
+            }
             let mut consumed = BTreeMap::new();
             if !source_colors {
                 for (property, resolved, css) in [

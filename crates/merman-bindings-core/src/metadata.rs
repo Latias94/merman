@@ -1822,6 +1822,15 @@ mod tests {
                     .unwrap()
                     .contains(&serde_json::json!("success"))
             );
+            for variant in ["bar", "line"] {
+                assert!(
+                    catalog["known_variant_ids"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(variant)),
+                    "missing {variant} discovery"
+                );
+            }
             let encoded_limit = catalog["resource_limits"]
                 .as_array()
                 .unwrap()
