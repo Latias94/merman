@@ -12,7 +12,7 @@ use merman_bindings_core::{
     RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey,
     ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
@@ -32,8 +32,6 @@ pub use editor_language::{
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
 use merman_bindings_core::{TextStyle, WrapMode};
-#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
-use serde::Deserialize;
 
 /// Breaking API version for the wasm-bindgen transport.
 ///
@@ -412,27 +410,74 @@ fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), Bind
     let Ok(text) = std::str::from_utf8(options_json) else {
         return Ok((options_json.to_vec(), None));
     };
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
+    let Ok(mut fields) = serde_json::from_str::<WasmOptionsFields<'_>>(text) else {
         return Ok((options_json.to_vec(), None));
     };
-    let Some(object) = value.as_object_mut() else {
-        return Ok((options_json.to_vec(), None));
-    };
-    let Some(timeout_ms) = object.remove("timeout_ms") else {
-        return Ok((options_json.to_vec(), None));
-    };
-    let Some(timeout_ms) = timeout_ms.as_u64() else {
-        return Err(invalid_wasm_timeout());
-    };
-    if timeout_ms > WASM_TIMEOUT_MS_MAX {
-        return Err(invalid_wasm_timeout());
+    let mut timeout = None;
+    for (key, value) in &fields.0 {
+        if key != "timeout_ms" {
+            continue;
+        }
+        let timeout_ms =
+            serde_json::from_str::<u64>(value.get()).map_err(|_| invalid_wasm_timeout())?;
+        if timeout.is_some() || timeout_ms > WASM_TIMEOUT_MS_MAX {
+            return Err(invalid_wasm_timeout());
+        }
+        timeout = Some(Duration::from_millis(timeout_ms));
     }
-    let normalized = serde_json::to_vec(&value).map_err(|error| {
+    if timeout.is_none() {
+        return Ok((options_json.to_vec(), None));
+    }
+    fields.0.retain(|(key, _)| key != "timeout_ms");
+    let normalized = serde_json::to_vec(&fields).map_err(|error| {
         BindingError::internal(format!(
             "failed to normalize WASM transport options: {error}"
         ))
     })?;
-    Ok((normalized, Some(Duration::from_millis(timeout_ms))))
+    Ok((normalized, timeout))
+}
+
+// Preserve member order, duplicate keys, and nested raw values for shared admission.
+// A Value or Map round trip would erase malformed recipes before they can be rejected.
+struct WasmOptionsFields<'a>(Vec<(String, &'a serde_json::value::RawValue)>);
+
+impl<'de> Deserialize<'de> for WasmOptionsFields<'de> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FieldsVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for FieldsVisitor {
+            type Value = WasmOptionsFields<'de>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("an options object")
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let mut fields = Vec::new();
+                while let Some(field) = map.next_entry()? {
+                    fields.push(field);
+                }
+                Ok(WasmOptionsFields(fields))
+            }
+        }
+
+        deserializer.deserialize_map(FieldsVisitor)
+    }
+}
+
+impl Serialize for WasmOptionsFields<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (key, value) in &self.0 {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
 }
 
 fn invalid_wasm_timeout() -> BindingError {
@@ -868,6 +913,43 @@ mod tests {
                 merman_bindings_core::BindingStatus::OptionsJsonError
             );
             assert!(error.message().contains("timeout_ms"));
+        }
+    }
+
+    #[test]
+    fn wasm_timeout_preserves_raw_options_members_for_shared_admission() {
+        let raw_theme = r#"{"schema_version":2,"schema_version":1,"kind":"definition","definition":{"tokens":{}}}"#;
+        let raw_options =
+            format!(r#"{{"theme":{raw_theme},"theme":{raw_theme},"timeout_ms":125}}"#);
+        let (normalized, timeout) = wasm_options(raw_options.as_bytes()).unwrap();
+        assert_eq!(timeout, Some(Duration::from_millis(125)));
+        assert_eq!(
+            String::from_utf8(normalized).unwrap(),
+            format!(r#"{{"theme":{raw_theme},"theme":{raw_theme}}}"#)
+        );
+        assert!(wasm_options(br#"{"timeout_ms":1,"timeout_ms":2}"#).is_err());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_timeout_does_not_hide_duplicate_recipe_fields() {
+        let definition = r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#;
+        for recipe in [
+            format!(r#"{{"schema_version":2,"schema_version":1,"kind":"definition","definition":{definition}}}"#),
+            format!(r#"{{"schema_version":2,"schema_\u0076ersion":1,"kind":"definition","definition":{definition}}}"#),
+            r#"{"schema_version":1,"kind":"definition","definition":{"authoring_schema_version":2,"authoring_schema_version":1,"expansion_version":1,"tokens":{}}}"#.to_owned(),
+        ] {
+            let options = format!(r#"{{"theme":{recipe}}}"#);
+            let timed_options = format!(r#"{{"theme":{recipe},"timeout_ms":60000}}"#);
+            let plain = execute_wasm_operation(
+                "svg", b"flowchart LR\nA --> B", options.as_bytes(), None,
+            ).expect_err("duplicate recipe fields must be rejected");
+            let timed = execute_wasm_operation(
+                "svg", b"flowchart LR\nA --> B", timed_options.as_bytes(), None,
+            ).expect_err("transport timeout must preserve duplicate recipe rejection");
+            assert_eq!(timed.status(), plain.status());
+            assert_eq!(timed.message(), plain.message());
+            assert!(plain.message().contains("duplicate"), "{plain:?}");
         }
     }
 

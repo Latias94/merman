@@ -2382,28 +2382,101 @@ bool _isThemeAuthoringOperation(MermanOperation operation) =>
     operation == MermanOperation.exportThemePresetJson ||
     operation == MermanOperation.materializeThemeJson;
 
-String? _oneShotRequestOptionsJson(String? optionsJson) {
-  if (optionsJson == null || optionsJson.trim().isEmpty) {
-    return null;
-  }
-  final options = _asObject(jsonDecode(optionsJson), 'options_json');
-  options.remove('runtime_policy');
-  for (final wrapperName in const ['analysis', 'merman']) {
-    final wrapper = options[wrapperName];
-    if (wrapper is Map) {
-      final normalized = _asObject(wrapper, 'options_json.$wrapperName');
-      normalized.remove('runtime_policy');
-      options[wrapperName] = normalized;
+// dart:convert validates syntax; this scanner only locates raw object members.
+// Nested values are scanned iteratively and never decoded or reconstructed here.
+Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
+  String object,
+) sync* {
+  final start = object.indexOf('{') + 1;
+  final end = object.lastIndexOf('}');
+  var memberStart = start;
+  var colon = -1;
+  var depth = 0;
+  var inString = false;
+  var escaped = false;
+  for (var index = start; index <= end; index++) {
+    final char = object.codeUnitAt(index);
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char == 92) {
+        escaped = true;
+      } else if (char == 34) {
+        inString = false;
+      }
+      continue;
+    }
+    if (char == 34) {
+      inString = true;
+    } else if (depth == 0 && (char == 44 || index == end)) {
+      if (colon >= 0) {
+        yield (
+          key: jsonDecode(object.substring(memberStart, colon)) as String,
+          prefix: object.substring(memberStart, colon + 1),
+          value: object.substring(colon + 1, index),
+        );
+      }
+      memberStart = index + 1;
+      colon = -1;
+    } else if (char == 123 || char == 91) {
+      depth++;
+    } else if (char == 125 || char == 93) {
+      depth--;
+    } else if (char == 58 && depth == 0 && colon < 0) {
+      colon = index;
     }
   }
-  return jsonEncode(options);
+}
+
+({String? request, String? policy}) _oneShotOptionsJson(String? optionsJson) {
+  if (optionsJson == null || optionsJson.trim().isEmpty) {
+    return (request: null, policy: null);
+  }
+  _asObject(jsonDecode(optionsJson), 'options_json');
+  String? policy;
+
+  String project(String object, {required bool wrappers}) {
+    final members = <String>[];
+    var changed = false;
+    for (final member in _rawOptionsMembers(object)) {
+      if (member.key == 'runtime_policy') {
+        if (policy != null) {
+          throw const FormatException(
+            'duplicate runtime_policy in options_json',
+          );
+        }
+        policy = member.value;
+        changed = true;
+        continue;
+      }
+      var value = member.value;
+      if (wrappers &&
+          (member.key == 'analysis' || member.key == 'merman') &&
+          value.trimLeft().startsWith('{')) {
+        // Only the two existing wrapper objects are projected, with no deeper recursion.
+        value = project(value, wrappers: false);
+        changed |= value != member.value;
+      }
+      members.add('${member.prefix}$value');
+    }
+    return changed ? '{${members.join(',')}}' : object;
+  }
+
+  var request = project(optionsJson, wrappers: true);
+  if (policy == null) return (request: optionsJson, policy: null);
+  // Keep the original byte charge: removing constructor fields must not let the
+  // authoring request bypass the shared max_options_json_bytes preflight.
+  final removedBytes =
+      utf8.encode(optionsJson).length - utf8.encode(request).length;
+  if (removedBytes > 0) request += ' ' * removedBytes;
+  return (request: request, policy: '{"runtime_policy":$policy}');
 }
 
 /// Discovery and one-shot facade for Flutter and standalone Dart hosts.
 ///
 /// This object owns no native engine token. Every execution uses a fresh
-/// deterministic engine and closes it before returning. Use [MermanEngine]
-/// when options or constructor services should be reused across calls.
+/// engine and closes it before returning. Omitted runtime policy is deterministic.
+/// Use [MermanEngine] when options or constructor services should be reused across calls.
 class Merman {
   Merman._(this._native, this.runtimeCatalog);
 
@@ -2451,11 +2524,18 @@ class Merman {
     String? optionsJson,
     MermanOperationControl? control,
   }) {
+    // Preserve the original JSON until native admission has checked duplicate fields.
+    // Authoring requests need their own resource scope rather than engine limits.
+    final authoring = _isThemeAuthoringOperation(operation);
+    final rawOptionsJson = optionsJson == null || optionsJson.trim().isEmpty
+        ? null
+        : optionsJson;
+    final authoringOptions = authoring
+        ? _oneShotOptionsJson(rawOptionsJson)
+        : null;
     final engine = _native.createEngine(
       runtimeCatalog: runtimeCatalog,
-      optionsJson: _isThemeAuthoringOperation(operation)
-          ? null
-          : _oneShotRequestOptionsJson(optionsJson),
+      optionsJson: authoring ? authoringOptions!.policy : rawOptionsJson,
       services: const MermanEngineServices(),
     );
     try {
@@ -2463,7 +2543,9 @@ class Merman {
         operation,
         source,
         uri: uri,
-        optionsJson: _oneShotRequestOptionsJson(optionsJson),
+        optionsJson: authoring
+            ? authoringOptions!.request
+            : _oneShotOptionsJson(rawOptionsJson).request,
         control: control,
       );
     } finally {
