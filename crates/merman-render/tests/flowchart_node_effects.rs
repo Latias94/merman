@@ -268,14 +268,16 @@ fn public_cyberpunk_recipe_exchange_retains_actual_node_glow() {
             "{label}"
         );
     }
-    assert_eq!(applications(direct.svg()), 2);
+    assert_eq!(applications(direct.svg()), 3);
     let xml = roxmltree::Document::parse(direct.svg()).unwrap();
     let deviations = xml
         .descendants()
         .filter(|node| node.has_tag_name("feGaussianBlur"))
         .map(|node| node.attribute("stdDeviation").unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(deviations, ["8", "16", "8", "16"]);
+    let mut deviations = deviations;
+    deviations.sort_unstable();
+    assert_eq!(deviations, ["16", "16", "6", "8", "8"]);
 }
 
 #[test]

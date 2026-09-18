@@ -13,6 +13,7 @@ use crate::DiagramFamilyId;
 use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
 
 const SHAPE_GLOW: &str = "cyberpunk-shape-glow";
+const EDGE_GLOW: &str = "cyberpunk-edge-glow";
 
 pub(super) fn build_recipe(
     palette: PresetPalette,
@@ -41,14 +42,21 @@ pub(super) fn build_recipe(
         screen_layer(grid_line(90.0)),
         screen_layer(grid_line(180.0)),
     ]);
-    spec.effects = Some(vec![ThemeEffectEntryWireV1::Graph {
-        id: SHAPE_GLOW.to_owned(),
-        color_space: Some("srgb".to_owned()),
-        primitives: vec![
-            shadow("source-graphic", 8.0, "rgba(0, 242, 255, 0.5)"),
-            shadow("previous", 16.0, "rgba(0, 242, 255, 0.3)"),
-        ],
-    }]);
+    spec.effects = Some(vec![
+        ThemeEffectEntryWireV1::Graph {
+            id: SHAPE_GLOW.to_owned(),
+            color_space: Some("srgb".to_owned()),
+            primitives: vec![
+                shadow("source-graphic", 8.0, "rgba(0, 242, 255, 0.5)"),
+                shadow("previous", 16.0, "rgba(0, 242, 255, 0.3)"),
+            ],
+        },
+        ThemeEffectEntryWireV1::Graph {
+            id: EDGE_GLOW.to_owned(),
+            color_space: Some("srgb".to_owned()),
+            primitives: vec![shadow("source-graphic", 6.0, "rgba(0, 242, 255, 0.6)")],
+        },
+    ]);
     // Use scoped rules, not global Node/Actor bindings. A different family receives
     // the shared palette without inheriting another family's effect requirement.
     // Each writer must account for its actual terminals; selecting a preset does not
@@ -71,6 +79,7 @@ pub(super) fn build_recipe(
             DiagramFamilyId::FLOWCHART,
             ThemeTarget::Edge,
             ThemeStylePatchWireV1 {
+                effect: SpecifiedWireV1::Value(EDGE_GLOW.to_owned()),
                 stroke: Some(ThemeStrokePatchWireV1 {
                     width: SpecifiedWireV1::Value(2.0),
                     ..ThemeStrokePatchWireV1::default()

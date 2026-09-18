@@ -644,9 +644,14 @@ mod tests {
                 primitives,
                 color_space,
             },
+            ThemeEffectEntryWireV1::Graph {
+                id: edge_id,
+                primitives: edge_primitives,
+                color_space: edge_color_space,
+            },
         ] = effects.as_slice()
         else {
-            panic!("one family-scoped shape glow graph is expected")
+            panic!("independent family-scoped shape and edge glow graphs are expected")
         };
         let [
             ThemeEffectPrimitiveWireV1::DropShadow {
@@ -667,6 +672,30 @@ mod tests {
         assert_eq!(first.as_deref(), Some("source-graphic"));
         assert_eq!(second.as_deref(), Some("previous"));
         assert_eq!((*first_blur, *second_blur), (8.0, 16.0));
+        assert_ne!(
+            edge_id, id,
+            "edge glow must not reuse the two-stage shape graph"
+        );
+        assert_eq!(edge_color_space.as_deref(), Some("srgb"));
+        let [
+            ThemeEffectPrimitiveWireV1::DropShadow {
+                input,
+                offset_x,
+                offset_y,
+                blur_radius,
+                spread,
+                color,
+            },
+        ] = edge_primitives.as_slice()
+        else {
+            panic!("the reference edge glow has one shadow")
+        };
+        assert_eq!(input.as_deref(), Some("source-graphic"));
+        assert_eq!(
+            (*offset_x, *offset_y, *blur_radius, *spread),
+            (0.0, 0.0, 6.0, 0.0)
+        );
+        assert_eq!(color, "rgba(0, 242, 255, 0.6)");
         let scoped_targets: Vec<_> = complete_spec
             .styles
             .as_ref()
@@ -688,17 +717,74 @@ mod tests {
             scoped_targets,
             [(Some("flowchart"), "node"), (Some("sequence"), "actor")]
         );
+        let edge_scopes: Vec<_> = complete_spec
+            .styles
+            .as_ref()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match entry {
+                ThemeRuleSetWireV1::Rule {
+                    family,
+                    target,
+                    style,
+                    ..
+                } if style.effect == SpecifiedWireV1::Value(edge_id.clone()) => {
+                    Some((family.as_deref(), target.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(edge_scopes, [(Some("flowchart"), "edge")]);
         let encoded = serde_json::to_vec(&recipe).unwrap();
-        let imported = compiler
+        let imported = DiagramThemeCompiler::new()
             .compile_recipe(serde_json::from_slice(&encoded).unwrap())
             .unwrap();
-        assert_eq!(
-            compiler
-                .compile_preset(ThemePreset::Cyberpunk)
-                .unwrap()
-                .recipe_fingerprint(),
-            imported.recipe_fingerprint()
-        );
+        let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+        assert_eq!(selected.recipe_fingerprint(), imported.recipe_fingerprint());
+        for theme in [&selected, &imported] {
+            let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
+            let edge = flowchart.style(ThemeTarget::Edge, ThemeVariant::Default, None);
+            assert_eq!(edge.effect_resolution().value(), Some(edge_id));
+            assert_eq!(edge.stroke_width(), Some(2.0));
+            let graph = theme
+                .spec()
+                .effects()
+                .graphs()
+                .iter()
+                .find(|graph| graph.id() == edge_id)
+                .expect("resolved edge binding must retain its graph");
+            assert_eq!(
+                graph.color_space(),
+                crate::diagram_theme::EffectColorSpace::Srgb
+            );
+            assert_eq!(
+                graph.primitives(),
+                [crate::diagram_theme::EffectPrimitive::DropShadow {
+                    input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    blur_radius: 6.0,
+                    spread: 0.0,
+                    color: crate::diagram_theme::ThemeColorValue::parse("rgba(0, 242, 255, 0.6)")
+                        .unwrap(),
+                }]
+            );
+            for family in [
+                DiagramFamilyId::CLASS,
+                DiagramFamilyId::SEQUENCE,
+                DiagramFamilyId::ER,
+            ] {
+                let resolved = theme.resolve(family);
+                assert!(
+                    resolved
+                        .style(ThemeTarget::Edge, ThemeVariant::Default, None)
+                        .effect_resolution()
+                        .value()
+                        .is_none(),
+                    "Flowchart edge glow must not leak into {family}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -748,7 +834,7 @@ mod tests {
             Some("cyberpunk-shape-glow")
         );
         assert_eq!(theme.spec().canvas().layers().len(), 3);
-        assert_eq!(theme.spec().effects().graphs().len(), 1);
+        assert_eq!(theme.spec().effects().graphs().len(), 2);
     }
 
     #[test]
