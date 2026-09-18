@@ -401,7 +401,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "sequence",
         target: "actor",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "stroke-paint"],
+        facets: &["fill", "stroke-paint", "stroke-width", "radius"],
     },
     RuleClaim {
         family: "sequence",

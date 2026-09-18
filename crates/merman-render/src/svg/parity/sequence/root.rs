@@ -7,6 +7,7 @@ pub(super) fn write_sequence_svg_root_open(
     model: &SequenceSvgModel,
     diagram_id: SvgDiagramId<'_>,
     resources: crate::resources::RenderResourcePolicy,
+    actor_stroke_outset: f64,
 ) -> Result<root_svg::RootDocument> {
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -19,7 +20,7 @@ pub(super) fn write_sequence_svg_root_open(
         bounds.min_y,
         bounds.max_x,
         bounds.max_y,
-        0.0,
+        actor_stroke_outset,
     );
 
     let aria_labelledby = model

@@ -113,6 +113,11 @@ pub(super) fn build_recipe(
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Actor,
             ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(3.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                radius: SpecifiedWireV1::Value(10.0),
                 effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
                 ..ThemeStylePatchWireV1::default()
             },

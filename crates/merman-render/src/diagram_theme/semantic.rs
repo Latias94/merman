@@ -461,7 +461,9 @@ pub struct ThemeGeometryPatch {
     /// Flowchart/Swimlane Node rules adjust existing rectangle corner channels; they do not
     /// convert a Diamond into a rounded path. A numeric request is not applicable to an
     /// explicitly preserved Diamond polygon. Unverified writers and unsupported operations
-    /// retain residuals. Quadrant ChartSeries rules instead control point radius.
+    /// retain residuals. Sequence Actor rules round ordinary participant rectangles; custom
+    /// classes and composite actor glyphs retain residuals. Quadrant ChartSeries rules instead
+    /// control point radius.
     pub radius: Specified<f32>,
 }
 

@@ -301,6 +301,23 @@ pub(super) fn write_database_bottom_actor_shape(
     label_ctx.write_actor(out, n.x, y_text, actor)
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SequenceActorRectStyle {
+    pub(super) stroke_width: Option<f32>,
+    pub(super) radius: Option<f32>,
+}
+
+pub(super) fn actor_rect_geometry_supported(actor: &SequenceActor) -> bool {
+    !is_actor_man_variant(&actor.actor_type)
+        && !matches!(
+            actor.actor_type.as_str(),
+            "collections" | "queue" | "database"
+        )
+        && actor_custom_class(actor).is_none()
+}
+
+// Keep the geometry and text receipts with their respective terminal owners.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_rect_actor_shape(
     out: &mut impl SvgOutput,
     n: &LayoutNode,
@@ -308,6 +325,8 @@ pub(super) fn write_rect_actor_shape(
     actor: &SequenceActor,
     placement_class: &str,
     label_ctx: &ActorLabelContext<'_>,
+    rect_style: SequenceActorRectStyle,
+    receipt: &crate::sequence::SequenceActorThemeReceipt,
 ) -> Result<()> {
     let (x, y) = node_left_top(n);
     let custom_class = actor_custom_class(actor);
@@ -319,9 +338,15 @@ pub(super) fn write_rect_actor_shape(
     let class = custom_class
         .map(|c| format!("{c} {placement_class}"))
         .unwrap_or_else(|| format!("actor {placement_class}"));
+    let supported = actor_rect_geometry_supported(actor);
+    let radius = if supported {
+        rect_style.radius.unwrap_or(3.0)
+    } else {
+        3.0
+    };
     let _ = write!(
         out,
-        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="{class}"/>"##,
+        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="{radius}" ry="{radius}" class="{class}""##,
         x = fmt(x),
         y = fmt(y),
         w = fmt(n.width),
@@ -329,7 +354,17 @@ pub(super) fn write_rect_actor_shape(
         name = escape_xml(actor_id),
         fill = escape_xml_display(fill),
         class = escape_attr(&class),
+        radius = fmt(f64::from(radius)),
     );
+    if supported && let Some(width) = rect_style.stroke_width {
+        // An inline declaration must outrank the generated `.actor` stylesheet.
+        let _ = write!(out, r#" style="stroke-width:{}px;""#, fmt(f64::from(width)));
+    }
+    out.push_str("/>");
+    out.checkpoint()?;
+    if supported {
+        receipt.record_geometry_rect();
+    }
     label_ctx.write_actor(out, n.x, n.y, actor)
 }
 

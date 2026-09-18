@@ -6218,3 +6218,303 @@ fn sequence_role_fill_coverage_reconciles_generic_text_without_hiding_other_face
         );
     }
 }
+
+fn sequence_actor_geometry_theme(clear: bool) -> DiagramTheme {
+    let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+    patch.geometry.radius = Specified::Value(10.0);
+    let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch));
+    if clear {
+        let mut patch = ThemeStylePatch::default();
+        patch.geometry.radius = Specified::Clear;
+        patch.stroke.width = Specified::Clear;
+        rules = rules.with_rule(
+            ThemeRule::new(ThemeTarget::Actor, patch).with_variant(ThemeVariant::Default),
+        );
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+}
+
+#[test]
+fn sequence_actor_geometry_reaches_both_rectangles_without_styling_text_or_lifelines() {
+    for mirror in [true, false] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "sequence":{"mirrorActors":mirror}
+        })));
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Hello",
+            &sequence_actor_geometry_theme(false),
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("rectangular actor geometry must be consumed");
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
+            })
+            .collect();
+        assert_eq!(actors.len(), if mirror { 4 } else { 2 });
+        for actor in actors {
+            assert_eq!(actor.attribute("rx"), Some("10"));
+            assert_eq!(actor.attribute("ry"), Some("10"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        }
+        for node in doc
+            .descendants()
+            .filter(|n| n.has_tag_name("text") || n.has_tag_name("line"))
+        {
+            assert!(
+                !node
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("stroke-width:3px")
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_clear_and_source_width_preserve_other_facets() {
+    for clear in [false, true] {
+        for source_width in [None, Some("7px")] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables":source_width.map(|w| serde_json::json!({"strokeWidth":w,"actorBorder":"#ff0000"})).unwrap_or(serde_json::json!({"actorBorder":"#ff0000"}))
+            })));
+            let rendered = try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello",
+                &sequence_actor_geometry_theme(clear),
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("source width and Clear must reconcile per facet");
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let actor = doc
+                .descendants()
+                .find(|n| n.has_tag_name("rect") && n.attribute("name") == Some("A"))
+                .unwrap();
+            assert_eq!(actor.attribute("rx"), Some(if clear { "3" } else { "10" }));
+            assert_eq!(
+                actor.attribute("style"),
+                if clear || source_width.is_some() {
+                    None
+                } else {
+                    Some("stroke-width:3px;")
+                }
+            );
+            if source_width.is_some() {
+                assert!(rendered.svg().contains(".actor{stroke:#ff0000;"));
+                assert!(rendered.svg().contains("stroke-width:7px;"));
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes() {
+    for declaration in [
+        "actor A",
+        "participant A@{type: database}",
+        "participant A@{type: collections}",
+        "participant A@{type: queue}",
+        "participant A\nproperties A: {\"class\":\"custom\"}",
+    ] {
+        let source = format!("sequenceDiagram\n{declaration}\nA->>B: Hello");
+        let theme = sequence_actor_geometry_theme(false);
+        let rendered = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0, "{declaration}");
+        assert_eq!(evidence.theme_residual_count(), 1, "{declaration}");
+        assert!(
+            try_render_sequence_theme_request(
+                &source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err(),
+            "{declaration}"
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_keeps_unsupported_siblings_and_ordinals_visible() {
+    let source = "sequenceDiagram\nA->>B: Hello";
+    for ordinal in [
+        None,
+        Some(OrdinalSelector::exact(1).unwrap()),
+        Some(OrdinalSelector::exact(9).unwrap()),
+    ] {
+        let mut patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#00f2ff").unwrap())
+            .with_stroke_width(3.0)
+            .unwrap();
+        patch.geometry.radius = Specified::Value(10.0);
+        // Padding has no Sequence Actor consumer; a supported sibling must not hide it.
+        patch.spacing.padding = Specified::Value(InsetsPx::all(2.0));
+        let mut rule = ThemeRule::new(ThemeTarget::Actor, patch);
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(ordinal != Some(OrdinalSelector::exact(9).unwrap()))
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(ordinal == Some(OrdinalSelector::exact(9).unwrap()))
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_geometry_source_width_suppresses_only_that_facet_for_special_glyphs() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Actor,
+                ThemeStylePatch::default().with_stroke_width(3.0).unwrap(),
+            ))),
+        )
+        .unwrap();
+    let source = "---\nconfig:\n  themeVariables:\n    strokeWidth: 7\n---\nsequenceDiagram\nactor A\nA->>B: Hello";
+    let rendered = try_render_sequence_theme_request(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow_residual() {
+    use merman_render::diagram_theme::ThemePreset;
+    let compiler = DiagramThemeCompiler::new();
+    let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+    let saved = serde_json::to_vec(&recipe).unwrap();
+    let mut outputs = Vec::new();
+    for theme in [
+        compiler.compile_preset(ThemePreset::Cyberpunk).unwrap(),
+        DiagramThemeCompiler::new()
+            .compile_recipe(serde_json::from_slice(&saved).unwrap())
+            .unwrap(),
+    ] {
+        let rendered = try_render_sequence_theme_request(
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
+            })
+            .collect();
+        assert_eq!(actors.len(), 4);
+        for actor in actors {
+            assert_eq!(actor.attribute("rx"), Some("10"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        }
+        outputs.push(rendered.svg().to_owned());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(
+            evidence.theme_residual_count() > 0,
+            "actor glow remains unimplemented"
+        );
+    }
+    assert_eq!(outputs[0], outputs[1]);
+}
+
+#[test]
+fn sequence_actor_geometry_wide_strokes_expand_viewport_without_moving_actors() {
+    let mut outputs = Vec::new();
+    for width in [0.0, 200.0] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Actor,
+                        ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap();
+        outputs.push(
+            try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Hello",
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap()
+            .svg()
+            .to_owned(),
+        );
+    }
+    let documents: Vec<_> = outputs
+        .iter()
+        .map(|s| roxmltree::Document::parse(s).unwrap())
+        .collect();
+    let actors = |doc: &roxmltree::Document<'_>| {
+        doc.descendants()
+            .filter(|n| n.has_tag_name("rect") && n.attribute("name").is_some())
+            .map(|n| {
+                ["x", "y", "width", "height"]
+                    .map(|key| n.attribute(key).unwrap().parse::<f64>().unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(actors(&documents[0]), actors(&documents[1]));
+    let bounds: Vec<f64> = documents[1]
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    for [x, y, width, height] in actors(&documents[1]) {
+        assert!(x - 100.0 >= bounds[0] && y - 100.0 >= bounds[1]);
+        assert!(x + width + 100.0 <= bounds[0] + bounds[2]);
+        assert!(y + height + 100.0 <= bounds[1] + bounds[3]);
+    }
+}

@@ -30,6 +30,36 @@ mod tests {
     };
 
     #[test]
+    fn actor_geometry_needs_every_expected_terminal_before_application() {
+        for emitted in [0, 1, 2] {
+            let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+            patch.geometry.radius = Specified::Value(10.0);
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch)),
+                ))
+                .unwrap();
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let mut receipt = SequenceActorThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Actor,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_geometry_candidate();
+            receipt.record_geometry_candidate();
+            for _ in 0..emitted {
+                receipt.record_geometry_rect();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_actor_emission(1, false, false, false, false, false, false, receipt);
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(emitted == 2));
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+        }
+    }
+
+    #[test]
     fn actor_rule_is_not_applicable_when_terminal_model_has_no_actors() {
         let theme = DiagramThemeCompiler::new()
             .compile(

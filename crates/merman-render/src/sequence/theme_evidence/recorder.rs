@@ -485,6 +485,11 @@ impl SequenceThemeEvidenceRecorder {
                     {
                         continue;
                     }
+                    if state.actor_style_receipt.stroke_width_overridden
+                        && facet == FamilyThemeRuleFacet::StrokeWidth
+                    {
+                        continue;
+                    }
                     match route.disposition() {
                         FamilyThemeDisposition::TypedAdapter
                             if matches!(
@@ -550,6 +555,28 @@ impl SequenceThemeEvidenceRecorder {
                                         .residual
                                         .get_or_insert(FamilyThemeResidualReason::UnsupportedPaint);
                                 }
+                            }
+                        }
+                        FamilyThemeDisposition::TypedAdapter
+                            if matches!(
+                                facet,
+                                FamilyThemeRuleFacet::StrokeWidth | FamilyThemeRuleFacet::Radius
+                            ) =>
+                        {
+                            if state.actor_style_receipt.geometry_unhandled.get() {
+                                observation
+                                    .residual
+                                    .get_or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
+                            } else if !state.actor_style_receipt.geometry_complete() {
+                                observation.incomplete = true;
+                            } else {
+                                observation.capabilities.insert(
+                                    if facet == FamilyThemeRuleFacet::StrokeWidth {
+                                        ThemeCapability::BorderStyling
+                                    } else {
+                                        ThemeCapability::RoundedGeometry
+                                    },
+                                );
                             }
                         }
                         FamilyThemeDisposition::TypedAdapter => observation.incomplete = true,

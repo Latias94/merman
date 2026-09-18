@@ -181,6 +181,12 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         model,
         diagram_id,
         options.resource_policy(),
+        actor_theme
+            .rect_style
+            .stroke_width
+            .map(f64::from)
+            .unwrap_or(0.0)
+            / 2.0,
     )?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
@@ -229,6 +235,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     out.checkpoint()?;
 
     let actor_ctx = SequenceActorRenderContext {
+        rect_style: actor_theme.rect_style,
+        geometry_receipt: &actor_theme.receipt,
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
@@ -530,6 +538,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 }
 
 struct SequenceActorThemeResolution {
+    rect_style: super::actor_shapes::SequenceActorRectStyle,
     typed_fill: Option<String>,
     typed_stroke: Option<String>,
     has_ordinal_routes: bool,
@@ -603,6 +612,7 @@ fn resolve_sequence_actor_theme(
 
     let Some(theme) = options.resolved_theme() else {
         return Ok(SequenceActorThemeResolution {
+            rect_style: Default::default(),
             typed_fill: None,
             typed_stroke: None,
             has_ordinal_routes: false,
@@ -682,7 +692,20 @@ fn resolve_sequence_actor_theme(
     ) && has_typed_actor_stroke)
         .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
         .flatten();
+    let width_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.strokeWidth",
+    );
+    receipt.record_stroke_width_override(width_overridden);
+    let rect_style = super::actor_shapes::SequenceActorRectStyle {
+        stroke_width: style
+            .as_ref()
+            .and_then(|s| s.stroke_width())
+            .filter(|_| !width_overridden),
+        radius: style.as_ref().and_then(|s| s.radius()),
+    };
     Ok(SequenceActorThemeResolution {
+        rect_style,
         typed_fill,
         typed_stroke,
         has_ordinal_routes,

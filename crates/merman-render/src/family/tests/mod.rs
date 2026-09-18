@@ -9302,6 +9302,8 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
     let mut winning_style =
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2563eb").unwrap());
     winning_style.geometry.radius = Specified::Value(6.0);
+    // Radius is consumed; unsupported padding must still prevent whole-rule application.
+    winning_style.spacing.padding = Specified::Value(crate::diagram_theme::InsetsPx::all(6.0));
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -9341,6 +9343,7 @@ fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
     .expect("render competing Sequence actor rules");
 
     assert!(rendered.svg().contains("fill:#2563eb"));
+    assert!(rendered.svg().contains(r#"rx="6" ry="6""#));
     assert!(
         rendered
             .style_report()

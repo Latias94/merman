@@ -39,11 +39,47 @@ pub(super) struct SequenceThemeEvidenceState {
 pub(crate) struct SequenceActorThemeReceipt {
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     pub(super) ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    geometry_requested: bool,
+    geometry_candidates: Cell<usize>,
+    geometry_rects: Cell<usize>,
+    pub(super) geometry_unhandled: Cell<bool>,
+    pub(super) stroke_width_overridden: bool,
 }
 
 impl SequenceActorThemeReceipt {
     pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
+        self.geometry_requested = style.radius_resolution().winner().is_some()
+            || style.stroke_width_resolution().winner().is_some();
+    }
+
+    pub(crate) fn record_stroke_width_override(&mut self, overridden: bool) {
+        self.stroke_width_overridden = overridden;
+    }
+
+    pub(crate) fn record_geometry_candidate(&self) {
+        if self.geometry_requested {
+            self.geometry_candidates
+                .set(self.geometry_candidates.get().saturating_add(1));
+        }
+    }
+
+    pub(crate) fn record_unhandled_geometry(&self) {
+        if self.geometry_requested {
+            self.geometry_unhandled.set(true);
+        }
+    }
+
+    pub(crate) fn record_geometry_rect(&self) {
+        if self.geometry_requested {
+            self.geometry_rects
+                .set(self.geometry_rects.get().saturating_add(1));
+        }
+    }
+
+    pub(super) fn geometry_complete(&self) -> bool {
+        self.geometry_candidates.get() != 0
+            && self.geometry_candidates.get() == self.geometry_rects.get()
     }
 
     pub(crate) fn record_ordinal_style(&mut self, style: &ResolvedThemeStyle) {
@@ -53,6 +89,17 @@ impl SequenceActorThemeReceipt {
     pub(super) fn merge(&mut self, other: Self) {
         self.static_winners.extend(other.static_winners);
         self.ordinal_winners.extend(other.ordinal_winners);
+        self.geometry_requested |= other.geometry_requested;
+        self.geometry_candidates.set(
+            self.geometry_candidates
+                .get()
+                .max(other.geometry_candidates.get()),
+        );
+        self.geometry_rects
+            .set(self.geometry_rects.get().max(other.geometry_rects.get()));
+        self.geometry_unhandled
+            .set(self.geometry_unhandled.get() || other.geometry_unhandled.get());
+        self.stroke_width_overridden |= other.stroke_width_overridden;
     }
 
     pub(super) fn route_won(

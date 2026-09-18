@@ -1810,6 +1810,21 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
+        && target == ThemeTarget::Actor
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::StrokeWidth | FamilyThemeRuleFacet::Radius
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
         && target == ThemeTarget::SequenceNumberLabel
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(

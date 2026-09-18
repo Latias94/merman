@@ -11,6 +11,8 @@ use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {
+    pub(super) rect_style: super::actor_shapes::SequenceActorRectStyle,
+    pub(super) geometry_receipt: &'a crate::sequence::SequenceActorThemeReceipt,
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
@@ -46,10 +48,14 @@ pub(super) fn render_sequence_bottom_actors(
         ctx.model.actor_order.iter().enumerate().rev().enumerate()
     {
         ctx.checkpoints.checkpoint_loop(emission_index)?;
+        ctx.geometry_receipt.record_geometry_candidate();
         let label_ctx = label_ctx.for_actor(actor_index);
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
+        if !super::actor_shapes::actor_rect_geometry_supported(actor) {
+            ctx.geometry_receipt.record_unhandled_geometry();
+        }
         let actor_type = actor.actor_type.as_str();
         let node_id = format!("actor-bottom-{actor_id}");
         let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
@@ -78,7 +84,16 @@ pub(super) fn render_sequence_bottom_actors(
             }
             _ => {
                 out.push_str("<g>");
-                write_rect_actor_shape(out, n, actor_id, actor, "actor-bottom", &label_ctx)?;
+                write_rect_actor_shape(
+                    out,
+                    n,
+                    actor_id,
+                    actor,
+                    "actor-bottom",
+                    &label_ctx,
+                    ctx.rect_style,
+                    ctx.geometry_receipt,
+                )?;
                 out.push_str("</g>");
             }
         }
@@ -106,11 +121,15 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         ctx.model.actor_order.iter().enumerate().rev().enumerate()
     {
         ctx.checkpoints.checkpoint_loop(emission_index)?;
+        ctx.geometry_receipt.record_geometry_candidate();
         let label_ctx = label_ctx.for_actor(idx);
         theme_receipt.record_line_candidate();
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
+        if !super::actor_shapes::actor_rect_geometry_supported(actor) {
+            ctx.geometry_receipt.record_unhandled_geometry();
+        }
         let actor_type = actor.actor_type.as_str();
         let node_top_id = format!("actor-top-{actor_id}");
         let node_bottom_id = format!("actor-bottom-{actor_id}");
@@ -200,7 +219,16 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                     LIFELINE_STROKE_WIDTH_PX,
                     ctx.lifeline_effective_stroke_width,
                 );
-                write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx)?;
+                write_rect_actor_shape(
+                    out,
+                    top,
+                    actor_id,
+                    actor,
+                    "actor-top",
+                    &label_ctx,
+                    ctx.rect_style,
+                    ctx.geometry_receipt,
+                )?;
                 out.push_str("</g></g>");
             }
         }
