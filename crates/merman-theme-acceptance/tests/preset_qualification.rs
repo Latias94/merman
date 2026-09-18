@@ -71,10 +71,20 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                     "only retained recipes request base/dark-mode compatibility"
                 );
                 assert_eq!(observation.bridge_residual_count(), 0);
+                // The retained Mermaid-compatibility recipes still carry the shared Text paint
+                // into Sequence, whose writer does not consume that generic target. The native
+                // candidate recipes have family-local role paints and therefore do not retain it.
+                let expected_theme_residual = if pending_glow {
+                    1
+                } else if !native_candidate && family == DiagramFamilyId::SEQUENCE {
+                    1
+                } else {
+                    0
+                };
                 assert_eq!(
                     observation.theme_residual_count(),
-                    usize::from(pending_glow),
-                    "unsupported scoped shape glow remains a residual; other role paints are consumed",
+                    expected_theme_residual,
+                    "theme residual classification must match the preset profile and family",
                 );
                 assert_eq!(observation.source_residual_count(), 0);
             }
