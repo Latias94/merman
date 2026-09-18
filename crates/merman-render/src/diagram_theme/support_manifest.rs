@@ -248,6 +248,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         target: "node",
         kind: SupportClaimKind::TypedPartial,
         facets: &[
+            "effect",
             "fill",
             "radius",
             "stroke-dasharray",
@@ -729,6 +730,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         target: "node",
         kind: SupportClaimKind::TypedPartial,
         facets: &[
+            "effect",
             "fill",
             "radius",
             "stroke-dasharray",

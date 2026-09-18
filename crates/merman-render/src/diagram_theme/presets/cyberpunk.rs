@@ -50,8 +50,8 @@ pub(super) fn build_recipe(
     }]);
     // Use scoped rules, not global Node/Actor bindings. A different family receives
     // the shared palette without inheriting another family's effect requirement.
-    // The data intentionally remains unsupported until each writer consumes it;
-    // selecting a preset does not grant visual qualification.
+    // Each writer must account for its actual terminals; selecting a preset does not
+    // grant visual qualification or imply that every shape consumes the graph.
     spec.styles.get_or_insert_default().extend([
         shape_glow_rule(DiagramFamilyId::FLOWCHART, ThemeTarget::Node),
         shape_glow_rule(DiagramFamilyId::SEQUENCE, ThemeTarget::Actor),

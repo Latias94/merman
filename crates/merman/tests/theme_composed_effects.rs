@@ -8,7 +8,12 @@ use merman::svg::{
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, TargetAdmissionReason};
 use std::io::Cursor;
 
-fn render(input: EffectInput, color_space: EffectColorSpace) -> merman::RenderedDocument {
+fn render(
+    source: &str,
+    target: ThemeTarget,
+    input: EffectInput,
+    color_space: EffectColorSpace,
+) -> merman::RenderedDocument {
     let graph = EffectGraph::new(
         "composed",
         [
@@ -42,23 +47,19 @@ fn render(input: EffectInput, color_space: EffectColorSpace) -> merman::Rendered
                     DiagramEffectSet::default()
                         .with_graph(graph)
                         .unwrap()
-                        .with_binding(EffectBinding::new(ThemeTarget::State, "composed").unwrap())
+                        .with_binding(EffectBinding::new(target, "composed").unwrap())
                         .unwrap(),
                 ),
         )
         .unwrap();
     let RenderOutput::Document(Some(document)) = Renderer::new()
         .render(
-            RenderRequest::document(
-                "stateDiagram-v2\nReady --> Done",
-                OperationControl::new(),
-                Default::default(),
-            )
-            .with_theme(theme),
+            RenderRequest::document(source, OperationControl::new(), Default::default())
+                .with_theme(theme),
         )
         .unwrap()
     else {
-        panic!("State document required")
+        panic!("rendered document required")
     };
     document
 }
@@ -84,9 +85,18 @@ fn color_counts(bytes: &[u8]) -> (usize, usize) {
 
 #[test]
 fn composed_state_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows("stateDiagram-v2\nReady --> Done", ThemeTarget::State);
+}
+
+#[test]
+fn composed_flowchart_node_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows("flowchart LR\nReady --> Done", ThemeTarget::Node);
+}
+
+fn assert_composed_shadows(source: &str, target: ThemeTarget) {
     for color_space in [EffectColorSpace::LinearRgb, EffectColorSpace::Srgb] {
-        let previous = render(EffectInput::Previous, color_space);
-        let reset = render(EffectInput::SourceGraphic, color_space);
+        let previous = render(source, target, EffectInput::Previous, color_space);
+        let reset = render(source, target, EffectInput::SourceGraphic, color_space);
         let png = previous
             .export_png(
                 &merman::svg::export::RasterOptions::default(),

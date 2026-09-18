@@ -876,6 +876,20 @@ impl<'a> FlowchartHierarchyPlan<'a> {
         &self.ordered_edges
     }
 
+    pub(in crate::svg::parity::flowchart) fn rendered_node_ids(
+        &self,
+    ) -> impl Iterator<Item = &'a str> + '_ {
+        self.top_root
+            .dom_order
+            .iter()
+            .chain(
+                self.nested_roots
+                    .values()
+                    .flat_map(|root| root.dom_order.iter()),
+            )
+            .copied()
+    }
+
     pub(in crate::svg::parity::flowchart) fn rendered_cluster_ids(
         &self,
     ) -> impl Iterator<Item = &'a str> + '_ {

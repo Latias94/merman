@@ -5,7 +5,7 @@ use crate::svg::parity::timing::RenderTiming;
 
 pub(in crate::svg::parity::flowchart) mod emission;
 pub(in crate::svg::parity::flowchart) mod geom;
-mod helpers;
+pub(in crate::svg::parity::flowchart) mod helpers;
 mod label;
 pub(in crate::svg::parity) mod roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
@@ -26,6 +26,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub node_asset_height: Option<f64>,
     label_emission: &'a label::FlowchartNodeLabelEmissionPlan<'a>,
     pub style: &'a str,
+    pub effect_filter_attr: &'a str,
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
@@ -178,8 +179,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     ctx.checkpoint_emit()?;
 
     let style_start = timing.start();
-    let mut compiled_styles =
-        flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
+    let prepared_effect = ctx.node_effects.get().and_then(|plan| plan.node(node_id));
+    let mut fallback_source;
+    let (compiled_styles, mut style) = if let Some(prepared) = prepared_effect {
+        (
+            &prepared.source,
+            std::borrow::Cow::Borrowed(prepared.source.node_style.as_str()),
+        )
+    } else {
+        fallback_source =
+            flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
+        let style = std::mem::take(&mut fallback_source.node_style);
+        (&fallback_source, std::borrow::Cow::Owned(style))
+    };
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
@@ -215,11 +227,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         compiled_styles.source_label_foreground_status(),
         ctx.node_label_fill_config_override,
     );
-    let node_theme = crate::flowchart::FlowchartNodeThemeStyle::resolve(
-        ctx.resolved_theme,
-        ctx.node_theme_ordinals.get(node_id).copied(),
-        ctx.work_meter,
-    )?;
+    let fallback_theme;
+    let node_theme = if let Some(prepared) = prepared_effect {
+        &prepared.style
+    } else {
+        fallback_theme = crate::flowchart::FlowchartNodeThemeStyle::resolve(
+            ctx.resolved_theme,
+            ctx.node_theme_ordinals.get(node_id).copied(),
+            ctx.work_meter,
+        )?;
+        &fallback_theme
+    };
+    let source_filter = compiled_styles.source_filter_status();
     let typed_fill_selected = node_theme.fill_value(fill_precedence, true).is_some();
     let typed_stroke_selected = node_theme.stroke_value(stroke_precedence, true).is_some();
     let typed_stroke_width_selected = node_theme
@@ -245,12 +264,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         true,
         true,
     );
-    let mut style = std::mem::take(&mut compiled_styles.node_style);
     if !theme_style.is_empty() {
         if !style.is_empty() {
-            style.push(';');
+            style.to_mut().push(';');
         }
-        style.push_str(&theme_style);
+        style.to_mut().push_str(&theme_style);
     }
     let rough_group_style = flowchart_hand_drawn_shape_group_style(node_styles);
     let fill_color = compiled_styles
@@ -280,10 +298,23 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         node_classes,
         node_styles,
-        &compiled_styles,
+        compiled_styles,
         typed_label_fill,
     );
 
+    let effect_application = prepared_effect
+        .and_then(|prepared| prepared.shadow.zip(prepared.style.effect()))
+        .map(|(materialized, effect)| {
+            let id = format!("{}-theme-effect-{}", node_dom_id, effect.id());
+            let reference = crate::svg::parity::shadow::write_theme_shadow_application(
+                out,
+                &id,
+                effect,
+                materialized.region(),
+            );
+            let attribute = format!(r#" filter="{}""#, escape_attr(&reference));
+            (id, effect, materialized.region(), attribute)
+        });
     let common = FlowchartNodeRenderCommon {
         node_id,
         shape,
@@ -299,6 +330,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_asset_height,
         label_emission: &label_emission,
         style: &style,
+        effect_filter_attr: effect_application
+            .as_ref()
+            .map_or("", |(_, _, _, attr)| attr.as_str()),
         theme_style: &theme_style,
         rough_group_style: &rough_group_style,
         fill_color,
@@ -367,6 +401,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             false,
         )
     };
+    if let Some((id, effect, region, _)) = &effect_application {
+        ctx.effect_evidence.record_application(effect, id, *region);
+    }
     let label_receipt = if no_label {
         out.push_str("</g>");
         if common.wrapped_in_a {
@@ -460,8 +497,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         });
     if ctx.resolved_theme.is_some() || !source_evidence.residuals.is_empty() {
         ctx.theme_evidence.record_node_emission(
-            &node_theme,
+            node_theme,
             crate::flowchart::FlowchartNodeThemeEmission {
+                effect: crate::flowchart::FlowchartThemeFacetEmission::new(
+                    crate::flowchart::FlowchartFacetPrecedence::new(source_filter, false),
+                    node_theme.effect().is_none() || effect_application.is_some(),
+                ),
                 fill: crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(
                         source_evidence.fill,

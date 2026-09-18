@@ -69,7 +69,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
 
     let _ = write!(
         out,
-        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{} />"#,
+        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{}{} />"#,
         fmt(w / 2.0),
         fmt(w),
         fmt(-h / 2.0),
@@ -78,7 +78,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
         fmt(-h / 2.0),
         fmt(tx),
         fmt(ty),
-        OptionalStyleAttr(common.style)
+        OptionalStyleAttr(common.style),
+        common.effect_filter_attr,
     );
 }
 
@@ -91,7 +92,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
     let r = (w.min(h) / 2.0).max(0.5);
     let _ = write!(
         out,
-        r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
+        r#"<circle class="basic label-container"{} style="{}" r="{}" cx="0" cy="0"/>"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
         fmt(r),
     );
@@ -107,7 +109,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     let inner = (r - 5.0).max(0.5);
     let _ = write!(
         out,
-        r#"<g class="basic label-container" style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
+        r#"<g class="basic label-container"{} style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
         fmt(r),
         escape_attr(common.style),

@@ -366,7 +366,7 @@ pub(super) fn timed_node_label_html<T>(
     }
 }
 
-pub(super) struct ResolvedNodeRenderInfo<'a> {
+pub(in crate::svg::parity::flowchart) struct ResolvedNodeRenderInfo<'a> {
     pub(super) class_attr_base: &'static str,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<SerializedMermaidNavigationHref>,
@@ -374,18 +374,18 @@ pub(super) struct ResolvedNodeRenderInfo<'a> {
     pub(super) label_text: &'a str,
     pub(super) label_text_is_node_id: bool,
     pub(super) label_type: &'a str,
-    pub(super) shape: &'a str,
+    pub(in crate::svg::parity::flowchart) shape: &'a str,
     pub(super) node_icon: Option<&'a str>,
     pub(super) node_img: Option<&'a str>,
     pub(super) node_pos: Option<&'a str>,
     pub(super) node_constraint: Option<&'a str>,
     pub(super) node_asset_width: Option<f64>,
     pub(super) node_asset_height: Option<f64>,
-    pub(super) node_styles: &'a [String],
-    pub(super) node_classes: &'a [String],
+    pub(in crate::svg::parity::flowchart) node_styles: &'a [String],
+    pub(in crate::svg::parity::flowchart) node_classes: &'a [String],
 }
 
-pub(super) fn resolve_node_render_info<'a>(
+pub(in crate::svg::parity::flowchart) fn resolve_node_render_info<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     node_id: &str,
 ) -> Option<ResolvedNodeRenderInfo<'a>> {

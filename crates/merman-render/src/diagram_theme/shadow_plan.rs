@@ -158,21 +158,41 @@ impl SvgShadowEffect {
         height: f64,
         stroke_width: f64,
     ) -> Result<Option<MaterializedShadowEffect>, ThemeResourceLimitExceeded> {
-        // The family supplies the actual emitted geometry and stroke width.
-        if !width.is_finite() || width <= 0.0 || !height.is_finite() || height <= 0.0 {
-            return Ok(None);
-        }
-
         if !stroke_width.is_finite() || stroke_width < 0.0 {
             return Ok(None);
         }
         let half_stroke = stroke_width / 2.0;
-        let source = EffectOutsets {
-            top: half_stroke,
-            right: half_stroke,
-            bottom: half_stroke,
-            left: half_stroke,
-        };
+        self.materialize_with_source_outsets(
+            resources,
+            width,
+            height,
+            EffectOutsets {
+                top: half_stroke,
+                right: half_stroke,
+                bottom: half_stroke,
+                left: half_stroke,
+            },
+        )
+    }
+
+    /// The family supplies the actual shape's stroke envelope, including any miter joins.
+    pub(crate) fn materialize_with_source_outsets(
+        &self,
+        resources: &ThemeResourcePolicy,
+        width: f64,
+        height: f64,
+        source: EffectOutsets,
+    ) -> Result<Option<MaterializedShadowEffect>, ThemeResourceLimitExceeded> {
+        if !width.is_finite()
+            || width <= 0.0
+            || !height.is_finite()
+            || height <= 0.0
+            || ![source.top, source.right, source.bottom, source.left]
+                .into_iter()
+                .all(|v| v.is_finite() && v >= 0.0)
+        {
+            return Ok(None);
+        }
         let mut outsets = source;
         for stage in &self.stages {
             let input = match stage.input {

@@ -62,6 +62,8 @@ fn prepare_flowchart_artifact<L>(
         edge_theme,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
+        effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
+        expected_effect_applications: std::cell::Cell::new(0),
     }))
 }
 
@@ -341,7 +343,7 @@ fn prepare_state_family(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             label_sidecar,
-            effect_evidence: crate::state::StateSvgEffectEvidenceRecorder::default(),
+            effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
         },
     )))
 }

@@ -25,6 +25,8 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
             theme_evidence: artifact.theme_evidence(),
+            effect_evidence: artifact.effect_evidence(),
+            expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
             edge_theme: artifact.edge_theme(),
         },
@@ -41,6 +43,8 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
+    pub(super) effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
+    pub(super) expected_effect_applications: &'a std::cell::Cell<usize>,
     pub(super) theme_evidence: &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(super) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(super) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
@@ -60,6 +64,8 @@ pub(super) fn render_flowchart_svg_model(
         diagram_title,
         svg_label_sidecar,
         theme_evidence,
+        effect_evidence,
+        expected_effect_applications,
         edge_style_plan,
         edge_theme,
     } = request;
@@ -300,6 +306,8 @@ pub(super) fn render_flowchart_svg_model(
         options.work_meter(),
     )?;
     let ctx = FlowchartRenderCtx {
+        node_effects: std::cell::OnceCell::new(),
+        effect_evidence,
         text_surface_paint: &text_surface_paint,
         model,
         diagram_id,
@@ -387,6 +395,15 @@ pub(super) fn render_flowchart_svg_model(
     text_surface_paint
         .begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
+    let node_effects = node_effect::FlowchartNodeEffects::prepare(
+        &ctx,
+        &hierarchy_plan,
+        &options.theme_resource_policy(),
+    )?;
+    expected_effect_applications.set(node_effects.expected_applications());
+    ctx.node_effects
+        .set(node_effects)
+        .expect("node effects are prepared once");
 
     let mut edge_path_cache: FxHashMap<
         crate::flowchart::FlowchartEdgeKey,

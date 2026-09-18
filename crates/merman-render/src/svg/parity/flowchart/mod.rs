@@ -10,6 +10,7 @@ mod edge_geom;
 mod edge_style_plan;
 mod hierarchy;
 mod label;
+mod node_effect;
 mod render;
 mod render_config;
 mod render_input;

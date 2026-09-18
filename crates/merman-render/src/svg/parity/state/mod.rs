@@ -66,7 +66,7 @@ struct StateRenderCtx<'a> {
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
     label_sidecar: &'a crate::state::StateLabelSidecar,
-    effect_evidence: &'a crate::state::StateSvgEffectEvidenceRecorder,
+    effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &'a crate::state::StateStylePlan,
     theme_receipt: RefCell<crate::state::StateThemeTerminalReceipt>,
     rough_cache: StateRoughCache,

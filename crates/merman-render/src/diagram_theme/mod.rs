@@ -28,6 +28,7 @@ mod family_program;
 mod legacy_family_theme_bridge;
 #[cfg(any(test, merman_internal_theme_acceptance))]
 mod legacy_projection_retirement;
+mod shadow_evidence;
 mod shadow_plan;
 // KTD23 route identities are renderer-owned and intentionally independent of the bridge.
 #[cfg(any(test, merman_internal_theme_acceptance))]
@@ -150,6 +151,7 @@ pub use semantic::{
     ThemeGeometryPatch, ThemePaintPatch, ThemeRule, ThemeRuleSet, ThemeSpacingPatch,
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
+pub(crate) use shadow_evidence::SvgShadowEvidenceRecorder;
 pub(crate) use shadow_plan::{
     EffectOutsets, MaterializedShadowEffect, SvgFilterRegion, SvgShadowEffect,
 };

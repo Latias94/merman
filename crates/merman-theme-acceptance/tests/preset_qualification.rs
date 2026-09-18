@@ -39,13 +39,10 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
-                // The complete Cyberpunk recipe now requests shape glow. These writers
-                // must consume it before their former palette-only qualification can return.
-                let pending_glow = preset.id() == "cyberpunk"
-                    && matches!(
-                        family,
-                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
-                    );
+                // The bounded Flowchart rectangle scene consumes the recipe's node glow.
+                // Sequence still lacks its actor effect consumer; keep that residual visible.
+                let pending_glow =
+                    preset.id() == "cyberpunk" && family == DiagramFamilyId::SEQUENCE;
                 let family_complete = native_candidate && !pending_glow;
                 assert_eq!(
                     observation.status(),

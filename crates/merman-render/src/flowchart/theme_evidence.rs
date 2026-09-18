@@ -7,8 +7,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeRuleFacet, MatchedThemeRules, ResolvedDiagramTheme, ResolvedProperty,
-    ResolvedStyleProperty, SourceStyleResidual, Specified, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    ResolvedStyleProperty, ResolvedThemeEffect, SourceStyleResidual, Specified, SvgShadowEffect,
+    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -107,6 +107,29 @@ impl FlowchartDasharrayOutcome {
         match self {
             Self::Candidate { value, .. } => Some(value),
             Self::Residual { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum FlowchartEffectOutcome {
+    Candidate {
+        key: FamilyThemeMechanismKey,
+        effect: SvgShadowEffect,
+    },
+    Cleared {
+        rule_index: usize,
+    },
+    Residual {
+        key: FamilyThemeMechanismKey,
+    },
+}
+
+impl FlowchartEffectOutcome {
+    fn effect(&self) -> Option<&SvgShadowEffect> {
+        match self {
+            Self::Candidate { effect, .. } => Some(effect),
+            Self::Cleared { .. } | Self::Residual { .. } => None,
         }
     }
 }
@@ -265,6 +288,7 @@ pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) stroke_width: FlowchartThemeFacetEmission,
     pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
     pub(crate) radius: FlowchartThemeFacetEmission,
+    pub(crate) effect: FlowchartThemeFacetEmission,
     pub(crate) label_fill: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
@@ -299,6 +323,7 @@ impl FlowchartNodeThemeEmission {
             stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
             radius: FlowchartThemeFacetEmission::absent(),
+            effect: FlowchartThemeFacetEmission::absent(),
             label_fill: None,
             font_stack: None,
             font_size: None,
@@ -686,6 +711,7 @@ pub(crate) struct FlowchartNodeThemeStyle {
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
     radius: Option<FlowchartScalarOutcome>,
+    effect: Option<FlowchartEffectOutcome>,
     matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
@@ -751,12 +777,7 @@ impl FlowchartNodeThemeStyle {
                     rule_index,
                     FamilyThemeRuleFacet::Typography(property),
                 ),
-                ResolvedStyleProperty::Effect => record_incomplete_facet(
-                    theme,
-                    &mut resolved,
-                    rule_index,
-                    FamilyThemeRuleFacet::Effect,
-                ),
+                ResolvedStyleProperty::Effect => {}
                 ResolvedStyleProperty::StrokeLinecap
                 | ResolvedStyleProperty::StrokeLinejoin
                 | ResolvedStyleProperty::Opacity
@@ -771,6 +792,10 @@ impl FlowchartNodeThemeStyle {
             }
         }
 
+        resolved.effect = resolve_node_effect(theme, style.effect_resolution());
+        if let Some(effect) = resolved.effect() {
+            work_meter.charge(effect.stages().len())?;
+        }
         resolved.label =
             resolve_label_theme_style(theme, ThemeTarget::NodeLabel, ordinal, work_meter)?;
 
@@ -794,6 +819,12 @@ impl FlowchartNodeThemeStyle {
         }
 
         Ok(resolved)
+    }
+
+    pub(crate) fn effect(&self) -> Option<&SvgShadowEffect> {
+        self.effect
+            .as_ref()
+            .and_then(FlowchartEffectOutcome::effect)
     }
 
     pub(crate) fn fill_value(
@@ -1201,6 +1232,66 @@ fn resolve_typography<T>(
     }
 }
 
+fn resolve_node_effect(
+    theme: &ResolvedDiagramTheme,
+    property: &ResolvedProperty<String>,
+) -> Option<FlowchartEffectOutcome> {
+    let (key, graph, disposition) = match theme.resolve_effect(ThemeTarget::Node, property)? {
+        ResolvedThemeEffect::ClearedByRule => {
+            let rule_index = property.winner()?.rule_index();
+            return match theme.rule_facet_disposition(rule_index, FamilyThemeRuleFacet::Effect)? {
+                FamilyThemeDisposition::TypedAdapter => {
+                    Some(FlowchartEffectOutcome::Cleared { rule_index })
+                }
+                FamilyThemeDisposition::Unsupported => Some(FlowchartEffectOutcome::Residual {
+                    key: FamilyThemeMechanismKey::Rule {
+                        index: rule_index,
+                        target: ThemeTarget::Node,
+                    },
+                }),
+                FamilyThemeDisposition::LegacyCompatibility => None,
+            };
+        }
+        ResolvedThemeEffect::Rule { graph } => {
+            let rule_index = property.winner()?.rule_index();
+            (
+                FamilyThemeMechanismKey::Rule {
+                    index: rule_index,
+                    target: ThemeTarget::Node,
+                },
+                graph,
+                theme.rule_facet_disposition(rule_index, FamilyThemeRuleFacet::Effect)?,
+            )
+        }
+        ResolvedThemeEffect::Binding { graph, .. } => {
+            let route = theme.family_mechanism_routes().iter().find(|route| {
+                matches!(
+                    route.mechanism(),
+                    FamilyThemeMechanism::EffectBinding {
+                        target: ThemeTarget::Node,
+                        ..
+                    }
+                )
+            })?;
+            (
+                theme.family_mechanism_key(*route),
+                graph,
+                route.disposition(),
+            )
+        }
+    };
+    match disposition {
+        FamilyThemeDisposition::LegacyCompatibility => None,
+        FamilyThemeDisposition::TypedAdapter => {
+            Some(match graph.and_then(SvgShadowEffect::from_graph) {
+                Some(effect) => FlowchartEffectOutcome::Candidate { key, effect },
+                None => FlowchartEffectOutcome::Residual { key },
+            })
+        }
+        FamilyThemeDisposition::Unsupported => Some(FlowchartEffectOutcome::Residual { key }),
+    }
+}
+
 fn non_paint_facet(property: ResolvedStyleProperty) -> FamilyThemeRuleFacet {
     match property {
         ResolvedStyleProperty::StrokeWidth => FamilyThemeRuleFacet::StrokeWidth,
@@ -1364,6 +1455,7 @@ struct FlowchartThemeEvidenceState {
     title: Option<FamilyThemeEvidence>,
     marker: Option<FamilyThemeEvidence>,
     node_ordinal_palette: FlowchartMechanismObservation,
+    node_effect_bindings: BTreeMap<FamilyThemeMechanismKey, FlowchartMechanismObservation>,
     source_residuals: BTreeMap<FlowchartSourceResidualKey, SourceStyleResidual>,
 }
 
@@ -1534,6 +1626,7 @@ impl FlowchartThemeEvidenceRecorder {
             emission.radius.verified,
             ThemeCapability::RoundedGeometry,
         );
+        record_node_effect_outcome(&mut state, style.effect.as_ref(), emission.effect);
         state
             .node
             .incomplete_rules
@@ -1797,21 +1890,27 @@ impl FlowchartThemeEvidenceRecorder {
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Node,
                     ..
-                } if state.node.emitted => {
-                    if !matches!(
-                        route.disposition(),
-                        FamilyThemeDisposition::LegacyCompatibility
-                    ) {
-                        evidence.mark_residual(
-                            theme.family_mechanism_key(route),
-                            FamilyThemeResidualReason::UnsupportedEffect,
-                        );
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    match state
+                        .node_effect_bindings
+                        .get(&key)
+                        .copied()
+                        .unwrap_or_default()
+                    {
+                        FlowchartMechanismObservation::NotObserved => {
+                            evidence.mark_not_applicable(key);
+                        }
+                        FlowchartMechanismObservation::Applied => evidence
+                            .mark_applied_with_capabilities(
+                                key,
+                                [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                            ),
+                        FlowchartMechanismObservation::Residual(reason) => {
+                            evidence.mark_residual(key, reason);
+                        }
                     }
                 }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Node,
-                    ..
-                } => evidence.mark_not_applicable(theme.family_mechanism_key(route)),
                 FamilyThemeMechanism::BaseTypography(_)
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {}
@@ -2074,6 +2173,64 @@ fn record_typography_outcome(
     }
 }
 
+fn record_node_effect_outcome(
+    state: &mut FlowchartThemeEvidenceState,
+    outcome: Option<&FlowchartEffectOutcome>,
+    emission: FlowchartThemeFacetEmission,
+) {
+    if emission.precedence.overrides_theme() {
+        return;
+    }
+    let Some(outcome) = outcome else {
+        return;
+    };
+    if let FlowchartEffectOutcome::Cleared { rule_index } = outcome {
+        if emission.verified {
+            state.node.applied_rules.insert(*rule_index);
+        } else {
+            state
+                .node
+                .residual_rules
+                .entry(*rule_index)
+                .or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+        }
+        return;
+    }
+    let (key, applied) = match outcome {
+        FlowchartEffectOutcome::Candidate { key, .. } => (key, emission.verified),
+        FlowchartEffectOutcome::Residual { key } => (key, false),
+        FlowchartEffectOutcome::Cleared { .. } => unreachable!("clear was handled above"),
+    };
+    match key {
+        FamilyThemeMechanismKey::Rule { index, .. } => {
+            if applied {
+                state.node.applied_rules.insert(*index);
+                state
+                    .node
+                    .applied_rule_capabilities
+                    .entry(*index)
+                    .or_default()
+                    .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+            } else {
+                state
+                    .node
+                    .residual_rules
+                    .entry(*index)
+                    .or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+            }
+        }
+        FamilyThemeMechanismKey::EffectBinding { .. } => {
+            let observation = state.node_effect_bindings.entry(key.clone()).or_default();
+            if applied {
+                observation.observe_applied();
+            } else {
+                observation.observe_residual(FamilyThemeResidualReason::UnsupportedEffect);
+            }
+        }
+        _ => unreachable!("node effects belong to a rule or effect binding"),
+    }
+}
+
 fn record_ordinal_palette_outcome(
     observation: &mut FlowchartMechanismObservation,
     outcome: Option<&FlowchartOrdinalPaletteOutcome>,
@@ -2106,6 +2263,263 @@ mod tests {
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
         ThemeStrokePatch, ThemeStylePatch,
     };
+
+    fn node_effect_theme(
+        effect: Specified<String>,
+        supported: bool,
+        fill: bool,
+    ) -> ResolvedDiagramTheme {
+        use crate::diagram_theme::{
+            DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+            ThemeEffectPatch,
+        };
+        let graph = |id: &str| {
+            EffectGraph::new(
+                id,
+                [if supported {
+                    EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        offset_x: 2.0,
+                        offset_y: 3.0,
+                        blur_radius: 4.0,
+                        spread: 0.0,
+                        color: ThemeColorValue::parse("#00f2ff").unwrap(),
+                    }
+                } else {
+                    EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }
+                }],
+            )
+            .unwrap()
+        };
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(graph("binding"))
+                            .unwrap()
+                            .with_graph(graph("rule"))
+                            .unwrap()
+                            .with_binding(EffectBinding::new(ThemeTarget::Node, "binding").unwrap())
+                            .unwrap(),
+                    )
+                    .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch {
+                            effects: ThemeEffectPatch { effect },
+                            ..if fill {
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#112233").unwrap())
+                            } else {
+                                ThemeStylePatch::default()
+                            }
+                        },
+                    ))),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
+    fn node_effect_binding_key() -> FamilyThemeMechanismKey {
+        FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::Node,
+            effect_id: "binding".to_owned(),
+        }
+    }
+
+    fn node_effect_rule_key() -> FamilyThemeMechanismKey {
+        FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        }
+    }
+
+    #[test]
+    fn node_effect_winning_rule_and_clear_suppress_the_global_binding() {
+        for (specified, expected) in [
+            (Specified::Value("rule".to_owned()), Some("rule")),
+            (Specified::Clear, None),
+        ] {
+            let theme = node_effect_theme(specified, true, false);
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            assert_eq!(style.effect().map(|effect| effect.id()), expected);
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            let mut observed = emission(true, false, false, false, false);
+            observed.effect = FlowchartThemeFacetEmission::new(no_override(), true);
+            recorder
+                .record_node_emission(&style, observed, &[], &meter)
+                .unwrap();
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(evidence.applied().contains(&node_effect_rule_key()));
+            assert!(
+                evidence
+                    .not_applicable_mechanisms()
+                    .contains(&node_effect_binding_key())
+            );
+            assert!(evidence.residuals().is_empty());
+            assert_eq!(
+                evidence
+                    .applied_capabilities()
+                    .contains(&ThemeCapability::Shadow),
+                expected.is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn node_effect_global_binding_requires_every_applicable_terminal() {
+        for verified in [true, false] {
+            let theme = node_effect_theme(Specified::Unspecified, true, true);
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            assert_eq!(style.effect().unwrap().id(), "binding");
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            for verified in [true, verified] {
+                let mut observed = emission(true, false, false, false, false);
+                observed.effect = FlowchartThemeFacetEmission::new(no_override(), verified);
+                recorder
+                    .record_node_emission(&style, observed, &[], &meter)
+                    .unwrap();
+            }
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(evidence.applied().contains(&node_effect_rule_key()));
+            assert_eq!(
+                evidence.applied().contains(&node_effect_binding_key()),
+                verified
+            );
+            assert_eq!(evidence.residuals().is_empty(), verified);
+            if !verified {
+                assert_eq!(
+                    evidence.residuals()[0].reason(),
+                    FamilyThemeResidualReason::UnsupportedEffect
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn node_effect_unsupported_graph_or_partial_rule_emission_remains_residual() {
+        for supported in [false, true] {
+            let theme = node_effect_theme(Specified::Value("rule".to_owned()), supported, true);
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            assert_eq!(style.effect().is_some(), supported);
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            let emissions = if supported {
+                &[true, false][..]
+            } else {
+                &[true][..]
+            };
+            for &verified in emissions {
+                let mut observed = emission(true, false, false, false, false);
+                observed.effect = FlowchartThemeFacetEmission::new(no_override(), verified);
+                recorder
+                    .record_node_emission(&style, observed, &[], &meter)
+                    .unwrap();
+            }
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(!evidence.applied().contains(&node_effect_rule_key()));
+            assert_eq!(
+                evidence.residuals()[0].reason(),
+                FamilyThemeResidualReason::UnsupportedEffect
+            );
+            assert!(
+                evidence
+                    .not_applicable_mechanisms()
+                    .contains(&node_effect_binding_key())
+            );
+        }
+    }
+
+    #[test]
+    fn node_effect_unsupported_binding_cannot_be_promoted_by_a_writer_receipt() {
+        let theme = node_effect_theme(Specified::Unspecified, false, true);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+        assert!(style.effect().is_none());
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        let mut observed = emission(true, false, false, false, false);
+        observed.effect = FlowchartThemeFacetEmission::new(no_override(), true);
+        recorder
+            .record_node_emission(&style, observed, &[], &meter)
+            .unwrap();
+        let (evidence, _) = recorder.finish(Some(&theme));
+        assert!(evidence.applied().contains(&node_effect_rule_key()));
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(evidence.residuals()[0].key(), &node_effect_binding_key());
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedEffect
+        );
+    }
+
+    #[test]
+    fn node_effect_source_override_preserves_the_sibling_fill() {
+        for specified in [
+            Specified::Unspecified,
+            Specified::Value("rule".to_owned()),
+            Specified::Clear,
+        ] {
+            let theme = node_effect_theme(specified, true, true);
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            let mut observed = emission(true, false, false, false, false);
+            observed.effect = FlowchartThemeFacetEmission::new(
+                FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Unverified, false),
+                false,
+            );
+            recorder
+                .record_node_emission(&style, observed, &[], &meter)
+                .unwrap();
+            let (evidence, _) = recorder.finish(Some(&theme));
+            assert!(evidence.applied().contains(&node_effect_rule_key()));
+            assert!(
+                evidence
+                    .not_applicable_mechanisms()
+                    .contains(&node_effect_binding_key())
+            );
+            assert!(evidence.residuals().is_empty());
+            assert!(
+                !evidence
+                    .applied_capabilities()
+                    .contains(&ThemeCapability::Shadow)
+            );
+        }
+    }
+
+    #[test]
+    fn node_effect_without_node_occurrences_is_not_applicable() {
+        let theme = node_effect_theme(Specified::Value("rule".to_owned()), true, true);
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        let (evidence, _) = recorder.finish(Some(&theme));
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
+        assert!(
+            evidence
+                .not_applicable_mechanisms()
+                .contains(&node_effect_binding_key())
+        );
+        assert!(
+            evidence
+                .not_applicable_mechanisms()
+                .contains(&node_effect_rule_key())
+        );
+    }
 
     fn static_provenance_theme(rule_count: usize) -> ResolvedDiagramTheme {
         let mut rules = ThemeRuleSet::default();
@@ -2403,6 +2817,7 @@ mod tests {
             stroke_width: FlowchartThemeFacetEmission::new(no_override(), stroke_width),
             stroke_dasharray: FlowchartThemeFacetEmission::new(no_override(), stroke_dasharray),
             radius: FlowchartThemeFacetEmission::new(no_override(), radius),
+            effect: FlowchartThemeFacetEmission::new(no_override(), false),
             label_fill: None,
             font_stack: None,
             font_size: None,
@@ -2620,6 +3035,7 @@ mod tests {
                 value: "4 2".to_string(),
             }),
             radius: None,
+            effect: None,
             matched_rules: MatchedThemeRules::from_indices([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),
@@ -3692,6 +4108,7 @@ mod tests {
             stroke_width: None,
             stroke_dasharray: None,
             radius: None,
+            effect: None,
             matched_rules: MatchedThemeRules::from_indices([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),

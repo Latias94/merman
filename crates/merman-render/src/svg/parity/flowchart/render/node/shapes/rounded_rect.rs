@@ -112,7 +112,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     } else {
         let _ = write!(
             out,
-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="5" ry="5"/>"#,
+            r#"<rect class="basic label-container"{} style="{}" x="{}" y="{}" width="{}" height="{}" rx="5" ry="5"/>"#,
+            common.effect_filter_attr,
             escape_attr(common.style),
             fmt(-w / 2.0),
             fmt(-h / 2.0),

@@ -26,6 +26,10 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
 }
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) node_effects:
+        std::cell::OnceCell<super::node_effect::FlowchartNodeEffects>,
+    pub(in crate::svg::parity::flowchart) effect_evidence:
+        &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) model: &'a crate::flowchart::FlowchartRenderModelRef<'a>,
     pub(in crate::svg::parity::flowchart) diagram_id: SvgDiagramId<'a>,
     pub(in crate::svg::parity::flowchart) diagram_type: &'a str,

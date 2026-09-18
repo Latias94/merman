@@ -88,6 +88,8 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
             theme_evidence: artifact.theme_evidence(),
+            effect_evidence: artifact.effect_evidence(),
+            expected_effect_applications: artifact.expected_effect_applications(),
             edge_style_plan: artifact.edge_style_plan(),
             edge_theme: artifact.edge_theme(),
         },

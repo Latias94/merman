@@ -1255,7 +1255,12 @@ pub(super) fn compile_effect_binding_route(
 }
 
 fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
-    if family == DiagramFamilyId::STATE && target == ThemeTarget::State {
+    if (family == DiagramFamilyId::STATE && target == ThemeTarget::State)
+        || (matches!(
+            family,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+        ) && target == ThemeTarget::Node)
+    {
         FamilyThemeDisposition::TypedAdapter
     } else {
         FamilyThemeDisposition::Unsupported
@@ -1520,6 +1525,23 @@ pub(super) fn classify_rule_facet(
 ) -> FamilyThemeDisposition {
     if family == DiagramFamilyId::STATE {
         return classify_state_rule_facet(target, facet);
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Node
+        && facet == FamilyThemeRuleFacet::Effect
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            } | FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            }
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::PACKET
         && matches!(

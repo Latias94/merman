@@ -1092,11 +1092,11 @@ impl ResolvedFamilyStylePlan {
         self.architecture_text_cutover_receipt = receipt;
     }
 
-    fn reconcile_state_effect_evidence(
+    fn reconcile_effect_evidence(
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
+        expected_application_count: usize,
     ) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
         let effect_capabilities_applied =
             self.theme_evidence
                 .applied_capabilities()
@@ -1112,10 +1112,6 @@ impl ResolvedFamilyStylePlan {
             return;
         }
 
-        let expected_application_count = self
-            .state()
-            .map(crate::state::StateStylePlan::expected_native_filter_application_count)
-            .unwrap_or(0);
         if emitted.is_some_and(|receipt| {
             usize::try_from(receipt.filter_count()).ok() == Some(expected_application_count)
                 && receipt.filter_count() == receipt.reference_count()
@@ -1357,13 +1353,6 @@ impl FamilyRenderContext {
         self.style_plan.observe_output_visibility(debug);
     }
 
-    fn reconcile_state_effect_evidence(
-        &mut self,
-        emitted: Option<crate::__private::NativeSvgFilterReceipt>,
-    ) {
-        self.style_plan.reconcile_state_effect_evidence(emitted);
-    }
-
     fn reconcile_state_terminal_evidence(&mut self) {
         self.style_plan.reconcile_state_terminal_evidence();
     }
@@ -1470,9 +1459,19 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
+    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
+    expected_effect_applications: std::cell::Cell<usize>,
 }
 
 impl<L> FlowchartFamilyArtifact<L> {
+    pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
+        &self.effect_evidence
+    }
+
+    pub(crate) const fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
+        &self.expected_effect_applications
+    }
+
     pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
         &self.pair
     }
@@ -2178,7 +2177,7 @@ impl GanttFamilyArtifact {
 pub(crate) struct StateFamilyArtifact {
     pair: FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
-    effect_evidence: crate::state::StateSvgEffectEvidenceRecorder,
+    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
 }
 
 impl StateFamilyArtifact {
@@ -2192,7 +2191,7 @@ impl StateFamilyArtifact {
         &self.label_sidecar
     }
 
-    pub(crate) const fn effect_evidence(&self) -> &crate::state::StateSvgEffectEvidenceRecorder {
+    pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
         &self.effect_evidence
     }
 }
@@ -3419,8 +3418,23 @@ impl FamilyRenderArtifact {
         let rendered = render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
-        let state_filter_receipt = match &self.family {
-            BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
+        let filter_receipt = match &self.family {
+            BuiltinFamilyArtifact::State(artifact) => Some((
+                artifact.effect_evidence().finish(),
+                self.context
+                    .style_plan
+                    .state()
+                    .map(crate::state::StateStylePlan::expected_native_filter_application_count)
+                    .unwrap_or(0),
+            )),
+            BuiltinFamilyArtifact::Flowchart(artifact) => Some((
+                artifact.effect_evidence().finish(),
+                artifact.expected_effect_applications().get(),
+            )),
+            BuiltinFamilyArtifact::Swimlane(artifact) => Some((
+                artifact.effect_evidence().finish(),
+                artifact.expected_effect_applications().get(),
+            )),
             _ => None,
         };
         let prepared_text_ledger = self.family.prepared_text_label_ledger();
@@ -3437,8 +3451,10 @@ impl FamilyRenderArtifact {
             context.reconcile_state_terminal_evidence();
         }
         context.observe_output_visibility(debug);
-        if let Some(emitted) = state_filter_receipt {
-            context.reconcile_state_effect_evidence(emitted);
+        if let Some((emitted, expected)) = filter_receipt {
+            context
+                .style_plan
+                .reconcile_effect_evidence(emitted, expected);
         }
         let (tokenized_svg, root_theme, preserves_typed_theme_evidence) = rendered.into_parts();
         if !preserves_typed_theme_evidence {

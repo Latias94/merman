@@ -111,6 +111,21 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
         &mut include_rect,
     );
 
+    if let Some(effects) = ctx
+        .node_effects
+        .get()
+        .filter(|plan| plan.has_paint_bounds())
+    {
+        for node in &layout.nodes {
+            effects.include_bounds(
+                &node.id,
+                node.x,
+                node.y + y_offset_for_root(hierarchy_plan.effective_parent(&node.id)),
+                &mut include_rect,
+            );
+        }
+    }
+
     for (key, e) in layout.edge_owners.iter().zip(&layout.edges) {
         let root = hierarchy_plan.edge_root(key)?;
         let y_off = y_offset_for_root(root);

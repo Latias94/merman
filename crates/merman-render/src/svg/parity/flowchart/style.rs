@@ -320,6 +320,18 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
 }
 
 impl FlowchartCompiledStyles {
+    pub(super) fn source_filter_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
+        if self
+            .shape_sources
+            .iter()
+            .any(|source| source.prepared.property() == "filter")
+        {
+            crate::flowchart::FlowchartSourceFacetStatus::Unverified
+        } else {
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        }
+    }
+
     fn invalid_source_residuals(
         &self,
         owner_id: &str,

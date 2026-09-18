@@ -54,7 +54,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
 
     let _ = write!(
         out,
-        r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"{} />"#,
+        r#"<rect class="basic label-container"{} style="{}" x="{}" y="{}" width="{}" height="{}"{} />"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
         fmt(-width / 2.0),
         fmt(-height / 2.0),

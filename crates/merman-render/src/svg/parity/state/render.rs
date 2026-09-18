@@ -4,7 +4,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
-    effect_evidence: &crate::state::StateSvgEffectEvidenceRecorder,
+    effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,

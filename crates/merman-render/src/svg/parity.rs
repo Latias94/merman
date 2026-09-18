@@ -810,6 +810,12 @@ impl<'a> SvgExecution<'a> {
         self.family.session().work_meter().as_ref()
     }
 
+    pub(crate) fn theme_resource_policy(
+        &self,
+    ) -> std::sync::Arc<crate::diagram_theme::ThemeResourcePolicy> {
+        self.family.session().effective_theme_resource_policy()
+    }
+
     pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
         self.family.session().resource_policy()
     }
