@@ -8,12 +8,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- Added `TextWidthModel::Callback` so hosts can supply whole-string CSS-pixel measurements while Merman retains Mermaid wrapping and line-box behavior.
 - Added `merman-rustdoc` options `background` for the SVG canvas color, `id_prefix` for generated items with overlapping source locations, and `inherit` to control parent tree rendering defaults. See the [macro guide](crates/merman-rustdoc/README.md#configure-rendering) for configuration and scope rules.
 - Added `merman-doc`, a shared Markdown diagram discovery and HTML wrapping library used by the CLI rustdoc generator and attribute macro; it does not depend on a renderer or perform file access.
 - Documented stable Cargo integration for `.mmd` changes through a consumer `build.rs` watching the diagram directory, with no extra build dependency. Directory tracking covers file edits, additions, deletions, and restoration of missing includes; macro file reads alone do not register those dependencies.
 
 ### Changed
 
+- Sealed `DeterministicTextMeasurer` configuration behind `with_width_model(...)` and `with_line_height_factor(...)`; migrate non-zero `char_width_factor` values to `TextWidthModel::UniformAdvanceEm(...)` and use the deprecated `with_char_width_factor(...)` builder for mechanical transitions.
 - Diagram-local colors and typography now pass through a shared CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled by default, and host `secure` policies can still lock presentation fields.
 
 - Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. ASCII reports now use schema 3 and identify requested/effective layout and Compact attempts. Flowchart Compact uses a smaller default horizontal rank gap; explicit spacing overrides are preserved. Direct UniFFI bindings advance to API 7 for the revised ASCII output record; regenerate native libraries and Python/Swift wrappers together.

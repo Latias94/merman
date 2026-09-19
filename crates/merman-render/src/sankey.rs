@@ -711,7 +711,7 @@ mod tests {
         layout_sankey_diagram_typed, layout_sankey_diagram_typed_with_resource_policy,
         sankey_layout_work_units,
     };
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextWidthModel};
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_core::diagrams::sankey::{
         SankeyDiagramRenderModel, SankeyRenderGraph, SankeyRenderLink, SankeyRenderNode,
@@ -754,10 +754,9 @@ mod tests {
     #[test]
     fn sankey_layout_uses_mermaid_node_geometry() {
         let model = model();
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let default_layout = layout_sankey_diagram_typed(&model, &json!({}), &measurer).unwrap();
         assert_eq!(default_layout.node_width, DEFAULT_NODE_WIDTH_PX);
@@ -781,10 +780,9 @@ mod tests {
     #[test]
     fn sankey_layout_uses_configured_node_width_and_padding() {
         let model = model();
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let layout = layout_sankey_diagram_typed(
             &model,
@@ -808,10 +806,9 @@ mod tests {
 
     #[test]
     fn sankey_resource_limits_are_checked_before_layout_allocation() {
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
         let model = model();
         let expected_work = sankey_layout_work_units(&model);
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -851,10 +848,9 @@ mod tests {
                     .collect(),
             },
         };
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
         let max_work_units = 1_000_000;
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, max_work_units)
@@ -888,10 +884,9 @@ mod tests {
         let model = SankeyDiagramRenderModel {
             graph: SankeyRenderGraph { nodes, links },
         };
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let layout = layout_sankey_diagram_typed_with_resource_policy(
             &model,

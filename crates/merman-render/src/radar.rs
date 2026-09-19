@@ -337,7 +337,7 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 #[cfg(test)]
 mod tests {
     use super::{layout_radar_diagram_typed, layout_radar_diagram_typed_with_resource_policy};
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextWidthModel};
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_core::diagrams::radar::{
         RadarDiagramRenderModel, RadarRenderAxis, RadarRenderCurve, RadarRenderOptions,
@@ -381,10 +381,9 @@ mod tests {
             max: Some(json!(3.0)),
             graticule: "circle".to_string(),
         };
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let layout = layout_radar_diagram_typed(&model, &json!({}), &measurer).unwrap();
 
@@ -396,10 +395,9 @@ mod tests {
     fn radar_work_budget_is_checked_before_the_layout_allocates_shapes() {
         let mut model = RadarDiagramRenderModel::default();
         model.options.ticks = json!(3);
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 2)
             .unwrap();
@@ -430,10 +428,9 @@ mod tests {
         ];
         model.options.ticks = json!(3);
         model.options.graticule = "polygon".to_string();
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
             .unwrap();
@@ -453,10 +450,9 @@ mod tests {
     fn radar_too_large_unsigned_tick_count_is_rejected_without_integer_wraparound() {
         let mut model = RadarDiagramRenderModel::default();
         model.options.ticks = json!(u64::MAX);
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();

@@ -494,7 +494,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
 #[cfg(test)]
 mod tests {
     use super::{layout_kanban_diagram_typed, replace_first_like_javascript};
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextWidthModel};
     use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
 
@@ -556,10 +556,9 @@ mod tests {
                 item("task-1", "Task", "todo"),
             ],
         };
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let layout = layout_kanban_diagram_typed(&model, &json!({}), &measurer).unwrap();
 
@@ -619,10 +618,9 @@ mod tests {
         let model = KanbanDiagramRenderModel {
             nodes: vec![section("todo", "Todo")],
         };
-        let measurer = DeterministicTextMeasurer {
-            char_width_factor: 8.0,
-            line_height_factor: 16.0,
-        };
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_model(TextWidthModel::UniformAdvanceEm(8.0))
+            .with_line_height_factor(16.0);
 
         let layout = layout_kanban_diagram_typed(
             &model,

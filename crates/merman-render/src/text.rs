@@ -14,7 +14,7 @@ mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
-pub use deterministic::DeterministicTextMeasurer;
+pub use deterministic::{DeterministicTextMeasurer, TextWidthModel, TextWidthPxFn};
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use icons::replace_fontawesome_icons;
