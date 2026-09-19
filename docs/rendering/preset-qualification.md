@@ -1,12 +1,33 @@
 # Scoped preset qualification
 
+## Current candidate status
+
+The current Cyberpunk recipe does not pass the historical palette-only qualification below.
+`run_preset_qualification(Cyberpunk)` rejects it, and the all-candidate recording/replay commands
+therefore cannot produce a successful current-source qualification record. Earlier archive
+records remain tied to their recorded source and recipe. Brutalist and Spotless retain their
+existing bounded checks; public catalog cells remain empty for every preset.
+
+`inspect_preset_admission(Cyberpunk)` instead executes the three unchanged complete scenes in
+`crates/merman-theme-fixtures/fixtures/public-cyberpunk`: Flowchart, Sequence and XY Chart.
+This inventory uses native SVG labels, system fonts, default resource limits and 1x PNG. It
+checks current artifact identity and reports admission/residuals without issuing qualification.
+The other nine presets retain the small Flowchart/State/Sequence admission sources.
+This inventory does not exercise HTML labels, PDF, controlled caller fonts or installed consumers.
+Visible terminal checks and calibrated target-specific comparisons are still required before
+replacing the historical Cyberpunk qualifier or promoting its scope.
+
+## Historical qualification profile
+
 The workspace-only Rust runner executes the exact Brutalist, Spotless, and Cyberpunk catalog
 recipes on the declared `native-flowchart-state-sequence-system-fonts-v1` profile for
 Flowchart/State/Sequence SVG and PNG. It checks terminal styles, raster coverage and label ink,
 admission reasons, residuals, and artifact/resource identity.
 State PNG uses 1x; Flowchart and Sequence use 4x so thin lines and label paint remain observable.
-Flowchart places its labeled edge inside a contrasting subgraph: a missing translucent label
-background must fail the raster check. The first-release qualification schema is 1. Unpublished earlier receipts cannot acquire
+Flowchart places its labeled edge inside a contrasting subgraph: missing or incorrectly faded
+label paint must fail the raster check. Its opaque typed background owns its alpha, so the current
+qualifier requires opacity 1 and authored RGB pixels without Mermaid's legacy 0.5 fade.
+The first-release qualification schema is 1. Unpublished earlier receipts cannot acquire
 Flowchart cells: source, profile, and complete replayed record identities must match. Each observation records its
 scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
@@ -121,7 +142,7 @@ requested facets remain unsupported. The seven retained compatibility recipes an
 their existing dispositions. The positive qualification profile covers only its declared
 Flowchart/State/Sequence SVG/PNG scenarios (six artifact cells per native preset).
 Flowchart checks canvas, node/cluster surfaces and borders, diagram/cluster/node/edge labels,
-the directed edge and marker, and the actual translucent label background. PNG checks use
+the directed edge and marker, and the actual authored label background. PNG checks use
 separate regions so borders or the edge cannot replace missing label ink. These checks do not
 qualify arbitrary Flowchart sources or explicit Marker/ClusterLabel rules.
 Sequence checks actor, message, note, loop, and autonumber label assignments plus activation

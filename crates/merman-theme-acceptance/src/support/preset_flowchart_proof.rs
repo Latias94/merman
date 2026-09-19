@@ -267,12 +267,7 @@ fn check_svg(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<Ge
         "fill",
         palette.background,
     )?;
-    require_exact_writer_declaration(
-        receipt,
-        &format!("#{root} .edgeLabel rect"),
-        "opacity",
-        "0.5",
-    )?;
+    require_exact_writer_declaration(receipt, &format!("#{root} .edgeLabel rect"), "opacity", "1")?;
     // Global marker CSS remains unchanged. The referenced shape inherits the winning Edge
     // paint through its own attributes; no explicit Marker rule is qualified here.
     require_exact_writer_declaration(receipt, &format!("#{root} .marker"), "fill", "#333333")?;
@@ -417,16 +412,10 @@ fn check_pixels(
         palette.edge,
         "direction marker",
     )?;
-    let cluster_rgb = parse_c6_hex_rgb(palette.cluster)?;
-    let bg_rgb = parse_c6_hex_rgb(palette.background)?;
-    let composite =
-        std::array::from_fn(|i| ((u16::from(bg_rgb[i]) + u16::from(cluster_rgb[i])) / 2) as u8);
-    // Most of the rectangle must show its translucent paint. A few antialiased edge pixels
-    // must not substitute for a missing background, especially for low-contrast recipes.
     raster.prove_opaque_color_coverage_in_svg_rect(
         view,
         inset(background, 1.0),
-        composite,
+        parse_c6_hex_rgb(palette.background)?,
         2,
         0.5,
         "preset-flowchart-background",
@@ -619,6 +608,11 @@ mod tests {
                 "background",
             ),
             (
+                ".edgeLabel rect{opacity:1;".to_owned(),
+                ".edgeLabel rect{opacity:0.5;".to_owned(),
+                "opacity",
+            ),
+            (
                 "class=\"flowchartTitleText\"".to_owned(),
                 "class=\"missing-title\"".to_owned(),
                 "preset-flowchart-title",
@@ -761,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_pixels_reject_missing_background_while_preserving_text() {
+    fn flowchart_pixels_reject_missing_or_faded_background_while_preserving_text() {
         let document = document(ThemePreset::Spotless);
         let palette = Palette::for_preset(ThemePreset::Spotless).unwrap();
         let geometry = check_svg(&observe(document.svg()), palette).unwrap();
@@ -771,29 +765,49 @@ mod tests {
                 OperationControl::new(),
             )
             .unwrap();
-        let mut raster = decode_bounded_png_artifact(png.bytes(), png.plan()).unwrap();
+        let raster = decode_bounded_png_artifact(png.bytes(), png.plan()).unwrap();
         check_pixels(&raster, &geometry, palette).unwrap();
-        // Erase only the pale background pixels; preserve all label ink and geometry.
         let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
             .read_info()
             .unwrap();
         let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
         let frame = reader.next_frame(&mut pixels).unwrap();
         assert_eq!(frame.color_type, png::ColorType::Rgba);
-        for (index, pixel) in pixels[..frame.buffer_size()].chunks_exact(4).enumerate() {
-            let x = index as u32 % frame.width;
-            let y = index as u32 / frame.width;
-            if pixel[0].abs_diff(243) <= 2
-                && pixel[1].abs_diff(240) <= 2
-                && pixel[2].abs_diff(232) <= 2
-            {
-                raster.set_rgb_for_test(x, y, parse_c6_hex_rgb(palette.cluster).unwrap());
+        let background_rgb = parse_c6_hex_rgb(palette.background).unwrap();
+        let cluster_rgb = parse_c6_hex_rgb(palette.cluster).unwrap();
+        let faded_rgb = std::array::from_fn(|channel| {
+            ((u16::from(background_rgb[channel]) + u16::from(cluster_rgb[channel])) / 2) as u8
+        });
+        let [left, top, width, height] = geometry.background;
+        for replacement in [cluster_rgb, faded_rgb] {
+            let mut changed = raster.clone();
+            let mut changed_pixels = 0;
+            for (index, pixel) in pixels[..frame.buffer_size()].chunks_exact(4).enumerate() {
+                let column = index as u32 % frame.width;
+                let row = index as u32 / frame.width;
+                let svg_x = geometry.view[0]
+                    + (f64::from(column) + 0.5) * geometry.view[2] / f64::from(frame.width);
+                let svg_y = geometry.view[1]
+                    + (f64::from(row) + 0.5) * geometry.view[3] / f64::from(frame.height);
+                if svg_x >= left
+                    && svg_x <= left + width
+                    && svg_y >= top
+                    && svg_y <= top + height
+                    && pixel[..3]
+                        .iter()
+                        .zip(background_rgb)
+                        .all(|(actual, expected)| actual.abs_diff(expected) <= 2)
+                {
+                    changed.set_rgb_for_test(column, row, replacement);
+                    changed_pixels += 1;
+                }
             }
+            assert!(changed_pixels > 0);
+            let error = check_pixels(&changed, &geometry, palette).unwrap_err();
+            assert!(
+                error.to_string().contains("preset-flowchart-background"),
+                "{error}"
+            );
         }
-        let error = check_pixels(&raster, &geometry, palette).unwrap_err();
-        assert!(
-            error.to_string().contains("preset-flowchart-background"),
-            "{error}"
-        );
     }
 }

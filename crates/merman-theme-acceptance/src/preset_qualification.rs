@@ -94,6 +94,27 @@ const SPECS: [PresetQualificationSpec; 3] = [
     },
 ];
 
+const CYBERPUNK_SPECS: [PresetQualificationSpec; 3] = [
+    PresetQualificationSpec {
+        family: DiagramFamilyId::FLOWCHART,
+        source_id: "public-cyberpunk-flowchart-v1",
+        png_scale: 1.0,
+        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"),
+    },
+    PresetQualificationSpec {
+        family: DiagramFamilyId::SEQUENCE,
+        source_id: "public-cyberpunk-sequence-v1",
+        png_scale: 1.0,
+        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+    },
+    PresetQualificationSpec {
+        family: DiagramFamilyId::XY_CHART,
+        source_id: "public-cyberpunk-xychart-v1",
+        png_scale: 1.0,
+        source: include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"),
+    },
+];
+
 /// Native admission for one actual artifact, including the independent residual domains.
 #[derive(Debug, Clone)]
 pub struct PresetAdmissionObservation {
@@ -312,7 +333,12 @@ pub struct PresetAdmissionError {
 pub fn inspect_preset_admission(
     preset: ThemePreset,
 ) -> Result<PresetAdmissionReport, PresetAdmissionError> {
-    execute_preset(preset, &SPECS, false)
+    let specs = if preset == ThemePreset::Cyberpunk {
+        &CYBERPUNK_SPECS
+    } else {
+        &SPECS
+    };
+    execute_preset(preset, specs, false)
 }
 
 fn execute_preset(

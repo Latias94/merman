@@ -20,11 +20,20 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             theme.report().font_catalog_fingerprint().as_bytes()
         );
         assert_eq!(report.observations().len(), 6);
-        for (pair, family) in report.observations().chunks_exact(2).zip([
-            DiagramFamilyId::FLOWCHART,
-            DiagramFamilyId::STATE,
-            DiagramFamilyId::SEQUENCE,
-        ]) {
+        let families = if preset == merman::svg::ThemePreset::Cyberpunk {
+            [
+                DiagramFamilyId::FLOWCHART,
+                DiagramFamilyId::SEQUENCE,
+                DiagramFamilyId::XY_CHART,
+            ]
+        } else {
+            [
+                DiagramFamilyId::FLOWCHART,
+                DiagramFamilyId::STATE,
+                DiagramFamilyId::SEQUENCE,
+            ]
+        };
+        for (pair, family) in report.observations().chunks_exact(2).zip(families) {
             assert_eq!(pair[0].artifact_kind(), RenderArtifactKind::Svg);
             assert_eq!(pair[1].artifact_kind(), RenderArtifactKind::Png);
             assert_eq!(
@@ -88,6 +97,34 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             descriptor.qualified_cells().is_empty(),
             "admission observations must not grant preset qualification"
         );
+        if preset == merman::svg::ThemePreset::Cyberpunk {
+            for (pair, (source_id, source)) in report.observations().chunks_exact(2).zip([
+                (
+                    "public-cyberpunk-flowchart-v1",
+                    include_str!(
+                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/flowchart.mmd"
+                    ),
+                ),
+                (
+                    "public-cyberpunk-sequence-v1",
+                    include_str!(
+                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"
+                    ),
+                ),
+                (
+                    "public-cyberpunk-xychart-v1",
+                    include_str!(
+                        "../../merman-theme-fixtures/fixtures/public-cyberpunk/xychart.mmd"
+                    ),
+                ),
+            ]) {
+                for observation in pair {
+                    assert_eq!(observation.spec().source_id(), source_id);
+                    assert_eq!(observation.spec().source(), source);
+                    assert_eq!(observation.spec().png_scale(), 1.0);
+                }
+            }
+        }
     }
 }
 

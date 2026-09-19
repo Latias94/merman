@@ -138,3 +138,30 @@ open. Successful native admission alone cannot close those gates.
 The independent review identified the HTML projection distinction above, but its agent later
 terminated with a session compaction error. That partial review is not recorded as a completed
 review or a passing gate.
+
+## Recovery revalidation
+
+On resuming from `57b0f5d6d`, the ignored capture directory and its observation-check script
+were absent. The captures above remain historical observations; this continuation did not
+rerun their browser, controlled-font or PDF checks.
+
+The existing preset admission owner now reads the three checked-in complete scenes directly
+for Cyberpunk, using the unmodified public recipe, native SVG labels, system fonts, default
+limits and 1x PNG. Its fresh six artifact observations are HostDependent with no theme, source,
+bridge or Mermaid residuals. Other presets retain their earlier admission scenes.
+
+The first fresh regression also exposed a stale Flowchart qualifier: it expected the old 0.5
+fade despite the typed background alpha correction in `a40c505df`. The qualifier now checks
+opacity 1 and the actual authored opaque RGB. Negative controls reject both the old fade and
+missing background while preserving labels. The Cyberpunk palette-only qualifier still rejects
+the current recipe; no qualified cells were promoted.
+
+Release nextest passed all 10 selected qualification tests, with 114 unrelated library tests
+filtered out. This command uses the existing acceptance configuration and serial build/test jobs:
+
+```console
+CARGO_BUILD_JOBS=1 python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --no-default-features --features png,layout-cytoscape --lib --test preset_qualification -E 'test(preset_qualification::) | binary(preset_qualification)' --test-threads 1 --no-fail-fast
+```
+
+This closes the full-scene admission regression and stale background oracle only. Calibrated
+visual qualification, PDF/HTML acceptance, installed consumers and C7a remain open.

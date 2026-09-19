@@ -619,9 +619,12 @@ Revision-85 results remain historical. Browser Web packages, a new Typst WASM ar
 other host artifacts still need current-source verification. This is a cross-transport discovery
 contract check; it does not qualify a document, preset, artifact profile, or C7a candidate.
 
-The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
-State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
-60 artifact observations comprise 18 HostDependent Flowchart/State/Sequence outputs from the native
+The preset admission runner executes all ten exact catalog recipes, then exports each completed
+document to PNG. Cyberpunk uses the unchanged complete Flowchart, Sequence and XY Chart sources
+from `merman-theme-fixtures/fixtures/public-cyberpunk`; the other nine presets retain the small
+Flowchart, State and Sequence sources. These admission runs use native SVG labels, system fonts,
+default resource limits and 1x PNG. They do not cover HTML labels or PDF.
+On 2026-09-11 the 60 artifact observations comprised 18 HostDependent Flowchart/State/Sequence outputs from the native
 candidates and 42 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
 requests (two compatibility residuals per family). Native candidates omit those requests.
 All recipes leave font resources to the host; standalone SVG fonts are not self-contained and
@@ -639,12 +642,17 @@ shared document/resource identities, target receipts, and actual artifact bytes.
 inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
 
-The separate `run_preset_qualification` runner now issues an opaque, execution-local receipt for
-Brutalist, Spotless, and Cyberpunk on the declared `native-flowchart-state-sequence-system-fonts-v1` profile only.
+The separate `run_preset_qualification` runner issues an opaque, execution-local receipt for
+Brutalist and Spotless on the declared `native-flowchart-state-sequence-system-fonts-v1` profile only.
+The current Cyberpunk recipe fails the historical palette-only checks. Its full-scene admission
+observations do not replace those checks or issue a qualification receipt; recording/replay that
+requires all three candidates remains blocked until complete-scene qualification is implemented.
 Qualification schema 1 dispatches the exact catalog recipe through Flowchart/State/Sequence SVG
 and PNG. Flowchart checks a titled subgraph containing two nodes and a labeled directed edge:
-actual surfaces, borders, labels, marker and translucent background must reach SVG and PNG.
+actual surfaces, borders, labels, marker and authored background paint must reach SVG and PNG.
 The edge label lies over the contrasting cluster fill so a missing background remains observable.
+The fixed recipes use opaque background colors. The qualifier requires opacity 1 and the
+authored RGB pixels; both a missing background and the historical extra 0.5 fade fail.
 State checks canvas,
 node surface, border and label assignments plus raster canvas/surface coverage and label ink.
 Sequence checks actor, message, note, loop and autonumber labels, activation styles, and canvas
@@ -668,7 +676,7 @@ scopes remain empty. Rust, binding JSON, Web, and Flutter now carry explicit `pr
 values without inferring portability. Generated catalog promotion still needs the profile's fresh
 evidence connected to the actual artifact build. The C7a preset
 gate remains open. These host-dependent scenarios do not qualify arbitrary sources, explicit
-Marker/ClusterLabel rules, or a portable resource profile. Each native preset has six artifact cells
+Marker/ClusterLabel rules, or a portable resource profile. Each successful preset has six artifact cells
 under this profile; these execution-local cells do not modify the fixed C6a ledger.
 
 Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
