@@ -241,7 +241,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
 }
 
 #[test]
-fn custom_host_metrics_without_prepared_geometry_retain_a_residual() {
+fn underestimated_host_label_geometry_is_rejected_by_native_export() {
     use merman::svg::{
         MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
         TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle,
@@ -312,17 +312,17 @@ fn custom_host_metrics_without_prepared_geometry_retain_a_residual() {
         else {
             panic!("document required")
         };
-        // Custom measurers do not expose the built-in operation binding needed by the
-        // prepared label sidecar. An arbitrary metrics result cannot certify an effect.
-        assert!(!document.svg().contains("theme-effect-label"));
+        // Host allocation may draw the requested effect without becoming a cache identity.
+        // The actual native glyph observer must still reject underestimated paint bounds.
+        assert!(document.svg().contains("theme-effect-label"));
         let png = document
             .export_png(&Default::default(), OperationControl::new())
             .unwrap();
         assert!(
             png.admission()
                 .reasons()
-                .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
-            "unprepared host metrics must retain incomplete theme evidence: {:?}",
+                .contains(&merman::TargetAdmissionReason::NativeFilterReceiptMismatch),
+            "underestimated host metrics must fail final glyph containment: {:?}",
             png.admission()
         );
         #[cfg(feature = "pdf")]
@@ -333,8 +333,157 @@ fn custom_host_metrics_without_prepared_geometry_retain_a_residual() {
             assert!(
                 pdf.admission()
                     .reasons()
-                    .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+                    .contains(&merman::TargetAdmissionReason::NativeFilterReceiptMismatch)
             );
         }
     }
+}
+
+#[test]
+fn typed_edge_background_preserves_alpha_in_native_pixels() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for padding in [0.0, 6.0] {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  themeVariables:\n    clusterBkg: transparent\n{}---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+                    if swimlane { "  layout: swimlane\n" } else { "" },
+                );
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_canvas(merman::svg::CanvasSpec::transparent())
+                            .with_styles(
+                                ThemeRuleSet::default()
+                                    .with_rule(ThemeRule::new(
+                                        ThemeTarget::EdgeLabelBackground,
+                                        ThemeStylePatch::default().with_fill(
+                                            CanvasPaint::solid("rgba(255,0,0,0.4)").unwrap(),
+                                        ),
+                                    ))
+                                    .with_rule(ThemeRule::new(
+                                        ThemeTarget::EdgeLabel,
+                                        ThemeStylePatch::default()
+                                            .with_padding(merman::svg::InsetsPx::all(padding)),
+                                    )),
+                            ),
+                    )
+                    .unwrap();
+                let RenderOutput::Document(Some(document)) = Renderer::new()
+                    .render(
+                        RenderRequest::document(
+                            &source,
+                            OperationControl::new(),
+                            Default::default(),
+                        )
+                        .with_theme(theme),
+                    )
+                    .unwrap()
+                else {
+                    panic!("document required")
+                };
+                let output = document
+                    .export_png(&Default::default(), OperationControl::new())
+                    .unwrap();
+                assert_eq!(
+                    output
+                        .admission()
+                        .reasons()
+                        .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
+                    !swimlane && html && padding > 0.0,
+                    "only the unmeasured padded HTML background retains a residual",
+                );
+                let mut reader = png::Decoder::new(std::io::Cursor::new(output.bytes()))
+                    .read_info()
+                    .unwrap();
+                let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+                let info = reader.next_frame(&mut pixels).unwrap();
+                assert_eq!(info.color_type, png::ColorType::Rgba);
+                // Only the requested background is red. Its interior must retain the
+                // requested alpha, independent of HTML projection or a padding rectangle.
+                let max_alpha = pixels[..info.buffer_size()]
+                    .chunks_exact(4)
+                    .filter(|pixel| pixel[0] >= 250 && pixel[1] <= 2 && pixel[2] <= 2)
+                    .map(|pixel| pixel[3])
+                    .max()
+                    .unwrap_or_else(|| panic!("red background pixels: swimlane={swimlane}, html={html}, padding={padding}"));
+                assert!(
+                    (101..=103).contains(&max_alpha),
+                    "swimlane={swimlane}, html={html}, padding={padding}: alpha={max_alpha}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn stateful_host_label_offsets_are_not_replayed_as_verified_geometry() {
+    use merman::svg::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle, ThemePreset,
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    struct ChangingOffset(Arc<AtomicUsize>);
+    impl TextMeasurer for ChangingOffset {
+        fn measure(&self, _: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 80.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _: &str, _: &TextStyle) -> f64 {
+            self.0.fetch_add(1, Ordering::SeqCst) as f64 * 0.125
+        }
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let environment = merman::SvgEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.flowchart-changing-offset").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            Arc::new(ChangingOffset(calls.clone())),
+        )),
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Cyberpunk)
+        .unwrap();
+    let RenderOutput::Document(Some(document)) = Renderer::new().render(
+        RenderRequest::document(
+            "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+            OperationControl::new(),
+            merman::SvgRequest { environment, ..Default::default() },
+        ).with_theme(theme),
+    ).unwrap() else { panic!("document required") };
+    assert!(
+        calls.load(Ordering::SeqCst) >= 2,
+        "the host must observe both geometry requests"
+    );
+    let xml = roxmltree::Document::parse(document.svg()).unwrap();
+    assert!(
+        xml.descendants()
+            .any(|node| node.is_text() && node.text() == Some("Advance"))
+    );
+    assert!(
+        !xml.descendants()
+            .filter(|node| node.attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| class == "edgeLabel")
+            }))
+            .any(|label| label
+                .descendants()
+                .any(|node| node.attribute("filter").is_some())),
+        "a changed terminal translation cannot consume the prepared edge-label filter"
+    );
+    let png = document
+        .export_png(&Default::default(), OperationControl::new())
+        .unwrap();
+    assert!(
+        png.admission()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+    );
 }

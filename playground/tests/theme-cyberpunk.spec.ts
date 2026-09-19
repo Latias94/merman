@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { encodeShareHash } from "../src/lib/share";
 import { monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 
-test("public Cyberpunk paints its layered canvas and separate node and edge glows", async ({ page }) => {
+test("public Cyberpunk paints its layered canvas and separate shape, edge and text glows", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const hash = encodeShareHash({
     code: "flowchart LR\nA[Alpha] -->|Advance| B[Beta]",
@@ -94,13 +94,15 @@ test("public Cyberpunk paints its layered canvas and separate node and edge glow
     const filter = root.querySelector(`[id="${id}"]`)!;
     return {
       kind: terminal.matches("g.node > rect") ? "node"
-        : terminal.matches("path.flowchart-link") ? "edge" : "unexpected",
+        : terminal.matches("path.flowchart-link") ? "edge"
+          : terminal.querySelector("text") ? "text" : "unexpected",
       deviations: [...filter.querySelectorAll("feGaussianBlur")].map((blur) => Number(blur.getAttribute("stdDeviation"))),
     };
   }));
-  expect(glows.map(({ kind }) => kind).sort()).toEqual(["edge", "node", "node"]);
+  expect(glows.map(({ kind }) => kind).sort()).toEqual(["edge", "node", "node", "text", "text", "text"]);
   expect(glows.filter(({ kind }) => kind === "node").map(({ deviations }) => deviations)).toEqual([[8, 16], [8, 16]]);
   expect(glows.filter(({ kind }) => kind === "edge").map(({ deviations }) => deviations)).toEqual([[6]]);
+  expect(glows.filter(({ kind }) => kind === "text").map(({ deviations }) => deviations)).toEqual([[5], [5], [5]]);
   await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
 
   // A definition or binding alone does not show that the browser paints the glow.
@@ -109,13 +111,59 @@ test("public Cyberpunk paints its layered canvas and separate node and edge glow
     terminal.removeAttribute("filter");
   }));
   const unfiltered = await svg.screenshot();
-  for (const kind of ["node", "edge"]) {
+  for (const kind of ["node", "edge", "text"]) {
     await svg.locator("[data-test-filter]").evaluateAll((terminals, selected) => terminals.forEach((terminal) => {
-      const selector = selected === "node" ? "g.node > rect" : "path.flowchart-link";
-      if (terminal.matches(selector)) terminal.setAttribute("filter", terminal.getAttribute("data-test-filter")!);
+      const matches = selected === "node" ? terminal.matches("g.node > rect")
+        : selected === "edge" ? terminal.matches("path.flowchart-link") : !!terminal.querySelector("text");
+      if (matches) terminal.setAttribute("filter", terminal.getAttribute("data-test-filter")!);
       else terminal.removeAttribute("filter");
     }), kind);
     expect(await svg.screenshot(), `${kind} glow must change painted pixels`).not.toEqual(unfiltered);
   }
+  errors.assertNone();
+});
+
+test("public Cyberpunk keeps HTML glyph glow separate from the label background", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const hash = encodeShareHash({
+    code: "flowchart LR\nA[Alpha] -->|Advance| B[Beta]",
+    mermaidConfig: '{"htmlLabels":true}',
+    diagramTheme: "default",
+    themePresetId: "cyberpunk",
+    svgPipeline: "parity",
+    textMeasurementMode: "browser",
+    diagramFont: "trebuchet",
+  });
+  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+  await page.evaluate(() => document.fonts.ready);
+  const svg = page.locator(".preview-container > div").first().locator("svg");
+  const glyphs = svg.locator("foreignObject p");
+  await expect(glyphs).toHaveCount(3);
+  const facts = await glyphs.evaluateAll((nodes) => nodes.map((node) => {
+    const style = getComputedStyle(node);
+    const box = node.getBoundingClientRect();
+    const owner = style.filter !== "none" ? node : node.closest("[filter]");
+    return { text: node.textContent, weight: style.fontWeight,
+      filter: owner ? getComputedStyle(owner).filter : "none",
+      filtersBackground: !!owner?.querySelector("rect"),
+      background: style.backgroundColor, width: box.width, height: box.height };
+  }));
+  expect(facts.map(({ text }) => text).sort()).toEqual(["Advance", "Alpha", "Beta"]);
+  for (const fact of facts) {
+    expect(fact.weight).toBe("600");
+    expect(fact.filter).toContain("url(");
+    expect(fact.filtersBackground).toBe(false);
+    expect(fact.background).toBe("rgba(0, 0, 0, 0)");
+    expect(fact.width).toBeGreaterThan(0);
+    expect(fact.height).toBeGreaterThan(0);
+  }
+  await expect(svg.locator("foreignObject div.labelBkg")).toHaveCSS("background-color", "rgb(5, 20, 35)");
+  const on = await svg.screenshot({ path: test.info().outputPath("public-cyberpunk-html.png") });
+  await glyphs.evaluateAll((nodes) => nodes.forEach((node) => {
+    const owner = getComputedStyle(node).filter !== "none" ? node : node.closest<SVGElement>("[filter]");
+    if (owner) owner.style.filter = "none";
+  }));
+  expect(await svg.screenshot()).not.toEqual(on);
   errors.assertNone();
 });

@@ -240,7 +240,21 @@ where
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
 
-    let label_bkg = css_rgba_fade(edge_label_background, 0.5)?;
+    let typed_background =
+        text_surface_paint.is_some_and(|plan| plan.background.supplies_background());
+    // Typed paint owns one layer, including its alpha. Mermaid configuration retains
+    // the historical paragraph/div compositing and native rectangle fade.
+    let background_underlay = if typed_background {
+        "transparent"
+    } else {
+        edge_label_background
+    };
+    let background_opacity = if typed_background { "1" } else { "0.5" };
+    let label_bkg = if typed_background {
+        edge_label_background.to_owned()
+    } else {
+        css_rgba_fade(edge_label_background, 0.5)?
+    };
     let scoped_drop_shadow = ScopedFlowchartDropShadow {
         source: drop_shadow,
         drop_shadow_id,
@@ -318,11 +332,11 @@ where
     );
     let _ = write!(
         &mut *out,
-        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
         id,
-        edge_label_background,
+        background_underlay,
         id,
-        edge_label_background,
+        background_underlay,
         id,
         edge_label_background,
         edge_label_background,
@@ -348,13 +362,13 @@ where
     );
     let _ = write!(
         &mut *out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
         id,
         id,
-        edge_label_background,
+        background_underlay,
         id,
         id,
-        edge_label_background,
+        background_underlay,
         id,
         id,
         edge_label_background,

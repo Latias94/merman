@@ -208,8 +208,14 @@ impl FlowchartLabelEffects {
                     let Some(owner) = sidecar.node_owner(id, false) else {
                         continue;
                     };
-                    let Some(bounds) =
-                        sidecar.centered_shadow_bounds(owner, raw, text_style.as_ref())
+                    ctx.work_meter.charge(raw.len())?;
+                    let Some(bounds) = sidecar
+                        .centered_shadow_bounds(owner, raw, text_style.as_ref())
+                        .or_else(|| {
+                            node.label_width.and_then(|width| {
+                                plain_svg_allocation_bounds(raw, width, height, text_style.as_ref())
+                            })
+                        })
                     else {
                         continue;
                     };
@@ -298,11 +304,25 @@ impl FlowchartLabelEffects {
                     };
                     (bounds, (content.x, content.y))
                 } else {
-                    let Some(bounds) = sidecar.centered_shadow_bounds(
-                        FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
-                        raw,
-                        text_style.as_ref(),
-                    ) else {
+                    ctx.work_meter.charge(raw.len())?;
+                    let Some(bounds) = sidecar
+                        .centered_shadow_bounds(
+                            FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
+                            raw,
+                            text_style.as_ref(),
+                        )
+                        .or_else(|| {
+                            let content = ctx
+                                .edge_label_padding
+                                .content_box(label.width, label.height);
+                            plain_svg_allocation_bounds(
+                                raw,
+                                content.width,
+                                content.height,
+                                text_style.as_ref(),
+                            )
+                        })
+                    else {
                         continue;
                     };
                     let plain = flowchart_label_plain_text(raw, "text", false);
@@ -461,6 +481,34 @@ fn plain_html_edge_styles_are_bounded(
     Ok(true)
 }
 
+// Layout metrics allocate paint without authorizing measurement reuse. Host callbacks
+// remain observable; actual native glyph containment is checked by the export observer.
+fn plain_svg_allocation_bounds(
+    raw: &str,
+    width: f64,
+    height: f64,
+    style: &crate::text::TextStyle,
+) -> Option<[f64; 4]> {
+    let em = style.font_size;
+    if raw.trim().is_empty()
+        || raw.contains(['<', '>', '\n', '\r'])
+        || raw.contains("$$")
+        || ![width, height, em]
+            .iter()
+            .all(|value| value.is_finite() && *value > 0.0)
+    {
+        return None;
+    }
+    // SVG rows start at one em. Automatic wrapping is still owned by the writer;
+    // this allocation is not a guarantee about line count or final font ink.
+    Some([
+        -width / 2.0 - em,
+        -em,
+        width / 2.0 + em,
+        height.max(em) + em,
+    ])
+}
+
 // Ordinary HTML uses the layout-owned label box in top-left coordinates. Only transparent,
 // unstyled text markup can use this allocation; rich HTML needs its own geometry consumer.
 fn plain_html_shadow_bounds(
@@ -471,19 +519,11 @@ fn plain_html_shadow_bounds(
     style: &crate::text::TextStyle,
     single_paragraph: bool,
 ) -> crate::Result<Option<[f64; 4]>> {
-    use crate::environment::TextMeasurementOperation;
     let em = style.font_size;
     if ![width, height, em]
         .iter()
         .all(|value| value.is_finite() && *value > 0.0)
         || raw.contains("$$")
-        || [
-            TextMeasurementOperation::Wrapped,
-            TextMeasurementOperation::WrappedWithRawWidth,
-            TextMeasurementOperation::ComputedLength,
-        ]
-        .iter()
-        .any(|operation| ctx.measurer.builtin_operation_carrier(*operation).is_none())
     {
         return Ok(None);
     }

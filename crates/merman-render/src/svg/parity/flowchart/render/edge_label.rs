@@ -426,6 +426,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         )
     });
     let label_effect_emitted = std::cell::Cell::new(false);
+    // Intrinsic HTML geometry can exceed host layout estimates. Keep the natural
+    // background visible, but do not certify its unmeasured padded extent.
+    let typed_html_background =
+        ctx.edge_html_labels && ctx.text_surface_paint.background.supplies_background();
+    let background_padding_unverified = typed_html_background && !ctx.edge_label_padding.is_zero();
     let record_label_emission = |source_typography_verified,
                                  sanitized_xhtml: Option<&str>,
                                  visible: bool,
@@ -458,7 +463,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         ctx.text_surface_paint.background.record_terminal(
             background_area,
-            background_area,
+            background_area && !background_padding_unverified,
             ctx.work_meter,
         )?;
         record_edge_label_emission(
@@ -754,7 +759,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let layout_w = lbl.width.max(0.0);
             let h = lbl.height.max(0.0);
             let content = ctx.edge_label_padding.content_box(layout_w, h);
-            let background = padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h);
+            let background = if typed_html_background {
+                String::new()
+            } else {
+                padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h)
+            };
             let wrapped_style = if content.width >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
@@ -792,11 +801,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 let configured = SvgTheme::new(ctx.config.as_value())
                     .color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
                 let fill = ctx.text_surface_paint.background.color(&configured);
-                // The canonical div and paragraph paint the same RGB over the same box.
-                // Compose their alpha (.5 then a) while the paragraph becomes glyph-only.
-                let color = merman_core::theme_color::ThemeColor::parse(fill)?;
-                let alpha = color.channel(merman_core::theme_color::ColorChannel::Alpha);
-                let background = crate::svg::parity::util::css_rgba_fade(fill, 0.5 + 0.5 * alpha)?;
+                let background = if ctx.text_surface_paint.background.supplies_background() {
+                    fill.to_owned()
+                } else {
+                    // Preserve the configured div/paragraph composite while making
+                    // the filtered paragraph glyph-only.
+                    let color = merman_core::theme_color::ThemeColor::parse(fill)?;
+                    let alpha = color.channel(merman_core::theme_color::ColorChannel::Alpha);
+                    crate::svg::parity::util::css_rgba_fade(fill, 0.5 + 0.5 * alpha)?
+                };
                 let reference = effect.html_reference(out, id);
                 let _ = write!(
                     out,
@@ -876,7 +889,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let content_h = metrics.height.max(1.0);
             let (layout_w, h) = ctx.edge_label_padding.padded_size(content_w, content_h);
             let content = ctx.edge_label_padding.content_box(layout_w, h);
-            let background = padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h);
+            let background = if typed_html_background {
+                String::new()
+            } else {
+                padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h)
+            };
             let wrapped_style = if content.width >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",

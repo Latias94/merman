@@ -150,6 +150,7 @@ pub(super) fn build_recipe(
             DiagramFamilyId::FLOWCHART,
             ThemeTarget::NodeLabel,
             ThemeStylePatchWireV1 {
+                effect: SpecifiedWireV1::Value(LOOP_TEXT_GLOW.to_owned()),
                 typography: Some(ThemeTextStylePatchWireV1 {
                     font_weight: SpecifiedWireV1::Value(600),
                     ..ThemeTextStylePatchWireV1::default()
@@ -161,6 +162,7 @@ pub(super) fn build_recipe(
             DiagramFamilyId::FLOWCHART,
             ThemeTarget::EdgeLabel,
             ThemeStylePatchWireV1 {
+                effect: SpecifiedWireV1::Value(LOOP_TEXT_GLOW.to_owned()),
                 typography: Some(ThemeTextStylePatchWireV1 {
                     font_weight: SpecifiedWireV1::Value(600),
                     ..ThemeTextStylePatchWireV1::default()

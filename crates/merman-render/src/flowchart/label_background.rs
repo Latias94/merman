@@ -30,7 +30,7 @@ struct BackgroundReceipt {
     stylesheet_emitted: bool,
     ordinal: usize,
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    consumed: BTreeSet<usize>,
+    complete_fills: BTreeMap<usize, bool>,
     palette_applies: bool,
     bindings: BTreeSet<String>,
 }
@@ -142,14 +142,18 @@ impl FlowchartLabelBackgroundPlan {
                 continue;
             }
             receipt.winners.insert((origin.rule_index(), property));
-            if property == ResolvedStyleProperty::Fill
-                && background_emitted
-                && self
-                    .fill
-                    .as_ref()
-                    .is_some_and(|fill| fill.rule_index() == origin.rule_index())
-            {
-                receipt.consumed.insert(origin.rule_index());
+            if property == ResolvedStyleProperty::Fill {
+                let consumed = background_emitted
+                    && self
+                        .fill
+                        .as_ref()
+                        .is_some_and(|fill| fill.rule_index() == origin.rule_index());
+                // A successful sibling terminal cannot erase an unverified occurrence.
+                receipt
+                    .complete_fills
+                    .entry(origin.rule_index())
+                    .and_modify(|complete| *complete &= consumed)
+                    .or_insert(consumed);
             }
         }
         receipt.palette_applies |= !self.config_owned
@@ -194,7 +198,7 @@ impl FlowchartLabelBackgroundPlan {
                     }
                     if route.disposition() == FamilyThemeDisposition::TypedAdapter
                         && matches!(facet, FamilyThemeRuleFacet::Fill(_))
-                        && receipt.consumed.contains(&rule_index)
+                        && receipt.complete_fills.get(&rule_index) == Some(&true)
                     {
                         outcome.0 = true;
                     } else {

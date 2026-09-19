@@ -252,7 +252,7 @@ fn glow_expands_viewport_without_moving_layout_nodes_and_survives_nested_roots()
 }
 
 #[test]
-fn public_cyberpunk_recipe_exchange_retains_actual_node_glow() {
+fn public_cyberpunk_recipe_exchange_retains_shape_edge_and_text_glow() {
     use merman_render::diagram_theme::ThemePreset;
     let compiler = DiagramThemeCompiler::new();
     let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
@@ -262,31 +262,68 @@ fn public_cyberpunk_recipe_exchange_retains_actual_node_glow() {
         .compile_recipe(serde_json::from_slice(&encoded).unwrap())
         .unwrap();
     let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
-    let direct = render(source, &selected, "classic", true).unwrap();
-    let exchanged = render(source, &imported, "classic", true).unwrap();
-    assert_eq!(direct.svg(), exchanged.svg());
-    let document = roxmltree::Document::parse(direct.svg()).unwrap();
-    for label in ["Alpha", "Advance", "Beta"] {
-        let text = document
+    for html_labels in [false, true] {
+        let direct =
+            render_with_html_labels(source, &selected, "classic", true, html_labels).unwrap();
+        let exchanged =
+            render_with_html_labels(source, &imported, "classic", true, html_labels).unwrap();
+        assert_eq!(direct.svg(), exchanged.svg());
+        let document = roxmltree::Document::parse(direct.svg()).unwrap();
+        for label in ["Alpha", "Advance", "Beta"] {
+            let text = document
+                .descendants()
+                .find(|node| node.is_text() && node.text() == Some(label))
+                .unwrap();
+            assert!(
+                text.ancestors().any(|node| {
+                    node.attribute("font-weight") == Some("600")
+                        || node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("font-weight:600"))
+                }),
+                "{label}: weight 600 must reach the actual text"
+            );
+            let reference = text
+                .ancestors()
+                .find_map(filter_reference)
+                .expect("public text must have its own glow application");
+            let id = reference
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let filter = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            let deviations: Vec<_> = filter
+                .descendants()
+                .filter(|node| node.has_tag_name("feGaussianBlur"))
+                .map(|node| node.attribute("stdDeviation").unwrap())
+                .collect();
+            assert_eq!(
+                deviations,
+                ["5"],
+                "{label}: text uses the reference's 10px shadow"
+            );
+            assert!(
+                !text
+                    .ancestors()
+                    .find(|node| filter_reference(*node).is_some())
+                    .unwrap()
+                    .descendants()
+                    .any(|node| node.has_tag_name("rect"))
+            );
+        }
+        assert_eq!(applications(direct.svg()), 6);
+        let mut deviations = document
             .descendants()
-            .find(|node| node.is_text() && node.text() == Some(label))
-            .unwrap();
-        assert_eq!(
-            text.parent_element().unwrap().attribute("font-weight"),
-            Some("600"),
-            "{label}"
-        );
+            .filter(|node| node.has_tag_name("feGaussianBlur"))
+            .map(|node| node.attribute("stdDeviation").unwrap())
+            .collect::<Vec<_>>();
+        deviations.sort_unstable();
+        assert_eq!(deviations, ["16", "16", "5", "5", "5", "6", "8", "8"]);
     }
-    assert_eq!(applications(direct.svg()), 3);
-    let xml = roxmltree::Document::parse(direct.svg()).unwrap();
-    let deviations = xml
-        .descendants()
-        .filter(|node| node.has_tag_name("feGaussianBlur"))
-        .map(|node| node.attribute("stdDeviation").unwrap())
-        .collect::<Vec<_>>();
-    let mut deviations = deviations;
-    deviations.sort_unstable();
-    assert_eq!(deviations, ["16", "16", "6", "8", "8"]);
 }
 
 #[test]
@@ -1662,4 +1699,57 @@ fn special_node_label_placement_keeps_its_effect_residual() {
         !xml.descendants()
             .any(|node| node.attribute("filter").is_some())
     );
+}
+
+#[test]
+fn typed_html_background_padding_keeps_natural_paint_and_retains_a_residual() {
+    use merman_render::diagram_theme::{CanvasPaint, InsetsPx};
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::EdgeLabelBackground,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("rgba(255,0,0,0.4)").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::EdgeLabel,
+                        ThemeStylePatch::default().with_padding(InsetsPx {
+                            top: 3.0,
+                            right: 7.0,
+                            bottom: 5.0,
+                            left: 11.0,
+                        }),
+                    )),
+            ),
+        )
+        .unwrap();
+    let body = "A -->|A long label with natural HTML wrapping that can exceed host estimates| B";
+    let special = "C@{ icon: 'missing:icon', label: 'Special label', form: 'square' }";
+    for body in [
+        body.to_owned(),
+        format!("{body}\n{special}"),
+        format!("{special}\n{body}"),
+    ] {
+        let source = format!("flowchart LR\n{body}");
+        let output = render_with_html_labels(&source, &theme, "classic", false, true).unwrap();
+        let xml = roxmltree::Document::parse(output.svg()).unwrap();
+        assert!(xml.descendants().any(|node| node.has_tag_name("div") && node.attribute("class") == Some("labelBkg")));
+        assert!(
+            !xml.descendants()
+                .any(|node| node.has_tag_name("rect")
+                    && node.attribute("class") == Some("background"))
+        );
+        let evidence = merman_render::__private::family_evidence(output.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 1, "{source}");
+        assert!(
+            render_with_html_labels(&source, &theme, "classic", true, true).is_err(),
+            "{source}"
+        );
+        assert!(
+            render_with_html_labels(&source, &theme, "classic", true, false).is_ok(),
+            "{source}"
+        );
+    }
 }
