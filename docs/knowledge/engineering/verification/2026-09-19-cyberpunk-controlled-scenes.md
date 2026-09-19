@@ -213,3 +213,40 @@ The tests save scene screenshots in their Playwright output directories. They es
 pixel contributions on this browser/profile, not whole-image equivalence with Mermaid, complete
 glyph/glow clip coverage, native PNG/PDF qualification or portable fonts. The old Cyberpunk
 palette qualifier still rejects the current recipe; catalog cells, U6–U9 and C7a remain open.
+
+## Executable native PNG scene checks
+
+The continuation from `48a618a2e` adds `cyberpunk_public_preset` to the existing acceptance
+crate. Its three tests render the unchanged complete fixtures through the public facade with
+the resource-free Cyberpunk preset, native SVG labels, system fonts, 1x PNG and default limits.
+Each preset is also exported to JSON, imported through a fresh compiler and rendered again;
+recipe fingerprints, SVG bytes and every decoded PNG pixel match. PNG admission remains
+HostDependent with only SystemOrHostFontDependency, and the actual native filter receipts retain
+13/21/28 references for Flowchart/Sequence/XY respectively.
+
+The test's mutation path goes through the existing ResvgSafe finalizer and native PNG exporter.
+It must reproduce the facade's original pixels exactly before any negative probe runs. XML
+element/attribute ranges come from the workspace's existing roxmltree version, added only as an
+acceptance dev-dependency; no SVG parser, renderer or qualification framework is introduced.
+
+Across the scenes, 110 independent removals must change actual RGBA pixels: 34 nonempty labels,
+62 effects, five bound arrowheads and nine canvas layers. Label probes first disable every
+effect, so glow cannot stand in for missing glyph ink. Effect probes override inline styles as
+well as presentation attributes; marker probes change the marker attribute because ResvgSafe
+deliberately rejects CSS marker declarations. Each mutation starts from its unmodified baseline.
+
+The new three tests and ten existing qualification regressions pass in the serial Release
+acceptance profile, with 114 unrelated library tests filtered out. Formatting and diff checks
+pass. Scoped Clippy completes without diagnostics in the new test file; `-D warnings` remains
+blocked by existing acceptance-library warnings, including the C6 comparison macro, a large
+constant fixture array and existing proof-helper style warnings. No warning policy was changed.
+
+```console
+CARGO_BUILD_JOBS=1 python3 scripts/run_theme_acceptance.py nextest run --release --locked -p merman-theme-acceptance --no-default-features --features png,layout-cytoscape --lib --test preset_qualification --test cyberpunk_public_preset -E 'test(preset_qualification::) | binary(preset_qualification) | binary(cyberpunk_public_preset)' --test-threads 1 --no-fail-fast
+```
+
+This gate proves the named native PNG contributions and recipe exchange under this host profile.
+It does not prove full glyph/glow containment, current-source PDF rasterization, controlled-font
+portability or reference-image equivalence. Runtime catalog qualification still needs a new
+complete-scene semantic contract and profile; the historical Cyberpunk palette qualifier remains
+rejecting, and these regression tests do not issue or promote qualification cells.
