@@ -203,6 +203,7 @@ def run_theme_authoring_smoke() -> None:
         for preset in ("brutalist", "spotless", "cyberpunk"):
             exported = execute_json(api, "export-theme-preset-json", preset)
             require(exported["kind"] == "complete_spec", "preset must export a closed recipe")
+            require(exported["schema_version"] == 1, "unexpected recipe schema version")
             spec = exported["complete_spec"]
             require("assets" not in spec and "mermaid" not in spec,
                     "native preset export must not embed fonts or Mermaid compatibility")
@@ -212,9 +213,34 @@ def run_theme_authoring_smoke() -> None:
                 **options, "theme": {"preset": preset},
             }))
             from_export = fresh.render_svg(SOURCES["state"], json.dumps({
-                **options, "theme": {"spec": spec},
+                **options, "theme": json.loads(json.dumps(exported)),
             }))
-            require(from_preset == from_export, f"{preset} export changed the rendered recipe")
+            require(from_preset == from_export, f"{preset} direct import changed the rendered recipe")
+            if preset == "cyberpunk":
+                for family in ("flowchart", "sequence", "xychart"):
+                    source = (FIXTURES.parents[2] / "merman-theme-fixtures/fixtures/public-cyberpunk"
+                              / f"{family}.mmd").read_text(encoding="utf-8")
+                    scene_options = {**options, "svg": {"diagram_id": f"python-cyberpunk-{family}"}}
+                    original = engine.render_svg(source, json.dumps({
+                        **scene_options, "theme": {"preset": preset},
+                    }))
+                    restored = fresh.render_svg(source, json.dumps({
+                        **scene_options, "theme": json.loads(json.dumps(exported)),
+                    }))
+                    ET.fromstring(restored)
+                    require(original == restored, f"{family}: complete recipe import changed SVG")
+                unversioned = {key: value for key, value in exported.items() if key != "schema_version"}
+                for invalid in (
+                    unversioned, {**exported, "schema_version": 0}, {**exported, "schema_version": 2},
+                    {**exported, "preset": preset}, {**exported, "spec": {}},
+                ):
+                    try:
+                        fresh.render_svg(SOURCES["state"], json.dumps({**options, "theme": invalid}))
+                    except merman.MermanError.Binding as error:
+                        require(error.code_name == "MERMAN_OPTIONS_JSON_ERROR",
+                                "invalid recipe returned the wrong error")
+                    else:
+                        raise RuntimeError("invalid recipe schema or mixed selection was accepted")
 
         support_vectors = json.loads((FIXTURES / "support.json").read_text(encoding="utf-8"))
         for vector in support_vectors:
@@ -245,7 +271,8 @@ def run_theme_authoring_smoke() -> None:
                 require(bounded == baseline,
                         f"{operation}: valid theme budget changed the result")
         print("Python theme authoring passed: shared vectors, three families, isolation, "
-              "rule, cold start, preset export, catalog, "
+              "rule, cold start, 3 direct preset imports, 3 complete Cyberpunk scenes, "
+              "5 recipe rejections, catalog, "
               f"{len(support_vectors)} support vectors, "
               f"{len(budgeted_inputs)} budgeted operations per consumer")
     finally:

@@ -112,6 +112,8 @@ export async function runThemeAuthoringSmoke(module, engine) {
     rule_override_checks: 0,
     cold_spec_checks: 0,
     preset_export_checks: 0,
+    complete_scene_recipe_checks: 0,
+    recipe_rejections: 0,
     support_queries: 0,
     authoring_diagnostics: 0,
     resource_limit_checks: 0,
@@ -133,8 +135,10 @@ export async function runThemeAuthoringSmoke(module, engine) {
     ], [1, 1, 1, 1]);
     return result.spec;
   }
-  async function renderTheme(client, family, theme, diagramId = `node-authoring-${family}`) {
-    const svg = await client.renderSvg(SOURCES[family], {
+  async function renderTheme(
+    client, family, theme, diagramId = `node-authoring-${family}`, source = SOURCES[family],
+  ) {
+    const svg = await client.renderSvg(source, {
       optionsJson: JSON.stringify({
         version: 3, theme, site_config: { htmlLabels: false }, svg: { diagram_id: diagramId },
       }),
@@ -217,13 +221,40 @@ export async function runThemeAuthoringSmoke(module, engine) {
     for (const preset of ["brutalist", "spotless", "cyberpunk"]) {
       const exported = await executeJson(engine, "export-theme-preset-json", preset);
       assert.equal(exported.kind, "complete_spec");
+      assert.equal(exported.schema_version, 1);
       const spec = exported.complete_spec;
       assert.ok(!Object.hasOwn(spec, "assets") && !Object.hasOwn(spec, "mermaid"),
         "native preset must not embed fonts or Mermaid compatibility");
       const diagramId = `node-preset-${preset}`;
+      const restored = JSON.parse(JSON.stringify(exported));
       assert.equal(await renderTheme(engine, "state", { preset }, diagramId),
-        await renderTheme(fresh, "state", { spec }, diagramId), `${preset} export changed terminal SVG`);
+        await renderTheme(fresh, "state", restored, diagramId), `${preset} direct import changed terminal SVG`);
       counts.preset_export_checks += 1;
+      if (preset === "cyberpunk") {
+        for (const family of ["flowchart", "sequence", "xychart"]) {
+          const source = await readFile(new URL(
+            `../../../crates/merman-theme-fixtures/fixtures/public-cyberpunk/${family}.mmd`,
+            import.meta.url,
+          ), "utf8");
+          const sceneId = `${diagramId}-${family}`;
+          assert.equal(await renderTheme(engine, family, { preset }, sceneId, source),
+            await renderTheme(fresh, family, restored, sceneId, source),
+            `${family}: complete recipe import changed terminal SVG`);
+          counts.complete_scene_recipe_checks += 1;
+        }
+        const { schema_version: _version, ...unversioned } = restored;
+        for (const invalid of [
+          unversioned, { ...restored, schema_version: 0 }, { ...restored, schema_version: 2 },
+          { ...restored, preset }, { ...restored, spec: {} },
+        ]) {
+          await assert.rejects(renderTheme(fresh, "state", invalid), (error) => {
+            assert.ok(error instanceof module.MermanOperationError);
+            assert.equal(error.codeName, "MERMAN_OPTIONS_JSON_ERROR");
+            return true;
+          });
+          counts.recipe_rejections += 1;
+        }
+      }
     }
 
     const supportVectors = JSON.parse(await readFile(new URL("support.json", FIXTURES), "utf8"));
