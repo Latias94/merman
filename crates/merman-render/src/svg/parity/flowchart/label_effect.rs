@@ -164,8 +164,7 @@ impl FlowchartLabelEffects {
                 } else {
                     info.label_text
                 };
-                let Some(bounds) =
-                    sidecar.native_centered_paint_bounds(owner, raw, text_style.as_ref())
+                let Some(bounds) = sidecar.centered_shadow_bounds(owner, raw, text_style.as_ref())
                 else {
                     continue;
                 };
@@ -227,7 +226,7 @@ impl FlowchartLabelEffects {
                     ThemeTarget::EdgeLabel,
                     source.effective_edge_label_text_style(&ctx.text_style),
                 );
-                let Some(bounds) = sidecar.native_centered_paint_bounds(
+                let Some(bounds) = sidecar.centered_shadow_bounds(
                     FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
                     raw,
                     text_style.as_ref(),

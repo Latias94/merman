@@ -421,7 +421,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let label_effect = ctx.label_effects.get().and_then(|plan| plan.edge(key));
     let label_effect_id = label_effect.map(|_| {
         format!(
-            "{}-theme-label-effect",
+            "{}-theme-effect-label",
             ctx.document_ids.edge(key).expect("prepared edge id")
         )
     });

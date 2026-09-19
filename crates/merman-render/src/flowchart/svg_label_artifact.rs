@@ -673,10 +673,33 @@ impl PreparedFlowchartSvgLabel {
         self.metrics
     }
 
-    fn native_centered_paint_bounds(&self, metrics_style: &TextStyle) -> Option<[f64; 4]> {
-        (self.binding.is_native() && self.binding.metrics_style.matches(metrics_style))
-            .then_some(self.native_centered_paint_bounds)
-            .flatten()
+    fn centered_shadow_bounds(&self, metrics_style: &TextStyle) -> Option<[f64; 4]> {
+        if !self.binding.metrics_style.matches(metrics_style) {
+            return None;
+        }
+        if self.binding.is_native() {
+            return self.native_centered_paint_bounds;
+        }
+        let em = metrics_style.font_size;
+        let TextMetrics { width, height, .. } = self.metrics;
+        if !em.is_finite()
+            || em <= 0.0
+            || !width.is_finite()
+            || width < 0.0
+            || !height.is_finite()
+            || height < 0.0
+        {
+            return None;
+        }
+        // Host metrics bound the allocation, not arbitrary glyph ink. Keep the actual SVG
+        // row baselines and a one-em paint reserve; native export checks final glyph coverage.
+        let last_baseline = em * (1.0 + self.wrapped_lines.len().saturating_sub(1) as f64 * 1.1);
+        Some([
+            -width / 2.0 - em,
+            -em,
+            width / 2.0 + em,
+            height.max(last_baseline) + em,
+        ])
     }
 
     fn merge_emission_font_style(&self, existing: Option<&str>) -> Option<String> {
@@ -2278,19 +2301,24 @@ impl FlowchartSvgLabelSidecar {
             .unwrap_or_default()
     }
 
-    /// Returns native ink coverage in the centered text element's local coordinates.
-    pub(crate) fn native_centered_paint_bounds(
+    /// Returns a shadow allocation in centered text coordinates, using native ink when known.
+    /// Host-backed allocations retain a bounded reserve and require final-target observation.
+    pub(crate) fn centered_shadow_bounds(
         &self,
         owner: FlowchartSvgLabelOwner,
         raw_source: &str,
         metrics_style: &TextStyle,
     ) -> Option<[f64; 4]> {
-        self.sources
+        let source = self
+            .sources
             .get(owner)
             .filter(|source| source.matches(raw_source))?;
+        if source.source.plain_text().trim().is_empty() {
+            return None;
+        }
         self.prepared
             .get(owner)?
-            .native_centered_paint_bounds(metrics_style)
+            .centered_shadow_bounds(metrics_style)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2854,9 +2882,11 @@ mod tests {
 
     #[test]
     #[cfg(feature = "embedded-fonts")]
-    fn native_paint_bounds_require_the_prepared_source_and_metrics_style() {
+    fn shadow_bounds_require_the_prepared_source_and_metrics_style() {
         let (prepared, theme) = native_flowchart_text_fixture();
-        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let environment = RenderEnvironment::deterministic();
+        let session = environment.begin_session().expect("deterministic session");
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
         let config = MermaidConfig::default();
         let style = TextStyle::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
@@ -2884,21 +2914,17 @@ mod tests {
             );
             let sidecar = builder.finish();
             assert_eq!(sidecar.prepared_error(), None);
-            let bounds = sidecar.native_centered_paint_bounds(owner, raw_label, &style);
-            assert_eq!(bounds.is_some(), native);
+            let bounds = sidecar.centered_shadow_bounds(owner, raw_label, &style);
+            assert!(
+                bounds.is_some(),
+                "prepared native={native} must supply an allocation"
+            );
             if let Some(bounds) = bounds {
                 assert!(bounds[0] < bounds[2] && bounds[1] < bounds[3], "{bounds:?}");
             }
+            assert_eq!(sidecar.centered_shadow_bounds(owner, "stale", &style), None);
             assert_eq!(
-                sidecar.native_centered_paint_bounds(owner, "stale", &style),
-                None
-            );
-            assert_eq!(
-                sidecar.native_centered_paint_bounds(
-                    FlowchartSvgLabelOwner::Node(1),
-                    raw_label,
-                    &style,
-                ),
+                sidecar.centered_shadow_bounds(FlowchartSvgLabelOwner::Node(1), raw_label, &style,),
                 None
             );
             for mismatch in [
@@ -2912,7 +2938,7 @@ mod tests {
                 },
             ] {
                 assert_eq!(
-                    sidecar.native_centered_paint_bounds(owner, raw_label, &mismatch),
+                    sidecar.centered_shadow_bounds(owner, raw_label, &mismatch),
                     None
                 );
             }

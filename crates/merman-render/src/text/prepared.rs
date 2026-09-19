@@ -3240,7 +3240,7 @@ fn validate_prepared_text_coverage(
 
     budget.charge(lines.len())?;
     let mut previous_end = 0;
-    for line in lines {
+    for (index, line) in lines.iter().enumerate() {
         budget.charge(line.text().len())?;
         if line.text().contains('\n') {
             return Err(TextLayoutError::InvalidPreparedText);
@@ -3250,7 +3250,18 @@ fn validate_prepared_text_coverage(
             .get(previous_end..line.visible_range.start())
             .ok_or(TextLayoutError::InvalidPreparedText)?;
         budget.charge(gap.len())?;
-        if !omittable_wrapped_gap(gap, white_space) {
+        // Each adjacent pair may cross one explicit line separator. More than one
+        // would discard an empty line; leading/trailing separators still require
+        // their own line records. Spacing within each line retains its policy.
+        let gap_is_covered = match gap.split_once('\n') {
+            Some((before, after)) => {
+                index > 0
+                    && omittable_wrapped_gap(before, white_space)
+                    && omittable_wrapped_gap(after, white_space)
+            }
+            None => omittable_wrapped_gap(gap, white_space),
+        };
+        if !gap_is_covered {
             return Err(TextLayoutError::InvalidPreparedText);
         }
         previous_end = line.visible_range.end();
@@ -4620,6 +4631,68 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn wrapped_coverage_retains_explicit_breaks_and_empty_lines() {
+        for (text, ranges, accepted) in [
+            ("A\nB", vec![0..1, 2..3], true),
+            ("A\n\nB", vec![0..1, 2..2, 3..4], true),
+            ("\nA\n", vec![0..0, 1..2, 3..3], true),
+            ("A\n\nB", vec![0..1, 3..4], false),
+            ("\nA", vec![1..2], false),
+            ("A\n", vec![0..1], false),
+            ("A\nB", vec![0..3], false),
+            ("A\n\u{00a0}B", vec![0..1, 4..5], false),
+            ("A\u{00a0}\nB", vec![0..1, 4..5], false),
+        ] {
+            let projection =
+                TextProjection::new_family_normalized(text, ThemeTextTransform::None).unwrap();
+            let lines = ranges
+                .into_iter()
+                .map(|range| {
+                    PreparedTextLine::new(
+                        &text[range.clone()],
+                        TextByteRange::new(range.start, range.end),
+                        1.0,
+                        (0.0, 1.0),
+                        PreparedTextVerticalExtents::new(-0.8, 0.2).unwrap(),
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+            for (wrap, raw_width) in [
+                (
+                    PreparedTextWrap::SvgLike {
+                        max_width_px: Some(10.0),
+                        break_long_words: true,
+                    },
+                    None,
+                ),
+                (
+                    PreparedTextWrap::HtmlLike {
+                        max_width_px: Some(10.0),
+                    },
+                    Some(10.0),
+                ),
+            ] {
+                for white_space in [WhiteSpace::Normal, WhiteSpace::PreLine, WhiteSpace::PreWrap] {
+                    assert_eq!(
+                        validate_prepared_text_coverage(
+                            &projection,
+                            &lines,
+                            wrap,
+                            white_space,
+                            raw_width,
+                            &PreparedTextAdmissionBudget::new(None),
+                        )
+                        .is_ok(),
+                        accepted,
+                        "{text:?}, {wrap:?}, {white_space:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

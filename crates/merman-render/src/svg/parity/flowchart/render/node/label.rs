@@ -390,7 +390,7 @@ fn render_flowchart_node_label_with_wrapper(
             .and_then(|plan| plan.node(common.node_id));
         let effect_id = effect.map(|_| {
             format!(
-                "{}-theme-label-effect",
+                "{}-theme-effect-label",
                 ctx.document_ids
                     .node(common.node_id)
                     .expect("prepared node id")

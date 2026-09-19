@@ -316,6 +316,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Native text increment (2026-09-18):** The [native label effect record](../knowledge/engineering/verification/2026-09-18-flowchart-native-label-effects.md) covers text-only filters using prepared font ink bounds, shared viewport/writer placement, binding/rule/Clear evidence and unsupported-path residuals. This is limited to ordinary native Flowchart labels; host measurements, HTML/Markdown and specialized node label placement remain outside the verified consumer. The public Cyberpunk recipe is unchanged by this increment. U6 remains open for public text glow and complete scene acceptance.
 
+**Host text increment (2026-09-19):** The [host label effect record](../knowledge/engineering/verification/2026-09-19-flowchart-host-label-effects.md) tracks ordinary native SVG labels using existing host metrics without font assets, the native filter ID correction, and explicit hard-break admission for wrapped prepared text. Native PNG/PDF checks now cover host and supplied fonts, nested multiline and blank-line labels. The combined renderer/export Release suite passed 2,803/2,803 (two skips), the no-font suite passed 33/33, and scoped Clippy/formatting passed; commands and evidence limits are tracked in that record. Default HTML/Markdown and specialized placements remain outside this increment; public text-glow bindings and full U6 acceptance remain open.
+
 ### U7. Deliver the complete Sequence scene
 
 **Goal:** Connect required Sequence styling and effects beyond palette changes.
