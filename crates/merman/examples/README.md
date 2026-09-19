@@ -83,6 +83,7 @@ These recipes compose existing APIs; they introduce no additional library preset
 | Agent pipe or log | Plain encoding, explicit width, fallback permission | `AsciiOutput::report()`; [`render_agent_log.rs`](render_agent_log.rs) | One JSON object including text and metadata | Hard failures remain errors, not retry instructions. |
 | Themed terminal | Explicit palette and supported color encoding | `AsciiTerminalPalette`; [`terminal_palette.rs`](terminal_palette.rs) | TrueColor text with the same logical layout | Palette detection and styled-to-plain retry belong to the host. |
 | Browser/editor preview | Host theme, Mermaid overrides, diagram ID, SVG policy | `HostTheme`, `SvgRequest`; [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | SVG artifact | Host performs DOM admission and insertion. |
+| Rust font integration | Final font and a function that measures complete strings | `DeterministicTextMeasurer::with_width_callback(...)`; [`render_svg_monospace.rs`](render_svg_monospace.rs) | SVG with Merman-owned wrapping | If measurement can fail or must vary by operation, use `HostTextMeasurer`. |
 | Image export | Fit box, scale, background, resource budget | `PngRequest`; [`render_png.rs`](render_png.rs) | Bytes and `RasterPlan` dimensions | Saving the example's file is application code after rendering. |
 
 The existing APIs cover these scenarios. SVG themes and ASCII palettes have separate semantics;
@@ -206,7 +207,9 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`. `render_svg_monospace` also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+
+`render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
 ## Minimize Features Later
 

@@ -4104,14 +4104,15 @@ flowchart TD
         let RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart render model");
         };
-        let measurer = crate::text::DeterministicTextMeasurer::default().with_width_model(
-            crate::text::TextWidthModel::Callback(std::sync::Arc::new(|text, _| {
-                text.chars().count() as f64 * 10.0
-            })),
-        );
-        let layout =
-            layout_flowchart_typed(model, &parsed.metadata().effective_config, &measurer, None)
-                .expect("layout ok");
+        let measurer = crate::text::DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            measurer.as_ref(),
+            None,
+        )
+        .expect("layout ok");
 
         for id in ["A", "C", "D"] {
             let node = layout

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use merman::svg::{
     DeterministicTextMeasurer, MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity, TextStyle, TextWidthModel,
+    TextMeasurementProfileIdentity, TextStyle,
 };
 use merman::{
     Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
@@ -111,15 +111,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("measuring and rendering with {family} ({post_script_name})");
 
     let width = Arc::new(ShapedTextWidth::new(font_data, face_index)?);
-    let measurer = DeterministicTextMeasurer::default().with_width_model(TextWidthModel::Callback(
-        Arc::new(move |text, style| width.measure(text, style)),
-    ));
+    let measurer = DeterministicTextMeasurer::default()
+        .with_width_callback(move |text, style| width.measure(text, style));
     let identity = TextMeasurementProfileIdentity::new(
         MeasurementProfileId::new("example.installed-monospace")?,
         format!("1:{post_script_name}"),
     )?;
-    let policy =
-        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, Arc::new(measurer)));
+    let policy = TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer));
 
     let site_config = MermaidConfig::from_value(serde_json::json!({
         "theme": "base",
