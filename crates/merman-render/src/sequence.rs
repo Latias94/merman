@@ -76,8 +76,8 @@ use root_bounds::{
     prepare_sequence_root_geometry,
 };
 pub(crate) use theme_evidence::{
-    SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt,
-    SequenceLoopThemeEmission, SequenceLoopThemeReceipt, SequenceMessageThemeEmission,
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
+    SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt, SequenceMessageThemeEmission,
     SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
     SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
     SequenceTypographyThemeReceipt,

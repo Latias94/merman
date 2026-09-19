@@ -75,6 +75,7 @@ const MANIFEST_TARGET_IDS: &[&str] = &[
     "message-label",
     "sequence-number",
     "loop",
+    "loop-label-background",
     "loop-label",
     "note",
     "note-label",
@@ -425,9 +426,15 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     },
     RuleClaim {
         family: "sequence",
+        target: "loop-label-background",
+        kind: SupportClaimKind::TypedPartial,
+        facets: &["fill", "stroke-paint", "stroke-width", "effect"],
+    },
+    RuleClaim {
+        family: "sequence",
         target: "loop",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["fill", "stroke-paint"],
+        facets: &["stroke-paint", "stroke-width", "effect"],
     },
     RuleClaim {
         family: "sequence",

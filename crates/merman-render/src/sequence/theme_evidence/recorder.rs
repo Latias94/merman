@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use super::observation::{
-    SequenceRuleObservation, observe_lifeline_rule, observe_loop_rule, observe_message_rule,
+    SequenceRuleObservation, observe_control_rule, observe_lifeline_rule, observe_message_rule,
     observe_sequence_number_rule, observe_static_rect_rule, observe_typography_rule,
 };
 use super::receipts::{
-    SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLoopThemeEmission,
-    SequenceLoopThemeState, SequenceMessageThemeEmission, SequenceNumberLabelThemeEmission,
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeState,
+    SequenceLifelineThemeEmission, SequenceMessageThemeEmission, SequenceNumberLabelThemeEmission,
     SequenceNumberLabelThemeState, SequenceStaticRectThemeEmission, SequenceStaticRectThemeState,
     SequenceThemeEvidenceState, SequenceTypographyThemeReceipt,
 };
@@ -90,12 +90,20 @@ impl SequenceThemeEvidenceRecorder {
         state.sequence_number.merge(emission);
     }
 
-    pub(crate) fn record_loop_emission(&self, emission: SequenceLoopThemeEmission) {
+    pub(crate) fn record_control_emission(
+        &self,
+        target: ThemeTarget,
+        emission: SequenceControlThemeEmission,
+    ) {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.loop_surface.merge(emission);
+        if target == ThemeTarget::Loop {
+            state.loop_frame.merge(emission);
+        } else {
+            state.keyword_background.merge(emission);
+        }
     }
 
     pub(crate) fn record_activation_emission(&self, emission: SequenceStaticRectThemeEmission) {
@@ -225,7 +233,8 @@ impl SequenceThemeEvidenceRecorder {
         let mut lifeline_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut message_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut sequence_number_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
-        let mut loop_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+        let mut loop_rules =
+            BTreeMap::<ThemeTarget, BTreeMap<usize, SequenceRuleObservation>>::new();
         let mut note_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut typography_rules =
@@ -290,7 +299,7 @@ impl SequenceThemeEvidenceRecorder {
             }
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
-                target: ThemeTarget::Loop,
+                target: target @ (ThemeTarget::Loop | ThemeTarget::LoopLabelBackground),
                 selector:
                     FamilyThemeSelectorShape::Static {
                         variant: None | Some(ThemeVariant::Default),
@@ -298,7 +307,11 @@ impl SequenceThemeEvidenceRecorder {
                 ..
             } = route.mechanism()
             {
-                loop_rules.entry(rule_index).or_default();
+                loop_rules
+                    .entry(target)
+                    .or_default()
+                    .entry(rule_index)
+                    .or_default();
             }
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
@@ -439,7 +452,7 @@ impl SequenceThemeEvidenceRecorder {
                 }
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
-                    target: ThemeTarget::Loop,
+                    target: target @ (ThemeTarget::Loop | ThemeTarget::LoopLabelBackground),
                     selector,
                     facet,
                 } if matches!(
@@ -449,11 +462,18 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 ) =>
                 {
-                    let Some(observation) = loop_rules.get_mut(&rule_index) else {
+                    let Some(observation) = loop_rules
+                        .get_mut(&target)
+                        .and_then(|rules| rules.get_mut(&rule_index))
+                    else {
                         continue;
                     };
-                    observe_loop_rule(
-                        &state.loop_surface,
+                    observe_control_rule(
+                        if target == ThemeTarget::Loop {
+                            &state.loop_frame
+                        } else {
+                            &state.keyword_background
+                        },
                         observation,
                         route.disposition(),
                         rule_index,
@@ -706,6 +726,29 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
+                    target: target @ (ThemeTarget::Loop | ThemeTarget::LoopLabelBackground),
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    let receipt = if target == ThemeTarget::Loop {
+                        &state.loop_frame.receipt
+                    } else {
+                        &state.keyword_background.receipt
+                    };
+                    if receipt.surface_candidates.get() == 0
+                        || (receipt.effect_requested && !receipt.effect_binding_used)
+                    {
+                        evidence.mark_not_applicable(key);
+                    } else if receipt.effect_unhandled.get() {
+                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                    } else if receipt.effect_complete() {
+                        evidence.mark_applied_with_capabilities(
+                            key,
+                            [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                        );
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Lifeline,
                     ..
                 } => {
@@ -809,7 +852,18 @@ impl SequenceThemeEvidenceRecorder {
             message_rules,
         );
         finish_sequence_number_rules(&mut evidence, &state.sequence_number, sequence_number_rules);
-        finish_loop_rules(&mut evidence, &state.loop_surface, loop_rules);
+        for (target, rules) in loop_rules {
+            finish_control_rules(
+                &mut evidence,
+                target,
+                if target == ThemeTarget::Loop {
+                    &state.loop_frame
+                } else {
+                    &state.keyword_background
+                },
+                rules,
+            );
+        }
         finish_static_rect_rules(&mut evidence, ThemeTarget::Note, &state.note, note_rules);
         finish_static_rect_rules(
             &mut evidence,
@@ -969,15 +1023,16 @@ fn finish_sequence_number_rules(
     }
 }
 
-fn finish_loop_rules(
+fn finish_control_rules(
     evidence: &mut FamilyThemeEvidence,
-    surface: &SequenceLoopThemeState,
+    target: ThemeTarget,
+    surface: &SequenceControlThemeState,
     rules: BTreeMap<usize, SequenceRuleObservation>,
 ) {
     for (rule_index, observation) in rules {
         let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
             index: rule_index,
-            target: ThemeTarget::Loop,
+            target,
         };
         if surface.receipt.surface_candidates.get() == 0 || !observation.applicable {
             evidence.mark_not_applicable(key);

@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 89;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 90;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    181, 162, 176, 252, 157, 102, 78, 218, 8, 219, 241, 3, 135, 142, 75, 147, 138, 76, 19, 181,
-    120, 72, 74, 160, 95, 64, 3, 136, 229, 37, 74, 195,
+    115, 237, 63, 236, 16, 136, 132, 24, 21, 87, 219, 27, 86, 0, 64, 252, 242, 64, 30, 76, 92, 1,
+    7, 178, 59, 199, 139, 186, 221, 247, 25, 12,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -2000,21 +2000,21 @@ const ACTIVE_ROUTES: [RouteAuthorization; 506] = [
     ),
     route(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
         LOOP_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         LOOP_FILL_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
@@ -2022,7 +2022,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 506] = [
     ),
     route_variant(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
@@ -2030,21 +2030,21 @@ const ACTIVE_ROUTES: [RouteAuthorization; 506] = [
     ),
     route(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
         LOOP_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         LOOP_STROKE_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
@@ -2052,7 +2052,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 506] = [
     ),
     route_variant(
         DiagramFamilyId::SEQUENCE,
-        ThemeTarget::Loop,
+        ThemeTarget::LoopLabelBackground,
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
@@ -4898,12 +4898,12 @@ mod tests {
                 ThemeRouteCutoverProjection::MessageLabelFill,
             ),
             (
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 ThemeRouteCutoverFacet::Fill,
                 ThemeRouteCutoverProjection::LoopFill,
             ),
             (
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 ThemeRouteCutoverFacet::Stroke,
                 ThemeRouteCutoverProjection::LoopStroke,
             ),

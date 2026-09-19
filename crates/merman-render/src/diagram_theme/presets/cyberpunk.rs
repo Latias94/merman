@@ -16,6 +16,8 @@ const SHAPE_GLOW: &str = "cyberpunk-shape-glow";
 const EDGE_GLOW: &str = "cyberpunk-edge-glow";
 const NOTE_GLOW: &str = "cyberpunk-note-glow";
 const LOOP_TEXT_GLOW: &str = "cyberpunk-loop-text-glow";
+const SOFT_CYAN_GLOW: &str = "cyberpunk-cyan-soft-glow";
+const KEYWORD_GLOW: &str = "cyberpunk-control-keyword-glow";
 const NOTE_TEXT_GLOW: &str = "cyberpunk-note-text-glow";
 
 pub(super) fn build_recipe(
@@ -46,6 +48,16 @@ pub(super) fn build_recipe(
         screen_layer(grid_line(180.0)),
     ]);
     spec.effects = Some(vec![
+        ThemeEffectEntryWireV1::Graph {
+            id: SOFT_CYAN_GLOW.to_owned(),
+            color_space: Some("srgb".to_owned()),
+            primitives: vec![shadow("source-graphic", 4.0, "rgba(0, 242, 255, 0.5)")],
+        },
+        ThemeEffectEntryWireV1::Graph {
+            id: KEYWORD_GLOW.to_owned(),
+            color_space: Some("srgb".to_owned()),
+            primitives: vec![shadow("source-graphic", 6.0, "rgba(0, 242, 255, 0.4)")],
+        },
         ThemeEffectEntryWireV1::Graph {
             id: SHAPE_GLOW.to_owned(),
             color_space: Some("srgb".to_owned()),
@@ -82,6 +94,33 @@ pub(super) fn build_recipe(
     // Each writer must account for its actual terminals; selecting a preset does not
     // grant visual qualification or imply that every shape consumes the graph.
     spec.styles.get_or_insert_default().extend([
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Loop,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+                        "#00f2ff".to_owned(),
+                    )),
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..Default::default()
+                }),
+                effect: SpecifiedWireV1::Value(SOFT_CYAN_GLOW.to_owned()),
+                ..Default::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::LoopLabelBackground,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..Default::default()
+                }),
+                effect: SpecifiedWireV1::Value(KEYWORD_GLOW.to_owned()),
+                ..Default::default()
+            },
+        ),
         family_rule(
             DiagramFamilyId::FLOWCHART,
             ThemeTarget::Node,
@@ -234,6 +273,21 @@ pub(super) fn build_recipe(
 }
 
 fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
+    // Legend and Sequence frames use the exact same sRGB shadow. Reuse its graph,
+    // while keeping family-scoped application and terminal evidence independent.
+    spec.styles.get_or_insert_default().push(family_rule(
+        DiagramFamilyId::XY_CHART,
+        ThemeTarget::Legend,
+        ThemeStylePatchWireV1 {
+            fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color("#00f2ff".to_owned())),
+            effect: SpecifiedWireV1::Value(SOFT_CYAN_GLOW.to_owned()),
+            typography: Some(ThemeTextStylePatchWireV1 {
+                font_size_px: SpecifiedWireV1::Value(12.0),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    ));
     // CSS text-shadow blur radii map to half as much SVG Gaussian sigma.
     for (target, size, weight, sigma, color) in [
         (
@@ -249,13 +303,6 @@ fn append_xy_text(spec: &mut DiagramThemeSpecWireV1) {
             None,
             5.0,
             "rgba(0, 242, 255, 0.6)",
-        ),
-        (
-            ThemeTarget::Legend,
-            Some(12.0),
-            None,
-            4.0,
-            "rgba(0, 242, 255, 0.5)",
         ),
         (
             ThemeTarget::AxisLabel,

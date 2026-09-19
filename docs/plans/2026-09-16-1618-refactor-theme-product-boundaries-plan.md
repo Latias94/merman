@@ -330,6 +330,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** The public Sequence scene passes SVG/PNG/PDF checks and relevant existing Sequence behavior tests; classification matches consumed facets.
 
+**Terminal increments (2026-09-19):** The [lifeline/activation record](../knowledge/engineering/verification/2026-09-19-sequence-lines-and-activation.md) and [control-surface record](../knowledge/engineering/verification/2026-09-19-sequence-control-surfaces.md) track the remaining shape consumers and local exports. The unpublished target contract separates Loop frame lines, LoopLabelBackground keyword polygons and LoopLabel text; current authors and authorizations migrate together without changing historical retirement evidence. The public recipe uses the source-backed frame/keyword shadows within the existing graph budget. Full scene qualification, controlled-font reference comparison and U10 cost evidence remain open; bounded admission success does not promote public catalog cells.
+
 ### U8. Deliver the complete XY Chart scene
 
 **Goal:** Support actual series painting and effects rather than only ordinal colors.

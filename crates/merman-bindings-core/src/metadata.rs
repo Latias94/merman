@@ -1914,6 +1914,11 @@ mod tests {
                 .collect(),
         );
 
+        assert!(
+            catalog
+                .known_semantic_target_ids
+                .contains(&"loop-label-background")
+        );
         assert_eq!(catalog.known_semantic_target_ids, expected);
     }
 

@@ -7,6 +7,7 @@ mod actor_shapes;
 mod actors;
 mod block_text;
 mod blocks;
+mod control_paint;
 mod css;
 mod frames;
 mod geometry;

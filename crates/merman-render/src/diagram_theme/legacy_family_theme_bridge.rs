@@ -4075,12 +4075,12 @@ gitGraph
                 "merman.legacy-family-theme.v1.sequence.message-label.fill",
             ),
             (
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 ThemeStylePatch::default().with_fill(solid("#dc2626")),
                 "merman.legacy-family-theme.v1.sequence.loop.fill",
             ),
             (
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 ThemeStylePatch::default().with_stroke(solid("#2563eb")),
                 "merman.legacy-family-theme.v1.sequence.loop.stroke",
             ),

@@ -10,8 +10,9 @@ pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) message_stroke: Option<&'a str>,
     pub(super) message_stroke_width: Option<f32>,
     pub(super) sequence_number_fill: Option<&'a str>,
-    pub(super) loop_fill: Option<&'a str>,
-    pub(super) loop_stroke: Option<&'a str>,
+    pub(super) frame_stroke: Option<&'a str>,
+    pub(super) keyword_fill: Option<&'a str>,
+    pub(super) keyword_stroke: Option<&'a str>,
     pub(super) note_fill: Option<&'a str>,
     pub(super) note_stroke: Option<&'a str>,
     pub(super) activation_fill: Option<&'a str>,
@@ -45,10 +46,11 @@ pub(super) struct SequenceThemeCssEmission {
     sequence_number_fill: String,
     typed_sequence_number_fill: Option<String>,
     text_surfaces: [SequenceTextSurfaceCssEmission; 7],
-    loop_fill: String,
-    typed_loop_fill: Option<String>,
-    loop_stroke: String,
-    typed_loop_stroke: Option<String>,
+    frame_stroke: String,
+    keyword_fill: String,
+    typed_keyword_fill: Option<String>,
+    keyword_stroke: String,
+    typed_keyword_stroke: Option<String>,
 }
 
 impl SequenceThemeCssEmission {
@@ -68,20 +70,24 @@ impl SequenceThemeCssEmission {
         (emission.final_fill.as_str(), emission.typed_fill.as_deref())
     }
 
-    pub(super) fn loop_fill(&self) -> &str {
-        self.loop_fill.as_str()
+    pub(super) fn frame_stroke(&self) -> &str {
+        &self.frame_stroke
     }
 
-    pub(super) fn typed_loop_fill(&self) -> Option<&str> {
-        self.typed_loop_fill.as_deref()
+    pub(super) fn keyword_fill(&self) -> &str {
+        self.keyword_fill.as_str()
     }
 
-    pub(super) fn loop_stroke(&self) -> &str {
-        self.loop_stroke.as_str()
+    pub(super) fn typed_keyword_fill(&self) -> Option<&str> {
+        self.typed_keyword_fill.as_deref()
     }
 
-    pub(super) fn typed_loop_stroke(&self) -> Option<&str> {
-        self.typed_loop_stroke.as_deref()
+    pub(super) fn keyword_stroke(&self) -> &str {
+        self.keyword_stroke.as_str()
+    }
+
+    pub(super) fn typed_keyword_stroke(&self) -> Option<&str> {
+        self.typed_keyword_stroke.as_deref()
     }
 }
 
@@ -207,8 +213,8 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         .map(|width| format!("{}px", fmt(f64::from(width))));
     let message_width = message_width.as_deref().unwrap_or("1.5");
     let final_sequence_number_fill = typed.sequence_number_fill.unwrap_or(sequence_number);
-    let final_loop_fill = typed.loop_fill.unwrap_or(label_box_fill);
-    let final_loop_stroke = typed.loop_stroke.unwrap_or(label_box_border);
+    let final_keyword_fill = typed.keyword_fill.unwrap_or(label_box_fill);
+    let final_keyword_stroke = typed.keyword_stroke.unwrap_or(label_box_border);
     let final_note_fill = typed.note_fill.unwrap_or(note_fill);
     let final_note_stroke = typed.note_stroke.unwrap_or(note_border);
     let legacy_surface_fill = |surface, fill: &str| {
@@ -239,10 +245,11 @@ pub(super) fn write_sequence_css_with_theme_adapter(
                 typed_fill: None,
             }
         }),
-        loop_fill: final_loop_fill.to_owned(),
-        typed_loop_fill: typed.loop_fill.map(str::to_owned),
-        loop_stroke: final_loop_stroke.to_owned(),
-        typed_loop_stroke: typed.loop_stroke.map(str::to_owned),
+        frame_stroke: typed.frame_stroke.unwrap_or(label_box_border).to_owned(),
+        keyword_fill: final_keyword_fill.to_owned(),
+        typed_keyword_fill: typed.keyword_fill.map(str::to_owned),
+        keyword_stroke: final_keyword_stroke.to_owned(),
+        typed_keyword_stroke: typed.keyword_stroke.map(str::to_owned),
     };
 
     let _ = write!(
@@ -321,7 +328,7 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let _ = write!(
         &mut out,
         r#"#{} .labelBox{{stroke:{};fill:{};filter:{};}}"#,
-        id, final_loop_stroke, final_loop_fill, label_box_filter
+        id, final_keyword_stroke, final_keyword_fill, label_box_filter
     );
     let label_text_fill = legacy_surface_fill(
         crate::sequence::SequenceTextSurface::ControlKeyword,
@@ -353,7 +360,9 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let _ = write!(
         &mut out,
         r#"#{} .loopLine{{stroke-width:2px;stroke-dasharray:2,2;stroke:{};fill:{};}}"#,
-        id, label_box_border, label_box_border
+        id,
+        typed.frame_stroke.unwrap_or(label_box_border),
+        label_box_border
     );
     let _ = write!(
         &mut out,
@@ -834,8 +843,8 @@ mod tests {
                 }
             }),
             SequenceThemeCssAdapter {
-                loop_fill: Some("#dc2626"),
-                loop_stroke: Some("#2563eb"),
+                keyword_fill: Some("#dc2626"),
+                keyword_stroke: Some("#2563eb"),
                 ..SequenceThemeCssAdapter::default()
             },
         );

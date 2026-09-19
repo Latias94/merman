@@ -706,9 +706,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::MessageLabel, ThemeRouteCutoverFacet::Fill) => {
             Ok(SEQUENCE_ROLE_LABEL_SOURCE)
         }
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop | ThemeTarget::LoopLabel, _) => {
-            Ok(SEQUENCE_LOOP_SOURCE)
-        }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::LoopLabelBackground | ThemeTarget::LoopLabel,
+            _,
+        ) => Ok(SEQUENCE_LOOP_SOURCE),
         (
             DiagramFamilyId::XY_CHART,
             ThemeTarget::Text | ThemeTarget::Axis,

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::receipts::{
-    SequenceLifelineThemeState, SequenceLoopThemeState, SequenceMessageThemeState,
+    SequenceControlThemeState, SequenceLifelineThemeState, SequenceMessageThemeState,
     SequenceNumberLabelThemeState, SequenceRoleTypographyReceipt, SequenceStaticRectThemeState,
 };
 use crate::diagram_theme::{
@@ -21,8 +21,8 @@ pub(super) struct SequenceRuleObservation {
     pub(super) residual: Option<FamilyThemeResidualReason>,
 }
 
-pub(super) fn observe_loop_rule(
-    surface: &SequenceLoopThemeState,
+pub(super) fn observe_control_rule(
+    surface: &SequenceControlThemeState,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,
@@ -64,6 +64,31 @@ pub(super) fn observe_loop_rule(
                 return;
             }
             observation.capabilities.insert(capability_for_paint(kind));
+        }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::StrokeWidth) => {
+            if surface.receipt.complete_surfaces() {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::BorderStyling);
+            } else {
+                observation.incomplete = true;
+            }
+        }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Effect) => {
+            if surface.receipt.effect_unhandled.get() {
+                observation.residual = Some(FamilyThemeResidualReason::UnsupportedEffect);
+            } else if !surface.receipt.effect_complete() {
+                observation.incomplete = true;
+            } else {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::SemanticRules);
+                if !surface.receipt.effect_cleared {
+                    observation
+                        .capabilities
+                        .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+                }
+            }
         }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {

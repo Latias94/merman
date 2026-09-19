@@ -814,7 +814,7 @@ fn fully_rejected_known_domain_is_unsupported() {
     let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::SEQUENCE.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
-        ThemeTarget::Loop.id(),
+        ThemeTarget::LoopLabelBackground.id(),
         ThemeRuleFacetV1::Radius,
     );
 

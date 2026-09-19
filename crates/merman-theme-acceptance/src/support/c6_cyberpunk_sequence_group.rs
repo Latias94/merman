@@ -226,7 +226,10 @@ fn compile_theme(
         .with_rule(sequence_rule(ThemeTarget::Message, message))
         .with_rule(sequence_rule(ThemeTarget::Note, note))
         .with_rule(sequence_rule(ThemeTarget::Activation, activation))
-        .with_rule(sequence_rule(ThemeTarget::Loop, loop_surface))
+        .with_rule(sequence_rule(
+            ThemeTarget::LoopLabelBackground,
+            loop_surface,
+        ))
         .with_rule(sequence_rule(ThemeTarget::ActorLabel, actor_label))
         .with_rule(sequence_rule(ThemeTarget::MessageLabel, message_label))
         .with_rule(sequence_rule(ThemeTarget::NoteLabel, note_label))

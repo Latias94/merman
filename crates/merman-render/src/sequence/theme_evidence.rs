@@ -3,8 +3,8 @@ mod receipts;
 mod recorder;
 
 pub(crate) use receipts::{
-    SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt,
-    SequenceLoopThemeEmission, SequenceLoopThemeReceipt, SequenceMessageThemeEmission,
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
+    SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt, SequenceMessageThemeEmission,
     SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
     SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt,
     SequenceTypographyThemeReceipt,
@@ -401,7 +401,7 @@ mod tests {
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
-                            ThemeTarget::Loop,
+                            ThemeTarget::LoopLabelBackground,
                             ThemeStylePatch::default()
                                 .with_fill(
                                     CanvasPaint::solid("#123456")
@@ -417,9 +417,9 @@ mod tests {
         let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
 
         for (record_surface_emission, expected_applied) in [(false, false), (true, true)] {
-            let mut receipt = SequenceLoopThemeReceipt::default();
+            let mut receipt = SequenceControlThemeReceipt::default();
             receipt.record_static_style(&resolved.style(
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 ThemeVariant::Default,
                 None,
             ));
@@ -435,13 +435,16 @@ mod tests {
             }
 
             let recorder = SequenceThemeEvidenceRecorder::default();
-            recorder.record_loop_emission(SequenceLoopThemeEmission::from_terminal_writer(
-                Some("#123456"),
-                false,
-                Some("transparent"),
-                false,
-                receipt,
-            ));
+            recorder.record_control_emission(
+                ThemeTarget::LoopLabelBackground,
+                SequenceControlThemeEmission::from_terminal_writer(
+                    Some("#123456"),
+                    false,
+                    Some("transparent"),
+                    false,
+                    receipt,
+                ),
+            );
 
             let evidence = recorder.finish(Some(&resolved));
             assert_eq!(evidence.applied().len(), usize::from(expected_applied));
@@ -712,7 +715,7 @@ mod tests {
 
     #[test]
     fn message_and_loop_unsupported_geometry_track_winners_without_typed_paint() {
-        for target in [ThemeTarget::Message, ThemeTarget::Loop] {
+        for target in [ThemeTarget::Message, ThemeTarget::LoopLabelBackground] {
             let mut first = ThemeStylePatch::default();
             first.geometry.radius = Specified::Value(6.0);
             let mut last = ThemeStylePatch::default();
@@ -748,15 +751,16 @@ mod tests {
                             ),
                         );
                     }
-                    ThemeTarget::Loop => {
-                        let mut receipt = SequenceLoopThemeReceipt::default();
+                    ThemeTarget::LoopLabelBackground => {
+                        let mut receipt = SequenceControlThemeReceipt::default();
                         receipt.record_static_style(&style);
                         if has_terminal {
                             receipt.record_surface_candidate();
                             receipt.record_surface_emission();
                         }
-                        recorder.record_loop_emission(
-                            SequenceLoopThemeEmission::from_terminal_writer(
+                        recorder.record_control_emission(
+                            ThemeTarget::LoopLabelBackground,
+                            SequenceControlThemeEmission::from_terminal_writer(
                                 None, true, None, true, receipt,
                             ),
                         );

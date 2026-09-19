@@ -54,6 +54,7 @@ pub enum ThemeTarget {
     MessageLabel,
     SequenceNumberLabel,
     Loop,
+    LoopLabelBackground,
     LoopLabel,
     Note,
     NoteLabel,
@@ -112,6 +113,7 @@ impl ThemeTarget {
         Self::MessageLabel,
         Self::SequenceNumberLabel,
         Self::Loop,
+        Self::LoopLabelBackground,
         Self::LoopLabel,
         Self::Note,
         Self::NoteLabel,
@@ -166,6 +168,7 @@ impl ThemeTarget {
             Self::MessageLabel => "message-label",
             Self::SequenceNumberLabel => "sequence-number",
             Self::Loop => "loop",
+            Self::LoopLabelBackground => "loop-label-background",
             Self::LoopLabel => "loop-label",
             Self::Note => "note",
             Self::NoteLabel => "note-label",
@@ -207,6 +210,7 @@ impl ThemeTarget {
             | Self::MessageLabel
             | Self::SequenceNumberLabel
             | Self::Loop
+            | Self::LoopLabelBackground
             | Self::LoopLabel
             | Self::Activation => {
                 matches!(family, DiagramFamilyId::SEQUENCE)

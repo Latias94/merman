@@ -327,3 +327,24 @@ Preserve applicable attribution when redistributing assets. Do not assume a reci
 fonts or that its artifact supports embedded fonts. Missing-resource and cross-platform font
 journeys remain part of the pre-release audit. Merman does not add a theme registry, remote loading,
 or automatic font installation as part of this contract.
+
+### Sequence control surfaces
+
+Sequence control structures (`loop`, `alt`, `par`, `opt`, `break`, and `critical`)
+have three independent theme targets:
+
+- `loop`: frame lines and section separators; static/default stroke paint, width and
+  bounded effects. Fill and rounded corners are not supported on these open lines.
+- `loop-label-background`: the keyword polygon; static/default fill, stroke paint,
+  width and bounded effects. The polygon does not become rounded from a radius property.
+- `loop-label`: keyword, primary title and section title text.
+
+Each target has its own winners and effect Clear semantics. Clearing the keyword background
+filter does not clear the frame or text filter. Source-owned colors do not suppress an independent
+width or effect. Request support discovery for the exact target/facet and inspect the final output
+report; the presence of a known target does not establish native portability.
+
+Before the alpha.7 public contract freeze, the earlier unpublished `loop` box-paint rules were
+moved to `loop-label-background`. Current recipes and internal authors use the new target;
+there is no compatibility alias or schema-version change. Historical migration evidence retains
+its original projection names.

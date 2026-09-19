@@ -35,25 +35,25 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "a98b7a6e93bbbc17832c6be11ebe09008c5382a38d2a27fc5ca52f5abb2e5411";
+    "e1c23fe1dc1591428e136dc196f1806f2741c37e10af3658f9d0af3093131010";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "49a46a985abe9a53194f8aa6d5c95f79383eb562f63097a684992ff001829aa0";
+    "fe500abe4c178527756cc2bc0699cdea02493e28af269169681c3d80c00ea107";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "c94f5100f62f6664da322275127c4f60556c3339ef3ba03d0c9ace84a44230da";
+    "9542803723b437d3dd6c9a4f153fac0b4c778e0823c1ebdc9bfd0bea846b0ae9";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "fe8ac082387f78aeaa7ae198d57b358991b395e2b212de4eb03d0c62151c6b90";
+    "3d885c32c2787a98726c5ca6bb0aaa98ff20a7191cf6c1254528d302de89b113";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "d0cd109708af411f35fee3a6e8e2c8c133280942f855af97e706efaf3b05dd42";
+    "74d71b131bf95beae20f48ab083676562e62328f8ce945edacc37f8497b3768f";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "e62e3c175ac47801ec2fe2a631fe253aeaf60dc58f00917920ce1c0ccd45ea00";
+    "5ac15d6e8c6424ecf6bd8289aa6e038b5697266227227ffdd80105764e933dfd";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "3ebcce80dfe68ee9fd312ddd4fdc6e0f556eb46e74d1ebd84e835bc039a64c87";
+    "9e171a98b8632d6652d6ba7f04fb38f213f05dfa775fe3dfdf134a33673628b2";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "cff2165b390d27fe5dd03bb60cefb18489dd9375fd37f1167036e427f452c30a";
+    "f398e947ed9f8bfebbf14690bb4e185e8ff6a7f71083de5032f68bd802e819b1";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "c177e9885bb2ad7ccaf59f83702c43a01b913b6a4964f24abdc00c1c6b2a346b";
+    "7e4aa5aa8d8014000c0ed5c5a416757ed273477d2c7d560adb1f11d5fb534163";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "3624f30335302937a4290ad50dfb1415344ee86d8c6b6edde382b6fcb086e29f";
+    "ebcd233e9d77256cbb490f3ed107f3fc441dad13638b420006d8e2cd23eb565b";
 type PresetRecipeBuilder = fn(
     PresetPalette,
     &ThemeResourcePolicy,
@@ -789,7 +789,7 @@ fn build_cross_family_definition(palette: PresetPalette) -> ThemeDefinitionV1 {
         ),
         preset_rule(ThemeTarget::MessageLabel, Some(palette.text), None),
         preset_rule(
-            ThemeTarget::Loop,
+            ThemeTarget::LoopLabelBackground,
             Some(palette.surface_alt),
             Some(palette.border),
         ),

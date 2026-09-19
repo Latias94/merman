@@ -139,11 +139,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             sanitize_config,
             "themeVariables.sequenceNumberColor",
         );
-    let loop_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
+    let keyword_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.labelBoxBkgColor",
     );
-    let loop_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+    let keyword_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.labelBoxBorderColor",
     );
@@ -172,7 +172,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
     let mut lifeline_paint =
         super::actor_effect::SequenceLifelinePaint::new(lifeline_theme.effect.take());
-    let defer_paint_bounds = defer_text_bounds
+    let mut defer_paint_bounds = defer_text_bounds
         || lifeline_paint.has_effect()
         || lifeline_theme.typed_stroke_width.is_some();
     let mut message_theme = resolve_sequence_message_theme(
@@ -182,8 +182,18 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
     let mut sequence_number_theme =
         resolve_sequence_number_theme(options, sequence_number_fill_overridden)?;
-    let mut loop_theme =
-        resolve_sequence_loop_theme(options, loop_fill_overridden, loop_stroke_overridden)?;
+    let mut keyword_theme = resolve_sequence_control_theme(
+        options,
+        crate::diagram_theme::ThemeTarget::LoopLabelBackground,
+        keyword_fill_overridden,
+        keyword_stroke_overridden,
+    )?;
+    let mut frame_theme = resolve_sequence_control_theme(
+        options,
+        crate::diagram_theme::ThemeTarget::Loop,
+        true,
+        keyword_stroke_overridden,
+    )?;
     let note_count = model
         .messages
         .iter()
@@ -270,6 +280,10 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         options,
     )?;
 
+    defer_paint_bounds |= frame_theme.effect.is_some()
+        || frame_theme.stroke_width.is_some()
+        || keyword_theme.effect.is_some()
+        || keyword_theme.stroke_width.is_some();
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -362,8 +376,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             message_stroke: message_theme.typed_stroke.as_deref(),
             message_stroke_width: message_theme.typed_stroke_width,
             sequence_number_fill: sequence_number_theme.typed_fill.as_deref(),
-            loop_fill: loop_theme.typed_fill.as_deref(),
-            loop_stroke: loop_theme.typed_stroke.as_deref(),
+            frame_stroke: frame_theme.typed_stroke.as_deref(),
+            keyword_fill: keyword_theme.typed_fill.as_deref(),
+            keyword_stroke: keyword_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
             activation_fill: activation_theme.typed_fill.as_deref(),
@@ -382,11 +397,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         let (final_fill, typed_fill) = css_emission.text_surface_fill(surface);
         typography_receipt.record_stylesheet_emission(surface, final_fill, typed_fill);
     }
-    loop_theme.receipt.record_stylesheet_emission(
-        css_emission.loop_fill(),
-        css_emission.typed_loop_fill(),
-        css_emission.loop_stroke(),
-        css_emission.typed_loop_stroke(),
+    keyword_theme.receipt.record_stylesheet_emission(
+        css_emission.keyword_fill(),
+        css_emission.typed_keyword_fill(),
+        css_emission.keyword_stroke(),
+        css_emission.typed_keyword_stroke(),
     );
     out.push_str("</style><g/>");
     out.checkpoint()?;
@@ -469,7 +484,31 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         options.work_meter(),
     )?;
 
+    if frame_theme.typed_stroke.is_some() {
+        frame_theme.receipt.record_stylesheet_emission(
+            "",
+            None,
+            css_emission.frame_stroke(),
+            frame_theme.typed_stroke.as_deref(),
+        );
+    }
+    let frame_paint = super::control_paint::SequenceControlPaint::new(
+        &frame_theme.receipt,
+        frame_theme.effect.take(),
+        frame_theme.stroke_width,
+        crate::diagram_theme::ThemeTarget::Loop,
+        options,
+    );
+    let keyword_paint = super::control_paint::SequenceControlPaint::new(
+        &keyword_theme.receipt,
+        keyword_theme.effect.take(),
+        keyword_theme.stroke_width,
+        crate::diagram_theme::ThemeTarget::LoopLabelBackground,
+        options,
+    );
     let interaction_ctx = SequenceInteractionRenderContext {
+        frame_paint: &frame_paint,
+        keyword_paint: &keyword_paint,
         note_text_shadow: &note_text_shadow,
         loop_text_shadow: &loop_text_shadow,
         note_paint: &note_paint,
@@ -491,20 +530,10 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         &mut out,
         &interaction_ctx,
         &activation_plan,
-        &loop_theme.receipt,
         &mut note_theme.receipt,
         &mut activation_theme.receipt,
     )?;
     out.checkpoint()?;
-    prepared.theme_evidence().record_loop_emission(
-        crate::sequence::SequenceLoopThemeEmission::from_terminal_writer(
-            loop_theme.typed_fill.as_deref(),
-            loop_fill_overridden,
-            loop_theme.typed_stroke.as_deref(),
-            loop_stroke_overridden,
-            loop_theme.receipt,
-        ),
-    );
     prepared.theme_evidence().record_note_emission(
         crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
             note_count,
@@ -636,6 +665,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                         loop_text_shadow.bounds.borrow().as_ref(),
                         actor_text_shadow.bounds.borrow().as_ref(),
                         lifeline_paint.bounds.as_ref(),
+                        frame_paint.bounds.borrow().as_ref(),
+                        keyword_paint.bounds.borrow().as_ref(),
                     ],
                 )),
             )?
@@ -648,9 +679,32 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             + note_paint.len()
             + activation_plan.effect_count()
             + lifeline_paint.emitted_count()
+            + frame_paint.len()
+            + keyword_paint.len()
             + note_text_shadow.len()
             + loop_text_shadow.len()
             + actor_text_shadow.len(),
+    );
+
+    prepared.theme_evidence().record_control_emission(
+        crate::diagram_theme::ThemeTarget::LoopLabelBackground,
+        crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
+            keyword_theme.typed_fill.as_deref(),
+            keyword_fill_overridden,
+            keyword_theme.typed_stroke.as_deref(),
+            keyword_stroke_overridden,
+            keyword_theme.receipt,
+        ),
+    );
+    prepared.theme_evidence().record_control_emission(
+        crate::diagram_theme::ThemeTarget::Loop,
+        crate::sequence::SequenceControlThemeEmission::from_terminal_writer(
+            None,
+            false,
+            frame_theme.typed_stroke.as_deref(),
+            keyword_stroke_overridden,
+            frame_theme.receipt,
+        ),
     );
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
     typography_receipt.record_terminal_svg(
@@ -706,10 +760,12 @@ struct SequenceNumberLabelThemeResolution {
 }
 
 #[derive(Default)]
-struct SequenceLoopThemeResolution {
+struct SequenceControlThemeResolution {
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
+    stroke_width: Option<f32>,
     typed_fill: Option<String>,
     typed_stroke: Option<String>,
-    receipt: crate::sequence::SequenceLoopThemeReceipt,
+    receipt: crate::sequence::SequenceControlThemeReceipt,
 }
 
 #[derive(Default)]
@@ -1016,52 +1072,67 @@ fn resolve_sequence_number_theme(
     })
 }
 
-fn resolve_sequence_loop_theme(
+fn resolve_sequence_control_theme(
     options: &SvgExecution<'_>,
+    target: crate::diagram_theme::ThemeTarget,
     fill_overridden: bool,
     stroke_overridden: bool,
-) -> Result<SequenceLoopThemeResolution> {
+) -> Result<SequenceControlThemeResolution> {
     use crate::diagram_theme::{
         FamilyThemeMechanism, FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
     };
 
     let Some(theme) = options.resolved_theme() else {
-        return Ok(SequenceLoopThemeResolution::default());
+        return Ok(SequenceControlThemeResolution::default());
     };
-    let mut has_rule_routes = false;
-    for route in theme.family_mechanism_routes().iter().copied() {
-        let FamilyThemeMechanism::RuleFacet {
-            target: ThemeTarget::Loop,
-            selector:
-                FamilyThemeSelectorShape::Static {
-                    variant: None | Some(ThemeVariant::Default),
-                },
-            ..
-        } = route.mechanism()
-        else {
-            continue;
-        };
-        has_rule_routes = true;
-    }
+    let has_rule_routes = theme.family_mechanism_routes().iter().any(|route| {
+        matches!(route.mechanism(),
+            FamilyThemeMechanism::RuleFacet {
+                target: route_target,
+                selector: FamilyThemeSelectorShape::Static { variant: None | Some(ThemeVariant::Default) },
+                ..
+            } | FamilyThemeMechanism::EffectBinding { target: route_target, .. }
+            if route_target == target)
+    });
     if !has_rule_routes {
-        return Ok(SequenceLoopThemeResolution::default());
+        return Ok(SequenceControlThemeResolution::default());
     }
 
-    let style = theme.style_with_work_meter(
-        ThemeTarget::Loop,
-        ThemeVariant::Default,
-        None,
-        options.work_meter(),
-    )?;
-    let mut receipt = crate::sequence::SequenceLoopThemeReceipt::default();
+    let style =
+        theme.style_with_work_meter(target, ThemeVariant::Default, None, options.work_meter())?;
+    let mut receipt = crate::sequence::SequenceControlThemeReceipt::default();
     receipt.record_static_style(&style);
-    let typed_fill = (!fill_overridden)
+    let typed_fill = (target == ThemeTarget::LoopLabelBackground && !fill_overridden)
         .then(|| typed_static_sequence_fill(theme, &style))
         .flatten();
     let typed_stroke = (!stroke_overridden)
         .then(|| typed_static_sequence_stroke(theme, &style))
         .flatten();
-    Ok(SequenceLoopThemeResolution {
+    let effect = match theme.resolve_effect(target, style.effect_resolution()) {
+        None => None,
+        Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+            receipt.effect_requested = true;
+            receipt.effect_cleared = true;
+            None
+        }
+        Some(resolved) => {
+            receipt.effect_requested = true;
+            let graph = match resolved {
+                crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                    receipt.effect_binding_used = true;
+                    graph
+                }
+                crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+            };
+            let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+            receipt.effect_unhandled.set(effect.is_none());
+            effect
+        }
+    };
+    Ok(SequenceControlThemeResolution {
+        effect,
+        stroke_width: style.stroke_width(),
         typed_fill,
         typed_stroke,
         receipt,

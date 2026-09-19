@@ -657,9 +657,9 @@ mod tests {
         assert_eq!(
             sized_roles,
             [
+                (Some("xychart"), "legend"),
                 (Some("xychart"), "title"),
                 (Some("xychart"), "axis-title"),
-                (Some("xychart"), "legend"),
             ],
             "role sizes must not leak into other families"
         );
@@ -667,22 +667,12 @@ mod tests {
             .effects
             .as_ref()
             .expect("public recipe owns the glow");
-        let [
-            ThemeEffectEntryWireV1::Graph {
-                id,
-                primitives,
-                color_space,
-            },
-            ThemeEffectEntryWireV1::Graph {
-                id: edge_id,
-                primitives: edge_primitives,
-                color_space: edge_color_space,
-            },
-            ..,
-        ] = effects.as_slice()
-        else {
-            panic!("independent family-scoped shape and edge glow graphs are expected")
-        };
+        let ThemeEffectEntryWireV1::Graph { id, primitives, color_space } = effects.iter()
+            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == "cyberpunk-shape-glow"))
+            .expect("shape glow graph") else { unreachable!() };
+        let ThemeEffectEntryWireV1::Graph { id: edge_id, primitives: edge_primitives, color_space: edge_color_space } = effects.iter()
+            .find(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if id == "cyberpunk-edge-glow"))
+            .expect("edge glow graph") else { unreachable!() };
         let [
             ThemeEffectPrimitiveWireV1::DropShadow {
                 input: first,
@@ -885,7 +875,7 @@ mod tests {
             loop_label.effect_resolution().value().map(String::as_str),
             Some("cyberpunk-loop-text-glow")
         );
-        assert_eq!(theme.spec().effects().graphs().len(), 15);
+        assert_eq!(theme.spec().effects().graphs().len(), 16);
     }
 
     #[test]
@@ -1095,7 +1085,7 @@ mod tests {
             assert_style(
                 &theme,
                 DiagramFamilyId::SEQUENCE,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 Some(palette.surface_alt),
                 Some(palette.border),
             );
@@ -1282,7 +1272,7 @@ mod tests {
             let sequence_number_background = resolved_solid_stroke(&sequence, ThemeTarget::Message);
             let message_text = resolved_solid_fill(&sequence, ThemeTarget::MessageLabel);
             let loop_text = resolved_solid_fill(&sequence, ThemeTarget::LoopLabel);
-            let loop_background = resolved_solid_fill(&sequence, ThemeTarget::Loop);
+            let loop_background = resolved_solid_fill(&sequence, ThemeTarget::LoopLabelBackground);
             let note_text = resolved_solid_fill(&sequence, ThemeTarget::NoteLabel);
             let note_background = resolved_solid_fill(&sequence, ThemeTarget::Note);
 

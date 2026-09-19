@@ -181,7 +181,7 @@ fn assert_composed_shadows(source: &str, target: ThemeTarget, applications: u32)
         let (reset_red, reset_blue) = color_counts(reset_png.bytes());
         assert!(
             red > 30 && blue > 30,
-            "{color_space:?}: visible soft red/blue shadows {red}/{blue}"
+            "{target:?} {color_space:?}: visible soft red/blue shadows {red}/{blue}"
         );
         assert_eq!(
             reset_red, 0,
@@ -330,7 +330,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (16, 16, 24)
+        (21, 21, 29)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -868,4 +868,13 @@ fn composed_sequence_lifeline_shadows_reach_glyph_and_rectangle_actors() {
         ThemeTarget::Lifeline,
         4,
     );
+}
+
+#[test]
+fn composed_sequence_control_shadows_reach_frame_lines_and_keyword_polygons() {
+    // Neutral source paint isolates the two shadow colors from the default blue box fill.
+    // Simple and sectioned frames provide enough thin dashed paint for the shared pixel oracle.
+    let source = "---\nconfig:\n  themeVariables:\n    actorBkg: '#000000'\n    actorBorder: '#ffffff'\n    actorTextColor: '#ffffff'\n    signalColor: '#ffffff'\n    signalTextColor: '#ffffff'\n    labelBoxBkgColor: '#000000'\n    labelBoxBorderColor: '#ffffff'\n    labelTextColor: '#ffffff'\n    loopTextColor: '#ffffff'\n---\nsequenceDiagram\nparticipant A\nparticipant B\nalt First\nA->>B: One\nelse Second\nB-->>A: Two\nend\nloop Again\nA->>B: Next\nend";
+    assert_composed_shadows(source, ThemeTarget::Loop, 9);
+    assert_composed_shadows(source, ThemeTarget::LoopLabelBackground, 2);
 }

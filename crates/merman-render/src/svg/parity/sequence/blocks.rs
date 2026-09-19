@@ -25,7 +25,8 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    pub(super) loop_theme_receipt: &'a crate::sequence::SequenceLoopThemeReceipt,
+    pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint<'a>,
+    pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint<'a>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -69,41 +70,48 @@ fn write_control_structure_group_open(out: &mut impl SvgOutput, control_id: &str
     );
 }
 
-pub(super) fn write_block_frame(
+fn write_control_line(
     out: &mut impl SvgOutput,
-    frame_x1: f64,
-    frame_x2: f64,
-    frame_y1: f64,
-    frame_y2: f64,
-) {
+    coordinates: [f64; 4],
+    separator: bool,
+    ctx: &SequenceBlockRenderContext<'_>,
+) -> Result<()> {
+    let application = ctx.frame_paint.begin_terminal(out, coordinates)?;
+    let [x1, y1, x2, y2] = coordinates;
     let _ = write!(
         out,
-        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-        x1 = fmt(frame_x1),
-        x2 = fmt(frame_x2),
-        y1 = fmt(frame_y1)
+        r#"<line x1="{}" y1="{}" x2="{}" y2="{}" class="loopLine""#,
+        fmt(x1),
+        fmt(y1),
+        fmt(x2),
+        fmt(y2)
     );
-    let _ = write!(
-        out,
-        r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-        x2 = fmt(frame_x2),
-        y1 = fmt(frame_y1),
-        y2 = fmt(frame_y2)
-    );
-    let _ = write!(
-        out,
-        r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-        x1 = fmt(frame_x1),
-        x2 = fmt(frame_x2),
-        y2 = fmt(frame_y2)
-    );
-    let _ = write!(
-        out,
-        r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-        x1 = fmt(frame_x1),
-        y1 = fmt(frame_y1),
-        y2 = fmt(frame_y2)
-    );
+    ctx.frame_paint
+        .write_attributes(out, application.as_ref(), separator);
+    out.push_str("/>");
+    out.checkpoint()?;
+    ctx.frame_paint
+        .finish_terminal(application.as_ref(), ctx.shadow_evidence);
+    Ok(())
+}
+
+fn write_block_frame(
+    out: &mut impl SvgOutput,
+    x1: f64,
+    x2: f64,
+    y1: f64,
+    y2: f64,
+    ctx: &SequenceBlockRenderContext<'_>,
+) -> Result<()> {
+    for coordinates in [
+        [x1, y1, x2, y1],
+        [x2, y1, x2, y2],
+        [x1, y2, x2, y2],
+        [x1, y1, x1, y2],
+    ] {
+        write_control_line(out, coordinates, false, ctx)?;
+    }
+    Ok(())
 }
 
 pub(super) fn write_block_label_box(
@@ -117,28 +125,37 @@ pub(super) fn write_block_label_box(
     let label_box_height = ctx.label_box_height;
     let typography = ctx.loop_typography;
     let typography_receipt = ctx.typography_receipt;
-    let theme_receipt = ctx.loop_theme_receipt;
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
     let y3 = y1 + label_box_height;
     let y2 = (y3 - 7.0).max(y1);
     let x3 = x2 - 8.4;
-    theme_receipt.record_surface_candidate();
-    let surface_emitted = write!(
+    let application = ctx.keyword_paint.begin_terminal(
         out,
-        r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+        [
+            x1.min(x2).min(x3),
+            y1.min(y2).min(y3),
+            x1.max(x2).max(x3),
+            y1.max(y2).max(y3),
+        ],
+    )?;
+    let _ = write!(
+        out,
+        r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox""#,
         x1 = fmt(x1),
         y1 = fmt(y1),
         x2 = fmt(x2),
         y2 = fmt(y2),
         x3 = fmt(x3),
         y3 = fmt(y3)
-    )
-    .is_ok();
-    if surface_emitted {
-        theme_receipt.record_surface_emission();
-    }
+    );
+    ctx.keyword_paint
+        .write_attributes(out, application.as_ref(), false);
+    out.push_str("/>");
+    out.checkpoint()?;
+    ctx.keyword_paint
+        .finish_terminal(application.as_ref(), ctx.shadow_evidence);
     let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = y1 + (label_box_height / 2.0).max(13.0);
     let style = typography.terminal_style("", "font-size: 16px; font-weight: 400;".to_string());
@@ -211,7 +228,7 @@ pub(super) fn render_simple_sequence_block(
     let frame_y2 = layout.stop_y;
 
     write_control_structure_group_open(out, block.control_id);
-    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
+    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2, ctx)?;
     write_block_label_box(out, frame_x1, frame_y1, block.block_label, ctx)?;
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
@@ -299,7 +316,7 @@ pub(super) fn render_sectioned_sequence_block(
     write_control_structure_group_open(out, control_id);
 
     // frame
-    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
+    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2, ctx)?;
 
     // separators (dashed)
     // Keep separator endpoints identical to the frame endpoints to match upstream
@@ -308,13 +325,7 @@ pub(super) fn render_sectioned_sequence_block(
     let dash_x2 = frame_x2;
     for (separator_index, y) in sep_ys.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(separator_index)?;
-        let _ = write!(
-            out,
-            r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
-            x1 = fmt(dash_x1),
-            x2 = fmt(dash_x2),
-            y = fmt(*y)
-        );
+        write_control_line(out, [dash_x1, *y, dash_x2, *y], true, ctx)?;
     }
 
     // label box + label text
@@ -412,20 +423,14 @@ pub(super) fn render_critical_sequence_block(
     write_control_structure_group_open(out, control_id);
 
     // frame
-    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
+    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2, ctx)?;
 
     // separators (dashed)
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
     for (separator_index, y) in sep_ys.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(separator_index)?;
-        let _ = write!(
-            out,
-            r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
-            x1 = fmt(dash_x1),
-            x2 = fmt(dash_x2),
-            y = fmt(*y)
-        );
+        write_control_line(out, [dash_x1, *y, dash_x2, *y], true, ctx)?;
     }
 
     // label box + label text

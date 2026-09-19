@@ -39,11 +39,9 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
-                // The bounded Flowchart rectangle scene consumes the recipe's node glow.
-                // Sequence still lacks its actor effect consumer; keep that residual visible.
-                let pending_glow =
-                    preset.id() == "cyberpunk" && family == DiagramFamilyId::SEQUENCE;
-                let family_complete = native_candidate && !pending_glow;
+                // These bounded native scenes consume the current candidate recipes.
+                // Host-dependent admission does not promote public qualification cells.
+                let family_complete = native_candidate;
                 assert_eq!(
                     observation.status(),
                     if family_complete {
@@ -71,13 +69,8 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 // The retained Mermaid-compatibility recipes still carry the shared Text paint
                 // into Sequence, whose writer does not consume that generic target. The native
                 // candidate recipes have family-local role paints and therefore do not retain it.
-                let expected_theme_residual = if pending_glow {
-                    1
-                } else if !native_candidate && family == DiagramFamilyId::SEQUENCE {
-                    1
-                } else {
-                    0
-                };
+                let expected_theme_residual =
+                    usize::from(!native_candidate && family == DiagramFamilyId::SEQUENCE);
                 assert_eq!(
                     observation.theme_residual_count(),
                     expected_theme_residual,
@@ -139,8 +132,9 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             assert_eq!(observation.mermaid_residual_count(), 0);
         }
     }
-    let error = run_preset_qualification(ThemePreset::Cyberpunk)
-        .expect_err("unconsumed ordered glow invalidates the old palette-only qualification");
+    let error = run_preset_qualification(ThemePreset::Cyberpunk).expect_err(
+        "the old palette-only qualification does not prove the complete Cyberpunk recipe",
+    );
     assert!(error.to_string().contains("qualification"), "{error}");
     for descriptor in theme_preset_descriptors() {
         assert!(descriptor.qualified_cells().is_empty());

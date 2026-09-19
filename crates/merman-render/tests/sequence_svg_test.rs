@@ -637,10 +637,10 @@ fn sequence_role_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramT
                     .with_rule(role_fill(ThemeTarget::MessageLabel))
                     .with_rule(role_fill(ThemeTarget::NoteLabel))
                     .with_rule(role_fill(ThemeTarget::LoopLabel))
-                    .with_rule(role_fill(ThemeTarget::Loop))
+                    .with_rule(role_fill(ThemeTarget::LoopLabelBackground))
                     .with_rule(
                         ThemeRule::new(
-                            ThemeTarget::Loop,
+                            ThemeTarget::LoopLabelBackground,
                             ThemeStylePatch::default().with_stroke(stroke),
                         )
                         .for_family(DiagramFamilyId::SEQUENCE),
@@ -2781,7 +2781,7 @@ end"#;
         ),
         (
             "loop-fill",
-            ThemeTarget::Loop,
+            ThemeTarget::LoopLabelBackground,
             "labelBoxBkgColor",
             "fill",
             ".labelBox",
@@ -2793,7 +2793,7 @@ end"#;
         ),
         (
             "loop-stroke",
-            ThemeTarget::Loop,
+            ThemeTarget::LoopLabelBackground,
             "labelBoxBorderColor",
             "stroke",
             ".labelBox",
@@ -3325,7 +3325,13 @@ end"#;
             false,
             true,
         ),
-        ("base", ThemeTarget::Loop, "mainBkg", false, true),
+        (
+            "base",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
         (
             "base",
             ThemeTarget::Activation,
@@ -3340,10 +3346,22 @@ end"#;
             false,
             true,
         ),
-        ("dark", ThemeTarget::Loop, "border1", true, true),
+        (
+            "dark",
+            ThemeTarget::LoopLabelBackground,
+            "border1",
+            true,
+            true,
+        ),
         ("forest", ThemeTarget::Actor, "mainBkg", false, true),
         ("forest", ThemeTarget::Lifeline, "mainBkg", true, true),
-        ("forest", ThemeTarget::Loop, "mainBkg", false, true),
+        (
+            "forest",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
         (
             "forest",
             ThemeTarget::LoopLabel,
@@ -3353,11 +3371,29 @@ end"#;
         ),
         ("neutral", ThemeTarget::Actor, "mainBkg", false, true),
         ("neutral", ThemeTarget::Lifeline, "border1", true, true),
-        ("neutral", ThemeTarget::Loop, "mainBkg", false, true),
+        (
+            "neutral",
+            ThemeTarget::LoopLabelBackground,
+            "mainBkg",
+            false,
+            true,
+        ),
         ("default", ThemeTarget::Lifeline, "actorBorder", true, false),
         ("dark", ThemeTarget::Lifeline, "actorBorder", true, false),
-        ("default", ThemeTarget::Loop, "actorBkg", false, false),
-        ("dark", ThemeTarget::Loop, "actorBkg", false, false),
+        (
+            "default",
+            ThemeTarget::LoopLabelBackground,
+            "actorBkg",
+            false,
+            false,
+        ),
+        (
+            "dark",
+            ThemeTarget::LoopLabelBackground,
+            "actorBkg",
+            false,
+            false,
+        ),
     ];
     for (theme_id, primary_owns_activation, primary_border_owns_loop, text_owns_message) in [
         ("neo", true, true, true),
@@ -3368,7 +3404,13 @@ end"#;
         ("redux-dark-color", false, false, false),
     ] {
         cases.extend([
-            (theme_id, ThemeTarget::Loop, "mainBkg", false, true),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "mainBkg",
+                false,
+                true,
+            ),
             (
                 theme_id,
                 ThemeTarget::Activation,
@@ -3413,7 +3455,7 @@ end"#;
             ),
             (
                 theme_id,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 "primaryBorderColor",
                 true,
                 primary_border_owns_loop,
@@ -3432,8 +3474,20 @@ end"#;
                 false,
                 true,
             ),
-            (theme_id, ThemeTarget::Loop, "primaryColor", false, false),
-            (theme_id, ThemeTarget::Loop, "nodeBkg", false, false),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "primaryColor",
+                false,
+                false,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabelBackground,
+                "nodeBkg",
+                false,
+                false,
+            ),
         ]);
     }
 
@@ -3449,8 +3503,8 @@ end"#;
                 ThemeTarget::MessageLabel => "signalTextColor",
                 ThemeTarget::NoteLabel => "noteTextColor",
                 ThemeTarget::LoopLabel => "loopTextColor",
-                ThemeTarget::Loop if stroke => "labelBoxBorderColor",
-                ThemeTarget::Loop => "labelBoxBkgColor",
+                ThemeTarget::LoopLabelBackground if stroke => "labelBoxBorderColor",
+                ThemeTarget::LoopLabelBackground => "labelBoxBkgColor",
                 ThemeTarget::Activation if stroke => "activationBorderColor",
                 ThemeTarget::Activation => "activationBkgColor",
                 ThemeTarget::Message => "signalColor",
@@ -6470,7 +6524,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 16);
+        assert_eq!(filters.len(), 21);
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -6481,6 +6535,12 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
+            let is_frame = filter.attribute("id").unwrap().contains("-loop-")
+                && !filter.attribute("id").unwrap().contains("-loop-text-");
+            let is_keyword = filter
+                .attribute("id")
+                .unwrap()
+                .contains("-loop-label-background-");
             let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
             let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
             let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
@@ -6489,7 +6549,11 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_loop_text {
+                if is_keyword {
+                    vec!["6"]
+                } else if is_frame {
+                    vec!["4"]
+                } else if is_loop_text {
                     vec!["5"]
                 } else if is_note_text {
                     vec!["4"]
@@ -6507,7 +6571,12 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_actor_text {
+            if is_keyword {
+                assert!(consumers[0].has_tag_name("polygon"));
+                assert_eq!(consumers[0].attribute("rx"), None);
+            } else if is_frame {
+                assert_eq!(consumers[0].attribute("class"), Some("loopLine"));
+            } else if is_actor_text {
                 assert!(consumers[0].has_tag_name("text"));
                 assert_eq!(consumers[0].attribute("class"), Some("actor actor-box"));
             } else if is_loop_text {
@@ -8389,5 +8458,235 @@ fn sequence_lifeline_and_activation_effects_keep_source_ownership_and_residuals(
                 }));
             }
         }
+    }
+}
+
+#[test]
+fn sequence_control_frame_effect_reaches_each_line_and_separator() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Loop,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "sequenceDiagram\nparticipant A\nparticipant B\nalt First\nA->>B: One\nelse Second\nB-->>A: Two\nend",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ).expect("control frame effect must reach the actual lines");
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let lines: Vec<_> = doc
+        .descendants()
+        .filter(|n| n.attribute("class") == Some("loopLine"))
+        .collect();
+    assert_eq!(lines.len(), 5);
+    assert!(lines.iter().all(|n| n.attribute("filter").is_some()));
+    assert!(
+        doc.descendants()
+            .filter(|n| n.attribute("class") == Some("labelBox"))
+            .all(|n| n.attribute("filter").is_none())
+    );
+}
+
+#[test]
+fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nloop Work\nA->>B: Request\nend";
+    for source_owned in [false, true] {
+        let input = if source_owned {
+            format!(
+                "---\nconfig:\n  themeVariables:\n    labelBoxBkgColor: '#abcdef'\n    labelBoxBorderColor: '#123456'\n---\n{source}"
+            )
+        } else {
+            source.to_owned()
+        };
+        for clear_frame in [false, true] {
+            for clear_keyword in [false, true] {
+                let mut frame = ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#ff0000").unwrap())
+                    .with_stroke_width(6.0)
+                    .unwrap();
+                frame.effects.effect = if clear_frame {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                let mut keyword = ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#001122").unwrap())
+                    .with_stroke(CanvasPaint::solid("#00ff00").unwrap())
+                    .with_stroke_width(4.0)
+                    .unwrap();
+                keyword.effects.effect = if clear_keyword {
+                    Specified::Clear
+                } else {
+                    Specified::Value("actor-shadow".to_owned())
+                };
+                let rules = ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(ThemeTarget::Loop, frame)
+                            .with_variant(ThemeVariant::Default),
+                    )
+                    .with_rule(ThemeRule::new(ThemeTarget::LoopLabelBackground, keyword));
+                let theme = DiagramThemeCompiler::new()
+                    .compile(sequence_shadow_spec(ThemeTarget::Loop, rules))
+                    .unwrap();
+                let rendered = try_render_sequence_theme_request(
+                    &input,
+                    &theme,
+                    Engine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let css = doc
+                    .descendants()
+                    .find(|n| n.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert!(css.contains(if source_owned {
+                    ".labelBox{stroke:#123456;fill:#abcdef;"
+                } else {
+                    ".labelBox{stroke:#00ff00;fill:#001122;"
+                }));
+                assert!(css.contains(if source_owned {
+                    ".loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#123456;"
+                } else {
+                    ".loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#ff0000;"
+                }));
+                for (class, width, clear, count) in [
+                    ("loopLine", "6px", clear_frame, 4),
+                    ("labelBox", "4px", clear_keyword, 1),
+                ] {
+                    let terminals: Vec<_> = doc
+                        .descendants()
+                        .filter(|n| n.attribute("class") == Some(class))
+                        .collect();
+                    assert_eq!(terminals.len(), count);
+                    for terminal in terminals {
+                        assert_eq!(terminal.attribute("filter").is_some(), !clear);
+                        assert!(
+                            terminal
+                                .attribute("style")
+                                .unwrap()
+                                .contains(&format!("stroke-width:{width};"))
+                        );
+                    }
+                }
+                assert_eq!(
+                    doc.descendants()
+                        .filter(|n| n.has_tag_name("filter"))
+                        .count(),
+                    usize::from(!clear_frame) * 4 + usize::from(!clear_keyword)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_control_unsupported_siblings_remain_residual() {
+    let source = "sequenceDiagram\nloop Work\nA->>B: Request\nend";
+    for (target, patch) in [
+        (
+            ThemeTarget::Loop,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
+        ),
+        (ThemeTarget::Loop, {
+            let mut p = ThemeStylePatch::default();
+            p.paint.opacity = Specified::Value(0.5);
+            p
+        }),
+        (ThemeTarget::LoopLabelBackground, {
+            let mut p = ThemeStylePatch::default();
+            p.geometry.radius = Specified::Value(10.0);
+            p
+        }),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                target,
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    target,
+                    patch.with_effect("actor-shadow").unwrap(),
+                )),
+            ))
+            .unwrap();
+        assert!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err(),
+            "{target:?}"
+        );
+    }
+}
+
+#[test]
+fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::LoopLabelBackground,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "---\nconfig:\n  sequence:\n    labelBoxWidth: 1\n    diagramMarginX: 0\n---\nsequenceDiagram\nloop Work\nA->>B: Request\nend",
+        &theme, Engine::new(), ThemePortabilityRequirement::RequirePortable,
+    ).unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let polygon = doc
+        .descendants()
+        .find(|n| n.attribute("class") == Some("labelBox"))
+        .unwrap();
+    let min_x = polygon
+        .attribute("points")
+        .unwrap()
+        .split_whitespace()
+        .map(|pair| pair.split_once(',').unwrap().0.parse::<f64>().unwrap())
+        .reduce(f64::min)
+        .unwrap();
+    let first_x: f64 = polygon
+        .attribute("points")
+        .unwrap()
+        .split_once(',')
+        .unwrap()
+        .0
+        .parse()
+        .unwrap();
+    assert!(
+        first_x - min_x > 7.0,
+        "fixture must retain the outlying keyword vertex"
+    );
+    let filter = doc
+        .descendants()
+        .find(|n| n.has_tag_name("filter"))
+        .unwrap();
+    let left: f64 = filter.attribute("x").unwrap().parse().unwrap();
+    // Shared lowering retains four sigma (32px); the 1px polygon stroke needs its
+    // default miter envelope of 2px. Omitting the x3 vertex cannot satisfy this bound.
+    assert!(
+        left <= min_x - 2.0 - 9.0 - 32.0,
+        "left={left}, actual polygon minimum={min_x}"
+    );
+}
+
+#[test]
+fn sequence_control_effects_are_absent_without_control_structures() {
+    for target in [ThemeTarget::Loop, ThemeTarget::LoopLabelBackground] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(target, ThemeRuleSet::default()))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Request",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        assert!(!rendered.svg().contains("<filter"));
     }
 }

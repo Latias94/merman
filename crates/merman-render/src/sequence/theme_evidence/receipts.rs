@@ -22,7 +22,8 @@ pub(super) struct SequenceThemeEvidenceState {
     pub(super) lifeline: SequenceLifelineThemeState,
     pub(super) message: SequenceMessageThemeState,
     pub(super) sequence_number: SequenceNumberLabelThemeState,
-    pub(super) loop_surface: SequenceLoopThemeState,
+    pub(super) keyword_background: SequenceControlThemeState,
+    pub(super) loop_frame: SequenceControlThemeState,
     pub(super) note: SequenceStaticRectThemeState,
     pub(super) activation: SequenceStaticRectThemeState,
     pub(super) typography: Option<SequenceTypographyThemeReceipt>,
@@ -712,11 +713,15 @@ impl SequenceNumberLabelThemeEmission {
 
 /// Winner, stylesheet, and concrete `.labelBox` facts for Sequence control surfaces.
 ///
-/// Loop is the semantic target used by Mermaid control structures (`loop`, `alt`, `par`, `opt`,
-/// `break`, and `critical`). The receipt is populated by the CSS owner and by the label-box
-/// writer itself, so support cannot be inferred from a plan value that never reached the SVG.
+/// Frame lines and keyword polygons retain separate instances. Stylesheet ownership and
+/// actual terminal emission must agree; one surface cannot discharge the other.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct SequenceLoopThemeReceipt {
+pub(crate) struct SequenceControlThemeReceipt {
+    pub(crate) effect_requested: bool,
+    pub(crate) effect_binding_used: bool,
+    pub(crate) effect_cleared: bool,
+    pub(crate) effect_unhandled: Cell<bool>,
+    effect_emissions: Cell<usize>,
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     pub(super) stylesheet_fill: Option<String>,
     pub(super) typed_fill_emissions: usize,
@@ -727,7 +732,19 @@ pub(crate) struct SequenceLoopThemeReceipt {
     pub(super) emitted_surfaces: Cell<usize>,
 }
 
-impl SequenceLoopThemeReceipt {
+impl SequenceControlThemeReceipt {
+    pub(crate) fn record_effect_emission(&self) {
+        self.effect_emissions
+            .set(self.effect_emissions.get().saturating_add(1));
+    }
+
+    pub(super) fn effect_complete(&self) -> bool {
+        self.effect_requested
+            && !self.effect_unhandled.get()
+            && self.complete_surfaces()
+            && self.effect_emissions.get() == self.surface_candidates.get()
+    }
+
     pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
     }
@@ -775,6 +792,16 @@ impl SequenceLoopThemeReceipt {
     }
 
     pub(super) fn merge(&mut self, other: Self) {
+        self.effect_requested |= other.effect_requested;
+        self.effect_binding_used |= other.effect_binding_used;
+        self.effect_cleared |= other.effect_cleared;
+        self.effect_unhandled
+            .set(self.effect_unhandled.get() || other.effect_unhandled.get());
+        self.effect_emissions.set(
+            self.effect_emissions
+                .get()
+                .max(other.effect_emissions.get()),
+        );
         self.static_winners.extend(other.static_winners);
         self.typed_fill_emissions = self.typed_fill_emissions.max(other.typed_fill_emissions);
         self.typed_stroke_emissions = self
@@ -863,16 +890,16 @@ fn merge_terminal_value(
 }
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct SequenceLoopThemeState {
+pub(super) struct SequenceControlThemeState {
     pub(super) fill_emitted: bool,
     pub(super) fill_overridden: bool,
     pub(super) stroke_emitted: bool,
     pub(super) stroke_overridden: bool,
-    pub(super) receipt: SequenceLoopThemeReceipt,
+    pub(super) receipt: SequenceControlThemeReceipt,
 }
 
-impl SequenceLoopThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceLoopThemeEmission) {
+impl SequenceControlThemeState {
+    pub(super) fn merge(&mut self, emission: SequenceControlThemeEmission) {
         self.fill_emitted |= emission.fill_emitted;
         self.fill_overridden |= emission.fill_overridden;
         self.stroke_emitted |= emission.stroke_emitted;
@@ -883,21 +910,21 @@ impl SequenceLoopThemeState {
 
 /// Complete terminal facts for the Sequence Loop fill/stroke tranche.
 #[derive(Debug)]
-pub(crate) struct SequenceLoopThemeEmission {
+pub(crate) struct SequenceControlThemeEmission {
     pub(super) fill_emitted: bool,
     pub(super) fill_overridden: bool,
     pub(super) stroke_emitted: bool,
     pub(super) stroke_overridden: bool,
-    pub(super) receipt: SequenceLoopThemeReceipt,
+    pub(super) receipt: SequenceControlThemeReceipt,
 }
 
-impl SequenceLoopThemeEmission {
+impl SequenceControlThemeEmission {
     pub(crate) fn from_terminal_writer(
         typed_fill: Option<&str>,
         fill_overridden: bool,
         typed_stroke: Option<&str>,
         stroke_overridden: bool,
-        receipt: SequenceLoopThemeReceipt,
+        receipt: SequenceControlThemeReceipt,
     ) -> Self {
         let has_surfaces = receipt.surface_candidates.get() != 0;
         Self {

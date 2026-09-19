@@ -627,12 +627,16 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::MessageLabel, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_LABEL_FILL)
         }
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop, ThemeRouteCutoverFacet::Fill) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_LOOP_FILL)
-        }
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop, ThemeRouteCutoverFacet::Stroke) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_LOOP_STROKE)
-        }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::LoopLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_LOOP_FILL),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::LoopLabelBackground,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_LOOP_STROKE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::LoopLabel, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_LOOP_LABEL_FILL)
         }
@@ -1267,6 +1271,8 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
                     | ThemeTarget::Activation
                     | ThemeTarget::NoteLabel
                     | ThemeTarget::LoopLabel
+                    | ThemeTarget::Loop
+                    | ThemeTarget::LoopLabelBackground
             ))
         || (family == DiagramFamilyId::XY_CHART
             && matches!(
@@ -1802,7 +1808,10 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::SEQUENCE
         && matches!(
             target,
-            ThemeTarget::Actor | ThemeTarget::Loop | ThemeTarget::Note | ThemeTarget::Activation
+            ThemeTarget::Actor
+                | ThemeTarget::LoopLabelBackground
+                | ThemeTarget::Note
+                | ThemeTarget::Activation
         )
         && matches!(
             selector,
@@ -1818,6 +1827,29 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && ((target == ThemeTarget::Loop
+            && matches!(
+                facet,
+                FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+                ) | FamilyThemeRuleFacet::StrokeWidth
+                    | FamilyThemeRuleFacet::Effect
+            ))
+            || (target == ThemeTarget::LoopLabelBackground
+                && matches!(
+                    facet,
+                    FamilyThemeRuleFacet::StrokeWidth | FamilyThemeRuleFacet::Effect
+                )))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -3103,7 +3135,7 @@ fn legacy_paint_variants(
                     | Target::Lifeline
                     | Target::Message
                     | Target::MessageLabel
-                    | Target::Loop
+                    | Target::LoopLabelBackground
                     | Target::LoopLabel
                     | Target::Activation
                     | Target::Note
@@ -3119,7 +3151,7 @@ fn legacy_paint_variants(
                     Target::Actor
                         | Target::Lifeline
                         | Target::Message
-                        | Target::Loop
+                        | Target::LoopLabelBackground
                         | Target::Activation
                         | Target::Note
                 ) =>
@@ -5531,7 +5563,7 @@ mod tests {
         .expect("valid gradient");
         for target in [
             ThemeTarget::Actor,
-            ThemeTarget::Loop,
+            ThemeTarget::LoopLabelBackground,
             ThemeTarget::Note,
             ThemeTarget::Activation,
         ] {
@@ -7352,28 +7384,28 @@ mod tests {
             ),
             (
                 DiagramFamilyId::SEQUENCE,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 Fill,
                 Transparent,
                 vec!["loop.fill"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 Fill,
                 Solid,
                 vec!["loop.fill"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 Stroke,
                 Transparent,
                 vec!["loop.stroke"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,
-                ThemeTarget::Loop,
+                ThemeTarget::LoopLabelBackground,
                 Stroke,
                 Solid,
                 vec!["loop.stroke"],
