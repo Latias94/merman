@@ -186,6 +186,7 @@ struct SelectorBudget {
     admission_exhausted: bool,
     postings_exhausted: bool,
     matching_exhausted: bool,
+    projection_unbounded: bool,
 }
 
 fn checked_charge<E>(
@@ -616,17 +617,12 @@ impl CascadeIndex {
         })
     }
 
-    pub(super) fn resolve_path<E>(
+    fn candidate_rules_for_path<E>(
         &mut self,
         path: &[SourceElement],
-        inherited: Option<&ResolvedStyle>,
-        root_font_size: f64,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    ) -> Result<ResolvedStyle, E> {
+    ) -> Result<Vec<usize>, E> {
         let element = path.last().expect("source path is non-empty");
-        let parent = inherited.cloned().unwrap_or_else(default_style);
-        let mut specified: HashMap<String, Specified> = HashMap::new();
         let may_collect_candidates = self
             .budget
             .check_ancestry_depth(path.len(), selector_limit)?
@@ -665,6 +661,72 @@ impl CascadeIndex {
         if !self.budget.charge_match_work(match_work, selector_limit)? {
             candidate_rule_indices.clear();
         }
+        Ok(candidate_rule_indices)
+    }
+
+    /// Reject projection when new SVG-only selectors can change the generated terminals.
+    /// This reuses the bounded source matcher; it does not interpret additional CSS properties.
+    pub(super) fn permits_in_place_fallback<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        fragment: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        if self.budget.projection_unbounded
+            || self.budget.admission_exhausted
+            || self.budget.postings_exhausted
+        {
+            return Ok(false);
+        }
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(fragment);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(tag.raw()).is_some() {
+                path.pop();
+                continue;
+            }
+            if start_tag_name(tag.raw()).is_none() {
+                continue;
+            }
+            path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
+            let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+            if self.budget.matching_exhausted {
+                return Ok(false);
+            }
+            for index in candidates {
+                let rule = &self.rules[index];
+                if matches_branch(&rule.branch, &path, checkpoint)?
+                    && rule.declarations.iter().any(|declaration| {
+                        // Only text's explicitly emitted normal-priority properties are isolated.
+                        // A declaration matching its new parent/background is never overridden.
+                        path.last()
+                            .is_none_or(|element| element.local_name != "text")
+                            || !projection_overrides(declaration)
+                    })
+                {
+                    return Ok(false);
+                }
+            }
+            if tag.is_self_closing() {
+                path.pop();
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn resolve_path<E>(
+        &mut self,
+        path: &[SourceElement],
+        inherited: Option<&ResolvedStyle>,
+        root_font_size: f64,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<ResolvedStyle, E> {
+        let element = path.last().expect("source path is non-empty");
+        let parent = inherited.cloned().unwrap_or_else(default_style);
+        let mut specified: HashMap<String, Specified> = HashMap::new();
+        let candidate_rule_indices = self.candidate_rules_for_path(path, selector_limit)?;
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
             checkpoint_loop(candidate_index, checkpoint)?;
             let rule = &self.rules[rule_index];
@@ -1413,7 +1475,10 @@ struct ParsedQualifiedRule {
     body: String,
 }
 
-struct FallbackStylesheetParser;
+#[derive(Default)]
+struct FallbackStylesheetParser {
+    unbounded_at_rule: bool,
+}
 
 fn consume_css_parser_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'i, ()>> {
     loop {
@@ -1462,11 +1527,11 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
 
     fn parse_prelude<'t>(
         &mut self,
-        _name: CowRcStr<'i>,
+        name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
         consume_css_parser_tokens(input)?;
-        Ok(String::new())
+        Ok(name.to_ascii_lowercase())
     }
 
     fn rule_without_block(
@@ -1474,16 +1539,19 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
         _prelude: Self::Prelude,
         _start: &ParserState,
     ) -> Result<Self::AtRule, ()> {
+        self.unbounded_at_rule = true;
         Ok(None)
     }
 
     fn parse_block<'t>(
         &mut self,
-        _prelude: Self::Prelude,
+        prelude: Self::Prelude,
         _start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
         consume_css_parser_tokens(input)?;
+        // Native static rendering ignores keyframes; conditional/nested selectors are opaque.
+        self.unbounded_at_rule |= !matches!(prelude.as_str(), "keyframes" | "-webkit-keyframes");
         Ok(None)
     }
 }
@@ -1502,7 +1570,7 @@ fn parse_stylesheet<E>(
     let css = strip_css_comments(css, checkpoint)?;
     let mut input = ParserInput::new(&css);
     let mut parser = Parser::new(&mut input);
-    let mut rule_parser = FallbackStylesheetParser;
+    let mut rule_parser = FallbackStylesheetParser::default();
     let mut rule_index = 0usize;
     for parsed in StyleSheetParser::new(&mut parser, &mut rule_parser) {
         checkpoint_loop(rule_index, checkpoint)?;
@@ -1525,6 +1593,7 @@ fn parse_stylesheet<E>(
         if let Some((actual, maximum)) = parsed_declarations.limit_exceeded {
             return budget.reject_admission(actual, maximum, selector_limit);
         }
+        budget.projection_unbounded |= parsed_declarations.unparsed;
         let declarations = parsed_declarations.declarations;
         if declarations.is_empty() {
             continue;
@@ -1557,7 +1626,11 @@ fn parse_stylesheet<E>(
                 // deliberately small fallback matcher subset. Keeping
                 // admitted siblings is safe because we never widen the
                 // unadmitted branch into a class-only match.
-                BranchParse::ValidButUnadmitted => {}
+                BranchParse::ValidButUnadmitted => {
+                    budget.projection_unbounded |= declarations
+                        .iter()
+                        .any(|declaration| !declaration.property.starts_with("--"));
+                }
                 BranchParse::Invalid => invalid = true,
                 BranchParse::LimitExceeded(actual) => {
                     return budget.reject_admission(
@@ -1593,6 +1666,7 @@ fn parse_stylesheet<E>(
             *source_order = source_order.saturating_add(1);
         }
     }
+    budget.projection_unbounded |= rule_parser.unbounded_at_rule;
     checkpoint()?;
     Ok(true)
 }
@@ -2419,8 +2493,25 @@ fn attribute_selector_matches(selector: &AttributeSelector, element: &SourceElem
 }
 
 struct ParsedDeclarations {
+    unparsed: bool,
     declarations: Vec<Declaration>,
     limit_exceeded: Option<(usize, usize)>,
+}
+
+fn projection_overrides(declaration: &Declaration) -> bool {
+    !declaration.important
+        && matches!(
+            declaration.property.as_str(),
+            "text-anchor"
+                | "font-size"
+                | "font-family"
+                | "font-weight"
+                | "font-style"
+                | "line-height"
+                | "color"
+                | "fill"
+                | "stroke"
+        )
 }
 
 fn parse_declarations<E>(
@@ -2436,12 +2527,14 @@ fn parse_declarations_with_limit<E>(
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<ParsedDeclarations, E> {
     let mut declarations = Vec::new();
+    let mut unparsed = false;
     let mut order = 0usize;
     let mut limit_exceeded = None;
     visit_style_declaration_boundaries_with_checkpoints(style, checkpoint, |boundary| {
         let current_order = order;
         order = order.saturating_add(1);
         let Some(parsed) = parse_style_declaration(boundary.raw()) else {
+            unparsed |= !boundary.raw().trim().is_empty();
             return Ok(true);
         };
         if parsed.property().is_empty() || parsed.value().is_empty() {
@@ -2460,6 +2553,7 @@ fn parse_declarations_with_limit<E>(
         Ok(true)
     })?;
     Ok(ParsedDeclarations {
+        unparsed,
         declarations,
         limit_exceeded,
     })

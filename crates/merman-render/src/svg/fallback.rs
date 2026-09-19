@@ -50,7 +50,7 @@ pub fn foreign_object_label_fallback_svg_text(
         text_measurer,
         &mut checkpoint,
         &mut |_, _| Ok::<(), Infallible>(()),
-        &mut |_, _| Ok::<(), Infallible>(()),
+        &mut |_, _, _| Ok::<(), Infallible>(()),
     ) {
         Ok(output) => output,
         Err(error) => match error {},
@@ -73,11 +73,11 @@ pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
         text_measurer,
         &mut || execution.checkpoint(),
         &mut |actual, maximum| Err(execution.selector_index_limit(actual, maximum)),
-        &mut |projected_bytes, generated_elements| {
+        &mut |projected_bytes, generated_elements, generated_depth| {
             execution.preflight_svg_byte_count(projected_bytes)?;
             execution.preflight_svg_structure(
                 structure.elements.saturating_add(generated_elements),
-                structure.max_tree_depth.max(2),
+                structure.max_tree_depth.max(generated_depth),
             )
         },
     )
@@ -103,7 +103,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     text_measurer: &dyn TextMeasurer,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
     selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    preflight_generated: &mut impl FnMut(usize, usize, usize) -> Result<(), E>,
 ) -> Result<String, E> {
     checkpoint()?;
     if find_with_checkpoints(svg, "<foreignObject", checkpoint)?.is_none() {
@@ -111,10 +111,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     }
 
     let close_tag = "</foreignObject>";
-    preflight_generated(svg.len(), 0)?;
+    preflight_generated(svg.len(), 0, 0)?;
     let mut out = String::with_capacity(svg.len());
     let mut overlays = String::new();
     let mut generated_elements = 0usize;
+    let mut inline_generated_bytes = 0usize;
     let mut g_stack: Vec<GFrame> = Vec::new();
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
@@ -183,7 +184,25 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
             if width > 0.0 && height > 0.0 {
                 let x = parse_attr_f64(tag, "x", checkpoint)?.unwrap_or(0.0);
                 let y = parse_attr_f64(tag, "y", checkpoint)?.unwrap_or(0.0);
-                let base = sum_translate(&g_stack, checkpoint)?;
+                // A root overlay escapes the filter's coordinate system and paint order.
+                // Keep these fallbacks beside their foreignObject under the original ancestors.
+                let in_place = g_stack.iter().any(|frame| frame.has_filter);
+                let overlay_start = overlays.len();
+                let generated_depth = if in_place {
+                    source_stack
+                        .len()
+                        .saturating_add(source_stack_overflow_depth)
+                        .saturating_add(1)
+                } else {
+                    2
+                };
+                let mut preflight_label =
+                    |bytes, elements| preflight_generated(bytes, elements, generated_depth);
+                let base = if in_place {
+                    context::Translate::default()
+                } else {
+                    sum_translate(&g_stack, checkpoint)?
+                };
 
                 let abs_x = base.x + x;
                 let abs_y = base.y + y;
@@ -253,9 +272,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                             source_classes = source_classes_attr,
                         ),
                         1,
-                        svg.len(),
+                        svg.len().saturating_add(inline_generated_bytes),
                         &mut generated_elements,
-                        preflight_generated,
+                        &mut preflight_label,
                     )?;
 
                     if let Some((occurrence, fill)) = writer_background {
@@ -268,9 +287,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 abs_x, abs_y, width, height, occurrence, fill, fill,
                             ),
                             1,
-                            svg.len(),
+                            svg.len().saturating_add(inline_generated_bytes),
                             &mut generated_elements,
-                            preflight_generated,
+                            &mut preflight_label,
                         )?;
                     } else if let Some(label_bkg) = &typography.label_background {
                         let escaped_label_bkg =
@@ -282,9 +301,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 abs_x, abs_y, width, height, escaped_label_bkg,
                             ),
                             1,
-                            svg.len(),
+                            svg.len().saturating_add(inline_generated_bytes),
                             &mut generated_elements,
-                            preflight_generated,
+                            &mut preflight_label,
                         )?;
                     }
 
@@ -311,6 +330,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     let line_height = typography.line_height;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
+                    // The cascade above measures HTML selectors. SVG-only descendant
+                    // selectors must not change that resolved typography after projection.
                     let mut text_style = format!(
                         "text-anchor: {anchor}; font-size: {}px; font-family: {}; line-height: {}px;",
                         typography.font_size, typography.font_family, typography.line_height,
@@ -324,6 +345,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         text_style.push_str(" font-style: ");
                         text_style.push_str(font_style);
                         text_style.push(';');
+                    }
+                    if in_place {
+                        let _ = write!(text_style, " fill:{}; stroke:none;", typography.fill);
+                        if typography.font_weight.is_none() {
+                            text_style.push_str(" font-weight:normal;");
+                        }
+                        if typography.font_style.is_none() {
+                            text_style.push_str(" font-style:normal;");
+                        }
                     }
                     let escaped_fill =
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
@@ -355,9 +385,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 text
                             ),
                             1,
-                            svg.len(),
+                            svg.len().saturating_add(inline_generated_bytes),
                             &mut generated_elements,
-                            preflight_generated,
+                            &mut preflight_label,
                         )?;
                     }
 
@@ -365,10 +395,43 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         &mut overlays,
                         format_args!("</g>"),
                         0,
-                        svg.len(),
+                        svg.len().saturating_add(inline_generated_bytes),
                         &mut generated_elements,
-                        preflight_generated,
+                        &mut preflight_label,
                     )?;
+                }
+                if in_place && overlays.len() > overlay_start {
+                    let permitted = source_stack_overflow_depth == 0
+                        && cascade_index
+                            .as_mut()
+                            .expect("generated labels have a cascade")
+                            .permits_in_place_fallback(
+                                &source_stack,
+                                &overlays[overlay_start..],
+                                checkpoint,
+                                selector_limit,
+                            )?;
+                    if permitted {
+                        let inline = &overlays[overlay_start..];
+                        inline_generated_bytes =
+                            inline_generated_bytes.saturating_add(inline.len());
+                        out.push_str(inline);
+                        overlays.truncate(overlay_start);
+                    } else {
+                        // Keep the readable root fallback when SVG-only CSS is not isolated.
+                        // The missing filtered glyphs remain visible to native receipt checks.
+                        let base = sum_translate(&g_stack, checkpoint)?;
+                        let transform = format!(" transform=\"translate({},{})\"", base.x, base.y);
+                        preflight_generated(
+                            svg.len()
+                                .saturating_add(inline_generated_bytes)
+                                .saturating_add(overlays.len())
+                                .saturating_add(transform.len()),
+                            generated_elements,
+                            2,
+                        )?;
+                        overlays.insert_str(overlay_start + 2, &transform);
+                    }
                 }
             }
             i = i_next;
@@ -606,6 +669,86 @@ mod tests {
 
     fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
         render_fallback(svg, &DeterministicTextMeasurer::default())
+    }
+
+    #[test]
+    fn filtered_foreign_object_keeps_local_coordinates_and_paint_order() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="glow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="100" height="80"><feDropShadow stdDeviation="4"/></filter></defs><g transform="translate(100,200)"><g filter="url(#glow)" transform="translate(7,9)"><foreignObject x="3" y="5" width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject></g><rect id="later-paint" width="10" height="10"/></g><foreignObject x="400" width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">Beta</div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let xml = roxmltree::Document::parse(&out).unwrap();
+        let alpha = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Alpha"))
+            .unwrap();
+        assert!(
+            alpha
+                .ancestors()
+                .any(|node| node.attribute("filter") == Some("url(#glow)")),
+            "filter was lost: {out}"
+        );
+        assert_eq!(alpha.attribute("x"), Some("33"));
+        assert_eq!(alpha.attribute("y"), Some("20"));
+        let later = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some("later-paint"))
+            .unwrap();
+        assert!(
+            alpha.range().start < later.range().start,
+            "fallback changed painter order"
+        );
+        let beta = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Beta"))
+            .unwrap();
+        assert!(
+            !beta
+                .ancestors()
+                .any(|node| node.attribute("filter").is_some())
+        );
+        assert_eq!(beta.attribute("x"), Some("420"));
+    }
+
+    #[test]
+    fn filtered_fallback_accounts_for_inline_bytes_and_nested_depth() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><g filter="url(#glow)"><g><foreignObject width="60" height="30">Alpha</foreignObject><foreignObject width="60" height="30">Beta</foreignObject></g></g><foreignObject width="60" height="30">Gamma</foreignObject></svg>"##;
+        let mut projected_bytes = 0;
+        let mut projected_depth = 0;
+        let mut preflight = |bytes, _: usize, depth| {
+            assert!(
+                bytes >= projected_bytes,
+                "inline output must remain charged"
+            );
+            projected_bytes = bytes;
+            projected_depth = projected_depth.max(depth);
+            Ok::<(), &'static str>(())
+        };
+        let output = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            svg,
+            &DeterministicTextMeasurer::default(),
+            &mut || Ok(()),
+            &mut |_, _| Ok(()),
+            &mut preflight,
+        )
+        .unwrap();
+        assert_eq!(projected_bytes, output.len());
+        assert_eq!(projected_depth, 4);
+
+        for (byte_limit, depth_limit) in [(output.len() - 1, usize::MAX), (usize::MAX, 3)] {
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                svg,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok(()),
+                &mut |_, _| Ok(()),
+                &mut |bytes, _, depth| {
+                    if bytes > byte_limit || depth > depth_limit {
+                        Err("resource limit")
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+            assert_eq!(result, Err("resource limit"));
+        }
     }
 
     #[test]
@@ -1105,7 +1248,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_UNIVERSAL_POSTINGS);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1148,7 +1291,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_POSTINGS);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1178,7 +1321,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1250,7 +1393,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1291,7 +1434,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1340,7 +1483,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_MATCH_WORK);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
@@ -1384,7 +1527,7 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,

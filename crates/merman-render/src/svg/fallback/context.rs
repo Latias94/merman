@@ -12,6 +12,7 @@ pub(super) struct Translate {
 #[derive(Clone, Debug, Default)]
 pub(super) struct GFrame {
     translate: Translate,
+    pub(super) has_filter: bool,
     class_tokens: Vec<String>,
 }
 
@@ -30,6 +31,10 @@ impl GFrame {
         };
         Ok(Self {
             translate,
+            has_filter: extract_exact_double_quoted_attr_with_checkpoints(
+                tag, "filter", checkpoint,
+            )?
+            .is_some_and(|value| !value.trim().is_empty() && value.trim() != "none"),
             class_tokens: parse_class_tokens(tag, checkpoint)?,
         })
     }
