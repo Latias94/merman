@@ -165,3 +165,51 @@ CARGO_BUILD_JOBS=1 python3 scripts/run_theme_acceptance.py nextest run --release
 
 This closes the full-scene admission regression and stale background oracle only. Calibrated
 visual qualification, PDF/HTML acceptance, installed consumers and C7a remain open.
+
+## Executable public-browser scene checks
+
+The continuation from `371e5aad2` replaces the two-node Playground probes with the unchanged
+checked-in complete fixtures. `playground/tests/theme-cyberpunk.spec.ts` now exercises four
+fresh navigations through the public Web preset selection: Flowchart native text, Flowchart
+HTML, Sequence and XY Chart. Both Web source-input and Playground distribution freshness
+checks passed for the existing full WASM transaction `58420c448ba4`.
+
+Chromium `151.0.7922.34`, Playwright `1.62.1`, browser measurement and the host Trebuchet profile
+were used. These checks do not rerun the controlled Arial or native PDF captures above.
+
+| Scene | Nonempty labels | Individually disabled effects | Individually disabled arrowheads |
+| --- | ---: | ---: | ---: |
+| Flowchart native text | 7 | 13 | 3 |
+| Flowchart HTML | 7 | 13 | 3 |
+| Sequence | 9 | 21 | 2 |
+| XY Chart | 18 | 28 | 0 |
+
+Every expected label has positive bounds within the SVG viewport, the expected actual text-leaf
+color, and a pixel contribution inside its own bounds when compared with the hidden label.
+Every effect and bound arrowhead independently changes decoded RGBA pixels when disabled.
+All four scenes also assert the navy base, three ordered screen-blended layers, radial geometry,
+gradient stops and 40-unit grid. Existing Flowchart glow radii, HTML text weight and label
+background separation assertions remain in place.
+
+The probes cover both filter attributes and inline filter styles. Disabling only an attribute
+would leave the Sequence frame's inline filter active; HTML edge-label effects have inline
+styles without filter attributes. Each screenshot first forces a complete SVG layout/repaint.
+Without that control, incremental Chromium repaint changed a small set of restored Flowchart
+edge-label pixels by up to 35 channel values. With the shared repaint path, restoring the
+original styles restores every decoded pixel exactly. No pixel tolerance was introduced.
+The initial probe failures were corrected in the test harness, with no renderer change.
+
+All four browser tests passed with one worker. Browser TypeScript checking, scoped ESLint and
+`git diff --check` also passed. Reproduce the browser gate with:
+
+```console
+node platforms/web/scripts/verify-wasm-inputs.mjs --package full
+node playground/scripts/verify-dist-wasm.mjs
+npm --prefix playground/tests run test:desktop -- theme-cyberpunk.spec.ts
+npm --prefix playground run test:browser:typecheck
+```
+
+The tests save scene screenshots in their Playwright output directories. They establish local
+pixel contributions on this browser/profile, not whole-image equivalence with Mermaid, complete
+glyph/glow clip coverage, native PNG/PDF qualification or portable fonts. The old Cyberpunk
+palette qualifier still rejects the current recipe; catalog cells, U6–U9 and C7a remain open.
