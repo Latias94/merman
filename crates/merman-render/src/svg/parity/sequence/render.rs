@@ -180,6 +180,21 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         nodes_by_id.insert(node.id.as_str(), node);
     }
 
+    let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
+    for (edge_index, edge) in layout.edges.iter().enumerate() {
+        checkpoints.checkpoint_loop(edge_index)?;
+        edges_by_id.insert(edge.id.as_str(), edge);
+    }
+    let message_bounds = super::messages::message_paint_bounds(
+        model,
+        &nodes_by_id,
+        &edges_by_id,
+        message_theme.typed_stroke_width,
+        settings.right_angles,
+        settings.actor_height,
+        checkpoints,
+    )?;
     let actor_shadows = super::actor_effect::SequenceActorShadowPlan::prepare(
         actor_theme.effect.take(),
         &nodes_by_id,
@@ -207,15 +222,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .map(f64::from)
             .unwrap_or(0.0)
             / 2.0,
-        actor_shadows.bounds.as_ref(),
+        &[actor_shadows.bounds.as_ref(), message_bounds.as_ref()],
     )?;
 
-    let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
-        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for (edge_index, edge) in layout.edges.iter().enumerate() {
-        checkpoints.checkpoint_loop(edge_index)?;
-        edges_by_id.insert(edge.id.as_str(), edge);
-    }
     let activation_plan = build_sequence_activation_plan(
         model,
         &nodes_by_id,
@@ -293,6 +302,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
             lifeline_stroke_width: lifeline_theme.typed_stroke_width,
             message_stroke: message_theme.typed_stroke.as_deref(),
+            message_stroke_width: message_theme.typed_stroke_width,
             sequence_number_fill: sequence_number_theme.typed_fill.as_deref(),
             loop_fill: loop_theme.typed_fill.as_deref(),
             loop_stroke: loop_theme.typed_stroke.as_deref(),
@@ -475,6 +485,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared.theme_evidence().record_message_emission(
         crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
             message_theme.typed_stroke.as_deref(),
+            message_theme.typed_stroke_width_won,
             message_stroke_overridden,
             message_theme.selected_property,
             message_theme.receipt,
@@ -574,6 +585,8 @@ struct SequenceLifelineThemeResolution {
 #[derive(Default)]
 struct SequenceMessageThemeResolution {
     typed_stroke: Option<String>,
+    typed_stroke_width: Option<f32>,
+    typed_stroke_width_won: bool,
     selected_property: Option<crate::diagram_theme::ResolvedStyleProperty>,
     receipt: crate::sequence::SequenceMessageThemeReceipt,
 }
@@ -821,6 +834,8 @@ fn resolve_sequence_message_theme(
         .flatten();
     Ok(SequenceMessageThemeResolution {
         typed_stroke,
+        typed_stroke_width: style.stroke_width(),
+        typed_stroke_width_won: style.stroke_width_resolution().winner().is_some(),
         selected_property,
         receipt,
     })

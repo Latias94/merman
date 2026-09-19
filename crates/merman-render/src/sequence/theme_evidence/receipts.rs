@@ -482,6 +482,7 @@ impl SequenceMessageThemeReceipt {
 #[derive(Debug, Clone, Default)]
 pub(super) struct SequenceMessageThemeState {
     pub(super) stroke_emitted: bool,
+    pub(super) stroke_width_emitted: bool,
     pub(super) stroke_overridden: bool,
     pub(super) selected_property: Option<ResolvedStyleProperty>,
     pub(super) receipt: SequenceMessageThemeReceipt,
@@ -490,6 +491,7 @@ pub(super) struct SequenceMessageThemeState {
 impl SequenceMessageThemeState {
     pub(super) fn merge(&mut self, emission: SequenceMessageThemeEmission) {
         self.stroke_emitted |= emission.stroke_emitted;
+        self.stroke_width_emitted |= emission.stroke_width_emitted;
         self.stroke_overridden |= emission.stroke_overridden;
         if let Some(selected_property) = emission.selected_property {
             debug_assert!(
@@ -503,10 +505,11 @@ impl SequenceMessageThemeState {
     }
 }
 
-/// Complete writer-owned emission facts for the shared Sequence Message signal-color tranche.
+/// Complete writer-owned emission facts for Sequence Message signal color and width.
 #[derive(Debug)]
 pub(crate) struct SequenceMessageThemeEmission {
     pub(super) stroke_emitted: bool,
+    pub(super) stroke_width_emitted: bool,
     pub(super) stroke_overridden: bool,
     pub(super) selected_property: Option<ResolvedStyleProperty>,
     pub(super) receipt: SequenceMessageThemeReceipt,
@@ -515,6 +518,7 @@ pub(crate) struct SequenceMessageThemeEmission {
 impl SequenceMessageThemeEmission {
     pub(crate) fn from_terminal_writer(
         typed_stroke: Option<&str>,
+        stroke_width_won: bool,
         stroke_overridden: bool,
         selected_property: Option<ResolvedStyleProperty>,
         receipt: SequenceMessageThemeReceipt,
@@ -523,6 +527,8 @@ impl SequenceMessageThemeEmission {
         let complete_line_emission = receipt.has_complete_emission();
         Self {
             stroke_emitted: complete_line_emission && typed_stroke.is_some(),
+            // Clear consumes the winning width by preserving the default message CSS width.
+            stroke_width_emitted: complete_line_emission && stroke_width_won,
             stroke_overridden: has_lines && stroke_overridden,
             selected_property,
             receipt,

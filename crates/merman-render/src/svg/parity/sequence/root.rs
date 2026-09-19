@@ -7,8 +7,8 @@ pub(super) fn write_sequence_svg_root_open(
     model: &SequenceSvgModel,
     diagram_id: SvgDiagramId<'_>,
     resources: crate::resources::RenderResourcePolicy,
-    actor_stroke_outset: f64,
-    effect_bounds: Option<&Bounds>,
+    stroke_outset: f64,
+    paint_bounds: &[Option<&Bounds>],
 ) -> Result<root_svg::RootDocument> {
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -21,15 +21,15 @@ pub(super) fn write_sequence_svg_root_open(
         bounds.min_y,
         bounds.max_x,
         bounds.max_y,
-        actor_stroke_outset,
+        stroke_outset,
     );
 
-    if let Some(effect) = effect_bounds {
+    for paint in paint_bounds.iter().flatten() {
         root_bounds = root_svg::DiagramBounds::from_extents(
-            root_bounds.min_x.min(effect.min_x),
-            root_bounds.min_y.min(effect.min_y),
-            (root_bounds.min_x + root_bounds.width).max(effect.max_x),
-            (root_bounds.min_y + root_bounds.height).max(effect.max_y),
+            root_bounds.min_x.min(paint.min_x),
+            root_bounds.min_y.min(paint.min_y),
+            (root_bounds.min_x + root_bounds.width).max(paint.max_x),
+            (root_bounds.min_y + root_bounds.height).max(paint.max_y),
             0.0,
         );
     }

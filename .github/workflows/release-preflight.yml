@@ -225,8 +225,9 @@ jobs:
 
       - name: Test native theme font consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,png,pdf,embedded-fonts \
-            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation
+          cargo test --locked -p merman --no-default-features --features svg,png,pdf,layout-cytoscape,embedded-fonts \
+            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
+            --test theme_composed_effects
 
       - name: Test optimized theme evidence and qualification rejection
         run: |

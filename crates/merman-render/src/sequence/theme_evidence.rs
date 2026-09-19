@@ -223,7 +223,9 @@ mod tests {
                         ThemeRule::new(
                             ThemeTarget::Message,
                             ThemeStylePatch::default()
-                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap())
+                                .with_stroke_width(4.0)
+                                .unwrap(),
                         )
                         .for_family(DiagramFamilyId::SEQUENCE),
                     ),
@@ -247,6 +249,7 @@ mod tests {
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_message_emission(SequenceMessageThemeEmission::from_terminal_writer(
                 Some("#2563eb"),
+                true,
                 false,
                 Some(crate::diagram_theme::ResolvedStyleProperty::Stroke),
                 receipt,
@@ -741,7 +744,7 @@ mod tests {
                         }
                         recorder.record_message_emission(
                             SequenceMessageThemeEmission::from_terminal_writer(
-                                None, true, None, receipt,
+                                None, false, true, None, receipt,
                             ),
                         );
                     }

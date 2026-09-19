@@ -26,6 +26,111 @@ pub(super) fn has_sequence_message_line_candidates(model: &SequenceSvgModel) -> 
     })
 }
 
+/// Include actual typed message paint; the layout baseline only bounds its centerline.
+pub(super) fn message_paint_bounds(
+    model: &SequenceSvgModel,
+    nodes: &FxHashMap<&str, &LayoutNode>,
+    edges: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    width: Option<f32>,
+    right_angles: bool,
+    actor_height: f64,
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Option<Bounds>> {
+    let Some(width) = width.map(f64::from) else {
+        return Ok(None);
+    };
+    let mut total: Option<Bounds> = None;
+    for (index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        let Some(semantics) = message.signal_semantics() else {
+            continue;
+        };
+        let (Some(from), Some(to)) = (message.from.as_deref(), message.to.as_deref()) else {
+            continue;
+        };
+        let Some(edge) = edges.get(format!("msg-{}", message.id).as_str()) else {
+            continue;
+        };
+        let [p0, p1, ..] = edge.points.as_slice() else {
+            continue;
+        };
+        let points = if from == to {
+            self_message_points(edge, nodes, from, actor_height, right_angles)
+        } else {
+            [(p0.x, p0.y), (p0.x, p0.y), (p1.x, p1.y), (p1.x, p1.y)]
+        };
+        // The cubic's control hull bounds its curve; axis-aligned right-angle joins fit
+        // inside the same rectangle expanded by half the stroke width.
+        let mut bounds = Bounds::from_points(points).expect("four message points");
+        bounds.min_x -= width / 2.0;
+        bounds.min_y -= width / 2.0;
+        bounds.max_x += width / 2.0;
+        bounds.max_y += width / 2.0;
+        for (marker, source, (x, y)) in [
+            (semantics.source_marker, true, points[0]),
+            (semantics.target_marker, false, points[3]),
+        ] {
+            // These hidden marker viewports are pinned in the Sequence defs. A rotation
+            // radius also covers the cubic endpoint tangent, without guessing its angle.
+            let radius = match endpoint_marker_local_id(marker, source) {
+                Some("crosshead") => 11.0_f64.hypot(4.5) * width,
+                Some("filled-head") => 15.5_f64.hypot(21.0) * width,
+                Some("arrowhead") => 7.9_f64.hypot(7.0),
+                Some("solidTopArrowHead") => 7.9_f64.hypot(7.25),
+                Some("solidBottomArrowHead") => 7.9_f64.hypot(11.25),
+                Some("stickTopArrowHead") => 7.5_f64.hypot(7.0),
+                Some("stickBottomArrowHead") => 7.5_f64.hypot(12.0),
+                _ => 0.0,
+            };
+            bounds.min_x = bounds.min_x.min(x - radius);
+            bounds.min_y = bounds.min_y.min(y - radius);
+            bounds.max_x = bounds.max_x.max(x + radius);
+            bounds.max_y = bounds.max_y.max(y + radius);
+        }
+        if let Some(total) = &mut total {
+            total.min_x = total.min_x.min(bounds.min_x);
+            total.min_y = total.min_y.min(bounds.min_y);
+            total.max_x = total.max_x.max(bounds.max_x);
+            total.max_y = total.max_y.max(bounds.max_y);
+        } else {
+            total = Some(bounds);
+        }
+    }
+    Ok(total)
+}
+
+/// Shared control points keep self-message output and its paint bounds in agreement.
+fn self_message_points(
+    edge: &crate::model::LayoutEdge,
+    nodes: &FxHashMap<&str, &LayoutNode>,
+    from: &str,
+    actor_height: f64,
+    right_angles: bool,
+) -> [(f64, f64); 4] {
+    let p = &edge.points[0];
+    if right_angles {
+        let actor_w = nodes
+            .get(format!("actor-top-{from}").as_str())
+            .map(|n| n.width)
+            .unwrap_or(actor_height);
+        let text_dx = edge.label.as_ref().map(|l| l.width / 2.0).unwrap_or(0.0);
+        let dx = (actor_w / 2.0).max(text_dx);
+        [
+            (p.x, p.y),
+            (p.x + dx, p.y),
+            (p.x + dx, p.y + 25.0),
+            (p.x, p.y + 25.0),
+        ]
+    } else {
+        [
+            (p.x, p.y),
+            (p.x + 60.0, p.y - 10.0),
+            (p.x + 60.0, p.y + 30.0),
+            (p.x, p.y + 20.0),
+        ]
+    }
+}
+
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
@@ -437,32 +542,32 @@ pub(super) fn render_sequence_messages(
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
         if from == to {
-            let startx = p0.x;
-            let y = p0.y;
+            let [(x, y), (x2, y2), (x3, y3), (x4, y4)] = self_message_points(
+                edge,
+                ctx.nodes_by_id,
+                from,
+                ctx.actor_height,
+                ctx.right_angles,
+            );
             let d = if ctx.right_angles {
-                let actor_w = ctx
-                    .nodes_by_id
-                    .get(format!("actor-top-{from}").as_str())
-                    .map(|n| n.width)
-                    .unwrap_or(ctx.actor_height);
-                let text_dx = edge.label.as_ref().map(|l| l.width / 2.0).unwrap_or(0.0);
-                let dx = (actor_w / 2.0).max(text_dx);
                 format!(
                     "M  {x},{y} H {hx} V {vy} H {x}",
-                    x = fmt(startx),
+                    x = fmt(x),
                     y = fmt(y),
-                    hx = fmt(startx + dx),
-                    vy = fmt(y + 25.0)
+                    hx = fmt(x2),
+                    vy = fmt(y3)
                 )
             } else {
                 format!(
-                    "M {x},{y} C {x2},{y2} {x2},{y3} {x},{y4}",
-                    x = fmt(startx),
+                    "M {x},{y} C {x2},{y2} {x3},{y3} {x4},{y4}",
+                    x = fmt(x),
                     y = fmt(y),
-                    x2 = fmt(startx + 60.0),
-                    y2 = fmt(y - 10.0),
-                    y3 = fmt(y + 30.0),
-                    y4 = fmt(y + 20.0)
+                    x2 = fmt(x2),
+                    y2 = fmt(y2),
+                    x3 = fmt(x3),
+                    y3 = fmt(y3),
+                    x4 = fmt(x4),
+                    y4 = fmt(y4)
                 )
             };
             // Mermaid attaches an `x1` attribute to autonumbered self-reference paths even
@@ -989,6 +1094,7 @@ mod tests {
             recorder.record_message_emission(
                 crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
                     Some("#2563eb"),
+                    false,
                     false,
                     Some(crate::diagram_theme::ResolvedStyleProperty::Stroke),
                     receipt,

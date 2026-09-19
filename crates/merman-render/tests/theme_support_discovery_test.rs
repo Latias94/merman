@@ -88,6 +88,11 @@ fn direct_only_family_slices_are_reported_as_conditional() {
     for (family, target, facet) in [
         (
             DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Message,
+            ThemeRuleFacetV1::StrokeWidth,
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
             ThemeTarget::Actor,
             ThemeRuleFacetV1::Effect,
         ),

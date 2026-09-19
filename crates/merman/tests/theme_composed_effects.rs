@@ -361,6 +361,87 @@ fn sequence_native_message_markers_use_the_requested_paint() {
 }
 
 #[test]
+fn sequence_native_message_width_preserves_markers_at_zero_margin() {
+    use merman::svg::{ThemeRule, ThemeRuleSet, ThemeStylePatch};
+    for width in [2.0, 12.0] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#00f2ff").unwrap())
+                            .with_stroke_width(width)
+                            .unwrap(),
+                    )),
+                ),
+            )
+            .unwrap();
+        for arrow in ["->>", "-x", "-)"] {
+            for (target, right_angles) in [("B", false), ("A", false), ("A", true)] {
+                let source = format!(
+                    "---\nconfig:\n  sequence:\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n    rightAngles: {right_angles}\n---\nsequenceDiagram\nA{arrow}{target}: Message"
+                );
+                let RenderOutput::Document(Some(document)) = Renderer::new()
+                    .render(
+                        RenderRequest::document(
+                            &source,
+                            OperationControl::new(),
+                            Default::default(),
+                        )
+                        .with_theme(theme.clone()),
+                    )
+                    .unwrap()
+                else {
+                    panic!("document required")
+                };
+                if target == "B" && arrow == "->>" {
+                    let xml = roxmltree::Document::parse(document.svg()).unwrap();
+                    let line = xml
+                        .descendants()
+                        .find(|n| n.attribute("class") == Some("messageLine0"))
+                        .unwrap();
+                    let view_box: Vec<f64> = xml
+                        .root_element()
+                        .attribute("viewBox")
+                        .unwrap()
+                        .split_whitespace()
+                        .map(|s| s.parse().unwrap())
+                        .collect();
+                    let midpoint = (line.attribute("x1").unwrap().parse::<f64>().unwrap()
+                        + line.attribute("x2").unwrap().parse::<f64>().unwrap())
+                        / 2.0;
+                    let png = document
+                        .export_png(&Default::default(), OperationControl::new())
+                        .unwrap();
+                    let mut reader = png::Decoder::new(Cursor::new(png.bytes()))
+                        .read_info()
+                        .unwrap();
+                    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+                    let info = reader.next_frame(&mut pixels).unwrap();
+                    assert_eq!(info.color_type, png::ColorType::Rgba);
+                    let scale = f64::from(info.width) / view_box[2];
+                    let x = ((midpoint - view_box[0]) * scale).round() as usize;
+                    let cyan_rows = (0..info.height as usize)
+                        .filter(|y| {
+                            let pixel = &pixels[(y * info.width as usize + x) * 4..][..4];
+                            u16::from(pixel[1]) > u16::from(pixel[0]) + 50
+                                && u16::from(pixel[2]) > u16::from(pixel[0]) + 50
+                                && pixel[3] > 128
+                        })
+                        .count();
+                    assert!(
+                        (cyan_rows as f64 - f64::from(width) * scale).abs() <= 1.5,
+                        "actual native message width: {cyan_rows} pixels, requested {width} at scale {scale}"
+                    );
+                }
+                assert_sequence_marker_pixels(&document, true, &format!("width {width}: {source}"));
+            }
+        }
+    }
+}
+
+#[test]
 fn sequence_native_marker_paint_preserves_source_and_clear_ownership() {
     use merman::svg::{Specified, ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 

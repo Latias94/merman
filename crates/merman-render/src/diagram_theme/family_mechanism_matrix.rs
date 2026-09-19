@@ -1853,7 +1853,7 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
+            ) | FamilyThemeRuleFacet::StrokeWidth
         )
     {
         return FamilyThemeDisposition::TypedAdapter;

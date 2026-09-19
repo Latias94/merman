@@ -6454,6 +6454,13 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             assert_eq!(actor.attribute("rx"), Some("10"));
             assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
         }
+        let css: String = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("style"))
+            .filter_map(|n| n.text())
+            .collect();
+        assert!(css.contains(".messageLine0{stroke-width:2px;stroke-dasharray:none;}"));
+        assert!(css.contains(".messageLine1{stroke-width:2px;stroke-dasharray:2,2;}"));
         outputs.push(rendered.svg().to_owned());
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
@@ -6811,4 +6818,267 @@ fn sequence_actor_shadow_preserves_ordinal_residuals_and_resource_admission() {
         if limit.phase == ThemeResourceLimitPhase::EffectMaterialize && limit.limit == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()),
         "{error:?}"
     );
+}
+
+#[test]
+fn sequence_message_width_reaches_lines_and_self_paths_without_changing_dash_semantics() {
+    for width in [0.0, 1.5, 2.0, 12.0] {
+        for default_variant in [false, true] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+            );
+            if default_variant {
+                rule = rule.with_variant(ThemeVariant::Default);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let rendered = try_render_sequence_theme_request(
+                "sequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self",
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("static Message width must reach every concrete line/path");
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let messages: Vec<_> = doc
+                .descendants()
+                .filter(|n| matches!(n.attribute("class"), Some("messageLine0" | "messageLine1")))
+                .collect();
+            assert_eq!(messages.len(), 3);
+            assert!(messages.iter().any(|n| n.has_tag_name("path")));
+            let css: String = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("style"))
+                .filter_map(|n| n.text())
+                .collect();
+            assert!(css.contains(&format!(
+                ".messageLine0{{stroke-width:{width}px;stroke-dasharray:none;}}"
+            )));
+            assert!(css.contains(&format!(
+                ".messageLine1{{stroke-width:{width}px;stroke-dasharray:2,2;}}"
+            )));
+            let reply = messages
+                .iter()
+                .find(|n| n.attribute("class") == Some("messageLine1"))
+                .unwrap();
+            assert!(
+                reply
+                    .attribute("style")
+                    .unwrap()
+                    .contains("stroke-dasharray: 3, 3")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sequence_message_width_preserves_clear_and_unsupported_selector_outcomes() {
+    let width = || {
+        ThemeRule::new(
+            ThemeTarget::Message,
+            ThemeStylePatch::default().with_stroke_width(12.0).unwrap(),
+        )
+    };
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.width = Specified::Clear;
+    let cleared = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(width()).with_rule(
+                ThemeRule::new(ThemeTarget::Message, clear).with_variant(ThemeVariant::Default),
+            ),
+        ))
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let source = "sequenceDiagram\nA->>B: Request\nB-->>A: Reply";
+    let base = try_render_sequence_theme_request(
+        source,
+        &baseline,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let restored = try_render_sequence_theme_request(
+        source,
+        &cleared,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert_eq!(
+        base.svg(),
+        restored.svg(),
+        "Clear must restore default paint and viewport"
+    );
+    let completion = restored.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+
+    // Message ordinal and non-default variant routes remain conservatively unsupported,
+    // including unmatched selectors; this increment only consumes static default width.
+    let mut mixed = ThemeStylePatch::default().with_stroke_width(12.0).unwrap();
+    mixed.geometry.radius = Specified::Value(4.0);
+    for (case, (source, rule, accepted)) in [
+        (source, ThemeRule::new(ThemeTarget::Message, mixed), false),
+        (
+            source,
+            width().with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            false,
+        ),
+        (
+            source,
+            width().with_ordinal(OrdinalSelector::exact(99).unwrap()),
+            false,
+        ),
+        ("sequenceDiagram\nparticipant A", width(), true),
+        (source, width().with_variant(ThemeVariant::Active), false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        assert_eq!(
+            try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_ok(),
+            accepted,
+            "selector case {case}"
+        );
+    }
+}
+
+#[test]
+fn sequence_message_width_contains_actual_paths_and_markers_without_layout_margins() {
+    for width in [0.0, 2.0, 12.0] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default().with_stroke_width(width).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap();
+        for (target, right_angles) in [("B", false), ("A", false), ("A", true)] {
+            for arrow in ["->>", "-x", "-)", r"-|\", r"-\\", "<<->>", "-|/", r"-//"] {
+                let source = format!(
+                    "---\nconfig:\n  sequence:\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n    rightAngles: {right_angles}\n---\nsequenceDiagram\nA{arrow}{target}: Request"
+                );
+                let rendered = try_render_sequence_theme_request(
+                    &source,
+                    &theme,
+                    Engine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let view_box: Vec<f64> = doc
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                let contains = |x: f64, y: f64, radius: f64| {
+                    assert!(
+                        x - radius >= view_box[0] - 1e-8
+                            && y - radius >= view_box[1] - 1e-8
+                            && x + radius <= view_box[0] + view_box[2] + 1e-8
+                            && y + radius <= view_box[1] + view_box[3] + 1e-8,
+                        "{arrow} to {target}, rightAngles={right_angles}, width={width}: point {x},{y} radius {radius}, viewBox {view_box:?}"
+                    );
+                };
+                let message = doc
+                    .descendants()
+                    .find(|n| n.attribute("class") == Some("messageLine0"))
+                    .unwrap();
+                let (start, end) = if message.has_tag_name("line") {
+                    let value = |key| message.attribute(key).unwrap().parse::<f64>().unwrap();
+                    ((value("x1"), value("y1")), (value("x2"), value("y2")))
+                } else {
+                    // The generated self paths contain only M/C or M/H/V/H. Read their
+                    // terminal coordinates and sample the actual curve, not a padding formula.
+                    let numbers: Vec<f64> = message
+                        .attribute("d")
+                        .unwrap()
+                        .split(|c: char| c.is_ascii_alphabetic() || c.is_whitespace() || c == ',')
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.parse().unwrap())
+                        .collect();
+                    if right_angles {
+                        for (x, y) in [
+                            (numbers[0], numbers[1]),
+                            (numbers[2], numbers[1]),
+                            (numbers[2], numbers[3]),
+                            (numbers[4], numbers[3]),
+                        ] {
+                            contains(x, y, f64::from(width) / 2.0);
+                        }
+                        ((numbers[0], numbers[1]), (numbers[4], numbers[3]))
+                    } else {
+                        for step in 0..=100 {
+                            let t = f64::from(step) / 100.0;
+                            let u = 1.0 - t;
+                            let coordinate = |axis: usize| {
+                                u.powi(3) * numbers[axis]
+                                    + 3.0 * u.powi(2) * t * numbers[axis + 2]
+                                    + 3.0 * u * t.powi(2) * numbers[axis + 4]
+                                    + t.powi(3) * numbers[axis + 6]
+                            };
+                            contains(coordinate(0), coordinate(1), f64::from(width) / 2.0);
+                        }
+                        ((numbers[0], numbers[1]), (numbers[6], numbers[7]))
+                    }
+                };
+                for (attribute, (x, y)) in [("marker-start", start), ("marker-end", end)] {
+                    contains(x, y, f64::from(width) / 2.0);
+                    let Some(reference) = message.attribute(attribute) else {
+                        continue;
+                    };
+                    let id = reference
+                        .strip_prefix("url(#")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let marker = doc
+                        .descendants()
+                        .find(|n| n.attribute("id") == Some(id))
+                        .unwrap();
+                    let value = |key| marker.attribute(key).unwrap().parse::<f64>().unwrap();
+                    let scale = if marker.attribute("markerUnits") == Some("userSpaceOnUse") {
+                        1.0
+                    } else {
+                        f64::from(width)
+                    };
+                    let radius = value("refX")
+                        .abs()
+                        .max((value("markerWidth") - value("refX")).abs())
+                        .hypot(
+                            value("refY")
+                                .abs()
+                                .max((value("markerHeight") - value("refY")).abs()),
+                        )
+                        * scale;
+                    contains(x, y, radius);
+                }
+            }
+        }
+    }
 }

@@ -8,6 +8,7 @@ pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) lifeline_stroke: Option<&'a str>,
     pub(super) lifeline_stroke_width: Option<f32>,
     pub(super) message_stroke: Option<&'a str>,
+    pub(super) message_stroke_width: Option<f32>,
     pub(super) sequence_number_fill: Option<&'a str>,
     pub(super) loop_fill: Option<&'a str>,
     pub(super) loop_stroke: Option<&'a str>,
@@ -201,6 +202,10 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let final_actor_stroke = typed.actor_stroke.unwrap_or(actor_border);
     let final_lifeline_stroke = typed.lifeline_stroke.unwrap_or(actor_line);
     let final_message_stroke = typed.message_stroke.unwrap_or(signal_color);
+    let message_width = typed
+        .message_stroke_width
+        .map(|width| format!("{}px", fmt(f64::from(width))));
+    let message_width = message_width.as_deref().unwrap_or("1.5");
     let final_sequence_number_fill = typed.sequence_number_fill.unwrap_or(sequence_number);
     let final_loop_fill = typed.loop_fill.unwrap_or(label_box_fill);
     let final_loop_stroke = typed.loop_stroke.unwrap_or(label_box_border);
@@ -276,12 +281,12 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .messageLine0{{stroke-width:1.5;stroke-dasharray:none;}}"#,
+        r#"#{} .messageLine0{{stroke-width:{message_width};stroke-dasharray:none;}}"#,
         id
     );
     let _ = write!(
         &mut out,
-        r#"#{} .messageLine1{{stroke-width:1.5;stroke-dasharray:2,2;}}"#,
+        r#"#{} .messageLine1{{stroke-width:{message_width};stroke-dasharray:2,2;}}"#,
         id
     );
     let _ = write!(

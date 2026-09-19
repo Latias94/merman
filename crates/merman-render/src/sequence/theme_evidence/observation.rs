@@ -172,6 +172,15 @@ pub(super) fn observe_message_rule(
             }
             observation.capabilities.insert(capability_for_paint(kind));
         }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::StrokeWidth) => {
+            if !message.stroke_width_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation
+                .capabilities
+                .insert(ThemeCapability::BorderStyling);
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation

@@ -122,6 +122,17 @@ pub(super) fn build_recipe(
                 ..ThemeStylePatchWireV1::default()
             },
         ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Message,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
     ]);
     append_xy_series(&mut spec);
     append_xy_text(&mut spec);
