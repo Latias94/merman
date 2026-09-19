@@ -262,7 +262,7 @@ fn composed_sequence_actor_shadows_reach_png_and_localized_pdf() {
 }
 
 #[test]
-fn public_cyberpunk_sequence_actor_and_message_glow_survives_native_export() {
+fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(merman::svg::ThemePreset::Cyberpunk)
         .unwrap();
@@ -318,7 +318,7 @@ fn public_cyberpunk_sequence_actor_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (6, 6, 10)
+        (7, 7, 11)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -681,4 +681,13 @@ fn composed_sequence_message_shadows_reach_png_and_localized_pdf() {
     ] {
         assert_composed_shadows(source, ThemeTarget::Message, 3);
     }
+}
+
+#[test]
+fn composed_sequence_note_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows(
+        "sequenceDiagram\nNote left of A: Left\nNote right of B: Right\nNote over A,B: A long note spanning both participants",
+        ThemeTarget::Note,
+        3,
+    );
 }

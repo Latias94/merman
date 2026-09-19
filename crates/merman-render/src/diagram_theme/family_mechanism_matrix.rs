@@ -1257,7 +1257,10 @@ pub(super) fn compile_effect_binding_route(
 fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
     if (family == DiagramFamilyId::STATE && target == ThemeTarget::State)
         || (family == DiagramFamilyId::SEQUENCE
-            && matches!(target, ThemeTarget::Actor | ThemeTarget::Message))
+            && matches!(
+                target,
+                ThemeTarget::Actor | ThemeTarget::Message | ThemeTarget::Note
+            ))
         || (family == DiagramFamilyId::XY_CHART
             && matches!(
                 target,
@@ -1812,7 +1815,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
-        && target == ThemeTarget::Actor
+        && matches!(target, ThemeTarget::Actor | ThemeTarget::Note)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {

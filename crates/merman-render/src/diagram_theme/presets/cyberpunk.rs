@@ -14,6 +14,7 @@ use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget, ThemeVariant};
 
 const SHAPE_GLOW: &str = "cyberpunk-shape-glow";
 const EDGE_GLOW: &str = "cyberpunk-edge-glow";
+const NOTE_GLOW: &str = "cyberpunk-note-glow";
 
 pub(super) fn build_recipe(
     palette: PresetPalette,
@@ -55,6 +56,11 @@ pub(super) fn build_recipe(
             id: EDGE_GLOW.to_owned(),
             color_space: Some("srgb".to_owned()),
             primitives: vec![shadow("source-graphic", 6.0, "rgba(0, 242, 255, 0.6)")],
+        },
+        ThemeEffectEntryWireV1::Graph {
+            id: NOTE_GLOW.to_owned(),
+            color_space: Some("srgb".to_owned()),
+            primitives: vec![shadow("source-graphic", 8.0, "rgba(255, 0, 255, 0.4)")],
         },
     ]);
     // Use scoped rules, not global Node/Actor bindings. A different family receives
@@ -131,6 +137,19 @@ pub(super) fn build_recipe(
                     ..ThemeStrokePatchWireV1::default()
                 }),
                 effect: SpecifiedWireV1::Value(EDGE_GLOW.to_owned()),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Note,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                radius: SpecifiedWireV1::Value(10.0),
+                effect: SpecifiedWireV1::Value(NOTE_GLOW.to_owned()),
                 ..ThemeStylePatchWireV1::default()
             },
         ),

@@ -12,7 +12,110 @@ use crate::sequence::{
 use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
+use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder};
+use std::collections::BTreeMap;
+
+#[derive(Default)]
+pub(super) struct SequenceNotePaintPlan {
+    stroke_width: Option<f32>,
+    radius: Option<f32>,
+    effect: Option<SvgShadowEffect>,
+    shadows: BTreeMap<String, (String, SvgFilterRegion)>,
+    pub(super) bounds: Option<Bounds>,
+}
+
+impl SequenceNotePaintPlan {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn prepare(
+        model: &super::model::SequenceSvgModel,
+        nodes: &FxHashMap<&str, &LayoutNode>,
+        stroke_width: Option<f32>,
+        radius: Option<f32>,
+        effect: Option<SvgShadowEffect>,
+        receipt: &mut SequenceStaticRectThemeReceipt,
+        options: &SvgExecution<'_>,
+    ) -> Result<Self> {
+        let mut plan = Self {
+            stroke_width,
+            radius,
+            effect,
+            ..Self::default()
+        };
+        if plan.stroke_width.is_none() && plan.effect.is_none() {
+            return Ok(plan);
+        }
+        // Notes have the SVG 1px default; actor strokeWidth does not apply here.
+        let width = f64::from(stroke_width.unwrap_or(1.0));
+        for (index, message) in model.messages.iter().enumerate() {
+            options.work_meter().charge(1)?;
+            if message.semantic_kind() != SequenceMessageKind::Note {
+                continue;
+            }
+            let node_id = format!("note-{}", message.id);
+            let Some(node) = nodes.get(node_id.as_str()) else {
+                continue;
+            };
+            let (left, top) = node_left_top(node);
+            let mut bounds = Bounds {
+                min_x: left - width / 2.0,
+                min_y: top - width / 2.0,
+                max_x: left + node.width + width / 2.0,
+                max_y: top + node.height + width / 2.0,
+            };
+            if let Some(effect) = &plan.effect {
+                options
+                    .work_meter()
+                    .charge(effect.stages().len().saturating_mul(3))?;
+                if let Some(materialized) = effect.materialize_rect(
+                    &options.theme_resource_policy(),
+                    node.width,
+                    node.height,
+                    width,
+                )? {
+                    let region = materialized.region();
+                    let [x, y, w, h] = region.as_array().map(f64::from);
+                    // Use the same outward-rounded region as the filter writer.
+                    bounds = Bounds {
+                        min_x: left + x * node.width,
+                        min_y: top + y * node.height,
+                        max_x: left + (x + w) * node.width,
+                        max_y: top + (y + h) * node.height,
+                    };
+                    plan.shadows.insert(
+                        node_id,
+                        (
+                            format!(
+                                "{}-note-{index}-theme-effect-{}",
+                                options.diagram_id_or("merman"),
+                                effect.id()
+                            ),
+                            region,
+                        ),
+                    );
+                } else {
+                    receipt.effect_unhandled = true;
+                }
+            }
+            if let Some(total) = &mut plan.bounds {
+                total.min_x = total.min_x.min(bounds.min_x);
+                total.min_y = total.min_y.min(bounds.min_y);
+                total.max_x = total.max_x.max(bounds.max_x);
+                total.max_y = total.max_y.max(bounds.max_y);
+            } else {
+                plan.bounds = Some(bounds);
+            }
+        }
+        Ok(plan)
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.shadows.len()
+    }
+}
+
 pub(super) struct SequenceNoteRenderContext<'a> {
+    pub(super) paint: &'a SequenceNotePaintPlan,
+    pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) legacy_label_font_size: f64,
@@ -46,16 +149,40 @@ pub(super) fn render_sequence_note(
     let cx = x + (n.width / 2.0);
     let text_y = y + 5.0;
     let line_step = sequence_text_line_step_px(ctx.note_text_style.font_size);
+    let shadow = ctx
+        .paint
+        .shadows
+        .get(&node_id)
+        .zip(ctx.paint.effect.as_ref());
+    let filter = shadow.map(|((id, region), effect)| {
+        super::super::shadow::write_theme_shadow_application(out, id, effect, *region)
+    });
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,
-        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"/>"##,
+        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note""##,
         x = fmt(x),
         y = fmt(y),
         w = fmt(n.width),
         h = fmt(n.height)
     );
+    if let Some(width) = ctx.paint.stroke_width {
+        let _ = write!(out, r#" stroke-width="{}""#, fmt(f64::from(width)));
+    }
+    if let Some(radius) = ctx.paint.radius {
+        let _ = write!(out, r#" rx="{r}" ry="{r}""#, r = fmt(f64::from(radius)));
+    }
+    if let Some(filter) = &filter {
+        let _ = write!(out, r#" filter="{}""#, escape_attr(filter));
+    }
+    out.push_str("/>");
     theme_receipt.record_rect_emission();
+    if let Some(((id, region), effect)) = shadow {
+        ctx.shadow_evidence.record_application(effect, id, *region);
+        theme_receipt.record_effect_emission();
+    } else if theme_receipt.effect_cleared {
+        theme_receipt.record_effect_emission();
+    }
     let prepared_math =
         ctx.math_sidecar
             .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(

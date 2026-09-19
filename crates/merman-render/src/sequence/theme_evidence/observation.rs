@@ -117,6 +117,40 @@ pub(super) fn observe_static_rect_rule(
             }
             observation.capabilities.insert(capability_for_paint(kind));
         }
+        (
+            FamilyThemeDisposition::TypedAdapter,
+            facet @ (FamilyThemeRuleFacet::StrokeWidth | FamilyThemeRuleFacet::Radius),
+        ) => {
+            if surface.receipt.emitted_rects != surface.surface_count {
+                observation.incomplete = true;
+            } else {
+                observation
+                    .capabilities
+                    .insert(if facet == FamilyThemeRuleFacet::StrokeWidth {
+                        ThemeCapability::BorderStyling
+                    } else {
+                        ThemeCapability::RoundedGeometry
+                    });
+            }
+        }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Effect) => {
+            if surface.receipt.effect_unhandled {
+                observation
+                    .residual
+                    .get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+            } else if !surface.receipt.effect_complete(surface.surface_count) {
+                observation.incomplete = true;
+            } else {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::SemanticRules);
+                if !surface.receipt.effect_cleared {
+                    observation
+                        .capabilities
+                        .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+                }
+            }
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation

@@ -208,9 +208,18 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         &mut actor_theme.receipt,
         options,
     )?;
+    let note_paint = super::notes::SequenceNotePaintPlan::prepare(
+        model,
+        &nodes_by_id,
+        note_theme.stroke_width,
+        note_theme.radius,
+        note_theme.effect.take(),
+        &mut note_theme.receipt,
+        options,
+    )?;
     prepared
         .expected_effect_applications()
-        .set(actor_shadows.len() + message_paint.len());
+        .set(actor_shadows.len() + message_paint.len() + note_paint.len());
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -225,7 +234,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .map(f64::from)
             .unwrap_or(0.0)
             / 2.0,
-        &[actor_shadows.bounds.as_ref(), message_paint.bounds.as_ref()],
+        &[
+            actor_shadows.bounds.as_ref(),
+            message_paint.bounds.as_ref(),
+            note_paint.bounds.as_ref(),
+        ],
     )?;
 
     let activation_plan = build_sequence_activation_plan(
@@ -407,6 +420,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
 
     let interaction_ctx = SequenceInteractionRenderContext {
+        note_paint: &note_paint,
+        shadow_evidence: prepared.effect_evidence(),
         model,
         block_widths_by_id: &block_widths_by_id,
         block_layouts_by_id: &layout.block_layouts_by_id,
@@ -612,6 +627,9 @@ struct SequenceLoopThemeResolution {
 
 #[derive(Default)]
 struct SequenceStaticRectThemeResolution {
+    stroke_width: Option<f32>,
+    radius: Option<f32>,
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
     typed_fill: Option<String>,
     typed_stroke: Option<String>,
     receipt: crate::sequence::SequenceStaticRectThemeReceipt,
@@ -1167,7 +1185,41 @@ fn resolve_sequence_static_rect_theme(
     let typed_stroke = (!stroke_overridden && has_typed_stroke)
         .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
         .flatten();
+    let mut effect = None;
+    let mut stroke_width = None;
+    let mut radius = None;
+    if target == crate::diagram_theme::ThemeTarget::Note {
+        stroke_width = style.as_ref().and_then(|style| style.stroke_width());
+        radius = style.as_ref().and_then(|style| style.radius());
+        let resolution = style
+            .as_ref()
+            .map(|s| s.effect_resolution().clone())
+            .unwrap_or_default();
+        match theme.resolve_effect(target, &resolution) {
+            None => {}
+            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+                receipt.effect_requested = true;
+                receipt.effect_cleared = true;
+            }
+            Some(resolved) => {
+                receipt.effect_requested = true;
+                let graph = match resolved {
+                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                        receipt.effect_binding_used = true;
+                        graph
+                    }
+                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+                };
+                effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+                receipt.effect_unhandled = effect.is_none();
+            }
+        }
+    }
     Ok(SequenceStaticRectThemeResolution {
+        stroke_width,
+        radius,
+        effect,
         typed_fill,
         typed_stroke,
         receipt,

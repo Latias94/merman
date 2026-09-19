@@ -895,13 +895,18 @@ impl SequenceLoopThemeEmission {
 /// Winner and terminal-emission facts produced by a Sequence static rectangle writer.
 ///
 /// This receipt is deliberately narrower than the Actor receipt: the current direct tranche owns
-/// only static fill and stroke for Note and Activation surfaces. Each writer records
+/// static Note paint, geometry and effects, and Activation fill and stroke. Each writer records
 /// the surfaces it actually emits so evidence cannot be manufactured from the compiled route
 /// matrix alone.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceStaticRectThemeReceipt {
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     pub(super) emitted_rects: usize,
+    pub(crate) effect_requested: bool,
+    pub(crate) effect_binding_used: bool,
+    pub(crate) effect_cleared: bool,
+    pub(crate) effect_unhandled: bool,
+    emitted_effects: usize,
 }
 
 impl SequenceStaticRectThemeReceipt {
@@ -913,9 +918,22 @@ impl SequenceStaticRectThemeReceipt {
         self.emitted_rects = self.emitted_rects.saturating_add(1);
     }
 
+    pub(crate) fn record_effect_emission(&mut self) {
+        self.emitted_effects = self.emitted_effects.saturating_add(1);
+    }
+
+    pub(super) fn effect_complete(&self, surface_count: usize) -> bool {
+        surface_count != 0 && self.emitted_effects == surface_count
+    }
+
     pub(super) fn merge(&mut self, other: Self) {
         self.static_winners.extend(other.static_winners);
         self.emitted_rects = self.emitted_rects.max(other.emitted_rects);
+        self.effect_requested |= other.effect_requested;
+        self.effect_binding_used |= other.effect_binding_used;
+        self.effect_cleared |= other.effect_cleared;
+        self.effect_unhandled |= other.effect_unhandled;
+        self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
     }
 
     pub(super) fn route_won(
