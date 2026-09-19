@@ -109,7 +109,15 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         prepared.typography().loop_label(),
         &mut typography_receipt,
     );
-    let defer_text_bounds = note_text_shadow.needs_bounds() || loop_text_shadow.needs_bounds();
+    let actor_text_shadow = super::text_effect::SequenceTextShadow::resolve(
+        options,
+        crate::sequence::SequenceTypographyRole::Actor,
+        prepared.typography().actor(),
+        &mut typography_receipt,
+    );
+    let defer_text_bounds = note_text_shadow.needs_bounds()
+        || loop_text_shadow.needs_bounds()
+        || actor_text_shadow.needs_bounds();
     let actor_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.actorBkg",
@@ -271,23 +279,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         activation_stroke_overridden,
     )?;
 
-    render_sequence_box_frames_and_rect_blocks(
-        &mut out,
-        model,
-        &nodes_by_id,
-        SequenceFrameRenderOptions {
-            actor_label_font_size: settings.actor_label_font_size,
-            box_margin: settings.box_margin,
-            box_text_margin: settings.box_text_margin,
-            rect_default_fill: &settings.rect_default_fill,
-        },
-        prepared.typography().actor(),
-        &typography_receipt,
-        checkpoints,
-    )?;
-    out.checkpoint()?;
-
     let actor_ctx = SequenceActorRenderContext {
+        text_shadow: &actor_text_shadow,
         rect_style: actor_theme.rect_style,
         geometry_receipt: &actor_theme.receipt,
         shadow_plan: &actor_shadows,
@@ -309,6 +302,21 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
         checkpoints,
     };
+
+    render_sequence_box_frames_and_rect_blocks(
+        &mut out,
+        model,
+        &nodes_by_id,
+        SequenceFrameRenderOptions {
+            actor_label_font_size: settings.actor_label_font_size,
+            box_margin: settings.box_margin,
+            box_text_margin: settings.box_text_margin,
+            rect_default_fill: &settings.rect_default_fill,
+        },
+        &actor_ctx.label_context(),
+        checkpoints,
+    )?;
+    out.checkpoint()?;
 
     if settings.mirror_actors {
         render_sequence_bottom_actors(&mut out, &actor_ctx)?;
@@ -410,17 +418,25 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     write_scoped_sequence_base_defs(&mut out, diagram_id)?;
 
+    let actor_labels = super::actor_shapes::ActorLabelContext {
+        shadow: &actor_text_shadow,
+        shadow_evidence: prepared.effect_evidence(),
+        wrap_width_px: settings.actor_wrap_width,
+        measurer,
+        style: &settings.actor_text_style,
+        typography: prepared.typography().actor(),
+        typography_receipt: &typography_receipt,
+        math_sidecar: prepared.math_sidecar(),
+        actor_index: None,
+        checkpoints,
+    };
     render_sequence_actor_man_tops(
         &mut out,
         model,
         &nodes_by_id,
         settings.actor_height,
         diagram_id,
-        &settings.actor_text_style,
-        prepared.math_sidecar(),
-        prepared.typography().actor(),
-        &typography_receipt,
-        checkpoints,
+        &actor_labels,
     )?;
     out.checkpoint()?;
 
@@ -546,8 +562,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             actor_height: settings.actor_height,
         },
         prepared.actor_popup_widths(),
-        prepared.typography().actor(),
-        &typography_receipt,
+        &actor_labels,
         checkpoints,
     )?;
     out.checkpoint()?;
@@ -560,11 +575,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             settings.actor_height,
             settings.label_box_height,
             diagram_id,
-            &settings.actor_text_style,
-            prepared.math_sidecar(),
-            prepared.typography().actor(),
-            &typography_receipt,
-            checkpoints,
+            &actor_labels,
         )?;
         out.checkpoint()?;
     }
@@ -602,6 +613,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                         note_paint.bounds.as_ref(),
                         note_text_shadow.bounds.borrow().as_ref(),
                         loop_text_shadow.bounds.borrow().as_ref(),
+                        actor_text_shadow.bounds.borrow().as_ref(),
                     ],
                 )),
             )?
@@ -613,7 +625,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             + message_paint.len()
             + note_paint.len()
             + note_text_shadow.len()
-            + loop_text_shadow.len(),
+            + loop_text_shadow.len()
+            + actor_text_shadow.len(),
     );
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
     typography_receipt.record_terminal_svg(

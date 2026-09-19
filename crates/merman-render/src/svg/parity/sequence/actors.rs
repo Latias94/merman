@@ -11,6 +11,7 @@ use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceActorRenderContext<'a> {
+    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) shadow_plan: &'a super::actor_effect::SequenceActorShadowPlan,
     pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) rect_style: super::actor_shapes::SequenceActorRectStyle,
@@ -30,19 +31,28 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
+impl<'a> SequenceActorRenderContext<'a> {
+    pub(super) fn label_context(&self) -> ActorLabelContext<'a> {
+        ActorLabelContext {
+            shadow: self.text_shadow,
+            shadow_evidence: self.shadow_evidence,
+            wrap_width_px: self.actor_wrap_width,
+            measurer: self.measurer,
+            style: self.actor_text_style,
+            typography: self.actor_typography,
+            typography_receipt: self.typography_receipt,
+            math_sidecar: self.math_sidecar,
+            actor_index: None,
+            checkpoints: self.checkpoints,
+        }
+    }
+}
+
 pub(super) fn render_sequence_bottom_actors(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
 ) -> Result<()> {
-    let label_ctx = ActorLabelContext::new(
-        ctx.actor_wrap_width,
-        ctx.measurer,
-        ctx.actor_text_style,
-        ctx.actor_typography,
-        ctx.typography_receipt,
-        ctx.math_sidecar,
-        ctx.checkpoints,
-    );
+    let label_ctx = ctx.label_context();
 
     // Mermaid draws bottom actors first (reverse DOM order).
     ctx.checkpoints.checkpoint()?;
@@ -61,6 +71,11 @@ pub(super) fn render_sequence_bottom_actors(
         let actor_type = actor.actor_type.as_str();
         let node_id = format!("actor-bottom-{actor_id}");
         let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
+            if !is_actor_man_variant(actor_type) {
+                ctx.typography_receipt.record_missing_text_effect(
+                    crate::sequence::SequenceTextSurface::ParticipantLabel,
+                );
+            }
             continue;
         };
         match actor_type {
@@ -109,15 +124,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
     ctx: &SequenceActorRenderContext<'_>,
     theme_receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
 ) -> crate::Result<()> {
-    let label_ctx = ActorLabelContext::new(
-        ctx.actor_wrap_width,
-        ctx.measurer,
-        ctx.actor_text_style,
-        ctx.actor_typography,
-        ctx.typography_receipt,
-        ctx.math_sidecar,
-        ctx.checkpoints,
-    );
+    let label_ctx = ctx.label_context();
 
     ctx.checkpoints.checkpoint()?;
     for (emission_index, (idx, actor_id)) in
@@ -137,9 +144,19 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         let node_top_id = format!("actor-top-{actor_id}");
         let node_bottom_id = format!("actor-bottom-{actor_id}");
         let Some(top) = ctx.nodes_by_id.get(node_top_id.as_str()).copied() else {
+            if !is_actor_man_variant(actor_type) {
+                ctx.typography_receipt.record_missing_text_effect(
+                    crate::sequence::SequenceTextSurface::ParticipantLabel,
+                );
+            }
             continue;
         };
         let Some(bottom) = ctx.nodes_by_id.get(node_bottom_id.as_str()).copied() else {
+            if !is_actor_man_variant(actor_type) {
+                ctx.typography_receipt.record_missing_text_effect(
+                    crate::sequence::SequenceTextSurface::ParticipantLabel,
+                );
+            }
             continue;
         };
         let (_, top_y) = node_left_top(top);

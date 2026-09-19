@@ -144,6 +144,15 @@ pub(super) fn build_recipe(
         ),
         family_rule(
             DiagramFamilyId::SEQUENCE,
+            ThemeTarget::ActorLabel,
+            ThemeStylePatchWireV1 {
+                // The reference applies the actor's ordered drop shadows to text.actor.
+                effect: SpecifiedWireV1::Value(SHAPE_GLOW.to_owned()),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
             ThemeTarget::Message,
             ThemeStylePatchWireV1 {
                 stroke: Some(ThemeStrokePatchWireV1 {

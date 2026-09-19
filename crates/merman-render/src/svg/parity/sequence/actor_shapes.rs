@@ -8,43 +8,61 @@ use merman_core::diagrams::sequence::SequenceActor;
 
 #[derive(Clone, Copy)]
 pub(super) struct ActorLabelContext<'a> {
-    wrap_width_px: f64,
-    measurer: &'a dyn TextMeasurer,
-    style: &'a TextStyle,
-    typography: &'a crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    actor_index: Option<usize>,
-    checkpoints: SequenceEmitCheckpoints<'a>,
+    pub(super) shadow: &'a super::text_effect::SequenceTextShadow<'a>,
+    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
+    pub(super) wrap_width_px: f64,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) style: &'a TextStyle,
+    pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) actor_index: Option<usize>,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 impl<'a> ActorLabelContext<'a> {
-    pub(super) fn new(
-        wrap_width_px: f64,
-        measurer: &'a dyn TextMeasurer,
-        style: &'a TextStyle,
-        typography: &'a crate::sequence::SequenceResolvedTypography,
-        typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-        math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-        checkpoints: SequenceEmitCheckpoints<'a>,
-    ) -> Self {
-        Self {
-            wrap_width_px,
-            measurer,
-            style,
-            typography,
-            typography_receipt,
-            math_sidecar,
-            actor_index: None,
-            checkpoints,
-        }
-    }
-
     pub(super) fn for_actor(&self, actor_index: usize) -> Self {
         Self {
             actor_index: Some(actor_index),
             ..*self
         }
+    }
+
+    pub(super) fn write_shadow(
+        &self,
+        out: &mut impl SvgOutput,
+        text: &str,
+        x: f64,
+        y: f64,
+        legacy_size: f64,
+        baseline: super::text_effect::TextShadowBaseline,
+    ) -> Result<Option<super::text_effect::SequenceTextShadowApplication>> {
+        if !self.shadow.needs_bounds() || self.shadow.is_paintless(text) {
+            return Ok(None);
+        }
+        let mut style = self.typography.terminal_text_style().clone();
+        if !self.typography.requires_resolved_emission() {
+            style.font_size = legacy_size;
+        }
+        self.shadow
+            .write_definition(out, text, x, y, baseline, &style, self.measurer)
+    }
+
+    pub(super) fn record_shadow(
+        &self,
+        application: Option<&super::text_effect::SequenceTextShadowApplication>,
+        text: &str,
+        surface: crate::sequence::SequenceTextSurface,
+        translate_y: f64,
+    ) {
+        self.shadow.record_translated_terminal(
+            application,
+            self.shadow.is_paintless(text),
+            self.shadow_evidence,
+            self.typography_receipt,
+            surface,
+            translate_y,
+        );
     }
 
     fn write_actor(
@@ -445,6 +463,12 @@ fn write_actor_label(
             crate::sequence::SequenceTextSurface::ParticipantLabel,
             &katex,
         );
+        ctx.record_shadow(
+            None,
+            rendered_label,
+            crate::sequence::SequenceTextSurface::ParticipantLabel,
+            0.0,
+        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -487,6 +511,22 @@ fn write_actor_label_lines<'a>(
         } else {
             (i as f64 - (n - 1.0) / 2.0) * ctx.style.font_size
         };
+        let application = if record_receipt {
+            ctx.write_shadow(
+                out,
+                decoded.as_ref(),
+                cx,
+                cy + dy,
+                ctx.style.font_size,
+                super::text_effect::TextShadowBaseline::Middle,
+            )?
+        } else {
+            None
+        };
+        let filter = application
+            .as_ref()
+            .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
+            .unwrap_or_default();
         let legacy_style = format!(
             "text-anchor: middle; font-size: {}px; font-weight: 400;",
             fmt(ctx.style.font_size)
@@ -496,14 +536,21 @@ fn write_actor_label_lines<'a>(
             .terminal_style("text-anchor: middle", legacy_style);
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="{style}"{filter}><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(cy),
             style = escape_attr_display(&inline_style),
             dy = fmt(dy),
             text = escape_xml_display(decoded.as_ref())
         );
+        out.checkpoint()?;
         if record_receipt {
+            ctx.record_shadow(
+                application.as_ref(),
+                decoded.as_ref(),
+                crate::sequence::SequenceTextSurface::ParticipantLabel,
+                0.0,
+            );
             ctx.typography_receipt
                 .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
         }

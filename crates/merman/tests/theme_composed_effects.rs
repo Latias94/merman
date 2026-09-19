@@ -318,7 +318,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (10, 10, 14)
+        (14, 14, 22)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -818,5 +818,24 @@ fn composed_sequence_loop_text_shadows_reach_png_and_localized_pdf() {
         "sequenceDiagram\nloop Retry\nA->>B: Work\nend\nalt Accepted\nB-->>A: Done\nelse Other\nB-->>A: Retry\nend",
         ThemeTarget::LoopLabel,
         5,
+    );
+}
+
+#[test]
+fn composed_sequence_actor_text_shadows_reach_translated_glyphs_and_visible_links() {
+    assert_composed_shadows(
+        "---\nconfig:\n  themeVariables:\n    actorBkg: '#000000'\n    actorTextColor: '#ffffff'\n---\nsequenceDiagram\nbox Team\nparticipant A as Alpha<br/><br/>中文\nparticipant Q@{\"type\":\"queue\"}\nparticipant D@{\"type\":\"database\"}\nparticipant C@{\"type\":\"collections\"}\nend\nA->>Q: Work",
+        ThemeTarget::ActorLabel,
+        11,
+    );
+    assert_composed_shadows(
+        "---\nconfig:\n  themeVariables:\n    actorBkg: '#000000'\n    actorTextColor: '#ffffff'\n---\nsequenceDiagram\nactor U as User\nparticipant B@{\"type\":\"boundary\"}\nparticipant E@{\"type\":\"entity\"}\nparticipant K@{\"type\":\"control\"}\nU->>B: Work",
+        ThemeTarget::ActorLabel,
+        8,
+    );
+    assert_composed_shadows(
+        "---\nconfig:\n  themeVariables:\n    actorBkg: '#000000'\n    actorTextColor: '#ffffff'\n  sequence:\n    forceMenus: true\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n---\nsequenceDiagram\nparticipant A\nlink A: Documentation @ https://example.com\nA->>B: Work",
+        ThemeTarget::ActorLabel,
+        3,
     );
 }

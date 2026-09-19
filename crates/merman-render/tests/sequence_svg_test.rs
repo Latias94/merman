@@ -6470,7 +6470,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 10);
+        assert_eq!(filters.len(), 14);
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -6481,6 +6481,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
+            let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
             let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
             let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
@@ -6505,7 +6506,10 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_loop_text {
+            if is_actor_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert_eq!(consumers[0].attribute("class"), Some("actor actor-box"));
+            } else if is_loop_text {
                 assert!(consumers[0].has_tag_name("text"));
                 assert!(matches!(
                     consumers[0].attribute("class"),
@@ -7974,6 +7978,234 @@ fn sequence_loop_label_math_effects_remain_incomplete_but_clear_is_consumed() {
                 result.is_ok(),
                 clear,
                 "{source}: {:?}",
+                result.as_ref().err()
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_effects_cover_shapes_boxes_and_visible_links() {
+    let source = r#"sequenceDiagram
+box Team
+participant A as Alpha<br/>中文
+participant Q@{ "type": "queue" }
+participant D@{ "type": "database" }
+participant C@{ "type": "collections" }
+end
+actor U as User
+participant B@{ "type": "boundary" }
+participant E@{ "type": "entity" }
+participant K@{ "type": "control" }
+A->>U: Work
+"#;
+    for clear in [false, true] {
+        let rules = if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch))
+        } else {
+            ThemeRuleSet::default()
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("text")
+                    && n.attribute("class")
+                        .is_some_and(|c| c == "text" || c.split_whitespace().any(|v| v == "actor"))
+            })
+            .collect();
+        assert_eq!(
+            labels.len(),
+            19,
+            "two copies of eight actors, an extra line each for Alpha, and one box title"
+        );
+        for label in labels {
+            assert_eq!(label.attribute("filter").is_some(), !clear, "{label:?}");
+            if let Some(binding) = label.attribute("filter") {
+                let id = binding
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(id))
+                    .unwrap();
+                let mut translation_y = 0.0;
+                for parent in label.ancestors() {
+                    if let Some(transform) = parent.attribute("transform") {
+                        let translation = transform
+                            .strip_prefix("translate(0,")
+                            .unwrap()
+                            .strip_suffix(')')
+                            .unwrap();
+                        translation_y += translation.trim().parse::<f64>().unwrap();
+                    }
+                }
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                let (view, _) = root_view_box_and_max_width(rendered.svg());
+                assert!(x >= view[0] - 0.001 && x + w <= view[0] + view[2] + 0.001);
+                assert!(
+                    y + translation_y >= view[1] - 0.001
+                        && y + translation_y + h <= view[1] + view[3] + 0.001
+                );
+            }
+        }
+        assert_eq!(
+            doc.descendants()
+                .filter(|n| n.has_tag_name("filter"))
+                .count(),
+            if clear { 0 } else { 19 }
+        );
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+    for (force, clear) in [(false, false), (true, false), (false, true)] {
+        let source = format!(
+            r#"---
+config:
+  sequence:
+    forceMenus: {force}
+    mirrorActors: false
+---
+sequenceDiagram
+participant A
+link A: Documentation @ https://example.com
+A->>B: Work
+"#
+        );
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            force || clear,
+            "force={force}, clear={clear}: {:?}",
+            result.as_ref().err()
+        );
+        if force {
+            let rendered = result.unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count(),
+                3
+            );
+            let link = doc
+                .descendants()
+                .find(|n| n.has_tag_name("text") && n.ancestors().any(|p| p.has_tag_name("a")))
+                .unwrap();
+            assert!(link.attribute("filter").is_some());
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_effect_rules_retain_unsupported_facets_and_selectors() {
+    for (ordinal, sibling, accepted) in [
+        (false, false, true),
+        (true, false, false),
+        (false, true, false),
+    ] {
+        let mut patch = ThemeStylePatch::default()
+            .with_effect("actor-shadow")
+            .unwrap();
+        if sibling {
+            patch = patch.with_stroke_width(3.0).unwrap();
+        }
+        let mut rule = ThemeRule::new(ThemeTarget::ActorLabel, patch);
+        if ordinal {
+            rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::ActorLabel,
+                ThemeRuleSet::default().with_rule(rule),
+            ))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            "sequenceDiagram\nA->>B: Work",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "ordinal={ordinal}, sibling={sibling}: {:?}",
+            result.as_ref().err()
+        );
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_actor_label_math_glow_is_incomplete_and_clear_preserves_fallback() {
+    for declaration in ["participant A as $$x^2$$", "actor A as $$x^2$$"] {
+        for clear in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            if clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = Specified::Clear;
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::ActorLabel, patch));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::ActorLabel, rules))
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_compiled_math_renderer()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let parsed = parse_sequence_for_render(
+                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                &format!("sequenceDiagram\n{declaration}\nA->>B: Work"),
+            );
+            let result =
+                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                });
+            assert_eq!(
+                result.is_ok(),
+                clear,
+                "{declaration}: {:?}",
                 result.as_ref().err()
             );
         }

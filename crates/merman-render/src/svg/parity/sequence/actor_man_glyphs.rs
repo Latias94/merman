@@ -24,8 +24,7 @@ struct ActorManGlyphContext<'a> {
     height: f64,
     diagram_id: SvgDiagramId<'a>,
     math_label: Option<SequenceKatexLabel<'a>>,
-    typography: &'a crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    label_ctx: &'a super::actor_shapes::ActorLabelContext<'a>,
 }
 
 fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
@@ -50,9 +49,8 @@ pub(super) fn write_actor_man_top_glyph(
     actor_height: f64,
     diagram_id: SvgDiagramId<'_>,
     math_label: Option<SequenceKatexLabel<'_>>,
-    typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-) {
+    label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
+) -> Result<()> {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
 
@@ -73,10 +71,9 @@ pub(super) fn write_actor_man_top_glyph(
                 height: actor_height,
                 diagram_id,
                 math_label,
-                typography,
-                typography_receipt,
+                label_ctx,
             },
-        ),
+        )?,
         "boundary" => {
             // drawTextCandidate adds rect.height/2. Top render uses the config height.
             let label_y = actor_y + 15.0 + (actor_height / 2.0);
@@ -96,10 +93,9 @@ pub(super) fn write_actor_man_top_glyph(
                     height: actor_height,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         "control" => {
             let r = 22.0;
@@ -120,10 +116,9 @@ pub(super) fn write_actor_man_top_glyph(
                     height: actor_height,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         "entity" => {
             let cy = actor_y + 25.0;
@@ -144,13 +139,13 @@ pub(super) fn write_actor_man_top_glyph(
                     height: actor_height,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         _ => {}
     }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -164,9 +159,8 @@ pub(super) fn write_actor_man_bottom_glyph(
     metrics: ActorManBottomGlyphMetrics,
     diagram_id: SvgDiagramId<'_>,
     math_label: Option<SequenceKatexLabel<'_>>,
-    typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-) {
+    label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
+) -> Result<()> {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
 
@@ -187,10 +181,9 @@ pub(super) fn write_actor_man_bottom_glyph(
                 height: metrics.actor_height,
                 diagram_id,
                 math_label,
-                typography,
-                typography_receipt,
+                label_ctx,
             },
-        ),
+        )?,
         "boundary" => {
             let footer_h = 44.0 + metrics.label_box_height;
             let label_y = actor_y + 15.0 + (footer_h / 2.0);
@@ -210,10 +203,9 @@ pub(super) fn write_actor_man_bottom_glyph(
                     height: footer_h,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         "control" => {
             let r = 22.0;
@@ -235,10 +227,9 @@ pub(super) fn write_actor_man_bottom_glyph(
                     height: footer_h,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         "entity" => {
             let cy = actor_y + 10.0;
@@ -260,16 +251,16 @@ pub(super) fn write_actor_man_bottom_glyph(
                     height: footer_h,
                     diagram_id,
                     math_label,
-                    typography,
-                    typography_receipt,
+                    label_ctx,
                 },
-            );
+            )?;
         }
         _ => {}
     }
+    Ok(())
 }
 
-fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
+fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) -> Result<()> {
     let r = 15.0;
     let torso_top = ctx.cy + r;
     let torso_bottom = torso_top + 20.0;
@@ -297,17 +288,22 @@ fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<
         w = fmt(ctx.width),
         h = fmt(ctx.height),
     );
-    write_actor_man_label(out, ctx);
+    write_actor_man_label(out, ctx, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
+fn write_boundary_actor_glyph(
+    out: &mut impl SvgOutput,
+    ctx: &ActorManGlyphContext<'_>,
+) -> Result<()> {
     let radius = 22.0;
+    let translate_y = 21.0;
     let x_left = ctx.cx - radius * 2.5;
     let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,21)"{data_attrs}><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="22"/>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,{translate_y})"{data_attrs}><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="22"/>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -320,11 +316,15 @@ fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphConte
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
     );
-    write_actor_man_label(out, ctx);
+    write_actor_man_label(out, ctx, translate_y)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
+fn write_control_actor_glyph(
+    out: &mut impl SvgOutput,
+    ctx: &ActorManGlyphContext<'_>,
+) -> Result<()> {
     let r = 22.0;
     let marker_id = scoped_svg_id(ctx.diagram_id, "filled-head-control");
     let marker_url = scoped_svg_url(ctx.diagram_id, "filled-head-control");
@@ -341,11 +341,15 @@ fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContex
         cy = fmt(ctx.cy),
         ly = fmt(ctx.cy - r),
     );
-    write_actor_man_label(out, ctx);
+    write_actor_man_label(out, ctx, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
+fn write_entity_actor_glyph(
+    out: &mut impl SvgOutput,
+    ctx: &ActorManGlyphContext<'_>,
+) -> Result<()> {
     let r = 22.0;
     let transform_y = if ctx.placement_class == "actor-bottom" {
         22.0
@@ -368,11 +372,16 @@ fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext
         x2 = fmt(ctx.cx + r),
         y = fmt(ctx.cy + r),
     );
-    write_actor_man_label(out, ctx);
+    write_actor_man_label(out, ctx, transform_y)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn write_actor_man_label(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
+fn write_actor_man_label(
+    out: &mut impl SvgOutput,
+    ctx: &ActorManGlyphContext<'_>,
+    translate_y: f64,
+) -> Result<()> {
     if let Some(math_label) = ctx.math_label.as_ref() {
         write_sequence_katex_foreign_object(
             out,
@@ -381,27 +390,54 @@ fn write_actor_man_label(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_
             ctx.label_y - math_label.height / 2.0,
         );
         record_sequence_katex_terminal_emission(
-            ctx.typography_receipt,
+            ctx.label_ctx.typography_receipt,
             crate::sequence::SequenceTextSurface::ParticipantLabel,
             math_label,
         );
+        ctx.label_ctx.record_shadow(
+            None,
+            ctx.label,
+            crate::sequence::SequenceTextSurface::ParticipantLabel,
+            0.0,
+        );
     } else {
+        let application = ctx.label_ctx.write_shadow(
+            out,
+            ctx.label,
+            ctx.cx,
+            ctx.label_y,
+            16.0,
+            super::text_effect::TextShadowBaseline::Middle,
+        )?;
+        let filter = application
+            .as_ref()
+            .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
+            .unwrap_or_default();
         let label_style = actor_man_label_style(ctx);
         let _ = write!(
             out,
-            r#"<text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"><tspan x="{cx}" dy="0">{label}</tspan></text>"#,
+            r#"<text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"{filter}><tspan x="{cx}" dy="0">{label}</tspan></text>"#,
             cx = fmt(ctx.cx),
             ty = fmt(ctx.label_y),
             label_style = escape_attr_display(&label_style),
             label = escape_xml(ctx.label),
         );
-        ctx.typography_receipt
+        out.checkpoint()?;
+        ctx.label_ctx.record_shadow(
+            application.as_ref(),
+            ctx.label,
+            crate::sequence::SequenceTextSurface::ParticipantLabel,
+            translate_y,
+        );
+        ctx.label_ctx
+            .typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
     }
+    out.checkpoint()
 }
 
 fn actor_man_label_style(ctx: &ActorManGlyphContext<'_>) -> String {
-    ctx.typography.terminal_style(
+    ctx.label_ctx.typography.terminal_style(
         "text-anchor: middle",
         "text-anchor: middle; font-size: 16px; font-weight: 400;".to_string(),
     )

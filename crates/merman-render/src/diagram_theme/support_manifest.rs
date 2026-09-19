@@ -391,6 +391,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         kind: SupportClaimKind::TypedPartial,
         facets: &[
             "fill",
+            "effect",
             "font-size",
             "font-stack",
             "font-style",

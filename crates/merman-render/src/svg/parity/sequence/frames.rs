@@ -19,10 +19,11 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     options: SequenceFrameRenderOptions<'_>,
-    actor_typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
+    label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
+    let actor_typography = label_ctx.typography;
+    let typography_receipt = label_ctx.typography_receipt;
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
     let mut has_box_titles = false;
@@ -92,6 +93,10 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             || !min_top_y.is_finite()
             || !max_bottom_y.is_finite()
         {
+            if b.name.is_some() {
+                typography_receipt
+                    .record_missing_text_effect(crate::sequence::SequenceTextSurface::BoxTitle);
+            }
             continue;
         }
 
@@ -116,17 +121,36 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             // In upstream, `box.y` is the `verticalPos` passed to `addActorRenderingData`, i.e. 0.
             let box_y = min_top_y - (options.box_margin + max_box_title_height);
             let text_y = box_y + options.box_text_margin + max_box_title_height / 2.0;
+            let application = label_ctx.write_shadow(
+                out,
+                name,
+                cx,
+                text_y,
+                16.0,
+                super::text_effect::TextShadowBaseline::Middle,
+            )?;
+            let filter = application
+                .as_ref()
+                .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
+                .unwrap_or_default();
             let style = actor_typography.terminal_style(
                 "text-anchor: middle",
                 "text-anchor: middle; font-size: 16px; font-weight: 400;".to_string(),
             );
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"><tspan x="{x}" dy="0">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"{filter}><tspan x="{x}" dy="0">{text}</tspan></text>"#,
                 x = fmt(cx),
                 y = fmt(text_y),
                 style = escape_attr_display(&style),
                 text = escape_xml_display(name)
+            );
+            out.checkpoint()?;
+            label_ctx.record_shadow(
+                application.as_ref(),
+                name,
+                crate::sequence::SequenceTextSurface::BoxTitle,
+                0.0,
             );
             typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::BoxTitle);
         }

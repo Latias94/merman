@@ -655,7 +655,10 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
-                    target: target @ (ThemeTarget::NoteLabel | ThemeTarget::LoopLabel),
+                    target:
+                        target @ (ThemeTarget::ActorLabel
+                        | ThemeTarget::NoteLabel
+                        | ThemeTarget::LoopLabel),
                     ..
                 } => {
                     let key = theme.family_mechanism_key(route);

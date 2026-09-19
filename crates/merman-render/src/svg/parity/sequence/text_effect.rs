@@ -32,6 +32,7 @@ pub(super) struct SequenceTextShadowApplication {
 pub(super) enum TextShadowBaseline {
     NoteMiddle,
     Middle,
+    MiddleStart,
     Alphabetic,
 }
 
@@ -124,14 +125,19 @@ impl<'a> SequenceTextShadow<'a> {
         let y = crate::number_format::canonicalize_number(y);
         let center_y = match baseline {
             TextShadowBaseline::NoteMiddle => y + em,
-            TextShadowBaseline::Middle => y,
+            TextShadowBaseline::Middle | TextShadowBaseline::MiddleStart => y,
             TextShadowBaseline::Alphabetic => y - height / 2.0,
+        };
+        let left = if matches!(baseline, TextShadowBaseline::MiddleStart) {
+            x
+        } else {
+            x - width / 2.0
         };
         let Some(materialized) = effect.materialize_user_space(
             &self.resources,
-            x - width / 2.0,
+            left,
             center_y - height / 2.0,
-            x + width / 2.0,
+            left + width,
             center_y + height / 2.0,
             EffectOutsets {
                 top: em,
@@ -169,6 +175,19 @@ impl<'a> SequenceTextShadow<'a> {
         receipt: &SequenceTypographyThemeReceipt,
         surface: SequenceTextSurface,
     ) {
+        self.record_translated_terminal(application, paintless, evidence, receipt, surface, 0.0);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn record_translated_terminal(
+        &self,
+        application: Option<&SequenceTextShadowApplication>,
+        paintless: bool,
+        evidence: &SvgShadowEvidenceRecorder,
+        receipt: &SequenceTypographyThemeReceipt,
+        surface: SequenceTextSurface,
+        translate_y: f64,
+    ) {
         if let Some(application) = application {
             let effect = self
                 .effect
@@ -177,6 +196,7 @@ impl<'a> SequenceTextShadow<'a> {
             evidence.record_application(effect, &application.id, application.region);
             self.applications.set(self.len().saturating_add(1));
             let [x, y, w, h] = application.region.as_array().map(f64::from);
+            let y = y + translate_y;
             let mut total = self.bounds.borrow_mut();
             if let Some(total) = total.as_mut() {
                 total.min_x = total.min_x.min(x);

@@ -745,7 +745,11 @@ mod tests {
             .collect();
         assert_eq!(
             scoped_targets,
-            [(Some("flowchart"), "node"), (Some("sequence"), "actor")]
+            [
+                (Some("flowchart"), "node"),
+                (Some("sequence"), "actor"),
+                (Some("sequence"), "actor-label")
+            ]
         );
         let edge_scopes: Vec<_> = complete_spec
             .styles
