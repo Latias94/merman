@@ -6470,7 +6470,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 8);
+        assert_eq!(filters.len(), 10);
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -6481,12 +6481,15 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
+            let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
             let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_note_text {
+                if is_loop_text {
+                    vec!["5"]
+                } else if is_note_text {
                     vec!["4"]
                 } else if is_message {
                     vec!["6"]
@@ -6502,7 +6505,13 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_note_text {
+            if is_loop_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert!(matches!(
+                    consumers[0].attribute("class"),
+                    Some("labelText" | "loopText")
+                ));
+            } else if is_note_text {
                 assert!(consumers[0].has_tag_name("text"));
                 assert_eq!(consumers[0].attribute("class"), Some("noteText"));
             } else if is_message {
@@ -7778,4 +7787,195 @@ fn sequence_paintless_note_rule_is_consumed_without_claiming_a_filter() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn sequence_loop_label_effects_cover_keyword_primary_and_section_titles() {
+    let source = "sequenceDiagram\nloop Retry<br/>Second\nA->>B: Work\nend\nalt Accepted\nB-->>A: Done\nelse Other\nB-->>A: Retry\nend";
+    for clear in [false, true] {
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::LoopLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let viewport: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        for filter in doc.descendants().filter(|n| n.has_tag_name("filter")) {
+            let [x, y, w, h] = ["x", "y", "width", "height"]
+                .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+            assert!(
+                x >= viewport[0] - 0.001
+                    && y >= viewport[1] - 0.001
+                    && x + w <= viewport[0] + viewport[2] + 0.001
+                    && y + h <= viewport[1] + viewport[3] + 0.001
+            );
+        }
+        for class in ["labelText", "loopText", "sectionTitle"] {
+            let labels: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some(class))
+                .collect();
+            assert!(!labels.is_empty(), "missing {class}");
+            for label in labels {
+                assert_eq!(label.attribute("filter").is_some(), !clear, "{class}");
+            }
+        }
+        assert!(
+            doc.descendants()
+                .filter(|n| n.attribute("filter").is_some())
+                .all(|n| n.has_tag_name("text")
+                    && matches!(
+                        n.attribute("class"),
+                        Some("labelText" | "loopText" | "sectionTitle")
+                    ))
+        );
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_loop_label_effects_preserve_rule_residuals_and_empty_titles() {
+    for (source, rules, accepted) in [
+        (
+            "sequenceDiagram\nA->>B: No control",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop\nA->>B: Work\nend",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::LoopLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )),
+            true,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::LoopLabel,
+                    ThemeStylePatch::default()
+                        .with_effect("actor-shadow")
+                        .unwrap(),
+                )
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            ),
+            false,
+        ),
+        (
+            "sequenceDiagram\nloop Title\nA->>B: Work\nend",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::LoopLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap()
+                    .with_stroke_width(3.0)
+                    .unwrap(),
+            )),
+            false,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "{source}: {:?}",
+            result.as_ref().err()
+        );
+        if source.contains("loop\n") {
+            let rendered = result.unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count(),
+                1,
+                "empty title has no filter, keyword still does"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_loop_label_math_effects_remain_incomplete_but_clear_is_consumed() {
+    for source in [
+        "sequenceDiagram\nloop $$x^2$$\nA->>B: Work\nend",
+        "sequenceDiagram\nalt First\nA->>B: Work\nelse $$x^2$$\nA->>B: Again\nend",
+    ] {
+        for clear in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            if clear {
+                let mut patch = ThemeStylePatch::default();
+                patch.effects.effect = Specified::Clear;
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::LoopLabel, patch));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(ThemeTarget::LoopLabel, rules))
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_compiled_math_renderer()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let parsed = parse_sequence_for_render(
+                &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+                source,
+            );
+            let result =
+                family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                    artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                });
+            assert_eq!(
+                result.is_ok(),
+                clear,
+                "{source}: {:?}",
+                result.as_ref().err()
+            );
+        }
+    }
 }

@@ -318,7 +318,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (8, 8, 12)
+        (10, 10, 14)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -810,4 +810,13 @@ fn nonempty_note_text_with_zero_host_width_is_not_paintless_or_certified() {
             "zero host width must not certify overflowing glyph ink: {admission:?}"
         );
     }
+}
+
+#[test]
+fn composed_sequence_loop_text_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows(
+        "sequenceDiagram\nloop Retry\nA->>B: Work\nend\nalt Accepted\nB-->>A: Done\nelse Other\nB-->>A: Retry\nend",
+        ThemeTarget::LoopLabel,
+        5,
+    );
 }

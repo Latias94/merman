@@ -1263,6 +1263,7 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
                     | ThemeTarget::Message
                     | ThemeTarget::Note
                     | ThemeTarget::NoteLabel
+                    | ThemeTarget::LoopLabel
             ))
         || (family == DiagramFamilyId::XY_CHART
             && matches!(
@@ -1893,7 +1894,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
-        && target == ThemeTarget::NoteLabel
+        && matches!(target, ThemeTarget::NoteLabel | ThemeTarget::LoopLabel)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {

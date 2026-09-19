@@ -13,6 +13,7 @@ use std::cell::{Cell, RefCell};
 /// It retains bounds and counts, not a second copy of every label or layout.
 pub(super) struct SequenceTextShadow<'a> {
     effect: Option<SvgShadowEffect>,
+    role: SequenceTypographyRole,
     cleared: bool,
     diagram_id: SvgDiagramId<'a>,
     resources: std::sync::Arc<ThemeResourcePolicy>,
@@ -25,6 +26,13 @@ pub(super) struct SequenceTextShadowApplication {
     id: String,
     region: SvgFilterRegion,
     pub(super) filter: String,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum TextShadowBaseline {
+    NoteMiddle,
+    Middle,
+    Alphabetic,
 }
 
 impl<'a> SequenceTextShadow<'a> {
@@ -58,6 +66,7 @@ impl<'a> SequenceTextShadow<'a> {
         }
         Self {
             effect,
+            role,
             cleared,
             diagram_id: options.diagram_id_or("merman"),
             resources: options.theme_resource_policy(),
@@ -70,20 +79,28 @@ impl<'a> SequenceTextShadow<'a> {
     pub(super) fn needs_bounds(&self) -> bool {
         self.effect.is_some()
     }
+    pub(super) fn is_paintless(&self, text: &str) -> bool {
+        self.needs_bounds()
+            && text
+                .chars()
+                .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n' | '\u{200B}'))
+    }
+
     pub(super) fn len(&self) -> usize {
         self.applications.get()
     }
 
-    /// Note labels use middle alignment, middle anchor and dy=1em. One em of
+    /// These writers use middle anchors with distinct baselines. One em of
     /// additional paint space bounds the allocation, not arbitrary host font ink;
     /// native export independently checks actual glyph containment.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn write_note_definition(
+    pub(super) fn write_definition(
         &self,
         out: &mut impl SvgOutput,
         text: &str,
         x: f64,
         y: f64,
+        baseline: TextShadowBaseline,
         style: &TextStyle,
         measurer: &dyn TextMeasurer,
     ) -> Result<Option<SequenceTextShadowApplication>> {
@@ -104,13 +121,18 @@ impl<'a> SequenceTextShadow<'a> {
         // Serialize coordinates before materializing so bounds use the terminal's
         // rounded placement rather than an unobservable higher-precision position.
         let x = crate::number_format::canonicalize_number(x);
-        let y = crate::number_format::canonicalize_number(y) + em;
+        let y = crate::number_format::canonicalize_number(y);
+        let center_y = match baseline {
+            TextShadowBaseline::NoteMiddle => y + em,
+            TextShadowBaseline::Middle => y,
+            TextShadowBaseline::Alphabetic => y - height / 2.0,
+        };
         let Some(materialized) = effect.materialize_user_space(
             &self.resources,
             x - width / 2.0,
-            y - height / 2.0,
+            center_y - height / 2.0,
             x + width / 2.0,
-            y + height / 2.0,
+            center_y + height / 2.0,
             EffectOutsets {
                 top: em,
                 right: em,
@@ -123,8 +145,14 @@ impl<'a> SequenceTextShadow<'a> {
         };
         let region = materialized.region();
         let id = format!(
-            "{}-note-text-{}-theme-effect-{}",
+            "{}-{}-text-{}-theme-effect-{}",
             self.diagram_id,
+            match self.role {
+                SequenceTypographyRole::Note => "note",
+                SequenceTypographyRole::Loop => "loop",
+                SequenceTypographyRole::Actor => "actor",
+                SequenceTypographyRole::Message => "message",
+            },
             self.len(),
             effect.id()
         );

@@ -655,12 +655,15 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::NoteLabel,
+                    target: target @ (ThemeTarget::NoteLabel | ThemeTarget::LoopLabel),
                     ..
                 } => {
                     let key = theme.family_mechanism_key(route);
                     if let Some(typography) = &state.typography {
-                        let receipt = &typography.note;
+                        let receipt = typography.role(
+                            crate::sequence::SequenceTypographyRole::from_target(target)
+                                .expect("matched text effect target"),
+                        );
                         if receipt.label_candidate_count() == 0
                             || (receipt.effect_requested && !receipt.effect_binding_used)
                         {

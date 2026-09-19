@@ -872,7 +872,12 @@ mod tests {
             note_label.effect_resolution().value().map(String::as_str),
             Some("cyberpunk-note-text-glow")
         );
-        assert_eq!(theme.spec().effects().graphs().len(), 14);
+        let loop_label = sequence.style(ThemeTarget::LoopLabel, ThemeVariant::Default, None);
+        assert_eq!(
+            loop_label.effect_resolution().value().map(String::as_str),
+            Some("cyberpunk-loop-text-glow")
+        );
+        assert_eq!(theme.spec().effects().graphs().len(), 15);
     }
 
     #[test]

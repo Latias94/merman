@@ -288,18 +288,16 @@ fn render_sequence_note_lines<'a>(
         });
         // SVG whitespace and the zero-width placeholder have no painted glyphs.
         // Keep the line for layout, but do not create an empty native filter group.
-        let paintless = paint_context.is_some_and(|ctx| ctx.text_shadow.needs_bounds())
-            && text
-                .chars()
-                .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n' | '\u{200B}'));
+        let paintless = paint_context.is_some_and(|ctx| ctx.text_shadow.is_paintless(text));
         let shadow = paint_context
             .filter(|_| !paintless)
             .map(|ctx| {
-                ctx.text_shadow.write_note_definition(
+                ctx.text_shadow.write_definition(
                     out,
                     text,
                     cx,
                     y,
+                    super::text_effect::TextShadowBaseline::NoteMiddle,
                     ctx.note_typography.terminal_text_style(),
                     ctx.measurer,
                 )

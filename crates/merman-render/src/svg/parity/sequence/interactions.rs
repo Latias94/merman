@@ -15,6 +15,7 @@ use crate::sequence::{
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
+    pub(super) loop_text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) note_text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) note_paint: &'a super::notes::SequenceNotePaintPlan,
     pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
@@ -68,6 +69,8 @@ pub(super) fn render_sequence_interaction_overlays(
     ctx.checkpoints.checkpoint()?;
 
     let block_ctx = SequenceBlockRenderContext {
+        text_shadow: ctx.loop_text_shadow,
+        shadow_evidence: ctx.shadow_evidence,
         default_frame_x1: frame_x1,
         default_frame_x2: frame_x2,
         block_widths_by_id: ctx.block_widths_by_id,

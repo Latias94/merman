@@ -12,6 +12,8 @@ use crate::sequence::{
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
+    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
+    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) default_frame_x1: f64,
     pub(super) default_frame_x2: f64,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
@@ -39,14 +41,16 @@ pub(super) struct SimpleSequenceBlock<'a> {
 
 impl<'a> SequenceBlockRenderContext<'a> {
     fn loop_text_context(&self) -> LoopTextRenderContext<'_> {
-        LoopTextRenderContext::new(
-            self.measurer,
-            self.loop_text_style,
-            self.loop_typography,
-            self.typography_receipt,
-            self.math_sidecar,
-            self.checkpoints,
-        )
+        LoopTextRenderContext {
+            measurer: self.measurer,
+            style: self.loop_text_style,
+            typography: self.loop_typography,
+            typography_receipt: self.typography_receipt,
+            math_sidecar: self.math_sidecar,
+            checkpoints: self.checkpoints,
+            text_shadow: self.text_shadow,
+            shadow_evidence: self.shadow_evidence,
+        }
     }
 
     fn label_wrap_width(&self, label_id: &str, fallback: Option<f64>) -> Option<f64> {
@@ -106,13 +110,14 @@ pub(super) fn write_block_label_box(
     out: &mut impl SvgOutput,
     frame_x1: f64,
     frame_y1: f64,
-    label_box_width: f64,
-    label_box_height: f64,
     label: &str,
-    typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
-    theme_receipt: &crate::sequence::SequenceLoopThemeReceipt,
-) {
+    ctx: &SequenceBlockRenderContext<'_>,
+) -> Result<()> {
+    let label_box_width = ctx.label_box_width;
+    let label_box_height = ctx.label_box_height;
+    let typography = ctx.loop_typography;
+    let typography_receipt = ctx.typography_receipt;
+    let theme_receipt = ctx.loop_theme_receipt;
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
@@ -137,15 +142,45 @@ pub(super) fn write_block_label_box(
     let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = y1 + (label_box_height / 2.0).max(13.0);
     let style = typography.terminal_style("", "font-size: 16px; font-weight: 400;".to_string());
+    let shadow = if ctx.text_shadow.needs_bounds() {
+        let mut terminal_style = typography.terminal_text_style().clone();
+        if !typography.requires_resolved_emission() {
+            terminal_style.font_size = 16.0;
+        }
+        ctx.text_shadow.write_definition(
+            out,
+            label,
+            label_cx,
+            label_cy,
+            super::text_effect::TextShadowBaseline::Middle,
+            &terminal_style,
+            ctx.measurer,
+        )?
+    } else {
+        None
+    };
+    let filter = shadow
+        .as_ref()
+        .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
+        .unwrap_or_default();
     let _ = write!(
         out,
-        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}">{label}</text>"#,
+        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}"{filter}>{label}</text>"#,
         x = fmt(label_cx),
         y = fmt(label_cy),
         style = escape_attr_display(&style),
         label = escape_xml(label)
     );
     typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::ControlKeyword);
+    out.checkpoint()?;
+    ctx.text_shadow.record_terminal(
+        shadow.as_ref(),
+        false,
+        ctx.shadow_evidence,
+        typography_receipt,
+        crate::sequence::SequenceTextSurface::ControlKeyword,
+    );
+    Ok(())
 }
 
 pub(super) fn render_simple_sequence_block(
@@ -155,6 +190,8 @@ pub(super) fn render_simple_sequence_block(
 ) -> Result<()> {
     ctx.checkpoints.checkpoint()?;
     let Some(layout) = block.layout else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let Some((frame_x1, frame_x2, _min_left)) = resolved_block_frame_x(
@@ -164,6 +201,8 @@ pub(super) fn render_simple_sequence_block(
         (ctx.default_frame_x1, ctx.default_frame_x2),
         None,
     ) else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
@@ -173,17 +212,7 @@ pub(super) fn render_simple_sequence_block(
 
     write_control_structure_group_open(out, block.control_id);
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
-    write_block_label_box(
-        out,
-        frame_x1,
-        frame_y1,
-        ctx.label_box_width,
-        ctx.label_box_height,
-        block.block_label,
-        ctx.loop_typography,
-        ctx.typography_receipt,
-        ctx.loop_theme_receipt,
-    );
+    write_block_label_box(out, frame_x1, frame_y1, block.block_label, ctx)?;
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
     let text_y = frame_y1 + 18.0;
@@ -233,14 +262,20 @@ pub(super) fn render_sectioned_sequence_block(
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
     if sections.is_empty() {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     }
 
     let geometry = sequence_block_section_geometry(sections);
     let Some(layout) = layout else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let Some(sep_ys) = section_separator_ys(sections, ctx.checkpoints)? else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     ctx.checkpoints.checkpoint()?;
@@ -252,6 +287,8 @@ pub(super) fn render_sectioned_sequence_block(
         (ctx.default_frame_x1, ctx.default_frame_x2),
         None,
     ) else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
@@ -281,17 +318,7 @@ pub(super) fn render_sectioned_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(
-        out,
-        frame_x1,
-        frame_y1,
-        ctx.label_box_width,
-        ctx.label_box_height,
-        block_label,
-        ctx.loop_typography,
-        ctx.typography_receipt,
-        ctx.loop_theme_receipt,
-    );
+    write_block_label_box(out, frame_x1, frame_y1, block_label, ctx)?;
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;
@@ -348,14 +375,20 @@ pub(super) fn render_critical_sequence_block(
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
     if sections.is_empty() {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     }
 
     let geometry = sequence_block_section_geometry(sections);
     let Some(layout) = layout else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let Some(sep_ys) = section_separator_ys(sections, ctx.checkpoints)? else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     ctx.checkpoints.checkpoint()?;
@@ -367,6 +400,8 @@ pub(super) fn render_critical_sequence_block(
         (ctx.default_frame_x1, ctx.default_frame_x2),
         Some(sections.len()),
     ) else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword);
         return Ok(());
     };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
@@ -394,17 +429,7 @@ pub(super) fn render_critical_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(
-        out,
-        frame_x1,
-        frame_y1,
-        ctx.label_box_width,
-        ctx.label_box_height,
-        "critical",
-        ctx.loop_typography,
-        ctx.typography_receipt,
-        ctx.loop_theme_receipt,
-    );
+    write_block_label_box(out, frame_x1, frame_y1, "critical", ctx)?;
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;

@@ -9,12 +9,14 @@ use crate::sequence::{
 };
 
 pub(super) struct LoopTextRenderContext<'a> {
+    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
+    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
-    typography: &'a crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-    checkpoints: SequenceEmitCheckpoints<'a>,
+    pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) struct LoopTextPlacement {
@@ -26,24 +28,6 @@ pub(super) struct LoopTextPlacement {
 }
 
 impl<'a> LoopTextRenderContext<'a> {
-    pub(super) fn new(
-        measurer: &'a dyn TextMeasurer,
-        style: &'a TextStyle,
-        typography: &'a crate::sequence::SequenceResolvedTypography,
-        typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-        math_sidecar: &'a crate::sequence::SequenceMathSidecar,
-        checkpoints: SequenceEmitCheckpoints<'a>,
-    ) -> Self {
-        Self {
-            measurer,
-            style,
-            typography,
-            typography_receipt,
-            math_sidecar,
-            checkpoints,
-        }
-    }
-
     fn katex_label(
         &self,
         occurrence_id: &str,
@@ -117,6 +101,13 @@ pub(super) fn write_loop_text_lines(
             crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
             &katex,
         );
+        ctx.text_shadow.record_terminal(
+            None,
+            false,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
+        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -136,10 +127,28 @@ pub(super) fn write_loop_text_lines(
             fmt(ctx.style.font_size)
         );
         let style = ctx.typography.terminal_style("", legacy_style);
+        let paintless = ctx.text_shadow.is_paintless(&line);
+        let shadow = if paintless {
+            None
+        } else {
+            ctx.text_shadow.write_definition(
+                out,
+                &line,
+                placement.x,
+                y,
+                super::text_effect::TextShadowBaseline::Alphabetic,
+                ctx.typography.terminal_text_style(),
+                ctx.measurer,
+            )?
+        };
+        let filter = shadow
+            .as_ref()
+            .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
+            .unwrap_or_default();
         if placement.use_tspan {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
@@ -148,7 +157,7 @@ pub(super) fn write_loop_text_lines(
         } else {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}"{filter}>{text}</text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
                 style = escape_attr_display(&style),
@@ -157,6 +166,14 @@ pub(super) fn write_loop_text_lines(
         }
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
+        out.checkpoint()?;
+        ctx.text_shadow.record_terminal(
+            shadow.as_ref(),
+            paintless,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
+        );
     }
     ctx.checkpoints.checkpoint()
 }
@@ -181,6 +198,13 @@ pub(super) fn write_section_title_lines(
             crate::sequence::SequenceTextSurface::ControlSectionTitle,
             &katex,
         );
+        ctx.text_shadow.record_terminal(
+            None,
+            false,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlSectionTitle,
+        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -194,9 +218,27 @@ pub(super) fn write_section_title_lines(
             fmt(ctx.style.font_size)
         );
         let style = ctx.typography.terminal_style("", legacy_style);
+        let paintless = ctx.text_shadow.is_paintless(&line);
+        let shadow = if paintless {
+            None
+        } else {
+            ctx.text_shadow.write_definition(
+                out,
+                &line,
+                x,
+                y,
+                super::text_effect::TextShadowBaseline::Alphabetic,
+                ctx.typography.terminal_text_style(),
+                ctx.measurer,
+            )?
+        };
+        let filter = shadow
+            .as_ref()
+            .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
+            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle" style="{style}">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle" style="{style}"{filter}>{text}</text>"#,
             x = fmt(x),
             y = fmt(y),
             style = escape_attr_display(&style),
@@ -204,6 +246,14 @@ pub(super) fn write_section_title_lines(
         );
         ctx.typography_receipt
             .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);
+        out.checkpoint()?;
+        ctx.text_shadow.record_terminal(
+            shadow.as_ref(),
+            paintless,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlSectionTitle,
+        );
     }
     ctx.checkpoints.checkpoint()
 }
