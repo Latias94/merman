@@ -354,3 +354,39 @@ agreement, not clean-source or archive provenance. The recording/replay path sti
 own clean execution. Browser/PDF probes above remain separate evidence, not new cells in this
 native SVG/PNG profile. Full clipping containment, controlled-font portability, installed-consumer
 coverage, cost comparisons and C7a closure remain open.
+
+## Clean-source recording and replay
+
+After committing the runtime qualifier as `a4a04ef1bba34c98cb452e10f9dad95c66e29e88`, a separate
+detached checkout passed the existing clean-tree requirement, including untracked files. It reused
+the workspace target directory and ran the unmodified recording command followed by `--check`.
+Both completed successfully. The second execution rebuilt/reexecuted the Rust runner, rerendered
+all 18 real CLI outputs and matched the entire recorded object, including artifact and receipt
+digests, recipe/resource fingerprints, host and both executable identities.
+
+| Identity | Observed value |
+| --- | --- |
+| Source commit | `a4a04ef1bba34c98cb452e10f9dad95c66e29e88` |
+| Cargo.lock SHA-256 | `d2ed8f1b2ed6040b28a9006b89278257b82db6642f6d45ae622ca2990027b081` |
+| Qualification executable SHA-256 | `273ee000d112156d4c5e9ebad28eb281d0c70aa83902391a0683b0e7815ee111` |
+| Production CLI SHA-256 | `680c52b61a3675817dc0e64a7a8df1f5c0432584f535feda632a39591413dd9a` |
+| Qualification record SHA-256 | `49037b24854cb7e83aeb25bab4df08701de9ba7af4c1488371d814bd794e494f` |
+| Host | Darwin `25.6.0`, ARM64, system fonts |
+
+The record is stored at
+`target/bench/experiments/cyberpunk-qualification-a4a04ef1b/qualification.json`.
+Build/replay logs are `/tmp/merman-cyberpunk-clean-{record,replay}.log`; the retained checkout and
+absolute artifact paths are in `/tmp/merman-cyberpunk-clean-qualification-context.json`.
+Reproduce from that unchanged clean checkout with the same target directory and CLI:
+
+```console
+python3 scripts/qualify_theme_presets.py --cli /path/to/merman-cli --output /path/to/qualification.json
+python3 scripts/qualify_theme_presets.py --cli /path/to/merman-cli --check /path/to/qualification.json
+```
+
+This closes the scoped clean-source recording/replay gap described in the preceding section.
+The CLI is the previously built full-feature executable recorded above, now rechecked against
+fresh qualified output; it was not rebuilt or extracted from a release archive in this step.
+The record has no `cli_archive` provenance and emits no archive companion. It is not the final
+same-source candidate or Linux/Windows, installed-consumer, controlled-font or cost evidence.
+The shared production catalog remains empty, and the broader C7a/U9/U10 gates remain open.

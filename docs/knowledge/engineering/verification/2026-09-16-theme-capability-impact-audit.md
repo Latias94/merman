@@ -26,6 +26,15 @@ surface also does not establish full support for every facet.
 
 # Latest native follow-up
 
+On 2026-09-19, clean source `a4a04ef1b` recorded and replayed the new Cyberpunk complete-scene
+SVG/PNG profile for Flowchart, Sequence and XY Chart. The production CLI matched all 18 scoped
+native outputs across Cyberpunk, Brutalist and Spotless; the local catalog projection preserves
+the current family-design metadata and preset-specific profiles. The
+[scene verification record](2026-09-19-cyberpunk-controlled-scenes.md) contains hashes, negative
+checks and separate browser/PDF pixel evidence. This uses a rechecked existing CLI, not a newly
+assembled final archive, and does not close installed-consumer, cost or C7a gates. The following
+`a5e3cd2d6` observations retain their historical source and recipe scope.
+
 The clean `a5e3cd2d6` production build now exercises all ten presets: 990/1020 literal-input
 outputs succeeded; only the upstream-invalid GitGraph example failed. The Japanese Flowchart
 passes all 30 combinations. Archive-bound qualification and replay passed for the existing

@@ -386,6 +386,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Complete-scene native increment (2026-09-19):** The [scene verification record](../knowledge/engineering/verification/2026-09-19-cyberpunk-controlled-scenes.md) replaces Cyberpunk's obsolete palette-only qualification with the unchanged Flowchart/Sequence/XY Chart scenes under `native-cyberpunk-full-scenes-system-fonts-v1`. Sealed SVG semantics and 110 PNG contribution probes now precede receipt issuance; six cells remain host-dependent and artifact-local. The real CLI matches all 18 native candidate outputs and the current catalog, including family design metadata. Recipe exchange, negative qualification/profile cases and archive/catalog script tests pass. This increment does not close U9's installed-consumer journeys, portfolio/reference checks, clean candidate replay or U10 costs.
 
+**Clean recording follow-up:** Source `a4a04ef1b` passed qualification recording and full replay in a separate clean checkout, with all 18 outputs matched to the existing production CLI. The scene record binds source, lockfile, runner, CLI and record digests. This closes scoped native qualification replay; final same-source archive assembly and the broader U9/U10 requirements remain open.
+
 ### U10. Close performance and footprint findings
 
 **Goal:** Decide whether the new boundaries are efficient enough to deliver.
