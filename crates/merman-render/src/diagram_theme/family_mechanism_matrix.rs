@@ -1256,7 +1256,8 @@ pub(super) fn compile_effect_binding_route(
 
 fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
     if (family == DiagramFamilyId::STATE && target == ThemeTarget::State)
-        || (family == DiagramFamilyId::SEQUENCE && target == ThemeTarget::Actor)
+        || (family == DiagramFamilyId::SEQUENCE
+            && matches!(target, ThemeTarget::Actor | ThemeTarget::Message))
         || (family == DiagramFamilyId::XY_CHART
             && matches!(
                 target,
@@ -1854,6 +1855,7 @@ pub(super) fn classify_rule_facet(
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::StrokeWidth
+                | FamilyThemeRuleFacet::Effect
         )
     {
         return FamilyThemeDisposition::TypedAdapter;

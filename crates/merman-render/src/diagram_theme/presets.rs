@@ -764,7 +764,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(edge_scopes, [(Some("flowchart"), "edge")]);
+        assert_eq!(
+            edge_scopes,
+            [(Some("flowchart"), "edge"), (Some("sequence"), "message")]
+        );
         let encoded = serde_json::to_vec(&recipe).unwrap();
         let imported = DiagramThemeCompiler::new()
             .compile_recipe(serde_json::from_slice(&encoded).unwrap())

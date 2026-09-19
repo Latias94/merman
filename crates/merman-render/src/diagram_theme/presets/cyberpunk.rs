@@ -130,6 +130,7 @@ pub(super) fn build_recipe(
                     width: SpecifiedWireV1::Value(2.0),
                     ..ThemeStrokePatchWireV1::default()
                 }),
+                effect: SpecifiedWireV1::Value(EDGE_GLOW.to_owned()),
                 ..ThemeStylePatchWireV1::default()
             },
         ),

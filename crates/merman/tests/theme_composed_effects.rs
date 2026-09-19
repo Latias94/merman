@@ -262,7 +262,7 @@ fn composed_sequence_actor_shadows_reach_png_and_localized_pdf() {
 }
 
 #[test]
-fn public_cyberpunk_sequence_actor_glow_survives_native_export() {
+fn public_cyberpunk_sequence_actor_and_message_glow_survives_native_export() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(merman::svg::ThemePreset::Cyberpunk)
         .unwrap();
@@ -318,7 +318,7 @@ fn public_cyberpunk_sequence_actor_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (4, 4, 8)
+        (6, 6, 10)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -361,81 +361,109 @@ fn sequence_native_message_markers_use_the_requested_paint() {
 }
 
 #[test]
-fn sequence_native_message_width_preserves_markers_at_zero_margin() {
+fn sequence_native_message_width_and_glow_preserve_markers_at_zero_margin() {
     use merman::svg::{ThemeRule, ThemeRuleSet, ThemeStylePatch};
-    for width in [2.0, 12.0] {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Message,
-                        ThemeStylePatch::default()
-                            .with_stroke(CanvasPaint::solid("#00f2ff").unwrap())
-                            .with_stroke_width(width)
-                            .unwrap(),
-                    )),
-                ),
-            )
-            .unwrap();
-        for arrow in ["->>", "-x", "-)"] {
-            for (target, right_angles) in [("B", false), ("A", false), ("A", true)] {
-                let source = format!(
-                    "---\nconfig:\n  sequence:\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n    rightAngles: {right_angles}\n---\nsequenceDiagram\nA{arrow}{target}: Message"
-                );
-                let RenderOutput::Document(Some(document)) = Renderer::new()
-                    .render(
-                        RenderRequest::document(
-                            &source,
-                            OperationControl::new(),
-                            Default::default(),
+    for glow in [false, true] {
+        for width in [2.0, 12.0] {
+            let effects = if glow {
+                DiagramEffectSet::default()
+                    .with_graph(
+                        EffectGraph::new(
+                            "glow",
+                            [EffectPrimitive::DropShadow {
+                                input: EffectInput::SourceGraphic,
+                                offset_x: 0.0,
+                                offset_y: 0.0,
+                                blur_radius: 6.0,
+                                spread: 0.0,
+                                color: ThemeColorValue::parse("rgba(0, 242, 255, 0.6)").unwrap(),
+                            }],
                         )
-                        .with_theme(theme.clone()),
+                        .unwrap(),
                     )
                     .unwrap()
-                else {
-                    panic!("document required")
-                };
-                if target == "B" && arrow == "->>" {
-                    let xml = roxmltree::Document::parse(document.svg()).unwrap();
-                    let line = xml
-                        .descendants()
-                        .find(|n| n.attribute("class") == Some("messageLine0"))
-                        .unwrap();
-                    let view_box: Vec<f64> = xml
-                        .root_element()
-                        .attribute("viewBox")
+                    .with_binding(EffectBinding::new(ThemeTarget::Message, "glow").unwrap())
+                    .unwrap()
+            } else {
+                DiagramEffectSet::default()
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_effects(effects).with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#00f2ff").unwrap())
+                                .with_stroke_width(width)
+                                .unwrap(),
+                        )),
+                    ),
+                )
+                .unwrap();
+            for arrow in ["->>", "-x", "-)"] {
+                for (target, right_angles) in [("B", false), ("A", false), ("A", true)] {
+                    let source = format!(
+                        "---\nconfig:\n  sequence:\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n    rightAngles: {right_angles}\n---\nsequenceDiagram\nA{arrow}{target}: Message"
+                    );
+                    let RenderOutput::Document(Some(document)) = Renderer::new()
+                        .render(
+                            RenderRequest::document(
+                                &source,
+                                OperationControl::new(),
+                                Default::default(),
+                            )
+                            .with_theme(theme.clone()),
+                        )
                         .unwrap()
-                        .split_whitespace()
-                        .map(|s| s.parse().unwrap())
-                        .collect();
-                    let midpoint = (line.attribute("x1").unwrap().parse::<f64>().unwrap()
-                        + line.attribute("x2").unwrap().parse::<f64>().unwrap())
-                        / 2.0;
-                    let png = document
-                        .export_png(&Default::default(), OperationControl::new())
-                        .unwrap();
-                    let mut reader = png::Decoder::new(Cursor::new(png.bytes()))
-                        .read_info()
-                        .unwrap();
-                    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
-                    let info = reader.next_frame(&mut pixels).unwrap();
-                    assert_eq!(info.color_type, png::ColorType::Rgba);
-                    let scale = f64::from(info.width) / view_box[2];
-                    let x = ((midpoint - view_box[0]) * scale).round() as usize;
-                    let cyan_rows = (0..info.height as usize)
-                        .filter(|y| {
-                            let pixel = &pixels[(y * info.width as usize + x) * 4..][..4];
-                            u16::from(pixel[1]) > u16::from(pixel[0]) + 50
-                                && u16::from(pixel[2]) > u16::from(pixel[0]) + 50
-                                && pixel[3] > 128
-                        })
-                        .count();
-                    assert!(
-                        (cyan_rows as f64 - f64::from(width) * scale).abs() <= 1.5,
-                        "actual native message width: {cyan_rows} pixels, requested {width} at scale {scale}"
+                    else {
+                        panic!("document required")
+                    };
+                    if !glow && target == "B" && arrow == "->>" {
+                        let xml = roxmltree::Document::parse(document.svg()).unwrap();
+                        let line = xml
+                            .descendants()
+                            .find(|n| n.attribute("class") == Some("messageLine0"))
+                            .unwrap();
+                        let view_box: Vec<f64> = xml
+                            .root_element()
+                            .attribute("viewBox")
+                            .unwrap()
+                            .split_whitespace()
+                            .map(|s| s.parse().unwrap())
+                            .collect();
+                        let midpoint = (line.attribute("x1").unwrap().parse::<f64>().unwrap()
+                            + line.attribute("x2").unwrap().parse::<f64>().unwrap())
+                            / 2.0;
+                        let png = document
+                            .export_png(&Default::default(), OperationControl::new())
+                            .unwrap();
+                        let mut reader = png::Decoder::new(Cursor::new(png.bytes()))
+                            .read_info()
+                            .unwrap();
+                        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+                        let info = reader.next_frame(&mut pixels).unwrap();
+                        assert_eq!(info.color_type, png::ColorType::Rgba);
+                        let scale = f64::from(info.width) / view_box[2];
+                        let x = ((midpoint - view_box[0]) * scale).round() as usize;
+                        let cyan_rows = (0..info.height as usize)
+                            .filter(|y| {
+                                let pixel = &pixels[(y * info.width as usize + x) * 4..][..4];
+                                u16::from(pixel[1]) > u16::from(pixel[0]) + 50
+                                    && u16::from(pixel[2]) > u16::from(pixel[0]) + 50
+                                    && pixel[3] > 128
+                            })
+                            .count();
+                        assert!(
+                            (cyan_rows as f64 - f64::from(width) * scale).abs() <= 1.5,
+                            "actual native message width: {cyan_rows} pixels, requested {width} at scale {scale}"
+                        );
+                    }
+                    assert_sequence_marker_pixels(
+                        &document,
+                        true,
+                        &format!("width {width}, glow {glow}: {source}"),
                     );
                 }
-                assert_sequence_marker_pixels(&document, true, &format!("width {width}: {source}"));
             }
         }
     }
@@ -559,6 +587,40 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
         ((info.width, info.height), pixels)
     };
     let (size, original) = decode(original.bytes());
+    // Judge opaque marker color separately from the translucent halo. Keep the original
+    // filtered render below as an independent witness that each marker still contributes paint.
+    let without_message_filters = |svg: &str| {
+        let xml = roxmltree::Document::parse(svg).unwrap();
+        let mut ranges: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                matches!(
+                    node.attribute("class"),
+                    Some("messageLine0" | "messageLine1")
+                )
+            })
+            .flat_map(|node| {
+                node.attributes()
+                    .filter(|a| a.name() == "filter")
+                    .map(|a| a.range())
+            })
+            .collect();
+        ranges.sort_by_key(|range| range.start);
+        let mut result = svg.to_owned();
+        for range in ranges.into_iter().rev() {
+            result.replace_range(range, "");
+        }
+        result
+    };
+    let render_control = |svg: &str| {
+        let control = merman_render::svg::finalize_resvg_svg(svg, &session).unwrap();
+        let png = merman::svg::export::svg_to_png(&control, &options).unwrap();
+        let (control_size, pixels) = decode(&png);
+        assert_eq!(size, control_size);
+        pixels
+    };
+    let unfiltered = without_message_filters(svg);
+    let color_original = (unfiltered != svg).then(|| render_control(&unfiltered));
     // Remove one reference at a time so a correct arrow cannot hide a gray sibling.
     for marker in markers {
         let marker_name = &svg[marker.clone()];
@@ -575,6 +637,20 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
             );
             continue;
         }
+        assert!(
+            original
+                .chunks_exact(4)
+                .zip(control.chunks_exact(4))
+                .filter(|(a, b)| a != b)
+                .count()
+                > 5,
+            "missing filtered {marker_name} pixels: {case}"
+        );
+        let color_control = color_original
+            .as_ref()
+            .map(|_| render_control(&without_message_filters(&without_marker)));
+        let original = color_original.as_deref().unwrap_or(&original);
+        let control = color_control.as_deref().unwrap_or(&control);
         let mut changed = 0;
         let mut cyan = 0;
         for (pixel, control) in original.chunks_exact(4).zip(control.chunks_exact(4)) {
@@ -594,5 +670,15 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
             cyan > 5 && cyan * 2 > changed,
             "expected cyan {marker_name}: {cyan}/{changed}: {case}"
         );
+    }
+}
+
+#[test]
+fn composed_sequence_message_shadows_reach_png_and_localized_pdf() {
+    for source in [
+        "sequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self",
+        "---\nconfig:\n  sequence:\n    rightAngles: true\n    diagramMarginX: 0\n    diagramMarginY: 0\n---\nsequenceDiagram\nA->>B: Request\nB-->>A: Reply\nA->>A: Self",
+    ] {
+        assert_composed_shadows(source, ThemeTarget::Message, 3);
     }
 }

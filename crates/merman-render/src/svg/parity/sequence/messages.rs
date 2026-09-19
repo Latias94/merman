@@ -5,6 +5,9 @@ use super::math_label::{
     write_sequence_katex_foreign_object,
 };
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
+use crate::diagram_theme::{
+    EffectOutsets, SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder,
+};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
     sequence_text_line_step_px,
@@ -26,77 +29,153 @@ pub(super) fn has_sequence_message_line_candidates(model: &SequenceSvgModel) -> 
     })
 }
 
-/// Include actual typed message paint; the layout baseline only bounds its centerline.
-pub(super) fn message_paint_bounds(
-    model: &SequenceSvgModel,
-    nodes: &FxHashMap<&str, &LayoutNode>,
-    edges: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    width: Option<f32>,
-    right_angles: bool,
-    actor_height: f64,
-    checkpoints: SequenceEmitCheckpoints<'_>,
-) -> Result<Option<Bounds>> {
-    let Some(width) = width.map(f64::from) else {
-        return Ok(None);
-    };
-    let mut total: Option<Bounds> = None;
-    for (index, message) in model.messages.iter().enumerate() {
-        checkpoints.checkpoint_loop(index)?;
-        let Some(semantics) = message.signal_semantics() else {
-            continue;
+/// Family-owned message geometry includes the line and its endpoint markers.
+#[derive(Default)]
+pub(super) struct SequenceMessagePaintPlan {
+    effect: Option<SvgShadowEffect>,
+    shadows: BTreeMap<String, (String, SvgFilterRegion)>,
+    pub(super) bounds: Option<Bounds>,
+}
+
+impl SequenceMessagePaintPlan {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn prepare(
+        model: &SequenceSvgModel,
+        nodes: &FxHashMap<&str, &LayoutNode>,
+        edges: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        width: Option<f32>,
+        effect: Option<SvgShadowEffect>,
+        receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
+        options: &SvgExecution<'_>,
+        right_angles: bool,
+        actor_height: f64,
+        checkpoints: SequenceEmitCheckpoints<'_>,
+    ) -> Result<Self> {
+        let mut plan = Self {
+            effect,
+            ..Self::default()
         };
-        let (Some(from), Some(to)) = (message.from.as_deref(), message.to.as_deref()) else {
-            continue;
-        };
-        let Some(edge) = edges.get(format!("msg-{}", message.id).as_str()) else {
-            continue;
-        };
-        let [p0, p1, ..] = edge.points.as_slice() else {
-            continue;
-        };
-        let points = if from == to {
-            self_message_points(edge, nodes, from, actor_height, right_angles)
-        } else {
-            [(p0.x, p0.y), (p0.x, p0.y), (p1.x, p1.y), (p1.x, p1.y)]
-        };
-        // The cubic's control hull bounds its curve; axis-aligned right-angle joins fit
-        // inside the same rectangle expanded by half the stroke width.
-        let mut bounds = Bounds::from_points(points).expect("four message points");
-        bounds.min_x -= width / 2.0;
-        bounds.min_y -= width / 2.0;
-        bounds.max_x += width / 2.0;
-        bounds.max_y += width / 2.0;
-        for (marker, source, (x, y)) in [
-            (semantics.source_marker, true, points[0]),
-            (semantics.target_marker, false, points[3]),
-        ] {
-            // These hidden marker viewports are pinned in the Sequence defs. A rotation
-            // radius also covers the cubic endpoint tangent, without guessing its angle.
-            let radius = match endpoint_marker_local_id(marker, source) {
-                Some("crosshead") => 11.0_f64.hypot(4.5) * width,
-                Some("filled-head") => 15.5_f64.hypot(21.0) * width,
-                Some("arrowhead") => 7.9_f64.hypot(7.0),
-                Some("solidTopArrowHead") => 7.9_f64.hypot(7.25),
-                Some("solidBottomArrowHead") => 7.9_f64.hypot(11.25),
-                Some("stickTopArrowHead") => 7.5_f64.hypot(7.0),
-                Some("stickBottomArrowHead") => 7.5_f64.hypot(12.0),
-                _ => 0.0,
+        if width.is_none() && plan.effect.is_none() {
+            return Ok(plan);
+        }
+        // Message CSS owns a 1.5px baseline independent of signalColor configuration.
+        let width = f64::from(width.unwrap_or(1.5));
+        for (index, message) in model.messages.iter().enumerate() {
+            checkpoints.checkpoint_loop(index)?;
+            let Some(semantics) = message.signal_semantics() else {
+                continue;
             };
-            bounds.min_x = bounds.min_x.min(x - radius);
-            bounds.min_y = bounds.min_y.min(y - radius);
-            bounds.max_x = bounds.max_x.max(x + radius);
-            bounds.max_y = bounds.max_y.max(y + radius);
+            let (Some(from), Some(to)) = (message.from.as_deref(), message.to.as_deref()) else {
+                continue;
+            };
+            let Some(edge) = edges.get(format!("msg-{}", message.id).as_str()) else {
+                continue;
+            };
+            let [p0, p1, ..] = edge.points.as_slice() else {
+                continue;
+            };
+            let points = if from == to {
+                self_message_points(edge, nodes, from, actor_height, right_angles)
+            } else {
+                [(p0.x, p0.y), (p0.x, p0.y), (p1.x, p1.y), (p1.x, p1.y)]
+            };
+            // The cubic's control hull bounds its curve; axis-aligned right-angle joins fit
+            // inside the same rectangle expanded by half the stroke width.
+            let mut bounds = Bounds::from_points(points).expect("four message points");
+            bounds.min_x -= width / 2.0;
+            bounds.min_y -= width / 2.0;
+            bounds.max_x += width / 2.0;
+            bounds.max_y += width / 2.0;
+            for (marker, source, (x, y)) in [
+                (semantics.source_marker, true, points[0]),
+                (semantics.target_marker, false, points[3]),
+            ] {
+                // These hidden marker viewports are pinned in the Sequence defs. A rotation
+                // radius also covers the cubic endpoint tangent, without guessing its angle.
+                let radius = match endpoint_marker_local_id(marker, source) {
+                    Some("crosshead") => 11.0_f64.hypot(4.5) * width,
+                    Some("filled-head") => 15.5_f64.hypot(21.0) * width,
+                    Some("arrowhead") => 7.9_f64.hypot(7.0),
+                    Some("solidTopArrowHead") => 7.9_f64.hypot(7.25),
+                    Some("solidBottomArrowHead") => 7.9_f64.hypot(11.25),
+                    Some("stickTopArrowHead") => 7.5_f64.hypot(7.0),
+                    Some("stickBottomArrowHead") => 7.5_f64.hypot(12.0),
+                    _ => 0.0,
+                };
+                bounds.min_x = bounds.min_x.min(x - radius);
+                bounds.min_y = bounds.min_y.min(y - radius);
+                bounds.max_x = bounds.max_x.max(x + radius);
+                bounds.max_y = bounds.max_y.max(y + radius);
+            }
+            if let Some(effect) = &plan.effect {
+                options
+                    .work_meter()
+                    .charge(effect.stages().len().saturating_mul(3))?;
+                if let Some(shadow) = effect.materialize_user_space(
+                    &options.theme_resource_policy(),
+                    bounds.min_x,
+                    bounds.min_y,
+                    bounds.max_x,
+                    bounds.max_y,
+                    EffectOutsets::default(),
+                )? {
+                    let region = shadow.region();
+                    let [x, y, w, h] = region.as_array().map(f64::from);
+                    bounds = Bounds {
+                        min_x: x,
+                        min_y: y,
+                        max_x: x + w,
+                        max_y: y + h,
+                    };
+                    plan.shadows.insert(
+                        message.id.clone(),
+                        (
+                            format!(
+                                "{}-message-{index}-theme-effect-{}",
+                                options.diagram_id_or("merman"),
+                                effect.id()
+                            ),
+                            region,
+                        ),
+                    );
+                } else {
+                    receipt.effect_unhandled = true;
+                }
+            }
+            if let Some(total) = &mut plan.bounds {
+                total.min_x = total.min_x.min(bounds.min_x);
+                total.min_y = total.min_y.min(bounds.min_y);
+                total.max_x = total.max_x.max(bounds.max_x);
+                total.max_y = total.max_y.max(bounds.max_y);
+            } else {
+                plan.bounds = Some(bounds);
+            }
         }
-        if let Some(total) = &mut total {
-            total.min_x = total.min_x.min(bounds.min_x);
-            total.min_y = total.min_y.min(bounds.min_y);
-            total.max_x = total.max_x.max(bounds.max_x);
-            total.max_y = total.max_y.max(bounds.max_y);
-        } else {
-            total = Some(bounds);
-        }
+        Ok(plan)
     }
-    Ok(total)
+
+    pub(super) fn len(&self) -> usize {
+        self.shadows.len()
+    }
+
+    fn write_definition(&self, out: &mut impl SvgOutput, message_id: &str) -> Option<String> {
+        let (id, region) = self.shadows.get(message_id)?;
+        Some(super::super::shadow::write_theme_shadow_application(
+            out,
+            id,
+            self.effect.as_ref()?,
+            *region,
+        ))
+    }
+
+    fn record_emission(&self, message_id: &str, recorder: &SvgShadowEvidenceRecorder) -> bool {
+        let (Some(effect), Some((id, region))) = (&self.effect, self.shadows.get(message_id))
+        else {
+            return false;
+        };
+        recorder.record_application(effect, id, *region);
+        true
+    }
 }
 
 /// Shared control points keep self-message output and its paint bounds in agreement.
@@ -133,6 +212,8 @@ fn self_message_points(
 
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
+    pub(super) paint_plan: &'a SequenceMessagePaintPlan,
+    pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
@@ -540,6 +621,11 @@ pub(super) fn render_sequence_messages(
         ctx.checkpoints.checkpoint()?;
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
+        let filter = ctx
+            .paint_plan
+            .write_definition(out, &msg.id)
+            .map(|reference| format!(r#" filter="{}""#, escape_attr(&reference)))
+            .unwrap_or_default();
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
         if from == to {
             let [(x, y), (x2, y2), (x3, y3), (x4, y4)] = self_message_points(
@@ -583,7 +669,7 @@ pub(super) fn render_sequence_messages(
             };
             let _ = write!(
                 out,
-                r#"<path d="{d}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
+                r#"<path d="{d}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}{filter}/>"#,
                 d = d,
                 class = class,
                 data_attrs = data_attrs,
@@ -598,7 +684,7 @@ pub(super) fn render_sequence_messages(
         } else {
             let _ = write!(
                 out,
-                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{style}{filter}/>"#,
                 x1 = fmt(p0.x),
                 y1 = fmt(p0.y),
                 x2 = fmt(p1.x),
@@ -662,6 +748,11 @@ pub(super) fn render_sequence_messages(
         let _ = (from, to);
         out.checkpoint()?;
         theme_receipt.record_line_emission();
+        if ctx.paint_plan.record_emission(&msg.id, ctx.shadow_evidence)
+            || theme_receipt.effect_cleared
+        {
+            theme_receipt.record_effect_emission();
+        }
     }
 
     ctx.checkpoints.checkpoint()
@@ -935,6 +1026,8 @@ mod tests {
             error: RefCell::new(None),
         };
         let ctx = SequenceMessageRenderContext {
+            paint_plan: &Default::default(),
+            shadow_evidence: &Default::default(),
             model: &model,
             nodes_by_id: &nodes_by_id,
             edges_by_id: &edges_by_id,
@@ -1053,6 +1146,8 @@ mod tests {
                 error: RefCell::new(None),
             };
             let ctx = SequenceMessageRenderContext {
+                paint_plan: &Default::default(),
+                shadow_evidence: &Default::default(),
                 model: &model,
                 nodes_by_id: &nodes_by_id,
                 edges_by_id: &edges_by_id,

@@ -443,7 +443,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "sequence",
         target: "message",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["stroke-paint", "stroke-width"],
+        facets: &["stroke-paint", "stroke-width", "effect"],
     },
     RuleClaim {
         family: "sequence",

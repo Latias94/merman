@@ -181,6 +181,24 @@ pub(super) fn observe_message_rule(
                 .capabilities
                 .insert(ThemeCapability::BorderStyling);
         }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Effect) => {
+            if message.receipt.effect_unhandled {
+                observation
+                    .residual
+                    .get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+            } else if !message.receipt.effect_complete() {
+                observation.incomplete = true;
+            } else {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::SemanticRules);
+                if !message.receipt.effect_cleared {
+                    observation
+                        .capabilities
+                        .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+                }
+            }
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation

@@ -186,11 +186,14 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         checkpoints.checkpoint_loop(edge_index)?;
         edges_by_id.insert(edge.id.as_str(), edge);
     }
-    let message_bounds = super::messages::message_paint_bounds(
+    let message_paint = super::messages::SequenceMessagePaintPlan::prepare(
         model,
         &nodes_by_id,
         &edges_by_id,
         message_theme.typed_stroke_width,
+        message_theme.effect.take(),
+        &mut message_theme.receipt,
+        options,
         settings.right_angles,
         settings.actor_height,
         checkpoints,
@@ -207,7 +210,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
     prepared
         .expected_effect_applications()
-        .set(actor_shadows.len());
+        .set(actor_shadows.len() + message_paint.len());
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -222,7 +225,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             .map(f64::from)
             .unwrap_or(0.0)
             / 2.0,
-        &[actor_shadows.bounds.as_ref(), message_bounds.as_ref()],
+        &[actor_shadows.bounds.as_ref(), message_paint.bounds.as_ref()],
     )?;
 
     let activation_plan = build_sequence_activation_plan(
@@ -458,6 +461,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
     let message_ctx = SequenceMessageRenderContext {
         model,
+        paint_plan: &message_paint,
+        shadow_evidence: prepared.effect_evidence(),
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         math_sidecar: prepared.math_sidecar(),
@@ -584,6 +589,7 @@ struct SequenceLifelineThemeResolution {
 
 #[derive(Default)]
 struct SequenceMessageThemeResolution {
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
     typed_stroke: Option<String>,
     typed_stroke_width: Option<f32>,
     typed_stroke_width_won: bool,
@@ -787,21 +793,21 @@ fn resolve_sequence_message_theme(
     let Some(theme) = options.resolved_theme() else {
         return Ok(SequenceMessageThemeResolution::default());
     };
-    let mut has_rule_routes = false;
-    for route in theme.family_mechanism_routes().iter().copied() {
-        let FamilyThemeMechanism::RuleFacet {
-            target: ThemeTarget::Message,
-            selector:
-                FamilyThemeSelectorShape::Static {
+    let has_rule_routes = theme.family_mechanism_routes().iter().any(|route| {
+        matches!(
+            route.mechanism(),
+            FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Message,
+                selector: FamilyThemeSelectorShape::Static {
                     variant: None | Some(ThemeVariant::Default),
                 },
-            ..
-        } = route.mechanism()
-        else {
-            continue;
-        };
-        has_rule_routes = true;
-    }
+                ..
+            } | FamilyThemeMechanism::EffectBinding {
+                target: ThemeTarget::Message,
+                ..
+            }
+        )
+    });
     if !has_rule_routes {
         return Ok(SequenceMessageThemeResolution::default());
     }
@@ -832,7 +838,30 @@ fn resolve_sequence_message_theme(
             _ => None,
         })
         .flatten();
+    let effect = match theme.resolve_effect(ThemeTarget::Message, style.effect_resolution()) {
+        None => None,
+        Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+            receipt.effect_requested = true;
+            receipt.effect_cleared = true;
+            None
+        }
+        Some(resolved) => {
+            receipt.effect_requested = true;
+            let graph = match resolved {
+                crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                    receipt.effect_binding_used = true;
+                    graph
+                }
+                crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+            };
+            let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+            receipt.effect_unhandled = effect.is_none();
+            effect
+        }
+    };
     Ok(SequenceMessageThemeResolution {
+        effect,
         typed_stroke,
         typed_stroke_width: style.stroke_width(),
         typed_stroke_width_won: style.stroke_width_resolution().winner().is_some(),
