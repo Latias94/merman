@@ -455,6 +455,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
             "font-stack",
             "font-style",
             "font-weight",
+            "effect",
         ],
     },
     RuleClaim {

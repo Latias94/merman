@@ -1259,7 +1259,10 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
         || (family == DiagramFamilyId::SEQUENCE
             && matches!(
                 target,
-                ThemeTarget::Actor | ThemeTarget::Message | ThemeTarget::Note
+                ThemeTarget::Actor
+                    | ThemeTarget::Message
+                    | ThemeTarget::Note
+                    | ThemeTarget::NoteLabel
             ))
         || (family == DiagramFamilyId::XY_CHART
             && matches!(
@@ -1886,6 +1889,18 @@ pub(super) fn classify_rule_facet(
         && target == ThemeTarget::Lifeline
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && facet == FamilyThemeRuleFacet::StrokeWidth
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && target == ThemeTarget::NoteLabel
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && facet == FamilyThemeRuleFacet::Effect
     {
         return FamilyThemeDisposition::TypedAdapter;
     }

@@ -318,7 +318,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (7, 7, 11)
+        (8, 8, 12)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -690,4 +690,124 @@ fn composed_sequence_note_shadows_reach_png_and_localized_pdf() {
         ThemeTarget::Note,
         3,
     );
+}
+
+#[test]
+fn composed_sequence_note_text_shadows_reach_png_and_localized_pdf() {
+    assert_composed_shadows(
+        "sequenceDiagram\nNote left of A: Left label<br/><br/>Second line\nNote right of B: Right label",
+        ThemeTarget::NoteLabel,
+        3,
+    );
+}
+
+#[test]
+fn paintless_sequence_note_labels_do_not_create_empty_native_filter_groups() {
+    let document = render(
+        "sequenceDiagram\nNote over A,B: <br/>",
+        ThemeTarget::NoteLabel,
+        EffectInput::Previous,
+        EffectColorSpace::Srgb,
+    );
+    assert!(!document.svg().contains("<filter"));
+    let png = document
+        .export_png(&Default::default(), OperationControl::new())
+        .unwrap();
+    let pdf = document
+        .export_pdf(&Default::default(), OperationControl::new())
+        .unwrap();
+    for admission in [png.admission(), pdf.admission()] {
+        for reason in [
+            TargetAdmissionReason::ThemeEvidenceIncomplete,
+            TargetAdmissionReason::NativeFilterReceiptMismatch,
+            TargetAdmissionReason::PdfNativeFilterNotLocalized,
+        ] {
+            assert!(!admission.reasons().contains(&reason), "{admission:?}");
+        }
+    }
+}
+
+#[test]
+fn nonempty_note_text_with_zero_host_width_is_not_paintless_or_certified() {
+    use merman::svg::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle,
+    };
+    #[derive(Debug)]
+    struct ZeroWidth;
+    impl TextMeasurer for ZeroWidth {
+        fn measure(&self, _: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+    let environment = merman::SvgEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.zero-note-width").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            std::sync::Arc::new(ZeroWidth),
+        )),
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_effects(
+                DiagramEffectSet::default()
+                    .with_graph(
+                        EffectGraph::new(
+                            "note",
+                            [EffectPrimitive::DropShadow {
+                                input: EffectInput::SourceGraphic,
+                                offset_x: 0.0,
+                                offset_y: 0.0,
+                                blur_radius: 4.0,
+                                spread: 0.0,
+                                color: ThemeColorValue::parse("#ff00ff").unwrap(),
+                            }],
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap()
+                    .with_binding(EffectBinding::new(ThemeTarget::NoteLabel, "note").unwrap())
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let source = format!("sequenceDiagram\nNote over A,B: {}", "W".repeat(128));
+    let RenderOutput::Document(Some(document)) = Renderer::new()
+        .render(
+            RenderRequest::document(
+                &source,
+                OperationControl::new(),
+                merman::SvgRequest {
+                    environment,
+                    ..Default::default()
+                },
+            )
+            .with_theme(theme),
+        )
+        .unwrap()
+    else {
+        panic!("document required")
+    };
+    assert!(document.svg().contains("-note-text-0-theme-effect-"));
+    let png = document
+        .export_png(&Default::default(), OperationControl::new())
+        .unwrap();
+    let pdf = document
+        .export_pdf(&Default::default(), OperationControl::new())
+        .unwrap();
+    for admission in [png.admission(), pdf.admission()] {
+        assert!(
+            admission
+                .reasons()
+                .contains(&TargetAdmissionReason::NativeFilterReceiptMismatch),
+            "zero host width must not certify overflowing glyph ink: {admission:?}"
+        );
+    }
 }

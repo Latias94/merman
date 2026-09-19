@@ -655,6 +655,32 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::NoteLabel,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if let Some(typography) = &state.typography {
+                        let receipt = &typography.note;
+                        if receipt.label_candidate_count() == 0
+                            || (receipt.effect_requested && !receipt.effect_binding_used)
+                        {
+                            evidence.mark_not_applicable(key);
+                        } else if receipt.effect_unhandled {
+                            evidence
+                                .mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                        } else if receipt.effect_complete()
+                            && receipt.effect_applications.get() == 0
+                        {
+                            evidence.mark_not_applicable(key);
+                        } else if receipt.effect_complete() {
+                            evidence.mark_applied_with_capabilities(
+                                key,
+                                [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                            );
+                        }
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Actor,
                     ..
                 } => {

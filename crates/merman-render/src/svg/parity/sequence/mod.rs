@@ -18,6 +18,7 @@ mod notes;
 mod render;
 mod root;
 mod settings;
+mod text_effect;
 
 pub(super) use crate::sequence::SequenceOperationCheckpoints as SequenceEmitCheckpoints;
 

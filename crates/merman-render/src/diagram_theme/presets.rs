@@ -867,7 +867,12 @@ mod tests {
             Some("cyberpunk-shape-glow")
         );
         assert_eq!(theme.spec().canvas().layers().len(), 3);
-        assert_eq!(theme.spec().effects().graphs().len(), 13);
+        let note_label = sequence.style(ThemeTarget::NoteLabel, ThemeVariant::Default, None);
+        assert_eq!(
+            note_label.effect_resolution().value().map(String::as_str),
+            Some("cyberpunk-note-text-glow")
+        );
+        assert_eq!(theme.spec().effects().graphs().len(), 14);
     }
 
     #[test]

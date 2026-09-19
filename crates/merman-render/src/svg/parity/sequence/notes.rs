@@ -114,6 +114,7 @@ impl SequenceNotePaintPlan {
 }
 
 pub(super) struct SequenceNoteRenderContext<'a> {
+    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
     pub(super) paint: &'a SequenceNotePaintPlan,
     pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
@@ -143,6 +144,8 @@ pub(super) fn render_sequence_note(
     let raw = msg.message_text();
     let node_id = format!("note-{id}");
     let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
+        ctx.typography_receipt
+            .record_missing_text_effect(crate::sequence::SequenceTextSurface::NoteLabel);
         return Ok(());
     };
     let (x, y) = node_left_top(n);
@@ -204,6 +207,13 @@ pub(super) fn render_sequence_note(
             crate::sequence::SequenceTextSurface::NoteLabel,
             &katex,
         );
+        ctx.text_shadow.record_terminal(
+            None,
+            false,
+            ctx.shadow_evidence,
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::NoteLabel,
+        );
     } else if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
         //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
@@ -227,6 +237,7 @@ pub(super) fn render_sequence_note(
             ctx.legacy_label_font_size,
             Some(ctx.note_typography),
             Some(ctx.typography_receipt),
+            Some(ctx),
             ctx.checkpoints,
         )?;
     } else {
@@ -239,6 +250,7 @@ pub(super) fn render_sequence_note(
             ctx.legacy_label_font_size,
             Some(ctx.note_typography),
             Some(ctx.typography_receipt),
+            Some(ctx),
             ctx.checkpoints,
         )?;
     }
@@ -255,6 +267,7 @@ fn render_sequence_note_lines<'a>(
     legacy_label_font_size: f64,
     typography: Option<&crate::sequence::SequenceResolvedTypography>,
     typography_receipt: Option<&crate::sequence::SequenceTypographyThemeReceipt>,
+    paint_context: Option<&SequenceNoteRenderContext<'_>>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     for (i, line) in lines.into_iter().enumerate() {
@@ -273,9 +286,33 @@ fn render_sequence_note_lines<'a>(
         let style = typography.map_or(legacy_style.clone(), |typography| {
             typography.terminal_style("", legacy_style)
         });
+        // SVG whitespace and the zero-width placeholder have no painted glyphs.
+        // Keep the line for layout, but do not create an empty native filter group.
+        let paintless = paint_context.is_some_and(|ctx| ctx.text_shadow.needs_bounds())
+            && text
+                .chars()
+                .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n' | '\u{200B}'));
+        let shadow = paint_context
+            .filter(|_| !paintless)
+            .map(|ctx| {
+                ctx.text_shadow.write_note_definition(
+                    out,
+                    text,
+                    cx,
+                    y,
+                    ctx.note_typography.terminal_text_style(),
+                    ctx.measurer,
+                )
+            })
+            .transpose()?
+            .flatten();
+        let filter = shadow
+            .as_ref()
+            .map(|shadow| format!(" filter=\"{}\"", escape_attr(&shadow.filter)))
+            .unwrap_or_default();
         let _ = write!(
             &mut *out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"{filter}><tspan x="{x}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(y),
             style = escape_attr_display(&style),
@@ -283,6 +320,16 @@ fn render_sequence_note_lines<'a>(
         );
         if let Some(receipt) = typography_receipt {
             receipt.record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
+        }
+        out.checkpoint()?;
+        if let Some(ctx) = paint_context {
+            ctx.text_shadow.record_terminal(
+                shadow.as_ref(),
+                paintless,
+                ctx.shadow_evidence,
+                ctx.typography_receipt,
+                crate::sequence::SequenceTextSurface::NoteLabel,
+            );
         }
     }
     checkpoints.checkpoint()
@@ -303,6 +350,7 @@ mod tests {
             10.0,
             19.0,
             16.0,
+            None,
             None,
             None,
             super::SequenceEmitCheckpoints::for_emit(&meter),

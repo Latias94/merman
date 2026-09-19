@@ -1019,6 +1019,7 @@ struct SequenceTextSurfaceReceipt {
     stylesheet_fill_mismatch: bool,
     label_candidates: Cell<usize>,
     emitted_labels: Cell<usize>,
+    emitted_effects: Cell<usize>,
     paint_candidates: Cell<usize>,
     emitted_paint_labels: Cell<usize>,
     unverified_math_typography: RefCell<BTreeSet<ThemeTypographyProperty>>,
@@ -1192,6 +1193,10 @@ pub(super) struct SequenceRoleTypographyReceipt {
     pub(super) config_overrides: BTreeSet<crate::diagram_theme::ThemeTypographyProperty>,
     base_typed_properties: BTreeSet<ThemeTypographyProperty>,
     text_surfaces: [SequenceTextSurfaceReceipt; 7],
+    pub(super) effect_requested: bool,
+    pub(super) effect_binding_used: bool,
+    pub(super) effect_unhandled: bool,
+    pub(super) effect_applications: Cell<usize>,
 }
 
 impl SequenceRoleTypographyReceipt {
@@ -1269,6 +1274,14 @@ impl SequenceRoleTypographyReceipt {
                 .iter()
                 .filter(|surface| surface.label_candidates.get() != 0)
                 .all(SequenceTextSurfaceReceipt::complete)
+    }
+
+    pub(super) fn effect_complete(&self) -> bool {
+        self.label_candidate_count() != 0
+            && self
+                .text_surfaces
+                .iter()
+                .all(|surface| surface.label_candidates.get() == surface.emitted_effects.get())
     }
 
     pub(super) fn typography_property_complete(&self, property: ThemeTypographyProperty) -> bool {
@@ -1506,6 +1519,50 @@ impl SequenceTypographyThemeReceipt {
         }
     }
 
+    pub(crate) fn configure_text_effect(
+        &mut self,
+        role: crate::sequence::SequenceTypographyRole,
+        binding: bool,
+        unhandled: bool,
+    ) {
+        let receipt = match role {
+            crate::sequence::SequenceTypographyRole::Actor => &mut self.actor,
+            crate::sequence::SequenceTypographyRole::Message => &mut self.message,
+            crate::sequence::SequenceTypographyRole::Note => &mut self.note,
+            crate::sequence::SequenceTypographyRole::Loop => &mut self.loop_label,
+        };
+        receipt.effect_requested = true;
+        receipt.effect_binding_used = binding;
+        receipt.effect_unhandled = unhandled;
+        // Math terminals still count when only an effect was requested. A prepared
+        // foreground/font assurance does not establish that a filter was consumed.
+        for surface in crate::sequence::SequenceTextSurface::ALL {
+            if surface.role() == role {
+                receipt.text_surfaces[surface.index()].requires_prepared_math_terminal_evidence =
+                    true;
+            }
+        }
+    }
+
+    pub(crate) fn record_missing_text_effect(&self, surface: crate::sequence::SequenceTextSurface) {
+        if self.role(surface.role()).effect_requested {
+            self.record_candidate(surface);
+        }
+    }
+
+    pub(crate) fn record_text_effect(
+        &self,
+        surface: crate::sequence::SequenceTextSurface,
+        filtered: bool,
+    ) {
+        let count = &self.role(surface.role()).text_surfaces[surface.index()].emitted_effects;
+        count.set(count.get().saturating_add(1));
+        if filtered {
+            let applications = &self.role(surface.role()).effect_applications;
+            applications.set(applications.get().saturating_add(1));
+        }
+    }
+
     pub(crate) fn record_candidate(&self, surface: crate::sequence::SequenceTextSurface) {
         self.role(surface.role()).record_candidate(surface);
     }
@@ -1713,6 +1770,23 @@ mod tests {
             surface.record_stylesheet_emission(fill, Some(fill));
         }
         receipt
+    }
+
+    #[test]
+    fn text_effect_requires_every_candidate_and_the_correct_surface() {
+        let mut receipt = math_receipt([], None);
+        let note = crate::sequence::SequenceTextSurface::NoteLabel;
+        receipt.configure_text_effect(crate::sequence::SequenceTypographyRole::Note, true, false);
+        receipt.record_terminal_text(note);
+        receipt.record_terminal_text(note);
+        receipt.record_text_effect(crate::sequence::SequenceTextSurface::MessageLabel, true);
+        assert!(!receipt.note.effect_complete());
+        receipt.record_text_effect(note, true);
+        assert!(!receipt.note.effect_complete());
+        receipt.record_text_effect(note, true);
+        assert!(receipt.note.effect_complete());
+        receipt.record_missing_text_effect(note);
+        assert!(!receipt.note.effect_complete());
     }
 
     #[test]

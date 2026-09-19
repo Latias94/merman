@@ -6470,7 +6470,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 7);
+        assert_eq!(filters.len(), 8);
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -6481,11 +6481,14 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
+            let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_message {
+                if is_note_text {
+                    vec!["4"]
+                } else if is_message {
                     vec!["6"]
                 } else if is_note {
                     vec!["8"]
@@ -6499,7 +6502,10 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_message {
+            if is_note_text {
+                assert!(consumers[0].has_tag_name("text"));
+                assert_eq!(consumers[0].attribute("class"), Some("noteText"));
+            } else if is_message {
                 assert!(consumers[0].has_tag_name("line"));
                 assert!(
                     consumers[0]
@@ -7494,4 +7500,282 @@ fn sequence_note_shadow_absence_and_resource_admission() {
         matches!(error, Error::ThemeResourceLimitExceeded(ref limit) if limit.phase == ThemeResourceLimitPhase::EffectMaterialize && limit.limit == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()),
         "{error:?}"
     );
+}
+
+#[test]
+fn sequence_note_label_shadow_is_text_only_and_clear_preserves_layout() {
+    let source = "sequenceDiagram\nautonumber\nA->>B: Message\nNote left of A: 中文 Note<br/>Second line\nNote right of B: Another";
+    let mut positions = None;
+    for clear in [None, Some(false), Some(true)] {
+        let mut rules = ThemeRuleSet::default();
+        if let Some(clear) = clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value("actor-shadow".to_owned())
+            };
+            rules = rules.with_rule(
+                ThemeRule::new(ThemeTarget::NoteLabel, patch).with_variant(ThemeVariant::Default),
+            );
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some("noteText"))
+            .collect();
+        assert_eq!(labels.len(), 3);
+        let current: Vec<_> = labels
+            .iter()
+            .map(|n| {
+                (
+                    n.attribute("x").unwrap().to_owned(),
+                    n.attribute("y").unwrap().to_owned(),
+                )
+            })
+            .collect();
+        if let Some(previous) = &positions {
+            assert_eq!(previous, &current);
+        }
+        positions = Some(current);
+        let view: Vec<f64> = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        for label in labels {
+            assert_eq!(label.attribute("filter").is_some(), clear != Some(true));
+            if let Some(binding) = label.attribute("filter") {
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(&binding[5..binding.len() - 1]))
+                    .unwrap();
+                assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
+                let [x, y, w, h] = ["x", "y", "width", "height"]
+                    .map(|k| filter.attribute(k).unwrap().parse::<f64>().unwrap());
+                assert!(
+                    x >= view[0] - 0.001
+                        && y >= view[1] - 0.001
+                        && x + w <= view[0] + view[2] + 0.001
+                        && y + h <= view[1] + view[3] + 0.001
+                );
+            }
+        }
+        assert!(
+            doc.descendants()
+                .filter(|n| n.attribute("filter").is_some())
+                .all(|n| n.has_tag_name("text") && n.attribute("class") == Some("noteText"))
+        );
+        if clear == Some(true) {
+            let baseline = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let plain = try_render_sequence_theme_request(
+                source,
+                &baseline,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(
+                rendered.svg(),
+                plain.svg(),
+                "Clear must retain the ordinary no-effect output"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(clear.is_some())
+        );
+    }
+}
+
+#[test]
+fn sequence_note_label_effect_residuals_and_absence_are_honest() {
+    for (source, rules, accepted) in [
+        (
+            "sequenceDiagram\nA->>B: No note",
+            ThemeRuleSet::default(),
+            true,
+        ),
+        (
+            "sequenceDiagram\nNote over A,B: Note",
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::NoteLabel,
+                    ThemeStylePatch::default()
+                        .with_effect("actor-shadow")
+                        .unwrap(),
+                )
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            ),
+            false,
+        ),
+        (
+            "sequenceDiagram\nNote over A,B: Note",
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap()
+                    .with_stroke_width(3.0)
+                    .unwrap(),
+            )),
+            false,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let result = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(
+            result.is_ok(),
+            accepted,
+            "{source}: {:?}",
+            result.as_ref().err()
+        );
+        if let Ok(rendered) = result {
+            assert!(!rendered.svg().contains("<filter"));
+        }
+    }
+}
+
+#[test]
+fn sequence_note_label_effect_final_output_and_region_budgets_remain_authoritative() {
+    use merman_render::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
+    let source = "sequenceDiagram\nNote left of A: 中文 Long note<br/><br/>Another line";
+    let spec = || sequence_shadow_spec(ThemeTarget::NoteLabel, ThemeRuleSet::default());
+    let theme = DiagramThemeCompiler::new().compile(spec()).unwrap();
+    let render = |policy| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = parse_sequence_for_render(
+            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            source,
+        );
+        family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        })
+    };
+    let baseline = render(RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+    let size = baseline.svg().len();
+    let exact = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, size)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exact.svg(), baseline.svg());
+    let error = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, size - 1)
+            .unwrap(),
+    )
+    .err()
+    .unwrap();
+    assert!(
+        matches!(error, Error::ResourceLimitExceeded(_)),
+        "{error:?}"
+    );
+    let theme = DiagramThemeCompiler::new()
+        .with_resource_policy(
+            ThemeResourcePolicy::interactive()
+                .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 1)
+                .unwrap(),
+        )
+        .compile(spec())
+        .unwrap();
+    let error = try_render_sequence_theme_request(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .err()
+    .unwrap();
+    assert!(
+        matches!(error, Error::ThemeResourceLimitExceeded(_)),
+        "{error:?}"
+    );
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_note_label_math_glow_remains_incomplete_and_clear_is_consumed() {
+    for clear in [false, true] {
+        let mut rules = ThemeRuleSet::default();
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.effects.effect = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::NoteLabel, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(ThemeTarget::NoteLabel, rules))
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let parsed = parse_sequence_for_render(
+            &merman_render::__private::install_parse_compatibility(&theme, Engine::new()),
+            "sequenceDiagram\nNote over A,B: Ordinary\nNote over A,B: $$x^2$$",
+        );
+        let result =
+            family::prepare(parsed, &LayoutOptions::default(), session).and_then(|artifact| {
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            });
+        assert_eq!(result.is_ok(), clear, "{:?}", result.as_ref().err());
+    }
+}
+
+#[test]
+fn sequence_paintless_note_rule_is_consumed_without_claiming_a_filter() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::NoteLabel,
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default()
+                    .with_effect("actor-shadow")
+                    .unwrap(),
+            )),
+        ))
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        "sequenceDiagram\nNote over A,B: <br/>",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert!(!rendered.svg().contains("<filter"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }

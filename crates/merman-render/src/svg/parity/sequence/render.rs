@@ -97,6 +97,12 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     settings.apply_typography_plan(prepared.typography());
     let mut typography_receipt =
         crate::sequence::SequenceTypographyThemeReceipt::from_plan(prepared.typography());
+    let note_text_shadow = super::text_effect::SequenceTextShadow::resolve(
+        options,
+        crate::sequence::SequenceTypographyRole::Note,
+        prepared.typography().note(),
+        &mut typography_receipt,
+    );
     let actor_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.actorBkg",
@@ -239,6 +245,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             message_paint.bounds.as_ref(),
             note_paint.bounds.as_ref(),
         ],
+        note_text_shadow.needs_bounds(),
     )?;
 
     let activation_plan = build_sequence_activation_plan(
@@ -420,6 +427,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
 
     let interaction_ctx = SequenceInteractionRenderContext {
+        note_text_shadow: &note_text_shadow,
         note_paint: &note_paint,
         shadow_evidence: prepared.effect_evidence(),
         model,
@@ -566,6 +574,34 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
+    let root_document = if note_text_shadow.needs_bounds() {
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
+            .with_resource_policy(options.resource_policy())
+            .finish_document(
+                &mut out,
+                root_document,
+                root_svg::RootViewportSpec::responsive(super::root::sequence_root_bounds(
+                    layout,
+                    actor_theme
+                        .rect_style
+                        .stroke_width
+                        .map(f64::from)
+                        .unwrap_or(0.0)
+                        / 2.0,
+                    &[
+                        actor_shadows.bounds.as_ref(),
+                        message_paint.bounds.as_ref(),
+                        note_paint.bounds.as_ref(),
+                        note_text_shadow.bounds.borrow().as_ref(),
+                    ],
+                )),
+            )?
+    } else {
+        root_document
+    };
+    prepared
+        .expected_effect_applications()
+        .set(actor_shadows.len() + message_paint.len() + note_paint.len() + note_text_shadow.len());
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
     typography_receipt.record_terminal_svg(
         &svg,

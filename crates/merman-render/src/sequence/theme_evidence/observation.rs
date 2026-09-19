@@ -402,6 +402,22 @@ pub(super) fn observe_typography_rule(
                 observation.capabilities.insert(capability_for_paint(kind));
             }
         }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Effect) => {
+            if role.effect_unhandled {
+                observation
+                    .residual
+                    .get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+            } else if !role.effect_complete() {
+                observation.incomplete = true;
+            } else if role.effect_applications.get() != 0 {
+                observation.capabilities.insert(ThemeCapability::Shadow);
+                observation.capabilities.insert(ThemeCapability::SvgFilter);
+            } else {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::SemanticRules);
+            }
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation
