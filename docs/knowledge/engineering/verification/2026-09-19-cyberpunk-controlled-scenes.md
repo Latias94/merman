@@ -250,3 +250,59 @@ It does not prove full glyph/glow containment, current-source PDF rasterization,
 portability or reference-image equivalence. Runtime catalog qualification still needs a new
 complete-scene semantic contract and profile; the historical Cyberpunk palette qualifier remains
 rejecting, and these regression tests do not issue or promote qualification cells.
+
+## Reproducible PDF raster probes
+
+The continuation from `5fb6879db` checks actual PDF pixels through the public CLI. The checked-in
+[PDF probe](../../../../tools/debug/check_cyberpunk_pdf.py) owns only the three fixed complete
+scenes and their pixel-removal comparisons. It reuses CLI rendering and Python's XML parser;
+it does not implement SVG rendering, issue qualification receipts or interpret theme support.
+
+A fresh serial Release CLI build uses defaults plus `layout-elk`. That feature set was checked
+against `package.metadata.dist.features` and matches the declared distribution set. The local
+macOS ARM64 executable reports `merman-cli 0.8.0-alpha.7`, is 52,336,912 bytes, and has SHA-256
+`680c52b61a3675817dc0e64a7a8df1f5c0432584f535feda632a39591413dd9a`. This is a local executable
+observation, not an installed/archive qualification or a comparative size result.
+
+The rasterizer is pypdfium2 `5.13.0` with PDFium `153.0.7999.0`, Pillow `12.3.0` and Python
+`3.13.15`. Pages are rendered serially at 96 dpi onto opaque white and compared as RGB pixels,
+using the [pypdfium2 page-rendering API](https://pypdfium2.readthedocs.io/en/stable/python_api.html).
+These tool dependencies remain outside the repository's production dependency closure. Fonts
+remain host/system supplied; this run does not reuse the earlier controlled Arial capture.
+
+For each scene, the CLI first renders the original Mermaid source with the public Cyberpunk
+preset, `htmlLabels:false` and default PDF options/limits. Its ResvgSafe SVG is then parsed,
+serialized and exported with `render --input-kind svg --format pdf`. The resulting PDF raster
+must exactly equal the original public-entry PDF raster before mutation probes run.
+
+| Scene | PDF pixels at 96 dpi | Successful individual removals |
+| --- | --- | ---: |
+| Flowchart | 1110 × 502 | 26 |
+| Sequence | 799 × 732 | 35 |
+| XY Chart | 1011 × 755 | 49 |
+
+All 110 probes passed: 34 labels with all effects disabled, 62 individual effects, five actual
+arrowheads and nine canvas layers. The smallest per-probe peak RGB difference was 213 for
+labels, 36 for effects, 164 for arrowheads and 7 for canvas layers. Those are observed values,
+not newly accepted tolerances; each probe requires a nonempty exact pixel difference. The three
+original PDF rasters were also inspected: expected labels, arrows, note/activation/loop elements,
+bars, lines and canvas layers are visible, with no visibly cropped glyph or glow in that bounded
+inspection. This is not an exhaustive containment proof or Mermaid whole-image equivalence.
+
+Reproduce with an unused output directory:
+
+```console
+CARGO_BUILD_JOBS=1 cargo build --release --locked -p merman-cli --features layout-elk
+uv run --python 3.13 --with pypdfium2==5.13.0 --with pillow==12.3.0 python tools/debug/check_cyberpunk_pdf.py --cli target/release/merman-cli --output target/bench/experiments/cyberpunk-pdf-pixels-5fb6879db
+```
+
+The output directory contains original and mutated SVG/PDF/raster files, captured CLI capabilities,
+the render config and `results.json`. The report records input, script, executable, PDF and pixel
+digests; rasterizer/host versions; page dimensions; each difference region; and failure status.
+An existing output directory is rejected. The script checks source and executable hashes across
+execution, but does not establish clean-build or release-archive provenance by itself.
+
+The real CLI/PDF run, Python syntax check and diff check passed. The full CLI build emitted existing
+warnings; no renderer or lint policy changed. Current-source PDF pixel contributions now have a
+repeatable checked-in probe. Formal full-scene semantic qualification, catalog/profile binding,
+controlled-font portability, installed consumers, cost comparison and C7a remain open.
