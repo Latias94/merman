@@ -289,15 +289,15 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} .messageLine0,#{} .messageLine1{{stroke:{};}}"#,
         id, id, final_message_stroke
     );
+    // Native SVG parsing supports exact attribute matches, not CSS suffix selectors.
+    // Keep browser specificity so source themeCSS retains its browser cascade priority.
     let _ = write!(
         &mut out,
-        r#"#{} [id$="-arrowhead"] path,#{} [id$="-crosshead"] path,#{} [id$="-filled-head"] path,#{} [id$="-solidTopArrowHead"] path,#{} [id$="-solidBottomArrowHead"] path{{fill:{};stroke:{};}}"#,
-        id, id, id, id, id, final_message_stroke, final_message_stroke
+        r#"#{id} [id="{id}-arrowhead"] path,#{id} [id="{id}-crosshead"] path,#{id} [id="{id}-filled-head"] path,#{id} [id="{id}-solidTopArrowHead"] path,#{id} [id="{id}-solidBottomArrowHead"] path{{fill:{final_message_stroke};stroke:{final_message_stroke};}}"#,
     );
     let _ = write!(
         &mut out,
-        r#"#{} [id$="-stickTopArrowHead"] path,#{} [id$="-stickBottomArrowHead"] path{{stroke:{};}}#{} [id$="-sequencenumber"]{{fill:{};}}"#,
-        id, id, final_message_stroke, id, final_message_stroke
+        r#"#{id} [id="{id}-stickTopArrowHead"] path,#{id} [id="{id}-stickBottomArrowHead"] path{{stroke:{final_message_stroke};}}#{id} [id="{id}-sequencenumber"]{{fill:{final_message_stroke};}}"#,
     );
     let _ = write!(
         &mut out,
@@ -672,7 +672,7 @@ mod tests {
         assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq line{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
-        assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{stroke:#2563eb;"#));
+        assert!(!css.contains(r#"#seq [id="seq-sequencenumber"]{stroke:#2563eb;"#));
     }
 
     #[test]
@@ -695,7 +695,7 @@ mod tests {
         assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq [id="seq-sequencenumber"]{fill:#dc2626;"#));
     }
 
     #[test]
@@ -712,12 +712,12 @@ mod tests {
 
         assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#2563eb;}"#));
         assert!(css.contains(
-            r#"#seq [id$="-arrowhead"] path,#seq [id$="-crosshead"] path,#seq [id$="-filled-head"] path,#seq [id$="-solidTopArrowHead"] path,#seq [id$="-solidBottomArrowHead"] path{fill:#2563eb;stroke:#2563eb;}"#
+            r#"#seq [id="seq-arrowhead"] path,#seq [id="seq-crosshead"] path,#seq [id="seq-filled-head"] path,#seq [id="seq-solidTopArrowHead"] path,#seq [id="seq-solidBottomArrowHead"] path{fill:#2563eb;stroke:#2563eb;}"#
         ));
         assert!(css.contains(
-            r#"#seq [id$="-stickTopArrowHead"] path,#seq [id$="-stickBottomArrowHead"] path{stroke:#2563eb;}#seq [id$="-sequencenumber"]{fill:#2563eb;}"#
+            r#"#seq [id="seq-stickTopArrowHead"] path,#seq [id="seq-stickBottomArrowHead"] path{stroke:#2563eb;}#seq [id="seq-sequencenumber"]{fill:#2563eb;}"#
         ));
-        assert_eq!(css.matches(r#"#seq [id$="-sequencenumber"]{"#).count(), 1);
+        assert_eq!(css.matches(r#"#seq [id="seq-sequencenumber"]{"#).count(), 1);
         assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .activation0{stroke:#2563eb;}"#));
     }

@@ -8791,7 +8791,7 @@ fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() 
         "{svg}"
     );
     assert!(
-        svg.contains("#merman [id$=\"-sequencenumber\"]{fill:#333;}"),
+        svg.contains("#merman [id=\"merman-sequencenumber\"]{fill:#333;}"),
         "{svg}"
     );
     assert!(!svg.contains("messageLine1{stroke:#2563eb"), "{svg}");

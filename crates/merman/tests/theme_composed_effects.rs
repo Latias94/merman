@@ -1,4 +1,4 @@
-//! Production State writer and native-export witnesses for the bounded shadow sequence.
+//! Production theme effects and native paint witnesses, including marker terminals.
 
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec,
@@ -321,4 +321,197 @@ fn public_cyberpunk_sequence_actor_glow_survives_native_export() {
         (4, 4, 8)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
+}
+
+#[test]
+fn sequence_native_message_markers_use_the_requested_paint() {
+    use merman::svg::{ThemeRule, ThemeRuleSet, ThemeStylePatch};
+
+    let compiler = DiagramThemeCompiler::new();
+    for (paint, visible) in [
+        (CanvasPaint::solid("#00f2ff").unwrap(), true),
+        (CanvasPaint::Transparent, false),
+    ] {
+        let theme = compiler
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default().with_stroke(paint),
+                    ),
+                )),
+            )
+            .unwrap();
+        for arrow in [
+            "->>", "-->>", "-x", "-)", r"-|\", "-|/", r"-\\", "-//", "<<->>",
+        ] {
+            let source = format!("sequenceDiagram\nautonumber\nA{arrow}B: Message");
+            let RenderOutput::Document(Some(document)) = Renderer::new()
+                .render(
+                    RenderRequest::document(&source, OperationControl::new(), Default::default())
+                        .with_theme(theme.clone()),
+                )
+                .unwrap()
+            else {
+                panic!("document required")
+            };
+            assert_sequence_marker_pixels(&document, visible, &source);
+        }
+    }
+}
+
+#[test]
+fn sequence_native_marker_paint_preserves_source_and_clear_ownership() {
+    use merman::svg::{Specified, ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+
+    let compiler = DiagramThemeCompiler::new();
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    let cleared = compiler
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(ThemeTarget::Message, clear)),
+            ),
+        )
+        .unwrap();
+    let baseline_source = "sequenceDiagram\nA->>B: Message";
+    let mut baseline: Option<Vec<u8>> = None;
+    for theme in [None, Some(cleared)] {
+        let request =
+            RenderRequest::document(baseline_source, OperationControl::new(), Default::default());
+        let request = match theme {
+            Some(theme) => request.with_theme(theme),
+            None => request,
+        };
+        let RenderOutput::Document(Some(document)) = Renderer::new().render(request).unwrap()
+        else {
+            panic!("document required")
+        };
+        let png = document
+            .export_png(&Default::default(), OperationControl::new())
+            .unwrap();
+        if let Some(baseline) = &baseline {
+            assert_eq!(
+                png.bytes(),
+                baseline.as_slice(),
+                "Clear must restore default marker paint"
+            );
+        } else {
+            baseline = Some(png.bytes().to_vec());
+        }
+    }
+    let source = r##"---
+config:
+  themeVariables:
+    signalColor: '#00f2ff'
+---
+sequenceDiagram
+A->>B: Message
+"##;
+    let ordinary = compiler
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for (source, theme) in [
+        (source, ordinary),
+        (
+            include_str!("../../merman-theme-fixtures/fixtures/public-cyberpunk/sequence.mmd"),
+            compiler.compile_preset(ThemePreset::Cyberpunk).unwrap(),
+        ),
+    ] {
+        let RenderOutput::Document(Some(document)) = Renderer::new()
+            .render(
+                RenderRequest::document(source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("document required")
+        };
+        assert_sequence_marker_pixels(&document, true, source);
+    }
+}
+
+fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: bool, case: &str) {
+    let svg = document.svg();
+    let xml = roxmltree::Document::parse(svg).unwrap();
+    let mut markers = Vec::new();
+    for node in xml.descendants() {
+        let is_message = node.attribute("class").is_some_and(|classes| {
+            classes
+                .split_whitespace()
+                .any(|c| matches!(c, "messageLine0" | "messageLine1"))
+        });
+        for attribute in node
+            .attributes()
+            .filter(|attribute| matches!(attribute.name(), "marker-start" | "marker-end"))
+        {
+            if is_message {
+                markers.push(attribute.range());
+            }
+        }
+    }
+    assert!(!markers.is_empty(), "missing marker control for {case}");
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let options = merman::svg::export::RasterOptions::default();
+    let original = document
+        .export_png(&options, OperationControl::new())
+        .unwrap();
+    let decode = |bytes: &[u8]| {
+        let mut reader = png::Decoder::new(Cursor::new(bytes)).read_info().unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        pixels.truncate(info.buffer_size());
+        ((info.width, info.height), pixels)
+    };
+    let (size, original) = decode(original.bytes());
+    // Remove one reference at a time so a correct arrow cannot hide a gray sibling.
+    for marker in markers {
+        let marker_name = &svg[marker.clone()];
+        let mut without_marker = svg.to_owned();
+        without_marker.replace_range(marker, "");
+        let control = merman_render::svg::finalize_resvg_svg(&without_marker, &session).unwrap();
+        let control = merman::svg::export::svg_to_png(&control, &options).unwrap();
+        let (control_size, control) = decode(&control);
+        assert_eq!(size, control_size);
+        if !visible {
+            assert_eq!(
+                original, control,
+                "transparent {marker_name} must be invisible: {case}"
+            );
+            continue;
+        }
+        let mut changed = 0;
+        let mut cyan = 0;
+        for (pixel, control) in original.chunks_exact(4).zip(control.chunks_exact(4)) {
+            if pixel == control {
+                continue;
+            }
+            changed += 1;
+            let [r, g, b] = [
+                u16::from(pixel[0]),
+                u16::from(pixel[1]),
+                u16::from(pixel[2]),
+            ];
+            cyan += usize::from(g > r + 50 && b > r + 50 && pixel[3] > 200);
+        }
+        assert!(changed > 5, "missing {marker_name} pixels: {case}");
+        assert!(
+            cyan > 5 && cyan * 2 > changed,
+            "expected cyan {marker_name}: {cyan}/{changed}: {case}"
+        );
+    }
 }

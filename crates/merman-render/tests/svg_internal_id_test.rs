@@ -248,12 +248,12 @@ Bob-->>Alice: Back"#,
         "expected sequence message data attributes:\n{svg}"
     );
     assert!(
-        svg.contains(r#"[id$="-arrowhead"] path"#),
-        "expected sequence CSS to target prefixed marker IDs by suffix:\n{svg}"
+        svg.contains(r#"[id="m15-sequence-arrowhead"] path"#),
+        "expected sequence CSS to target the exact prefixed marker ID:\n{svg}"
     );
     assert!(
-        svg.contains(r#"[id$="-sequencenumber"]"#),
-        "expected sequence CSS to target prefixed sequence number IDs by suffix:\n{svg}"
+        svg.contains(r#"[id="m15-sequence-sequencenumber"]"#),
+        "expected sequence CSS to target the exact prefixed sequence number ID:\n{svg}"
     );
     assert!(
         !svg.contains(r#"#arrowhead path"#),
