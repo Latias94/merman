@@ -295,6 +295,66 @@ fn normalize_html_entities_for_xml_bounded(
     Ok(Cow::Owned(out.into_string()))
 }
 
+/// Preserve valid XML spelling; quote HTML-only attributes without per-name lookups.
+fn quote_html_attributes<'a>(tag: &'a str, max: usize) -> Result<Cow<'a, str>, XmlOutputError> {
+    if !tag.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic) {
+        return Ok(Cow::Borrowed(tag));
+    }
+    let inner = &tag[1..tag.len() - 1];
+    let content = inner.trim_end().trim_end_matches('/').trim_end();
+    let name_len = content.find(char::is_whitespace).unwrap_or(content.len());
+    let element = quick_xml::events::BytesStart::from_content(content, name_len);
+    // Duplicate checking is owned by the final XML validator; disabling its linear
+    // lookups here keeps both normalization passes linear in the attribute bytes.
+    if element.attributes().with_checks(false).all(|a| a.is_ok()) {
+        return Ok(Cow::Borrowed(tag));
+    }
+    let mut normalized = BoundedXmlString::with_capacity(max, tag.len())?;
+    normalized.push('<')?;
+    normalized.push_str(&content[..name_len])?;
+    // In HTML, a slash adjacent to an unquoted value belongs to that value.
+    let html_element = quick_xml::events::BytesStart::from_content(inner, name_len);
+    let mut self_closed = false;
+    for attribute in html_element.html_attributes().with_checks(false) {
+        let Ok(attribute) = attribute else {
+            // Leave malformed input for the final validator; never drop a partial attribute.
+            return Ok(Cow::Borrowed(tag));
+        };
+        let (Ok(name), Ok(value)) = (
+            std::str::from_utf8(attribute.key.as_ref()),
+            std::str::from_utf8(attribute.value.as_ref()),
+        ) else {
+            return Ok(Cow::Borrowed(tag));
+        };
+        let name = if value.is_empty() && name.ends_with('/') && inner.ends_with(name) {
+            self_closed = true;
+            name.trim_end_matches('/')
+        } else {
+            name
+        };
+        if name.is_empty() {
+            continue;
+        }
+        normalized.push(' ')?;
+        normalized.push_str(name)?;
+        normalized.push_str("=\"")?;
+        for character in value.chars() {
+            match character {
+                '"' => normalized.push_str("&quot;")?,
+                '<' => normalized.push_str("&lt;")?,
+                _ => normalized.push(character)?,
+            }
+        }
+        normalized.push('"')?;
+    }
+    if self_closed {
+        normalized.push_str(" />")?;
+    } else {
+        normalized.push('>')?;
+    }
+    Ok(Cow::Owned(normalized.into_string()))
+}
+
 /// Normalizes sanitized browser HTML into a fragment that can be embedded in SVG XML.
 pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
     normalize_html_fragment_for_xhtml_bounded(input, usize::MAX).unwrap_or_default()
@@ -367,7 +427,8 @@ pub(crate) fn normalize_html_fragment_for_xhtml_bounded(
                 }
 
                 let tag = &input[offset..=end];
-                let tag = tag.trim();
+                let tag = quote_html_attributes(tag.trim(), max_output_bytes)?;
+                let tag = tag.as_ref();
                 let inner = tag.trim_start_matches('<').trim_end_matches('>').trim();
                 let is_closing = inner.starts_with('/');
                 let name = inner
@@ -492,6 +553,37 @@ mod tests {
             normalize_html_fragment_for_xhtml("<p>A<br><img src=\"x\"> 1 < 2 &amp;</p>"),
             "<p>A<br /><img src=\"x\" /> 1 &lt; 2 &amp;</p>"
         );
+    }
+
+    #[test]
+    fn xhtml_normalization_quotes_html_attributes_without_changing_values() {
+        for (input, expected) in [
+            ("<img src=x>", r#"<img src="x" />"#),
+            ("<input disabled>", r#"<input disabled="" />"#),
+            ("<img src=x/>", r#"<img src="x/" />"#),
+            ("<img src=x />", r#"<img src="x" />"#),
+            ("<img src=\"x\"/>", r#"<img src="x" />"#),
+            (
+                "<span data-x=x/>body</span>",
+                r#"<span data-x="x/">body</span>"#,
+            ),
+            ("<input disabled/>", r#"<input disabled="" />"#),
+            (
+                "<span title='a &amp; b' data-x=c>ok</span>",
+                r#"<span title="a &amp; b" data-x="c">ok</span>"#,
+            ),
+            (
+                "<img title='unchanged' src=\"x\">",
+                "<img title='unchanged' src=\"x\" />",
+            ),
+        ] {
+            assert_eq!(normalize_html_fragment_for_xhtml(input), expected);
+            roxmltree::Document::parse(&format!("<root>{expected}</root>")).unwrap();
+            assert!(matches!(
+                normalize_html_fragment_for_xhtml_bounded(input, expected.len() - 1),
+                Err(XmlOutputError::Limit { .. })
+            ));
+        }
     }
 
     #[test]

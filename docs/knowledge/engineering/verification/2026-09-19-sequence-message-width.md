@@ -47,3 +47,7 @@ The dedicated Release `xtask` root-contract tests passed: **6 passed, 620 skippe
 ## Remaining work
 
 Finish the Mindmap default-output correction and rerun the complete parity gate. U7 still requires Message glow and the remaining Note, text, Lifeline and Loop surfaces plus source/bounds/native acceptance. This increment does not close U7, qualify catalog cells, or freeze C7a.
+
+## Follow-up default-output verification
+
+The [Mindmap XHTML correction](2026-09-19-mindmap-xhtml.md) subsequently fixed the two XML failures and passed the complete 35-group structure/parity/parity-root sweep. The failures above describe this increment's original run; this follow-up does not retroactively change that evidence or close the remaining U7 surfaces.

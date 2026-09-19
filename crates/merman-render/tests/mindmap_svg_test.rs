@@ -2061,3 +2061,34 @@ mindmap
     assert!(edge_to_left.points[1].x < root.x);
     assert!(edge_to_right.points[1].x > root.x);
 }
+
+#[test]
+fn mindmap_sanitized_html_images_are_well_formed_xhtml() {
+    for source in [
+        include_str!("../../../fixtures/mindmap/stress_mindmap_html_sanitization_013.mmd"),
+        include_str!("../../../fixtures/mindmap/stress_mindmap_html_sanitization_links_034.mmd"),
+    ] {
+        let svg = render_mindmap_svg_from_text(source, "sanitized-mindmap");
+        let doc = roxmltree::Document::parse(&svg).expect("sanitized labels must form valid XML");
+        let images: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("img"))
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].attribute("src"), Some("x"));
+        assert_eq!(
+            images[0].tag_name().namespace(),
+            Some("http://www.w3.org/1999/xhtml")
+        );
+        assert!(doc.descendants().all(|n| n.attribute("onerror").is_none()));
+        assert!(
+            doc.descendants()
+                .filter_map(|n| n.attribute("href"))
+                .all(|href| !href.starts_with("javascript:"))
+        );
+        assert!(
+            doc.descendants()
+                .any(|n| n.attribute("href") == Some("https://mermaid.js.org/"))
+        );
+    }
+}

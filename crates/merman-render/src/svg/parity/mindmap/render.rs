@@ -739,9 +739,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-            let html_out = html_out
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />");
+            let html_out = crate::xml::normalize_html_fragment_for_xhtml(&html_out);
             // Mermaid inserts the sanitized fragment without trimming it. This is observable for
             // indented-code labels once the 200px container switches to `break-spaces`: a trailing
             // indentation-only source line still owns a browser line box.
@@ -761,9 +759,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     capability: crate::RenderCapability::Math,
                     diagram_type: "mindmap".to_string(),
                 })?;
-            let html = merman_core::sanitize::sanitize_text(&html, config)
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />");
+            let html = crate::xml::normalize_html_fragment_for_xhtml(
+                &merman_core::sanitize::sanitize_text(&html, config),
+            );
             out.push_str(&escape_amp_preserving_entities(&html));
         } else {
             let html = markdown_to_sanitized_xhtml(text, config);
