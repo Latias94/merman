@@ -1,6 +1,6 @@
 //! Text-only filter plans share measured paint bounds with the viewport and label writers.
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::*;
 use crate::diagram_theme::{
@@ -52,6 +52,8 @@ impl PreparedLabelEffect {
 #[derive(Debug, Default)]
 pub(super) struct FlowchartLabelEffects {
     nodes: FxHashMap<String, PreparedLabelEffect>,
+    // A verified Clear has no filter application to count, but still needs writer evidence.
+    cleared_html_nodes: FxHashSet<String>,
     edges: FxHashMap<crate::flowchart::FlowchartEdgeKey, PreparedLabelEffect>,
 }
 
@@ -86,20 +88,18 @@ impl FlowchartLabelEffects {
             return Ok(plan);
         }
         let weights = sidecar.label_weights();
-        if !ctx.node_html_labels
-            && super::style::label_shadow_structural_styles_are_bounded(
-                ctx.class_defs,
-                &[
-                    "root",
-                    "nodes",
-                    "node",
-                    "label",
-                    "nodeLabel",
-                    "text-outer-tspan",
-                    "row",
-                ],
-            )
-        {
+        if super::style::label_shadow_structural_styles_are_bounded(
+            ctx.class_defs,
+            &[
+                "root",
+                "nodes",
+                "node",
+                "label",
+                "nodeLabel",
+                "text-outer-tspan",
+                "row",
+            ],
+        ) {
             for id in hierarchy.rendered_node_ids() {
                 let Some(info) = super::render::node::helpers::resolve_node_render_info(ctx, id)
                 else {
@@ -130,9 +130,11 @@ impl FlowchartLabelEffects {
                     ctx.node_theme_ordinals.get(id).copied(),
                     ctx.work_meter,
                 )?;
-                let Some(effect) = style.label_effect() else {
+                let effect = style.label_effect();
+                let cleared = ctx.node_html_labels && style.label_effect_is_cleared();
+                if effect.is_none() && !cleared {
                     continue;
-                };
+                }
                 let source = flowchart_compile_node_styles(
                     ctx.class_defs,
                     info.node_classes,
@@ -156,19 +158,41 @@ impl FlowchartLabelEffects {
                         info.node_styles,
                     ),
                 );
-                let Some(owner) = sidecar.node_owner(id, false) else {
-                    continue;
-                };
                 let raw = if info.label_text_is_node_id {
                     id
                 } else {
                     info.label_text
                 };
-                let Some(bounds) = sidecar.centered_shadow_bounds(owner, raw, text_style.as_ref())
-                else {
-                    continue;
+                let (bounds, translation) = if ctx.node_html_labels {
+                    if !plain_html_node_classes_are_bounded(ctx, info.node_classes)? {
+                        continue;
+                    }
+                    let Some(width) = node.label_width else {
+                        continue;
+                    };
+                    let Some(bounds) =
+                        plain_html_shadow_bounds(ctx, raw, width, height, text_style.as_ref())?
+                    else {
+                        continue;
+                    };
+                    (bounds, (-width / 2.0, -height / 2.0))
+                } else {
+                    let Some(owner) = sidecar.node_owner(id, false) else {
+                        continue;
+                    };
+                    let Some(bounds) =
+                        sidecar.centered_shadow_bounds(owner, raw, text_style.as_ref())
+                    else {
+                        continue;
+                    };
+                    (bounds, (0.0, -height / 2.0))
                 };
-                let translation = (0.0, -height / 2.0);
+                if cleared {
+                    ctx.work_meter.charge(1)?;
+                    plan.cleared_html_nodes.insert(id.to_owned());
+                    continue;
+                }
+                let effect = effect.expect("selected label effect");
                 let root_offset = hierarchy
                     .effective_parent(id)
                     .and_then(|root| hierarchy.root_offsets(root));
@@ -285,6 +309,9 @@ impl FlowchartLabelEffects {
     pub(super) fn node(&self, id: &str) -> Option<&PreparedLabelEffect> {
         self.nodes.get(id)
     }
+    pub(super) fn html_node_is_cleared(&self, id: &str) -> bool {
+        self.cleared_html_nodes.contains(id)
+    }
     pub(super) fn edge(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
@@ -301,6 +328,110 @@ impl FlowchartLabelEffects {
             include(x + tx, y + ty, x + width + tx, y + height + ty);
         }
     }
+}
+
+// The actual node wrapper carries its assigned classes plus the generated default/node
+// classes. Cluster/title groups are siblings, so their source classes do not inherit here.
+fn plain_html_node_classes_are_bounded(
+    ctx: &FlowchartRenderCtx<'_>,
+    classes: &[String],
+) -> crate::Result<bool> {
+    // HTML class rules also target descendant spans. Native shape-only declarations
+    // such as background/filter are therefore not isolated from the HTML glyph terminal.
+    for class in crate::flowchart::flowchart_effective_node_class_names(ctx.class_defs, classes) {
+        ctx.work_meter.charge(1)?;
+        if matches!(class, "edgeLabel" | "icon-shape" | "image-shape") {
+            return Ok(false);
+        }
+        if let Some(groups) = ctx.class_defs.get(class) {
+            for group in groups {
+                ctx.work_meter.charge(group.len())?;
+                if !crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
+                        |decl| {
+                            matches!(
+                                decl.property(),
+                                "fill"
+                                    | "color"
+                                    | "opacity"
+                                    | "fill-opacity"
+                                    | "stroke"
+                                    | "stroke-width"
+                                    | "stroke-opacity"
+                                    | "stroke-dasharray"
+                                    | "rx"
+                                    | "ry"
+                                    | "font-family"
+                                    | "font-size"
+                                    | "font-weight"
+                                    | "font-style"
+                            )
+                        },
+                    )
+                }) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
+// Ordinary HTML uses the layout-owned label box in top-left coordinates. Only transparent,
+// unstyled text markup can use this allocation; rich HTML needs its own geometry consumer.
+fn plain_html_shadow_bounds(
+    ctx: &FlowchartRenderCtx<'_>,
+    raw: &str,
+    width: f64,
+    height: f64,
+    style: &crate::text::TextStyle,
+) -> crate::Result<Option<[f64; 4]>> {
+    use crate::environment::TextMeasurementOperation;
+    let em = style.font_size;
+    if ![width, height, em]
+        .iter()
+        .all(|value| value.is_finite() && *value > 0.0)
+        || raw.contains("$$")
+        || [
+            TextMeasurementOperation::Wrapped,
+            TextMeasurementOperation::WrappedWithRawWidth,
+            TextMeasurementOperation::ComputedLength,
+        ]
+        .iter()
+        .any(|operation| ctx.measurer.builtin_operation_carrier(*operation).is_none())
+    {
+        return Ok(None);
+    }
+    ctx.work_meter.charge(raw.len())?;
+    let html = flowchart_label_html_with_prepared_math(
+        raw,
+        "text",
+        ctx.config,
+        None,
+        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared,
+    );
+    ctx.work_meter.charge(html.len())?;
+    let wrapped = format!("<span>{html}</span>");
+    let Ok(document) = roxmltree::Document::parse(&wrapped) else {
+        return Ok(None);
+    };
+    if document
+        .descendants()
+        .filter(|node| node.is_element())
+        .any(|node| {
+            !matches!(node.tag_name().name(), "span" | "p" | "br")
+                || node.attributes().len() != 0
+                || node.tag_name().namespace().is_some()
+        })
+        || !document
+            .descendants()
+            .any(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
+    {
+        return Ok(None);
+    }
+    // Match the existing host SVG-label allocation policy: reserve one em for glyph
+    // overhang around measured content, then let the shared effect add its own outsets.
+    Ok(Some([-em, -em, width + em, height + em]))
 }
 
 fn prepare_effect(

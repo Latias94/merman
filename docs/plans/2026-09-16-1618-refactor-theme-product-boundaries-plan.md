@@ -318,6 +318,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Host text increment (2026-09-19):** The [host label effect record](../knowledge/engineering/verification/2026-09-19-flowchart-host-label-effects.md) tracks ordinary native SVG labels using existing host metrics without font assets, the native filter ID correction, and explicit hard-break admission for wrapped prepared text. Native PNG/PDF checks now cover host and supplied fonts, nested multiline and blank-line labels. The combined renderer/export Release suite passed 2,803/2,803 (two skips), the no-font suite passed 33/33, and scoped Clippy/formatting passed; commands and evidence limits are tracked in that record. Default HTML/Markdown and specialized placements remain outside this increment; public text-glow bindings and full U6 acceptance remain open.
 
+**HTML node increment (2026-09-19):** The [HTML node-label effect record](../knowledge/engineering/verification/2026-09-19-flowchart-html-node-effects.md) covers glyph-only filters for ordinary HTML NodeLabel terminals, source-class/markup boundaries, explicit Clear, viewport accounting and real browser/native export checks. Final renderer/facade Release tests passed 2,662/2,662 (two skips); scoped lint and independent review are recorded there. No dependency, embedded font, schema or public recipe changed. HTML EdgeLabel background separation, public text-glow bindings and complete three-target scene qualification still keep U6 open.
+
 ### U7. Deliver the complete Sequence scene
 
 **Goal:** Connect required Sequence styling and effects beyond palette changes.

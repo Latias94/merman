@@ -346,6 +346,18 @@ fn render_flowchart_node_label_with_wrapper(
     } else {
         "label"
     };
+    let effect = ctx
+        .label_effects
+        .get()
+        .and_then(|plan| plan.node(common.node_id));
+    let effect_id = effect.map(|_| {
+        format!(
+            "{}-theme-effect-label",
+            ctx.document_ids
+                .node(common.node_id)
+                .expect("prepared node id")
+        )
+    });
     let mut label_effect_emitted = false;
     let mut text_paint_facts = None;
     let mut html_weight_verified = true;
@@ -384,18 +396,6 @@ fn render_flowchart_node_label_with_wrapper(
             fmt_display(label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
-        let effect = ctx
-            .label_effects
-            .get()
-            .and_then(|plan| plan.node(common.node_id));
-        let effect_id = effect.map(|_| {
-            format!(
-                "{}-theme-effect-label",
-                ctx.document_ids
-                    .node(common.node_id)
-                    .expect("prepared node id")
-            )
-        });
         if let (Some(effect), Some(id)) = (effect, effect_id.as_deref()) {
             label_effect_emitted =
                 effect.open(out, id, (label.dx, -metrics.height / 2.0 + label_dy));
@@ -534,11 +534,25 @@ fn render_flowchart_node_label_with_wrapper(
         }
         let _ = write!(
             out,
-            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/>"#,
             label_group_class,
             escape_xml_display(&final_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
+        );
+        if let (Some(effect), Some(id)) = (effect, effect_id.as_deref()) {
+            label_effect_emitted = effect.open(
+                out,
+                id,
+                (
+                    -metrics.width / 2.0 + label.dx,
+                    -metrics.height / 2.0 + label_dy,
+                ),
+            );
+        }
+        let _ = write!(
+            out,
+            r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject>"#,
             fmt_display(metrics.width),
             fmt_display(metrics.height),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
@@ -547,6 +561,12 @@ fn render_flowchart_node_label_with_wrapper(
             span_style_attr,
             label_html
         );
+        if label_effect_emitted {
+            effect
+                .expect("opened effect")
+                .close(out, ctx, effect_id.as_deref().unwrap());
+        }
+        out.push_str("</g>");
     }
     if close_node_wrapper {
         out.push_str("</g>");
@@ -557,7 +577,14 @@ fn render_flowchart_node_label_with_wrapper(
     let typography_applicable =
         flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels);
     super::emission::FlowchartNodeLabelEmissionReceipt::verified()
-        .with_effect_reach(typography_applicable, label_effect_emitted)
+        .with_effect_reach(
+            typography_applicable,
+            label_effect_emitted
+                || ctx
+                    .label_effects
+                    .get()
+                    .is_some_and(|plan| plan.html_node_is_cleared(common.node_id)),
+        )
         .with_font_weight_reach(
             typography_applicable,
             html_weight_verified && label_weight_is_verified(ctx, label, None, &[], &[]),

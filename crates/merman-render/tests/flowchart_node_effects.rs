@@ -1207,12 +1207,110 @@ fn native_label_glow_filters_text_without_its_background_or_shapes() {
 }
 
 #[test]
-fn html_label_glow_retains_a_residual_without_filtering_the_background() {
-    let theme = text_glow_theme_for(
-        &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
+fn html_node_glow_filters_only_plain_label_content() {
+    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default(), false);
+    let source = "flowchart LR\nsubgraph Group\nA[Alpha] --> B(Round) --> C{Diamond} --> D((Circle)) --> E(((Double)))\nF[\"<span>Two</span><br/>Rows\"]\nend";
+    let rendered = render_with_html_labels(source, &theme, "classic", true, true).unwrap();
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let filtered: Vec<_> = xml
+        .descendants()
+        .filter(|n| n.attribute("filter").is_some())
+        .collect();
+    assert_eq!(filtered.len(), 6);
+    for terminal in filtered {
+        assert!(
+            terminal
+                .descendants()
+                .any(|n| n.has_tag_name("foreignObject"))
+        );
+        assert!(
+            !terminal
+                .descendants()
+                .any(|n| matches!(n.tag_name().name(), "rect" | "path" | "polygon" | "circle"))
+        );
+        assert!(terminal.descendants().any(|n| n.is_text()));
+    }
+}
+
+#[test]
+fn html_node_glow_does_not_admit_rich_or_unbounded_source_content() {
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    for rules in [
         ThemeRuleSet::default(),
-        false,
-    );
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::NodeLabel, clear)),
+    ] {
+        let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], rules, false);
+        for source in [
+            "flowchart LR\nA[\"<span style='background:red'>Alpha</span>\"]",
+            "flowchart LR\nA[\"<b>Alpha</b>\"]",
+            "flowchart LR\nA[Alpha]\nclassDef label font-size:80px",
+            "flowchart LR\nA[Alpha]\nclassDef nodeLabel background:red",
+            "flowchart LR\nA[(Cylinder)]",
+            "flowchart LR\nA[Alpha]:::edgeLabel",
+            "flowchart LR\nA[Alpha]:::pink\nclassDef pink background:red",
+            "flowchart LR\nA[Alpha]\nclassDef default background:red",
+            "flowchart LR\nA[Alpha]:::pad\nclassDef pad padding:40px",
+            "flowchart LR\nA[Alpha]:::filtered\nclassDef filtered filter:blur(20px)",
+            "flowchart LR\nA[Alpha]:::icon-shape",
+        ] {
+            assert!(
+                render_with_html_labels(source, &theme, "classic", true, true).is_err(),
+                "{source}"
+            );
+            let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
+            assert_eq!(applications(rendered.svg()), 0, "{source}");
+            let completion = rendered.into_completion();
+            assert!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count()
+                    > 0,
+                "{source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn html_node_glow_does_not_inherit_sibling_cluster_styles() {
+    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default(), false);
+    let plain = text_glow_theme_for(&[], ThemeRuleSet::default(), false);
+    for source in [
+        "flowchart LR\nsubgraph Group\nA[Alpha]\nend\nclass Group image-shape",
+        "flowchart LR\nsubgraph Group\nA[Alpha]\nend\nclass Group huge\nclassDef huge font-size:80px",
+        "flowchart LR\nA[Alpha]:::styled\nclassDef styled fill:#eee,stroke:#111,stroke-width:3px,font-size:20px",
+    ] {
+        let baseline = render_with_html_labels(source, &plain, "classic", false, true)
+            .unwrap()
+            .into_completion();
+        let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
+        assert_eq!(applications(rendered.svg()), 1, "{source}");
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0, "{source}");
+        // Source typography has its own admission. Applying a shadow neither certifies
+        // nor obscures a pre-existing source-style residual on a different terminal.
+        let source_residuals =
+            merman_render::__private::family_evidence(baseline.report()).source_residual_count();
+        assert_eq!(
+            evidence.source_residual_count(),
+            source_residuals,
+            "{source}"
+        );
+        if source_residuals == 0 {
+            render_with_html_labels(source, &theme, "classic", true, true).unwrap();
+        } else {
+            assert!(matches!(
+                render_with_html_labels(source, &theme, "classic", true, true),
+                Err(merman_render::Error::UnverifiedFamilyStyle { .. })
+            ));
+        }
+    }
+}
+
+#[test]
+fn html_edge_label_glow_retains_a_residual_without_filtering_the_background() {
+    let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], ThemeRuleSet::default(), false);
     let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
     assert!(render_with_html_labels(source, &theme, "classic", true, true).is_err());
     let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
@@ -1228,27 +1326,32 @@ fn html_label_glow_retains_a_residual_without_filtering_the_background() {
 }
 
 #[test]
-fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
-    for native_fonts in [false, true] {
+fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
+    for (native_fonts, html_labels) in [(false, false), (true, false), (false, true)] {
         if native_fonts && !cfg!(feature = "embedded-fonts") {
             continue;
         }
-        let targets = [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel];
+        let targets: &[ThemeTarget] = if html_labels {
+            &[ThemeTarget::NodeLabel]
+        } else {
+            &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]
+        };
         let mut clear = ThemeStylePatch::default();
         clear.effects.effect = Specified::Clear;
         let theme = text_glow_theme_for(
-            &targets,
+            targets,
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(ThemeTarget::NodeLabel, clear)
                     .with_ordinal(OrdinalSelector::Exact(1)),
             ),
             native_fonts,
         );
-        let rendered = render(
+        let rendered = render_with_html_labels(
             "flowchart LR\nsubgraph Group\nA[Alpha] -->|Advance| B[Beta]\nend",
             &theme,
             "classic",
             true,
+            html_labels,
         )
         .unwrap();
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -1256,7 +1359,7 @@ fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             .descendants()
             .filter(|node| node.attribute("filter").is_some())
             .collect();
-        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered.len(), if html_labels { 1 } else { 2 });
         let visible: Vec<_> = filtered
             .iter()
             .flat_map(|node| node.descendants())
@@ -1265,7 +1368,7 @@ fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             .collect();
         assert!(!visible.contains(&"Alpha"));
         assert!(visible.contains(&"Beta"));
-        assert!(visible.contains(&"Advance"));
+        assert_eq!(visible.contains(&"Advance"), !html_labels);
         let viewport: Vec<f64> = xml
             .root_element()
             .attribute("viewBox")
@@ -1292,7 +1395,7 @@ fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             {
                 for token in svgtypes::TransformListParser::from(transform) {
                     let svgtypes::TransformListToken::Translate { tx, ty } = token.unwrap() else {
-                        panic!("this native fixture expects translation-only groups: {transform}");
+                        panic!("this fixture expects translation-only groups: {transform}");
                     };
                     translation.0 += tx;
                     translation.1 += ty;
@@ -1314,12 +1417,13 @@ fn native_label_glow_clear_preserves_other_terminals_and_nested_viewport() {
 
         let plain = text_glow_theme_for(&[], ThemeRuleSet::default(), native_fonts);
         let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
-        let plain = render(source, &plain, "classic", true).unwrap();
-        let glow = render(
+        let plain = render_with_html_labels(source, &plain, "classic", true, html_labels).unwrap();
+        let glow = render_with_html_labels(
             source,
-            &text_glow_theme_for(&targets, ThemeRuleSet::default(), native_fonts),
+            &text_glow_theme_for(targets, ThemeRuleSet::default(), native_fonts),
             "classic",
             true,
+            html_labels,
         )
         .unwrap();
         let plain_xml = roxmltree::Document::parse(plain.svg()).unwrap();

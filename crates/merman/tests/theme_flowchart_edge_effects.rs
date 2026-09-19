@@ -118,7 +118,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
     use merman::svg::{
         FontAssetSpec, FontCatalogSpec, FontStack, ThemeAssets, ThemeTextStyle, TypographySpec,
     };
-    for native_fonts in [false, true] {
+    for (native_fonts, html_labels) in [(false, false), (true, false), (false, true)] {
         if native_fonts && !cfg!(feature = "embedded-fonts") {
             continue;
         }
@@ -131,36 +131,35 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 FontAssetSpec::new("excalifont", include_bytes!("../../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2")),
             ])));
         }
+        let mut effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "text-glow",
+                    [EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        offset_x: 0.0,
+                        offset_y: 0.0,
+                        blur_radius: 6.0,
+                        spread: 0.0,
+                        color: ThemeColorValue::parse("#ff2080").unwrap(),
+                    }],
+                )
+                .unwrap()
+                .with_color_space(EffectColorSpace::Srgb),
+            )
+            .unwrap()
+            .with_binding(EffectBinding::new(ThemeTarget::NodeLabel, "text-glow").unwrap())
+            .unwrap();
+        // HTML node labels and native SVG node/edge labels share the same export checks.
+        // HTML edge labels retain a residual until their background is a separate terminal.
+        if !html_labels {
+            effects = effects
+                .with_binding(EffectBinding::new(ThemeTarget::EdgeLabel, "text-glow").unwrap())
+                .unwrap();
+        }
         let theme = DiagramThemeCompiler::new()
             .compile(
-                spec.with_effects(
-                    DiagramEffectSet::default()
-                        .with_graph(
-                            EffectGraph::new(
-                                "text-glow",
-                                [EffectPrimitive::DropShadow {
-                                    input: EffectInput::SourceGraphic,
-                                    offset_x: 0.0,
-                                    offset_y: 0.0,
-                                    blur_radius: 6.0,
-                                    spread: 0.0,
-                                    color: ThemeColorValue::parse("#ff2080").unwrap(),
-                                }],
-                            )
-                            .unwrap()
-                            .with_color_space(EffectColorSpace::Srgb),
-                        )
-                        .unwrap()
-                        .with_binding(
-                            EffectBinding::new(ThemeTarget::NodeLabel, "text-glow").unwrap(),
-                        )
-                        .unwrap()
-                        .with_binding(
-                            EffectBinding::new(ThemeTarget::EdgeLabel, "text-glow").unwrap(),
-                        )
-                        .unwrap(),
-                )
-                .with_styles(
+                spec.with_effects(effects).with_styles(
                     ThemeRuleSet::default()
                         .with_rule(ThemeRule::new(
                             ThemeTarget::Node,
@@ -181,14 +180,14 @@ fn text_only_glow_survives_native_png_and_pdf() {
             "flowchart TB\nsubgraph Outer\nA[Alpha<br/>Gyp] -->|Advance<br/>Next| B[Beta]\nend",
             "flowchart TB\nsubgraph Outer\nA[Alpha<br/><br/>Gyp] -->|Advance<br/>Next| B[Beta]\nend",
         ] {
-            let source = format!("---\nconfig:\n  htmlLabels: false\n---\n{body}");
+            let source = format!("---\nconfig:\n  htmlLabels: {html_labels}\n---\n{body}");
             let RenderOutput::Document(Some(document)) = Renderer::new()
                 .render(
                     RenderRequest::document(&source, OperationControl::new(), Default::default())
                         .with_theme(theme.clone()),
                 )
                 .unwrap_or_else(|error| {
-                    panic!("native_fonts={native_fonts}, body={body}: {error:?}")
+                    panic!("native_fonts={native_fonts}, html_labels={html_labels}, body={body}: {error:?}")
                 })
             else {
                 panic!("document required")
@@ -204,7 +203,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 ] {
                     assert!(
                         !admission.reasons().contains(&reason),
-                        "native_fonts={native_fonts}: {admission:?}"
+                        "native_fonts={native_fonts}, html_labels={html_labels}: {admission:?}"
                     );
                 }
             };
@@ -214,7 +213,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                     .native_filter_receipt()
                     .unwrap()
                     .filter_count(),
-                3
+                if html_labels { 2 } else { 3 }
             );
             let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
                 .read_info()
@@ -227,7 +226,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 pixels[..info.buffer_size()]
                     .chunks_exact(4)
                     .any(|p| p[3] > 0 && p[0] > p[2] && p[2] > p[1]),
-                "native_fonts={native_fonts}: text glow must reach PNG pixels"
+                "native_fonts={native_fonts}, html_labels={html_labels}: text glow must reach PNG pixels"
             );
             #[cfg(feature = "pdf")]
             {
@@ -296,48 +295,50 @@ fn custom_host_metrics_without_prepared_geometry_retain_a_residual() {
             ),
         )
         .unwrap();
-    let source = format!(
-        "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nA[{}]",
-        "W".repeat(128)
-    );
-    let RenderOutput::Document(Some(document)) = Renderer::new()
-        .render(
-            RenderRequest::document(
-                &source,
-                OperationControl::new(),
-                merman::SvgRequest {
-                    environment,
-                    ..Default::default()
-                },
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: {html_labels}\n---\nflowchart LR\nA[{}]",
+            "W".repeat(128)
+        );
+        let RenderOutput::Document(Some(document)) = Renderer::new()
+            .render(
+                RenderRequest::document(
+                    &source,
+                    OperationControl::new(),
+                    merman::SvgRequest {
+                        environment: environment.clone(),
+                        ..Default::default()
+                    },
+                )
+                .with_theme(theme.clone()),
             )
-            .with_theme(theme),
-        )
-        .unwrap()
-    else {
-        panic!("document required")
-    };
-    // Custom measurers do not expose the built-in operation binding needed by the
-    // prepared label sidecar. An arbitrary metrics result cannot certify an effect.
-    assert!(!document.svg().contains("theme-effect-label"));
-    let png = document
-        .export_png(&Default::default(), OperationControl::new())
-        .unwrap();
-    assert!(
-        png.admission()
-            .reasons()
-            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
-        "unprepared host metrics must retain incomplete theme evidence: {:?}",
-        png.admission()
-    );
-    #[cfg(feature = "pdf")]
-    {
-        let pdf = document
-            .export_pdf(&Default::default(), OperationControl::new())
+            .unwrap()
+        else {
+            panic!("document required")
+        };
+        // Custom measurers do not expose the built-in operation binding needed by the
+        // prepared label sidecar. An arbitrary metrics result cannot certify an effect.
+        assert!(!document.svg().contains("theme-effect-label"));
+        let png = document
+            .export_png(&Default::default(), OperationControl::new())
             .unwrap();
         assert!(
-            pdf.admission()
+            png.admission()
                 .reasons()
-                .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+                .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete),
+            "unprepared host metrics must retain incomplete theme evidence: {:?}",
+            png.admission()
         );
+        #[cfg(feature = "pdf")]
+        {
+            let pdf = document
+                .export_pdf(&Default::default(), OperationControl::new())
+                .unwrap();
+            assert!(
+                pdf.admission()
+                    .reasons()
+                    .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+            );
+        }
     }
 }
