@@ -635,7 +635,7 @@ Sequence's generic `Text.fill` fallback is now NotApplicable in this fixed sourc
 role-label writers cover every text fill. Missing role, title, or autonumber fill coverage and
 non-fill facets retain their residuals; generic Text remains Unsupported when it would win.
 Admission alone does not prove semantic or visual preset qualification. All catalog qualified scopes
-remain empty; the scoped qualification runner covers declared Flowchart, State, and Sequence scenarios.
+remain empty; the scoped qualification runner covers preset-specific declared scenarios.
 
 `inspect_preset_admission` binds the exact compiled recipe/resource fingerprints, source digests,
 shared document/resource identities, target receipts, and actual artifact bytes. The admission
@@ -643,12 +643,17 @@ inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
 
 The separate `run_preset_qualification` runner issues an opaque, execution-local receipt for
-Brutalist and Spotless on the declared `native-flowchart-state-sequence-system-fonts-v1` profile only.
-The current Cyberpunk recipe fails the historical palette-only checks. Its full-scene admission
-observations do not replace those checks or issue a qualification receipt; recording/replay that
-requires all three candidates remains blocked until complete-scene qualification is implemented.
-Qualification schema 1 dispatches the exact catalog recipe through Flowchart/State/Sequence SVG
-and PNG. Flowchart checks a titled subgraph containing two nodes and a labeled directed edge:
+Brutalist and Spotless on `native-flowchart-state-sequence-system-fonts-v1`, and Cyberpunk on
+`native-cyberpunk-full-scenes-system-fonts-v1`. Cyberpunk's profile replaces the historical
+palette-only checks with the unchanged complete Flowchart, Sequence and XY Chart fixtures,
+native labels, system fonts and 1x PNG. Its sealed SVG checks cover canvas geometry/compositing,
+family-specific paint/typography, label ownership, series order, markers and composed glow chains.
+Its PNG checks require exact public-export replay and 110 independent pixel contributions from
+glyphs (with effects disabled), effects, arrows and canvas layers. State, HTML labels, PDF,
+exhaustive clipping containment and reference-image equivalence are outside this profile.
+
+Qualification schema 1 dispatches the exact Brutalist and Spotless recipes through
+Flowchart/State/Sequence SVG and PNG. Flowchart checks a titled subgraph containing two nodes and a labeled directed edge:
 actual surfaces, borders, labels, marker and authored background paint must reach SVG and PNG.
 The edge label lies over the contrasting cluster fill so a missing background remains observable.
 The fixed recipes use opaque background colors. The qualifier requires opacity 1 and the
@@ -677,7 +682,7 @@ values without inferring portability. Generated catalog promotion still needs th
 evidence connected to the actual artifact build. The C7a preset
 gate remains open. These host-dependent scenarios do not qualify arbitrary sources, explicit
 Marker/ClusterLabel rules, or a portable resource profile. Each successful preset has six artifact cells
-under this profile; these execution-local cells do not modify the fixed C6a ledger.
+under its declared profile; these execution-local cells do not modify the fixed C6a ledger.
 
 Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
 resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to

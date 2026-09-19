@@ -30,6 +30,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 QUALIFIED_PROFILE = "native-flowchart-state-sequence-system-fonts-v1"
+CYBERPUNK_QUALIFIED_PROFILE = "native-cyberpunk-full-scenes-system-fonts-v1"
 QUALIFIED_ADMISSION = "host_dependent"
 QUALIFIED_FAMILIES = {"flowchart", "state", "sequence"}
 QUALIFIED_OUTPUTS = {"svg", "png"}
@@ -131,12 +132,20 @@ def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
         if not base["available"]:
             raise RuntimeError("Qualified preset is unavailable in CLI catalog")
         profile = preset.get("profile")
-        if profile != QUALIFIED_PROFILE:
+        if preset_id == "cyberpunk":
+            expected_profile = CYBERPUNK_QUALIFIED_PROFILE
+            families = {"flowchart", "sequence", "xychart"}
+        elif preset_id in {"brutalist", "spotless"}:
+            expected_profile = QUALIFIED_PROFILE
+            families = QUALIFIED_FAMILIES
+        else:
+            raise RuntimeError("Preset has no declared qualification profile")
+        if profile != expected_profile:
             raise RuntimeError("Unknown or unsupported qualification profile")
         cells = []
         for cell in preset["cells"]:
             family = cell.get("family")
-            if family not in QUALIFIED_FAMILIES:
+            if family not in families:
                 raise RuntimeError("Unknown or unsupported qualification family")
             output = cell.get("output")
             if output not in QUALIFIED_OUTPUTS:

@@ -17,6 +17,7 @@ class ThemePresetCatalogContractTests(unittest.TestCase):
                 "maturity": "alpha",
                 "available": True,
                 "availability_reason_ids": [],
+                "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
                 "qualified_cells": [],
                 "license_expression": "MIT OR Apache-2.0",
                 "required_attribution": None,
@@ -26,6 +27,24 @@ class ThemePresetCatalogContractTests(unittest.TestCase):
 
     def test_accepts_unqualified_alpha_catalog(self):
         validate_unqualified_catalog(self.catalog)
+
+    def test_family_designs_preserve_open_ids_without_granting_qualification(self):
+        self.catalog["presets"][0]["family_designs"] = [
+            {"family_id": "future-family", "treatment": "future-treatment"},
+        ]
+        validate_unqualified_catalog(self.catalog)
+
+    def test_rejects_malformed_or_duplicate_family_designs(self):
+        for designs in [
+            None, {}, [{"family_id": "flowchart"}],
+            [{"family_id": "flowchart", "treatment": 1}],
+            [{"family_id": "", "treatment": "base_only"}],
+            [{"family_id": "flowchart", "treatment": "base_only"}] * 2,
+        ]:
+            changed = copy.deepcopy(self.catalog)
+            changed["presets"][0]["family_designs"] = designs
+            with self.subTest(designs=designs), self.assertRaisesRegex(RuntimeError, "family"):
+                validate_unqualified_catalog(changed)
 
     def test_rejects_qualification_or_maturity_in_shared_catalog(self):
         for mutate in [

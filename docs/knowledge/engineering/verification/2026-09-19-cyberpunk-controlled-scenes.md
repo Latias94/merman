@@ -306,3 +306,51 @@ The real CLI/PDF run, Python syntax check and diff check passed. The full CLI bu
 warnings; no renderer or lint policy changed. Current-source PDF pixel contributions now have a
 repeatable checked-in probe. Formal full-scene semantic qualification, catalog/profile binding,
 controlled-font portability, installed consumers, cost comparison and C7a remain open.
+
+## Runtime qualification of the complete native scenes
+
+The continuation from `b3cef6784` moves the existing PNG contribution checks into the production
+acceptance runner and replaces Cyberpunk's obsolete palette-only qualifier. The declared profile
+is `native-cyberpunk-full-scenes-system-fonts-v1`: the unchanged public Flowchart, Sequence and
+XY Chart fixtures, native labels, system fonts, default limits, SVG and 1x PNG. It yields six
+execution-local **HostDependent** cells. Brutalist and Spotless retain their original six-cell
+Flowchart/State/Sequence profile; the shared production catalog remains unqualified.
+
+The fixed scene contract reuses the sealed SVG observer and existing exact writer-declaration
+checks. It checks the navy canvas, screen-composited radial/grid layers, family-specific paint,
+typography and shape details, label ownership, bound markers, XY series order and glow composition.
+Filter-result names are resolved through their actual connections rather than hard-coded internal
+names. A positive rename regression and negative geometry, paint, typography, alpha, marker,
+label-owner and composition mutations exercise this distinction. Blank artifacts and genuinely
+hidden glyphs fail the pixel checks.
+
+All 110 native PNG contribution checks now run before the qualification receipt is constructed;
+the separate public-entry tests retain recipe export/import and exact SVG/PNG byte equality.
+The acceptance crate reuses the bounded C6 PNG decoder. Its existing roxmltree dependency moves
+from test-only to the workspace-only acceptance library; no production package dependency changes.
+No general SVG/CSS interpreter or second qualification issuer is introduced.
+
+Connecting the actual CLI exposed a stale Python catalog shape check: the Rust and CLI catalogs
+already agreed exactly, including `family_designs`, but the checker rejected that existing field.
+The checker now validates and preserves its open family/treatment strings without granting
+qualification. Archive and Homebrew test payloads follow the production shape. Profile projection
+rejects Cyberpunk's old profile and State scope, and rejects lending its new profile to another preset.
+
+Validation on the existing macOS ARM64/system-font host:
+
+- 15/15 selected Release nextest cases passed, with 114 unrelated cases filtered out.
+- 116/116 Python tests passed across qualification, catalog, CLI archive, Homebrew and release-bundle owners.
+- The fresh Rust runner and actual full-feature CLI produced identical bytes for all 18 declared
+  SVG/PNG observations. Their production catalogs matched; the local projection contains exactly
+  six cells per native preset under the appropriate profile.
+- Workspace formatting and diff checks passed. Scoped Clippy completed with the same 14 existing
+  acceptance-library warnings and no diagnostics in the new scene checker; strict warning-free
+  Clippy is not claimed.
+
+The CLI SHA-256 remains `680c52b61a3675817dc0e64a7a8df1f5c0432584f535feda632a39591413dd9a`.
+Local runtime reports are `/tmp/merman-full-scene-qualification.json` and
+`/tmp/merman-full-scene-cli-qualification.json`; these dirty-worktree observations establish output
+agreement, not clean-source or archive provenance. The recording/replay path still requires its
+own clean execution. Browser/PDF probes above remain separate evidence, not new cells in this
+native SVG/PNG profile. Full clipping containment, controlled-font portability, installed-consumer
+coverage, cost comparisons and C7a closure remain open.

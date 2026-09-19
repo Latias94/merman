@@ -2,11 +2,11 @@
 
 ## Current candidate status
 
-The current Cyberpunk recipe does not pass the historical palette-only qualification below.
-`run_preset_qualification(Cyberpunk)` rejects it, and the all-candidate recording/replay commands
-therefore cannot produce a successful current-source qualification record. Earlier archive
-records remain tied to their recorded source and recipe. Brutalist and Spotless retain their
-existing bounded checks; public catalog cells remain empty for every preset.
+`run_preset_qualification` executes the exact Brutalist, Spotless and Cyberpunk catalog recipes
+under their declared native profiles. Cyberpunk uses the complete-scene profile below; Brutalist
+and Spotless retain their existing bounded checks. Earlier archive records remain tied to their
+recorded source, recipe and profile. Public catalog cells remain empty for every preset; only a
+fresh execution can issue an artifact-local qualification projection.
 
 `inspect_preset_admission(Cyberpunk)` instead executes the three unchanged complete scenes in
 `crates/merman-theme-fixtures/fixtures/public-cyberpunk`: Flowchart, Sequence and XY Chart.
@@ -14,12 +14,11 @@ This inventory uses native SVG labels, system fonts, default resource limits and
 checks current artifact identity and reports admission/residuals without issuing qualification.
 The other nine presets retain the small Flowchart/State/Sequence admission sources.
 This inventory does not exercise HTML labels, PDF, controlled caller fonts or installed consumers.
-Visible terminal checks and calibrated target-specific comparisons are still required before
-replacing the historical Cyberpunk qualifier or promoting its scope.
+The separate qualification runner adds the semantic and pixel checks described below.
 
-## Historical qualification profile
+## Brutalist and Spotless profile
 
-The workspace-only Rust runner executes the exact Brutalist, Spotless, and Cyberpunk catalog
+The workspace-only Rust runner executes the exact Brutalist and Spotless catalog
 recipes on the declared `native-flowchart-state-sequence-system-fonts-v1` profile for
 Flowchart/State/Sequence SVG and PNG. It checks terminal styles, raster coverage and label ink,
 admission reasons, residuals, and artifact/resource identity.
@@ -32,6 +31,30 @@ Flowchart cells: source, profile, and complete replayed record identities must m
 scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
 inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md) for other families.
+
+## Cyberpunk complete-scene profile
+
+`native-cyberpunk-full-scenes-system-fonts-v1` qualifies only the three unchanged public Cyberpunk
+fixtures: Flowchart, Sequence and XY Chart, each as SVG and 1x PNG. It uses native SVG labels,
+system fonts, the original catalog recipe and default resource limits. Successful observations
+remain **HostDependent**. State is not part of this profile.
+
+The existing sealed SVG observer checks canvas paint, gradient/grid geometry and compositing;
+family-specific surfaces, borders, typography, series order, markers and label ownership; and
+the bound glow primitives, colors and composition chain. Internal filter-result names may change
+when their connections remain equivalent. These are fixed writer/scenario checks, not a general
+CSS cascade or arbitrary-source validator.
+
+The runner also checks actual PNG contributions by independently removing 34 labels, 62 effects,
+five arrowheads and nine canvas layers across the scenes. Glyph checks disable all effects first
+so glow cannot replace missing text ink. Every removal must change pixels without changing output
+dimensions; the mutation export path must first reproduce the public facade PNG exactly. Recipe
+export/import regressions separately require identical SVG and PNG bytes.
+
+This profile replaces Cyberpunk's obsolete palette-only qualification. It does not qualify HTML
+labels, PDF, other font environments, exhaustive clipping containment or Mermaid reference-image
+equivalence. Browser and PDF probes remain separate evidence; see the
+[scene verification record](../knowledge/engineering/verification/2026-09-19-cyberpunk-controlled-scenes.md).
 
 ## Record a candidate
 
@@ -139,9 +162,8 @@ native-candidate admission sources; qualification additionally checks the declar
 node, and labeled-edge scenario. Sequence retains unsupported
 generic-text requests only where completed role writers do not cover their fills, or other
 requested facets remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
-their existing dispositions. The positive qualification profile covers only its declared
-Flowchart/State/Sequence SVG/PNG scenarios (six artifact cells per native preset).
-Flowchart checks canvas, node/cluster surfaces and borders, diagram/cluster/node/edge labels,
+their existing dispositions. Each positive profile covers only its declared scenarios (six artifact
+cells per native preset). For Brutalist and Spotless, Flowchart checks canvas, node/cluster surfaces and borders, diagram/cluster/node/edge labels,
 the directed edge and marker, and the actual authored label background. PNG checks use
 separate regions so borders or the edge cannot replace missing label ink. These checks do not
 qualify arbitrary Flowchart sources or explicit Marker/ClusterLabel rules.
@@ -153,7 +175,8 @@ unoccluded lifeline strokes. These bounded checks do not qualify arbitrary Seque
 
 Archive qualification writes `preset-qualification.catalog.json` beside the full execution record.
 It joins the catalog returned by the exact CLI's `capabilities --json` with fresh runner-owned
-Flowchart/State/Sequence SVG/PNG cells. A mismatch in production metadata or output bytes rejects the join.
+SVG/PNG cells: Flowchart/State/Sequence for Brutalist and Spotless, and Flowchart/Sequence/XY Chart
+for Cyberpunk. A mismatch in production metadata or output bytes rejects the join.
 The three native candidates retain alpha maturity and report `host_dependent` under the declared
 system-font profile; the seven retained presets keep empty scope. The companion binds the final
 archive and executable hashes, source revision, host, recipe/resource identities, and scenario
@@ -180,7 +203,7 @@ executable SHA-256. Other target archives have no qualification claim from this 
 
 Read `catalog.presets[].qualified_cells` together with its `profile_id`, `admission_status`,
 `host`, `render_config`, `svg_pipeline`, and `qualifications` scenarios. The current cells are
-host-dependent observations of fixed Flowchart/State/Sequence SVG/PNG scenarios with system fonts.
+host-dependent observations of the preset-specific fixed SVG/PNG scenarios above with system fonts.
 They do not promise equivalent results on every font installation. Unknown profiles or admission
 IDs provide no portable assurance. Empty cells leave a preset selectable as alpha without granting
 qualification; the final render/export admission remains authoritative for an actual request.

@@ -133,31 +133,53 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
     use merman::svg::ThemePreset;
     use merman_theme_acceptance::run_preset_qualification;
 
-    for preset in [ThemePreset::Brutalist, ThemePreset::Spotless] {
+    for preset in [
+        ThemePreset::Brutalist,
+        ThemePreset::Spotless,
+        ThemePreset::Cyberpunk,
+    ] {
         let receipt = run_preset_qualification(preset).unwrap();
         assert!(receipt.is_current());
-        assert_eq!(
-            receipt.profile_id(),
-            "native-flowchart-state-sequence-system-fonts-v1"
-        );
+        let (profile, families) = if preset == ThemePreset::Cyberpunk {
+            (
+                "native-cyberpunk-full-scenes-system-fonts-v1",
+                [
+                    DiagramFamilyId::FLOWCHART,
+                    DiagramFamilyId::SEQUENCE,
+                    DiagramFamilyId::XY_CHART,
+                ],
+            )
+        } else {
+            (
+                "native-flowchart-state-sequence-system-fonts-v1",
+                [
+                    DiagramFamilyId::FLOWCHART,
+                    DiagramFamilyId::STATE,
+                    DiagramFamilyId::SEQUENCE,
+                ],
+            )
+        };
+        assert_eq!(receipt.profile_id(), profile);
         assert_eq!(receipt.schema_revision(), 1);
         assert_eq!(receipt.report().preset(), preset);
         assert_eq!(receipt.report().observations().len(), 6);
         for (observation, family) in receipt.report().observations().iter().zip([
-            DiagramFamilyId::FLOWCHART,
-            DiagramFamilyId::FLOWCHART,
-            DiagramFamilyId::STATE,
-            DiagramFamilyId::STATE,
-            DiagramFamilyId::SEQUENCE,
-            DiagramFamilyId::SEQUENCE,
+            families[0],
+            families[0],
+            families[1],
+            families[1],
+            families[2],
+            families[2],
         ]) {
             assert_eq!(observation.spec().family_id(), family);
             assert_eq!(
                 observation.spec().png_scale(),
-                if matches!(
-                    family,
-                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
-                ) {
+                if preset != ThemePreset::Cyberpunk
+                    && matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
+                    )
+                {
                     4.0
                 } else {
                     1.0
@@ -168,11 +190,18 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             assert_eq!(observation.bridge_residual_count(), 0);
             assert_eq!(observation.mermaid_residual_count(), 0);
         }
+        let entry = receipt.catalog_entry().unwrap();
+        assert_eq!(entry.qualified_cells.len(), 6);
+        for cell in &entry.qualified_cells {
+            assert_eq!(cell.profile_id, profile);
+            assert_eq!(cell.admission_status, "host_dependent");
+            assert!(
+                families
+                    .iter()
+                    .any(|family| family.as_str() == cell.family_id)
+            );
+        }
     }
-    let error = run_preset_qualification(ThemePreset::Cyberpunk).expect_err(
-        "the old palette-only qualification does not prove the complete Cyberpunk recipe",
-    );
-    assert!(error.to_string().contains("qualification"), "{error}");
     for descriptor in theme_preset_descriptors() {
         assert!(descriptor.qualified_cells().is_empty());
         if !matches!(

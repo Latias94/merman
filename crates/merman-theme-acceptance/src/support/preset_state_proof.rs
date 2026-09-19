@@ -23,7 +23,6 @@ pub(super) fn verify(
     let (canvas, surface, text, border) = match preset {
         ThemePreset::Brutalist => ("#f4f0e6", "#fffdf5", "#111111", "#111111"),
         ThemePreset::Spotless => ("#f7f5ef", "#ffffff", "#1b1b1b", "#b8b2a7"),
-        ThemePreset::Cyberpunk => ("#020617", "#0f172a", "#e0f2fe", "#22d3ee"),
         _ => return Err(C6ProofError::new("preset-scope", "undeclared preset")),
     };
     verify_host_admission(document, png)?;

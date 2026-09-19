@@ -91,6 +91,8 @@ class CliQualificationTests(unittest.TestCase):
             {"id": "brutalist", "display_name": "Brutalist", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
             {"id": "editor-light", "display_name": "Editor Light", "appearance": "light", "maturity": "alpha", "available": True, "availability_reason_ids": [], "qualified_cells": [], "license_expression": "MIT OR Apache-2.0", "required_attribution": None, "export_kind": "complete_spec"},
         ]}
+        for entry in self.catalog["presets"]:
+            entry["family_designs"] = [{"family_id": "flowchart", "treatment": "base_only"}]
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         preset = self.qualification["presets"][0]
         preset["profile"] = "native-flowchart-state-sequence-system-fonts-v1"
@@ -178,6 +180,40 @@ class CliQualificationTests(unittest.TestCase):
         self.catalog["presets"][0]["id"] = "another-preset"
         with self.assertRaisesRegex(RuntimeError, "catalog"):
             qualify_cli(self.binary, original, runner=self.run_cli)
+
+    def test_cyberpunk_catalog_requires_complete_scene_profile_and_families(self):
+        from scripts.qualify_theme_presets import CYBERPUNK_QUALIFIED_PROFILE, QUALIFIED_PROFILE
+
+        base = self.catalog["presets"][0]
+        base.update(id="cyberpunk", display_name="Cyberpunk", appearance="dark")
+        self.qualification["catalog"] = copy.deepcopy(self.catalog)
+        preset = self.qualification["presets"][0]
+        preset.update(preset="cyberpunk", profile=CYBERPUNK_QUALIFIED_PROFILE)
+        source = "xychart-beta\nx-axis [A, B]\nbar [1, 2]\n"
+        for cell in preset["cells"]:
+            cell.update(family="xychart", source=source,
+                        source_digest=hashlib.sha256(source.encode()).hexdigest())
+        preset["catalog_entry"] = {**base, "qualified_cells": [
+            {"family_id": "xychart", "output_id": output,
+             "profile_id": CYBERPUNK_QUALIFIED_PROFILE, "admission_status": "host_dependent"}
+            for output in ["png", "svg"]
+        ]}
+        evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+        self.assertEqual(evidence["catalog"]["presets"][0], preset["catalog_entry"])
+        preset["profile"] = QUALIFIED_PROFILE
+        with self.assertRaisesRegex(RuntimeError, "qualification profile"):
+            qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+        preset["profile"] = CYBERPUNK_QUALIFIED_PROFILE
+        preset["cells"][0]["family"] = "state"
+        with self.assertRaisesRegex(RuntimeError, "qualification family"):
+            qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+
+    def test_other_presets_cannot_borrow_cyberpunk_qualification_profile(self):
+        from scripts.qualify_theme_presets import CYBERPUNK_QUALIFIED_PROFILE
+
+        self.qualification["presets"][0]["profile"] = CYBERPUNK_QUALIFIED_PROFILE
+        with self.assertRaisesRegex(RuntimeError, "qualification profile"):
+            qualify_cli(self.binary, self.qualification, runner=self.run_cli)
 
     def test_cli_rejects_changed_output_and_source(self):
         self.payloads["png"] = b"different PNG"

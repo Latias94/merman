@@ -504,6 +504,7 @@ class InstallationFixture:
             "theme_presets": {"schema_version": 1, "presets": [{
                 "id": "brutalist", "display_name": "Brutalist", "appearance": "light",
                 "maturity": "alpha", "available": True, "availability_reason_ids": [],
+                "family_designs": [{"family_id": "flowchart", "treatment": "base_only"}],
                 "qualified_cells": [], "license_expression": "MIT OR Apache-2.0",
                 "required_attribution": None, "export_kind": "complete_spec",
             }]},

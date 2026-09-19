@@ -416,7 +416,7 @@ struct NodeGeometry {
     rect: Rect,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RasterImage {
     width: u32,
     height: u32,

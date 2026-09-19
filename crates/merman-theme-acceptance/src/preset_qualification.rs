@@ -23,8 +23,12 @@ mod state_proof;
 #[path = "support/preset_sequence_proof.rs"]
 mod sequence_proof;
 
+#[path = "support/preset_cyberpunk_proof.rs"]
+mod cyberpunk_proof;
+
 const QUALIFICATION_SCHEMA_REVISION: u32 = 1;
 const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v1";
+const CYBERPUNK_HOST_PROFILE: &str = "native-cyberpunk-full-scenes-system-fonts-v1";
 
 /// One frozen representative source used to inspect a catalog preset on both native targets.
 #[derive(Debug, Clone, Copy)]
@@ -199,7 +203,7 @@ impl PresetAdmissionReport {
     }
 }
 
-/// Execution-local qualification of the declared Flowchart/State/Sequence SVG/PNG host-dependent profile.
+/// Execution-local qualification of the preset's declared SVG/PNG host-dependent profile.
 ///
 /// Only the production runner can construct this receipt. It is not serializable and grants no
 /// portable, all-family, stable-catalog, or C6a claim. Target receipts retain exact artifact,
@@ -217,7 +221,10 @@ pub struct PresetQualificationReceipt {
 
 impl PresetQualificationReceipt {
     pub const fn profile_id(&self) -> &'static str {
-        HOST_PROFILE
+        match self.report.preset {
+            ThemePreset::Cyberpunk => CYBERPUNK_HOST_PROFILE,
+            _ => HOST_PROFILE,
+        }
     }
 
     pub const fn schema_revision(&self) -> u32 {
@@ -291,7 +298,7 @@ impl PresetQualificationReceipt {
     }
 }
 
-/// Qualifies the three native candidates only for the declared host-dependent Flowchart/State/Sequence profile.
+/// Qualifies the three native candidates only for their declared host-dependent profiles.
 ///
 /// No font resources, compatibility fields, or rules are injected. Missing system glyphs or
 /// semantic/visual failures reject this execution; host dependence is never promoted to Portable.
@@ -309,7 +316,12 @@ pub fn run_preset_qualification(
             detail: "preset has no declared native qualification profile".to_owned(),
         });
     }
-    let report = execute_preset(preset, &[FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC], true)?;
+    let specs = if preset == ThemePreset::Cyberpunk {
+        &CYBERPUNK_SPECS
+    } else {
+        &[FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC]
+    };
+    let report = execute_preset(preset, specs, true)?;
     Ok(PresetQualificationReceipt {
         schema_revision: QUALIFICATION_SCHEMA_REVISION,
         report,
@@ -407,11 +419,15 @@ fn execute_preset(
         }
         let evidence = merman::__theme_acceptance::theme_acceptance_evidence(document.evidence());
         if qualify {
-            let verification = match spec.family {
-                DiagramFamilyId::FLOWCHART => flowchart_proof::verify(preset, &document, &png),
-                DiagramFamilyId::STATE => state_proof::verify(preset, &document, &png),
-                DiagramFamilyId::SEQUENCE => sequence_proof::verify(preset, &document, &png),
-                _ => unreachable!("qualification specs have explicit family checkers"),
+            let verification = if preset == ThemePreset::Cyberpunk {
+                cyberpunk_proof::verify(spec.family, &document, &png)
+            } else {
+                match spec.family {
+                    DiagramFamilyId::FLOWCHART => flowchart_proof::verify(preset, &document, &png),
+                    DiagramFamilyId::STATE => state_proof::verify(preset, &document, &png),
+                    DiagramFamilyId::SEQUENCE => sequence_proof::verify(preset, &document, &png),
+                    _ => unreachable!("qualification specs have explicit family checkers"),
+                }
             };
             verification
                 .map_err(|error| failure(spec.source_id, "qualification", error.to_string()))?;

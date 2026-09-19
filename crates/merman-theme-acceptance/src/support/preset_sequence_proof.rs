@@ -59,18 +59,6 @@ impl Palette {
                 activation_border: "#8c867b",
                 number: "#ffffff",
             },
-            ThemePreset::Cyberpunk => Self {
-                canvas: "#020617",
-                actor: "#0f172a",
-                border: "#22d3ee",
-                text: "#e0f2fe",
-                note: "#312e81",
-                note_border: "#f0abfc",
-                note_text: "#f5f3ff",
-                activation: "#164e63",
-                activation_border: "#22d3ee",
-                number: "#020617",
-            },
             _ => {
                 return Err(C6ProofError::new(
                     "preset-sequence-scope",
