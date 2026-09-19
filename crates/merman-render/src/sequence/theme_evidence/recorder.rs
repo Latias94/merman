@@ -706,6 +706,25 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Lifeline,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    let receipt = &state.lifeline.receipt;
+                    if receipt.candidate_count() == 0
+                        || (receipt.effect_requested && !receipt.effect_binding_used)
+                    {
+                        evidence.mark_not_applicable(key);
+                    } else if receipt.effect_unhandled {
+                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                    } else if receipt.effect_complete() {
+                        evidence.mark_applied_with_capabilities(
+                            key,
+                            [ThemeCapability::Shadow, ThemeCapability::SvgFilter],
+                        );
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Message,
                     ..
                 } => {
@@ -725,18 +744,23 @@ impl SequenceThemeEvidenceRecorder {
                     }
                 }
                 FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Note,
+                    target: target @ (ThemeTarget::Note | ThemeTarget::Activation),
                     ..
                 } => {
                     let key = theme.family_mechanism_key(route);
-                    let receipt = &state.note.receipt;
-                    if state.note.surface_count == 0
+                    let surface = if target == ThemeTarget::Note {
+                        &state.note
+                    } else {
+                        &state.activation
+                    };
+                    let receipt = &surface.receipt;
+                    if surface.surface_count == 0
                         || (receipt.effect_requested && !receipt.effect_binding_used)
                     {
                         evidence.mark_not_applicable(key);
                     } else if receipt.effect_unhandled {
                         evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    } else if receipt.effect_complete(state.note.surface_count) {
+                    } else if receipt.effect_complete(surface.surface_count) {
                         evidence.mark_applied_with_capabilities(
                             key,
                             [ThemeCapability::Shadow, ThemeCapability::SvgFilter],

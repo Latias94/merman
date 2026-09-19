@@ -770,7 +770,11 @@ mod tests {
             .collect();
         assert_eq!(
             edge_scopes,
-            [(Some("flowchart"), "edge"), (Some("sequence"), "message")]
+            [
+                (Some("flowchart"), "edge"),
+                (Some("sequence"), "message"),
+                (Some("sequence"), "lifeline")
+            ]
         );
         let encoded = serde_json::to_vec(&recipe).unwrap();
         let imported = DiagramThemeCompiler::new()

@@ -6470,7 +6470,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 14);
+        assert_eq!(filters.len(), 16);
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -6484,6 +6484,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
             let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
             let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
+            let is_lifeline = filter.attribute("id").unwrap().contains("-lifeline-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
@@ -6492,7 +6493,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                     vec!["5"]
                 } else if is_note_text {
                     vec!["4"]
-                } else if is_message {
+                } else if is_message || is_lifeline {
                     vec!["6"]
                 } else if is_note {
                     vec!["8"]
@@ -6518,6 +6519,8 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             } else if is_note_text {
                 assert!(consumers[0].has_tag_name("text"));
                 assert_eq!(consumers[0].attribute("class"), Some("noteText"));
+            } else if is_lifeline {
+                assert_eq!(consumers[0].attribute("data-et"), Some("life-line"));
             } else if is_message {
                 assert!(consumers[0].has_tag_name("line"));
                 assert!(
@@ -8208,6 +8211,183 @@ fn sequence_actor_label_math_glow_is_incomplete_and_clear_preserves_fallback() {
                 "{declaration}: {:?}",
                 result.as_ref().err()
             );
+        }
+    }
+}
+
+#[test]
+fn sequence_activation_geometry_and_effects_reach_nested_terminals() {
+    let source = "sequenceDiagram\nA->>B: Start\nactivate B\nB->>B: Nested\nactivate B\nB-->>A: Inner\ndeactivate B\nB-->>A: Outer\ndeactivate B";
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+        patch.geometry.radius = Specified::Value(4.0);
+        if clear {
+            patch.stroke.width = Specified::Clear;
+            patch.geometry.radius = Specified::Clear;
+            patch.effects.effect = Specified::Clear;
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Activation,
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Activation, patch)),
+            ))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rectangles: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.has_tag_name("rect")
+                    && n.attribute("class")
+                        .is_some_and(|c| c.starts_with("activation"))
+            })
+            .collect();
+        assert_eq!(rectangles.len(), 2);
+        for rect in rectangles {
+            assert_eq!(
+                rect.attribute("stroke-width"),
+                if clear { None } else { Some("3") }
+            );
+            assert_eq!(rect.attribute("rx"), if clear { None } else { Some("4") });
+            assert_eq!(rect.attribute("filter").is_some(), !clear);
+        }
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_lifeline_effects_reach_all_actor_shapes_and_clear_restores_baseline() {
+    let source = "sequenceDiagram\nparticipant A\nactor U\nparticipant B@{\"type\":\"boundary\"}\nparticipant E@{\"type\":\"entity\"}\nparticipant C@{\"type\":\"control\"}\nparticipant Q@{\"type\":\"queue\"}\nparticipant D@{\"type\":\"database\"}\nparticipant L@{\"type\":\"collections\"}\nA->>U: Request";
+    for clear in [false, true] {
+        let mut patch = ThemeStylePatch::default();
+        if clear {
+            patch.effects.effect = Specified::Clear;
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(sequence_shadow_spec(
+                ThemeTarget::Lifeline,
+                if clear {
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Lifeline, patch))
+                } else {
+                    ThemeRuleSet::default()
+                },
+            ))
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let lines: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.attribute("data-et") == Some("life-line"))
+            .collect();
+        assert_eq!(lines.len(), 8);
+        for line in lines {
+            assert_eq!(line.attribute("filter").is_some(), !clear);
+        }
+        if clear {
+            let plain = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new())
+                .unwrap();
+            let baseline = try_render_sequence_theme_request(
+                source,
+                &plain,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline.svg());
+        }
+    }
+}
+
+#[test]
+fn sequence_lifeline_and_activation_effects_keep_source_ownership_and_residuals() {
+    let source = "---\nconfig:\n  themeVariables:\n    actorLineColor: '#ff0000'\n    activationBkgColor: '#000000'\n    activationBorderColor: '#ffffff'\n---\nsequenceDiagram\nA->>B: Start\nactivate B\nB-->>A: Done\ndeactivate B";
+    for target in [ThemeTarget::Lifeline, ThemeTarget::Activation] {
+        for (ordinal, sibling, accepted) in [
+            (false, false, true),
+            (true, false, false),
+            (false, true, false),
+        ] {
+            let mut patch = ThemeStylePatch::default()
+                .with_effect("actor-shadow")
+                .unwrap()
+                .with_stroke(CanvasPaint::solid("#00ffff").unwrap());
+            if sibling {
+                patch.paint.opacity = Specified::Value(0.5);
+            }
+            let mut rule = ThemeRule::new(target, patch).with_variant(ThemeVariant::Default);
+            if ordinal {
+                rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(sequence_shadow_spec(
+                    target,
+                    ThemeRuleSet::default().with_rule(rule),
+                ))
+                .unwrap();
+            let result = try_render_sequence_theme_request(
+                source,
+                &theme,
+                Engine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(
+                result.is_ok(),
+                accepted,
+                "{target:?} ordinal={ordinal} sibling={sibling}: {:?}",
+                result.as_ref().err()
+            );
+            if accepted {
+                let rendered = result.unwrap();
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let filter_count = doc
+                    .descendants()
+                    .filter(|n| n.has_tag_name("filter"))
+                    .count();
+                assert_eq!(
+                    filter_count,
+                    if target == ThemeTarget::Lifeline {
+                        2
+                    } else {
+                        1
+                    }
+                );
+                let css = doc
+                    .descendants()
+                    .find(|n| n.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert!(css.contains(if target == ThemeTarget::Lifeline {
+                    "stroke:#ff0000"
+                } else {
+                    "stroke:#ffffff"
+                }));
+            }
         }
     }
 }

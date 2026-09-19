@@ -138,10 +138,11 @@ pub(super) fn write_actor_man_lifeline(
     y1: f64,
     y2: f64,
     actor_id: &str,
+    filter: &str,
 ) {
     let _ = write!(
         out,
-        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
+        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"{filter}/></g>"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
@@ -160,6 +161,7 @@ pub(super) fn write_lifeline_root_open(
     y2: f64,
     actor_id: &str,
     actor_type: &str,
+    filter: &str,
 ) {
     out.push_str("<g>");
     let root_class = if actor_type == "queue" {
@@ -169,7 +171,7 @@ pub(super) fn write_lifeline_root_open(
     };
     let _ = write!(
         out,
-        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}">"##,
+        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"{filter}/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}">"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),

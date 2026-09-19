@@ -1262,7 +1262,9 @@ fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> Fami
                 ThemeTarget::Actor
                     | ThemeTarget::ActorLabel
                     | ThemeTarget::Message
+                    | ThemeTarget::Lifeline
                     | ThemeTarget::Note
+                    | ThemeTarget::Activation
                     | ThemeTarget::NoteLabel
                     | ThemeTarget::LoopLabel
             ))
@@ -1820,7 +1822,10 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
-        && matches!(target, ThemeTarget::Actor | ThemeTarget::Note)
+        && matches!(
+            target,
+            ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation
+        )
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -1882,7 +1887,7 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
+            ) | FamilyThemeRuleFacet::Effect
         )
     {
         return FamilyThemeDisposition::TypedAdapter;

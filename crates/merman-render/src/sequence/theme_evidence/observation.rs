@@ -335,6 +335,24 @@ pub(super) fn observe_lifeline_rule(
                 .capabilities
                 .insert(ThemeCapability::BorderStyling);
         }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Effect) => {
+            if lifeline.receipt.effect_unhandled {
+                observation
+                    .residual
+                    .get_or_insert(FamilyThemeResidualReason::UnsupportedEffect);
+            } else if !lifeline.receipt.effect_complete() {
+                observation.incomplete = true;
+            } else {
+                observation
+                    .capabilities
+                    .insert(ThemeCapability::SemanticRules);
+                if !lifeline.receipt.effect_cleared {
+                    observation
+                        .capabilities
+                        .extend([ThemeCapability::Shadow, ThemeCapability::SvgFilter]);
+                }
+            }
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation

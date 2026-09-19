@@ -103,7 +103,13 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        render_sequence_activation_group(out, activation_plan, &msg.id, activation_theme_receipt);
+        render_sequence_activation_group(
+            out,
+            activation_plan,
+            &msg.id,
+            activation_theme_receipt,
+            ctx.shadow_evidence,
+        )?;
         render_sequence_note(out, message_index, msg, &note_ctx, note_theme_receipt)?;
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {

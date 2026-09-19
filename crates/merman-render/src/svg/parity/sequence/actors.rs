@@ -123,6 +123,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
     theme_receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
+    paint: &mut super::actor_effect::SequenceLifelinePaint,
+    options: &SvgExecution<'_>,
 ) -> crate::Result<()> {
     let label_ctx = ctx.label_context();
 
@@ -168,9 +170,23 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
             .and_then(|e| Some((e.points.first()?.y, e.points.get(1)?.y)))
             .unwrap_or((top_y + top.height, bottom_y));
 
+        let shadow = paint.write_definition(
+            out,
+            idx,
+            top.x,
+            y1,
+            y2,
+            ctx.lifeline_effective_stroke_width,
+            options,
+            theme_receipt,
+        )?;
+        let filter = shadow
+            .as_ref()
+            .map(|(id, _)| format!(" filter=\"url(#{})\"", escape_attr(id)))
+            .unwrap_or_default();
         match actor_type {
             actor_type if is_actor_man_variant(actor_type) => {
-                write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
+                write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id, &filter);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -183,7 +199,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 );
             }
             "collections" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -198,7 +214,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
             "queue" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -213,7 +229,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
             "database" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -228,7 +244,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
             _ => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &filter);
                 out.checkpoint()?;
                 theme_receipt.record_line_emission_with_effective_width(
                     idx,
@@ -253,6 +269,8 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
         }
+        out.checkpoint()?;
+        paint.record_emission(shadow.as_ref(), ctx.shadow_evidence, theme_receipt);
     }
     ctx.checkpoints.checkpoint()
 }

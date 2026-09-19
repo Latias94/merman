@@ -170,6 +170,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         !model.actor_order.is_empty(),
         lifeline_stroke_overridden,
     )?;
+    let mut lifeline_paint =
+        super::actor_effect::SequenceLifelinePaint::new(lifeline_theme.effect.take());
+    let defer_paint_bounds = defer_text_bounds
+        || lifeline_paint.has_effect()
+        || lifeline_theme.typed_stroke_width.is_some();
     let mut message_theme = resolve_sequence_message_theme(
         options,
         has_sequence_message_line_candidates(model),
@@ -241,6 +246,30 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared
         .expected_effect_applications()
         .set(actor_shadows.len() + message_paint.len() + note_paint.len());
+    let mut activation_plan = build_sequence_activation_plan(
+        model,
+        &nodes_by_id,
+        &edges_by_id,
+        settings.activation_width,
+        checkpoints,
+    )?;
+    let activation_count = activation_plan.rect_count();
+    let mut activation_theme = resolve_sequence_static_rect_theme(
+        options,
+        crate::diagram_theme::ThemeTarget::Activation,
+        activation_count != 0,
+        activation_fill_overridden,
+        activation_stroke_overridden,
+    )?;
+
+    activation_plan.prepare_paint(
+        activation_theme.stroke_width,
+        activation_theme.radius,
+        activation_theme.effect.take(),
+        &mut activation_theme.receipt,
+        options,
+    )?;
+
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -259,24 +288,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             actor_shadows.bounds.as_ref(),
             message_paint.bounds.as_ref(),
             note_paint.bounds.as_ref(),
+            activation_plan.bounds.as_ref(),
         ],
-        defer_text_bounds,
-    )?;
-
-    let activation_plan = build_sequence_activation_plan(
-        model,
-        &nodes_by_id,
-        &edges_by_id,
-        settings.activation_width,
-        checkpoints,
-    )?;
-    let activation_count = activation_plan.rect_count();
-    let mut activation_theme = resolve_sequence_static_rect_theme(
-        options,
-        crate::diagram_theme::ThemeTarget::Activation,
-        activation_count != 0,
-        activation_fill_overridden,
-        activation_stroke_overridden,
+        defer_paint_bounds,
     )?;
 
     let actor_ctx = SequenceActorRenderContext {
@@ -324,7 +338,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
 
     // Top actors + lifelines.
-    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx, &mut lifeline_theme.receipt)?;
+    render_sequence_top_actors_and_lifelines(
+        &mut out,
+        &actor_ctx,
+        &mut lifeline_theme.receipt,
+        &mut lifeline_paint,
+        options,
+    )?;
     out.checkpoint()?;
 
     out.push_str("<style>");
@@ -593,7 +613,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 
     checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
-    let root_document = if defer_text_bounds {
+    let root_document = if defer_paint_bounds {
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
             .with_resource_policy(options.resource_policy())
             .finish_document(
@@ -611,9 +631,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
                         actor_shadows.bounds.as_ref(),
                         message_paint.bounds.as_ref(),
                         note_paint.bounds.as_ref(),
+                        activation_plan.bounds.as_ref(),
                         note_text_shadow.bounds.borrow().as_ref(),
                         loop_text_shadow.bounds.borrow().as_ref(),
                         actor_text_shadow.bounds.borrow().as_ref(),
+                        lifeline_paint.bounds.as_ref(),
                     ],
                 )),
             )?
@@ -624,6 +646,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         actor_shadows.len()
             + message_paint.len()
             + note_paint.len()
+            + activation_plan.effect_count()
+            + lifeline_paint.emitted_count()
             + note_text_shadow.len()
             + loop_text_shadow.len()
             + actor_text_shadow.len(),
@@ -657,6 +681,7 @@ struct SequenceActorThemeResolution {
 
 #[derive(Default)]
 struct SequenceLifelineThemeResolution {
+    effect: Option<crate::diagram_theme::SvgShadowEffect>,
     typed_stroke: Option<String>,
     typed_stroke_width: Option<f32>,
     typed_stroke_width_won: bool,
@@ -1089,11 +1114,20 @@ fn resolve_sequence_lifeline_theme(
     let Some(theme) = options.resolved_theme() else {
         return Ok(SequenceLifelineThemeResolution::default());
     };
-    let mut has_rule_routes = false;
+    let mut has_routes = false;
     let mut has_typed_fill = false;
     let mut has_typed_stroke = false;
     let mut has_typed_stroke_width = false;
     for route in theme.family_mechanism_routes().iter().copied() {
+        if matches!(
+            route.mechanism(),
+            FamilyThemeMechanism::EffectBinding {
+                target: ThemeTarget::Lifeline,
+                ..
+            }
+        ) {
+            has_routes = true;
+        }
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Lifeline,
             selector:
@@ -1106,8 +1140,7 @@ fn resolve_sequence_lifeline_theme(
         else {
             continue;
         };
-        // Unsupported-only rules still need the terminal winner receipt.
-        has_rule_routes = true;
+        has_routes = true;
         match facet {
             FamilyThemeRuleFacet::Fill(kind) => {
                 has_typed_fill |= route.disposition() == FamilyThemeDisposition::TypedAdapter
@@ -1130,10 +1163,10 @@ fn resolve_sequence_lifeline_theme(
             _ => {}
         }
     }
-    if !has_rule_routes {
+
+    if !has_routes {
         return Ok(SequenceLifelineThemeResolution::default());
     }
-
     let style = theme.style_with_work_meter(
         ThemeTarget::Lifeline,
         ThemeVariant::Default,
@@ -1164,7 +1197,30 @@ fn resolve_sequence_lifeline_theme(
     // value so the same completed actor-line receipt can seal both Value and Clear.
     let typed_stroke_width_won =
         has_typed_stroke_width && style.stroke_width_resolution().winner().is_some();
+    let effect = match theme.resolve_effect(ThemeTarget::Lifeline, style.effect_resolution()) {
+        None => None,
+        Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+            receipt.effect_requested = true;
+            receipt.effect_cleared = true;
+            None
+        }
+        Some(resolved) => {
+            receipt.effect_requested = true;
+            let graph = match resolved {
+                crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                    receipt.effect_binding_used = true;
+                    graph
+                }
+                crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+            };
+            let effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+            receipt.effect_unhandled = effect.is_none();
+            effect
+        }
+    };
     Ok(SequenceLifelineThemeResolution {
+        effect,
         typed_stroke,
         typed_stroke_width,
         typed_stroke_width_won,
@@ -1248,34 +1304,30 @@ fn resolve_sequence_static_rect_theme(
         .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
         .flatten();
     let mut effect = None;
-    let mut stroke_width = None;
-    let mut radius = None;
-    if target == crate::diagram_theme::ThemeTarget::Note {
-        stroke_width = style.as_ref().and_then(|style| style.stroke_width());
-        radius = style.as_ref().and_then(|style| style.radius());
-        let resolution = style
-            .as_ref()
-            .map(|s| s.effect_resolution().clone())
-            .unwrap_or_default();
-        match theme.resolve_effect(target, &resolution) {
-            None => {}
-            Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
-                receipt.effect_requested = true;
-                receipt.effect_cleared = true;
-            }
-            Some(resolved) => {
-                receipt.effect_requested = true;
-                let graph = match resolved {
-                    crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
-                    crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
-                        receipt.effect_binding_used = true;
-                        graph
-                    }
-                    crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
-                };
-                effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
-                receipt.effect_unhandled = effect.is_none();
-            }
+    let stroke_width = style.as_ref().and_then(|style| style.stroke_width());
+    let radius = style.as_ref().and_then(|style| style.radius());
+    let resolution = style
+        .as_ref()
+        .map(|s| s.effect_resolution().clone())
+        .unwrap_or_default();
+    match theme.resolve_effect(target, &resolution) {
+        None => {}
+        Some(crate::diagram_theme::ResolvedThemeEffect::ClearedByRule) => {
+            receipt.effect_requested = true;
+            receipt.effect_cleared = true;
+        }
+        Some(resolved) => {
+            receipt.effect_requested = true;
+            let graph = match resolved {
+                crate::diagram_theme::ResolvedThemeEffect::Rule { graph } => graph,
+                crate::diagram_theme::ResolvedThemeEffect::Binding { graph, .. } => {
+                    receipt.effect_binding_used = true;
+                    graph
+                }
+                crate::diagram_theme::ResolvedThemeEffect::ClearedByRule => unreachable!(),
+            };
+            effect = graph.and_then(crate::diagram_theme::SvgShadowEffect::from_graph);
+            receipt.effect_unhandled = effect.is_none();
         }
     }
     Ok(SequenceStaticRectThemeResolution {

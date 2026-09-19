@@ -1,4 +1,4 @@
-//! Actor rectangle filters share shadow lowering, but keep their own terminal ownership.
+//! Participant rectangle and lifeline effects retain their own terminal geometry.
 
 use super::super::*;
 use super::actor_shapes::{SequenceActorRectStyle, actor_rect_geometry_supported};
@@ -145,5 +145,115 @@ impl SequenceActorShadow<'_> {
     pub(super) fn record_emission(&self) {
         self.recorder
             .record_application(self.effect, self.id, self.region);
+    }
+}
+
+/// Lifelines obtain geometry from the actual writer rather than retaining a second line plan.
+#[derive(Default)]
+pub(super) struct SequenceLifelinePaint {
+    effect: Option<SvgShadowEffect>,
+    emitted: usize,
+    pub(super) bounds: Option<Bounds>,
+}
+
+impl SequenceLifelinePaint {
+    pub(super) fn new(effect: Option<SvgShadowEffect>) -> Self {
+        Self {
+            effect,
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn has_effect(&self) -> bool {
+        self.effect.is_some()
+    }
+    pub(super) fn emitted_count(&self) -> usize {
+        self.emitted
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn write_definition(
+        &mut self,
+        out: &mut impl SvgOutput,
+        index: usize,
+        x: f64,
+        y1: f64,
+        y2: f64,
+        width: f64,
+        options: &SvgExecution<'_>,
+        receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
+    ) -> Result<Option<(String, SvgFilterRegion)>> {
+        if self.effect.is_none() && width == super::actor_shapes::LIFELINE_STROKE_WIDTH_PX {
+            return Ok(None);
+        }
+        // Use the serialized coordinates, including descending or zero-length lines.
+        let [x, y1, y2] = [x, y1, y2].map(crate::number_format::canonicalize_number);
+        let mut bounds = Bounds {
+            min_x: x - width / 2.0,
+            max_x: x + width / 2.0,
+            min_y: y1.min(y2) - width / 2.0,
+            max_y: y1.max(y2) + width / 2.0,
+        };
+        let mut application = None;
+        if let Some(effect) = &self.effect {
+            options
+                .work_meter()
+                .charge(effect.stages().len().saturating_mul(3))?;
+            if let Some(shadow) = effect.materialize_user_space(
+                &options.theme_resource_policy(),
+                bounds.min_x,
+                bounds.min_y,
+                bounds.max_x,
+                bounds.max_y,
+                crate::diagram_theme::EffectOutsets::default(),
+            )? {
+                let region = shadow.region();
+                let [x, y, w, h] = region.as_array().map(f64::from);
+                bounds = Bounds {
+                    min_x: x,
+                    min_y: y,
+                    max_x: x + w,
+                    max_y: y + h,
+                };
+                let id = format!(
+                    "{}-lifeline-{index}-theme-effect-{}",
+                    options.diagram_id_or("merman"),
+                    effect.id()
+                );
+                super::super::shadow::write_theme_shadow_application(out, &id, effect, region);
+                application = Some((id, region));
+            } else {
+                receipt.effect_unhandled = true;
+            }
+        }
+        if let Some(total) = &mut self.bounds {
+            total.min_x = total.min_x.min(bounds.min_x);
+            total.min_y = total.min_y.min(bounds.min_y);
+            total.max_x = total.max_x.max(bounds.max_x);
+            total.max_y = total.max_y.max(bounds.max_y);
+        } else {
+            self.bounds = Some(bounds);
+        }
+        out.checkpoint()?;
+        Ok(application)
+    }
+
+    pub(super) fn record_emission(
+        &mut self,
+        application: Option<&(String, SvgFilterRegion)>,
+        evidence: &SvgShadowEvidenceRecorder,
+        receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
+    ) {
+        if let Some((id, region)) = application {
+            evidence.record_application(
+                self.effect.as_ref().expect("materialized lifeline effect"),
+                id,
+                *region,
+            );
+            self.emitted = self.emitted.saturating_add(1);
+            receipt.record_effect_emission();
+        } else if receipt.effect_cleared {
+            receipt.record_effect_emission();
+        }
     }
 }

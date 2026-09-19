@@ -53,9 +53,21 @@ fn render_with_offsets(
     )
     .unwrap()
     .with_color_space(color_space);
+    // Match the public recipe's 2px lifeline so both soft-shadow colors remain measurable.
+    // The default 0.5px line does not provide enough alpha for the shared pixel threshold.
+    let styles = if target == ThemeTarget::Lifeline {
+        use merman::svg::{ThemeRule, ThemeRuleSet, ThemeStylePatch};
+        ThemeRuleSet::default().with_rule(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_stroke_width(2.0).unwrap(),
+        ))
+    } else {
+        Default::default()
+    };
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new()
+                .with_styles(styles)
                 .with_canvas(
                     CanvasSpec::default().with_base(CanvasPaint::solid("#000000").unwrap()),
                 )
@@ -318,7 +330,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (14, 14, 22)
+        (16, 16, 24)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }
@@ -837,5 +849,23 @@ fn composed_sequence_actor_text_shadows_reach_translated_glyphs_and_visible_link
         "---\nconfig:\n  themeVariables:\n    actorBkg: '#000000'\n    actorTextColor: '#ffffff'\n  sequence:\n    forceMenus: true\n    mirrorActors: false\n    diagramMarginX: 0\n    diagramMarginY: 0\n---\nsequenceDiagram\nparticipant A\nlink A: Documentation @ https://example.com\nA->>B: Work",
         ThemeTarget::ActorLabel,
         3,
+    );
+}
+
+#[test]
+fn composed_sequence_activation_shadows_reach_nested_rectangles() {
+    assert_composed_shadows(
+        "---\nconfig:\n  themeVariables:\n    activationBkgColor: '#000000'\n    activationBorderColor: '#ffffff'\n---\nsequenceDiagram\nA->>B: Start\nactivate B\nB->>B: Inner\nactivate B\nB-->>A: Reply\ndeactivate B\nB-->>A: Done\ndeactivate B",
+        ThemeTarget::Activation,
+        2,
+    );
+}
+
+#[test]
+fn composed_sequence_lifeline_shadows_reach_glyph_and_rectangle_actors() {
+    assert_composed_shadows(
+        "sequenceDiagram\nparticipant A\nactor B\nparticipant C@{\"type\":\"boundary\"}\nparticipant D@{\"type\":\"entity\"}\nA->>B: Start\nB->>C: Continue\nC-->>D: Done",
+        ThemeTarget::Lifeline,
+        4,
     );
 }

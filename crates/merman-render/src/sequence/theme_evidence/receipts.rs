@@ -238,6 +238,11 @@ impl SequenceLineThemeReceipt {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceLifelineThemeReceipt {
     line: SequenceLineThemeReceipt,
+    pub(crate) effect_requested: bool,
+    pub(crate) effect_binding_used: bool,
+    pub(crate) effect_cleared: bool,
+    pub(crate) effect_unhandled: bool,
+    emitted_effects: usize,
     #[cfg(merman_internal_theme_acceptance)]
     raster_terminals: BTreeMap<String, crate::theme_raster_paint::ThemeRasterPaintTerminal>,
     #[cfg(merman_internal_theme_acceptance)]
@@ -245,6 +250,14 @@ pub(crate) struct SequenceLifelineThemeReceipt {
 }
 
 impl SequenceLifelineThemeReceipt {
+    pub(crate) fn record_effect_emission(&mut self) {
+        self.emitted_effects = self.emitted_effects.saturating_add(1);
+    }
+
+    pub(super) fn effect_complete(&self) -> bool {
+        self.line.has_complete_emission() && self.candidate_count() == self.emitted_effects
+    }
+
     pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         self.line.record_static_style(style);
     }
@@ -324,6 +337,11 @@ impl SequenceLifelineThemeReceipt {
 
     pub(super) fn merge(&mut self, other: Self) {
         self.line.merge(other.line);
+        self.effect_requested |= other.effect_requested;
+        self.effect_binding_used |= other.effect_binding_used;
+        self.effect_cleared |= other.effect_cleared;
+        self.effect_unhandled |= other.effect_unhandled;
+        self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
         #[cfg(merman_internal_theme_acceptance)]
         {
             self.raster_terminals_invalid |= other.raster_terminals_invalid

@@ -178,6 +178,29 @@ pub(super) fn build_recipe(
         ),
         family_rule(
             DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Lifeline,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(2.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                effect: SpecifiedWireV1::Value(EDGE_GLOW.to_owned()),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Activation,
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(3.0),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        family_rule(
+            DiagramFamilyId::SEQUENCE,
             ThemeTarget::LoopLabel,
             ThemeStylePatchWireV1 {
                 effect: SpecifiedWireV1::Value(LOOP_TEXT_GLOW.to_owned()),
