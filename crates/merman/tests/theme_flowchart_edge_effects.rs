@@ -131,7 +131,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 FontAssetSpec::new("excalifont", include_bytes!("../../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2")),
             ])));
         }
-        let mut effects = DiagramEffectSet::default()
+        let effects = DiagramEffectSet::default()
             .with_graph(
                 EffectGraph::new(
                     "text-glow",
@@ -150,13 +150,9 @@ fn text_only_glow_survives_native_png_and_pdf() {
             .unwrap()
             .with_binding(EffectBinding::new(ThemeTarget::NodeLabel, "text-glow").unwrap())
             .unwrap();
-        // HTML node labels and native SVG node/edge labels share the same export checks.
-        // HTML edge labels retain a residual until their background is a separate terminal.
-        if !html_labels {
-            effects = effects
-                .with_binding(EffectBinding::new(ThemeTarget::EdgeLabel, "text-glow").unwrap())
-                .unwrap();
-        }
+        let effects = effects
+            .with_binding(EffectBinding::new(ThemeTarget::EdgeLabel, "text-glow").unwrap())
+            .unwrap();
         let theme = DiagramThemeCompiler::new()
             .compile(
                 spec.with_effects(effects).with_styles(
@@ -213,7 +209,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                     .native_filter_receipt()
                     .unwrap()
                     .filter_count(),
-                if html_labels { 2 } else { 3 }
+                3
             );
             let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
                 .read_info()

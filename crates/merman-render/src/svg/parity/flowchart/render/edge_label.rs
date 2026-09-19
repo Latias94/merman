@@ -435,7 +435,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             typography_applicable,
             prepared_svg_label.as_ref(),
         )
-        .with_effect_reach(typography_applicable, label_effect_emitted.get())
+        .with_effect_reach(
+            typography_applicable,
+            label_effect_emitted.get()
+                || (visible
+                    && ctx
+                        .label_effects
+                        .get()
+                        .is_some_and(|plan| plan.html_edge_is_cleared(key))),
+        )
         .with_font_weight_reach(
             typography_applicable,
             visible
@@ -762,20 +770,63 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({},{})">{}<g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})">{}<g class="label" data-id="{}" transform="translate({},{})">"#,
                 fmt_display(x),
                 fmt_display(y),
                 background,
                 escape_xml_display(&edge.id),
                 fmt_display(content.x),
                 fmt_display(content.y),
-                fmt_display(content.width),
-                fmt_display(content.height),
-                HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-                escape_xml_display(&div_style),
-                span_style_attr,
-                label_html
             );
+            // Keep the background in the actual HTML box: host layout dimensions need
+            // not equal the browser's intrinsic width or automatic line-wrap height.
+            let paragraph = label_html
+                .strip_prefix("<p>")
+                .and_then(|html| html.strip_suffix("</p>"));
+            let effect = label_effect
+                .zip(label_effect_id.as_deref())
+                .filter(|(effect, _)| {
+                    paragraph.is_some() && effect.matches_translation((content.x, content.y))
+                });
+            if let Some((effect, id)) = effect {
+                let configured = SvgTheme::new(ctx.config.as_value())
+                    .color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+                let fill = ctx.text_surface_paint.background.color(&configured);
+                // The canonical div and paragraph paint the same RGB over the same box.
+                // Compose their alpha (.5 then a) while the paragraph becomes glyph-only.
+                let color = merman_core::theme_color::ThemeColor::parse(fill)?;
+                let alpha = color.channel(merman_core::theme_color::ColorChannel::Alpha);
+                let background = crate::svg::parity::util::css_rgba_fade(fill, 0.5 + 0.5 * alpha)?;
+                let reference = effect.html_reference(out, id);
+                let _ = write!(
+                    out,
+                    r#"<foreignObject width="{}" height="{}"{} {}="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}background:{};"><span class="edgeLabel" style="{};background:transparent;"><p style="background:transparent;filter:{};">{}</p></span></div></foreignObject>"#,
+                    fmt_display(content.width),
+                    fmt_display(content.height),
+                    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+                    crate::svg::fallback::FALLBACK_TEXT_FILTER_DATA_ATTR,
+                    escape_attr(&reference),
+                    escape_xml_display(&div_style),
+                    escape_attr(&background),
+                    escape_xml_display(&effective_label_style),
+                    escape_attr(&reference),
+                    paragraph.expect("admitted paragraph"),
+                );
+                effect.record(ctx, id);
+                label_effect_emitted.set(true);
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject>"#,
+                    fmt_display(content.width),
+                    fmt_display(content.height),
+                    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+                    escape_xml_display(&div_style),
+                    span_style_attr,
+                    label_html,
+                );
+            }
+            out.push_str("</g></g>");
             record_label_emission(
                 true,
                 Some(&label_html),

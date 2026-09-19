@@ -86,13 +86,22 @@ fn render_with_html_labels(
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
+fn filter_reference<'a>(node: roxmltree::Node<'a, '_>) -> Option<&'a str> {
+    node.attribute("filter").or_else(|| {
+        node.attribute("style")?
+            .split("filter:")
+            .nth(1)?
+            .split(';')
+            .next()
+    })
+}
+
 fn applications(svg: &str) -> usize {
     roxmltree::Document::parse(svg)
         .unwrap()
         .descendants()
         .filter(|node| {
-            node.attribute("filter")
-                .is_some_and(|value| value.contains("-theme-effect-"))
+            filter_reference(*node).is_some_and(|value| value.contains("-theme-effect-"))
         })
         .count()
 }
@@ -1309,20 +1318,129 @@ fn html_node_glow_does_not_inherit_sibling_cluster_styles() {
 }
 
 #[test]
-fn html_edge_label_glow_retains_a_residual_without_filtering_the_background() {
-    let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], ThemeRuleSet::default(), false);
-    let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
-    assert!(render_with_html_labels(source, &theme, "classic", true, true).is_err());
-    let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
-    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
-    assert!(
-        xml.descendants()
-            .any(|node| node.has_tag_name("foreignObject"))
+fn html_edge_label_glow_keeps_the_composited_background_outside_the_filter() {
+    use merman_core::theme_color::{ColorChannel, ThemeColor};
+    for padding in [
+        merman_render::diagram_theme::InsetsPx::all(0.0),
+        merman_render::diagram_theme::InsetsPx {
+            top: 3.0,
+            right: 7.0,
+            bottom: 5.0,
+            left: 11.0,
+        },
+    ] {
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_padding(padding),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_fill(
+                    merman_render::diagram_theme::CanvasPaint::solid("#00ff00").unwrap(),
+                ),
+            ));
+        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules, false);
+        for (background, alpha) in [
+            ("#ff0000", 1.0),
+            ("rgba(255,0,0,0.4)", 0.7),
+            ("transparent", 0.5),
+        ] {
+            for label in ["Advance", "<span>First</span><br/>Second"] {
+                let source = format!(
+                    "---\nconfig:\n  themeVariables:\n    edgeLabelBackground: '{background}'\n---\nflowchart LR\nA[Alpha] -->|{label}| B[Beta]"
+                );
+                let rendered =
+                    render_with_html_labels(&source, &theme, "classic", true, true).unwrap();
+                let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let filtered: Vec<_> = xml
+                    .descendants()
+                    .filter(|n| filter_reference(*n).is_some())
+                    .collect();
+                assert_eq!(filtered.len(), 1, "{source}");
+                let text = filtered[0];
+                assert!(text.has_tag_name("p"));
+                assert!(
+                    text.attribute("style")
+                        .unwrap()
+                        .contains("background:transparent;")
+                );
+                assert!(!text.descendants().any(|n| n.has_tag_name("rect")));
+                let div = text.ancestors().find(|n| n.has_tag_name("div")).unwrap();
+                let painted = div
+                    .attribute("style")
+                    .unwrap()
+                    .split("background:")
+                    .last()
+                    .unwrap()
+                    .trim_end_matches(';');
+                let color = ThemeColor::parse(painted).unwrap();
+                assert!((color.channel(ColorChannel::Alpha) - alpha).abs() < 0.001);
+                assert_eq!(
+                    color.channel(ColorChannel::Red),
+                    if background == "transparent" {
+                        0.0
+                    } else {
+                        255.0
+                    }
+                );
+                let fo = div.parent().unwrap();
+                assert_eq!(
+                    fo.attribute("data-merman-fallback-text-filter"),
+                    filter_reference(text)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn html_edge_label_effect_and_clear_reject_unbounded_background_or_text() {
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    for rules in [
+        ThemeRuleSet::default(),
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::EdgeLabel, clear)),
+    ] {
+        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules, false);
+        for source in [
+            "flowchart LR\nA -->|<b>Advance</b>| B",
+            "flowchart LR\nA -->|<span style='background:red'>Advance</span>| B",
+            "flowchart LR\nA -->|Advance| B\nclassDef labelBkg padding:40px",
+            "flowchart LR\nA -->|Advance| B\nclassDef edgeLabel fill:red",
+            "flowchart LR\nA -->|Advance| B\nclassDef edgeLabel opacity:0.2",
+            "flowchart LR\nA -->|Advance| B\nclassDef label filter:blur(20px)",
+        ] {
+            assert!(
+                render_with_html_labels(source, &theme, "classic", true, true).is_err(),
+                "{source}"
+            );
+            let rendered = render_with_html_labels(source, &theme, "classic", false, true).unwrap();
+            assert_eq!(applications(rendered.svg()), 0, "{source}");
+            assert!(
+                merman_render::__private::family_evidence(rendered.into_completion().report())
+                    .theme_residual_count()
+                    > 0,
+                "{source}"
+            );
+        }
+    }
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let theme = text_glow_theme_for(
+        &[ThemeTarget::EdgeLabel],
+        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::EdgeLabel, clear)),
+        false,
     );
-    assert!(
-        !xml.descendants()
-            .any(|node| node.attribute("filter").is_some())
-    );
+    let rendered = render_with_html_labels(
+        "flowchart LR\nA -->|Advance| B",
+        &theme,
+        "classic",
+        true,
+        true,
+    )
+    .unwrap();
+    assert_eq!(applications(rendered.svg()), 0);
 }
 
 #[test]
@@ -1331,11 +1449,7 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
         if native_fonts && !cfg!(feature = "embedded-fonts") {
             continue;
         }
-        let targets: &[ThemeTarget] = if html_labels {
-            &[ThemeTarget::NodeLabel]
-        } else {
-            &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]
-        };
+        let targets = &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel];
         let mut clear = ThemeStylePatch::default();
         clear.effects.effect = Specified::Clear;
         let theme = text_glow_theme_for(
@@ -1357,9 +1471,9 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
         let filtered: Vec<_> = xml
             .descendants()
-            .filter(|node| node.attribute("filter").is_some())
+            .filter(|node| filter_reference(*node).is_some())
             .collect();
-        assert_eq!(filtered.len(), if html_labels { 1 } else { 2 });
+        assert_eq!(filtered.len(), 2);
         let visible: Vec<_> = filtered
             .iter()
             .flat_map(|node| node.descendants())
@@ -1368,7 +1482,7 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             .collect();
         assert!(!visible.contains(&"Alpha"));
         assert!(visible.contains(&"Beta"));
-        assert_eq!(visible.contains(&"Advance"), !html_labels);
+        assert!(visible.contains(&"Advance"));
         let viewport: Vec<f64> = xml
             .root_element()
             .attribute("viewBox")
@@ -1377,8 +1491,7 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             .map(|value| value.parse().unwrap())
             .collect();
         for terminal in &filtered {
-            let id = terminal
-                .attribute("filter")
+            let id = filter_reference(*terminal)
                 .unwrap()
                 .strip_prefix("url(#")
                 .unwrap()

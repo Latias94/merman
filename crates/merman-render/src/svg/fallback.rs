@@ -25,6 +25,9 @@ use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{GFrame, source_class_attr_tokens, sum_translate};
 use html::{foreign_object_html_soft_wrap_width, htmlish_to_text_lines, wrap_html_lines_to_width};
 
+/// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
+pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
+
 pub(crate) const PREPARED_TEXT_LABEL_DATA_ATTR: &str = "data-merman-prepared-text-label";
 /// Writer-owned terminal fill for a single fallback background occurrence.
 pub(crate) const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
@@ -186,13 +189,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                 let y = parse_attr_f64(tag, "y", checkpoint)?.unwrap_or(0.0);
                 // A root overlay escapes the filter's coordinate system and paint order.
                 // Keep these fallbacks beside their foreignObject under the original ancestors.
-                let in_place = g_stack.iter().any(|frame| frame.has_filter);
+                let text_filter = writer_owned_fallback_text_filter(tag, inner, checkpoint)?;
+                let in_place =
+                    text_filter.is_some() || g_stack.iter().any(|frame| frame.has_filter);
+                let text_filter_attr =
+                    text_filter.map(|reference| format!(r#" filter="{reference}""#));
                 let overlay_start = overlays.len();
                 let generated_depth = if in_place {
                     source_stack
                         .len()
                         .saturating_add(source_stack_overflow_depth)
-                        .saturating_add(1)
+                        .saturating_add(if text_filter.is_some() { 2 } else { 1 })
                 } else {
                     2
                 };
@@ -294,11 +301,16 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     } else if let Some(label_bkg) = &typography.label_background {
                         let escaped_label_bkg =
                             escape_xml_attr_with_checkpoints(label_bkg, checkpoint)?;
+                        let isolated_style = if text_filter.is_some() {
+                            format!(r#" style="fill:{escaped_label_bkg};stroke:none;opacity:1""#)
+                        } else {
+                            String::new()
+                        };
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                                abs_x, abs_y, width, height, escaped_label_bkg,
+                                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"{}/>"#,
+                                abs_x, abs_y, width, height, escaped_label_bkg, isolated_style,
                             ),
                             1,
                             svg.len().saturating_add(inline_generated_bytes),
@@ -359,6 +371,16 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
                     let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
 
+                    if let Some(filter_attr) = &text_filter_attr {
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("<g{filter_attr}>"),
+                            1,
+                            svg.len().saturating_add(inline_generated_bytes),
+                            &mut generated_elements,
+                            &mut preflight_label,
+                        )?;
+                    }
                     for (idx, line) in lines.iter().enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
@@ -391,6 +413,17 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         )?;
                     }
 
+                    if text_filter.is_some() {
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("</g>"),
+                            0,
+                            svg.len().saturating_add(inline_generated_bytes),
+                            &mut generated_elements,
+                            &mut preflight_label,
+                        )?;
+                    }
+
                     push_generated_fmt(
                         &mut overlays,
                         format_args!("</g>"),
@@ -401,7 +434,19 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     )?;
                 }
                 if in_place && overlays.len() > overlay_start {
-                    let permitted = source_stack_overflow_depth == 0
+                    let source_permitted = text_filter.is_none()
+                        || cascade_index
+                            .as_mut()
+                            .expect("generated labels have a cascade")
+                            .permits_html_text_filter(
+                                &source_stack,
+                                tag,
+                                inner,
+                                checkpoint,
+                                selector_limit,
+                            )?;
+                    let permitted = source_permitted
+                        && source_stack_overflow_depth == 0
                         && cascade_index
                             .as_mut()
                             .expect("generated labels have a cascade")
@@ -418,6 +463,14 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         out.push_str(inline);
                         overlays.truncate(overlay_start);
                     } else {
+                        if let Some(filter_attr) = &text_filter_attr {
+                            // A rejected projection cannot retain a local-coordinate effect.
+                            // Native receipt validation will see the missing application.
+                            if let Some(relative) = overlays[overlay_start..].find(filter_attr) {
+                                let start = overlay_start + relative;
+                                overlays.replace_range(start..start + filter_attr.len(), "");
+                            }
+                        }
                         // Keep the readable root fallback when SVG-only CSS is not isolated.
                         // The missing filtered glyphs remain visible to native receipt checks.
                         let base = sum_translate(&g_stack, checkpoint)?;
@@ -546,6 +599,129 @@ fn push_generated_fmt<E>(
         .expect("writing formatted SVG into a String cannot fail");
     *generated_elements = projected_elements;
     Ok(())
+}
+
+fn writer_owned_fallback_text_filter<'a, E>(
+    tag: &'a str,
+    inner: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a str>, E> {
+    let Some(reference) = extract_exact_double_quoted_attr_with_checkpoints(
+        tag,
+        FALLBACK_TEXT_FILTER_DATA_ATTR,
+        checkpoint,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(id) = reference
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return Ok(None);
+    };
+    if id.is_empty()
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    {
+        return Ok(None);
+    }
+    // The annotation requests projection, not admission. Require its real HTML application;
+    // the downstream exporter still verifies the actual SVG definition and filtered glyphs.
+    checkpoint()?;
+    let Ok(document) = roxmltree::Document::parse(inner) else {
+        return Ok(None);
+    };
+    checkpoint()?;
+    let div = document.root_element();
+    let mut children = div.children().filter(|node| node.is_element());
+    let Some(span) = children.next() else {
+        return Ok(None);
+    };
+    if children.next().is_some()
+        || !div.has_tag_name("div")
+        || div.attribute("class") != Some("labelBkg")
+        || !span.has_tag_name("span")
+        || span.attribute("class") != Some("edgeLabel")
+    {
+        return Ok(None);
+    }
+    let mut children = span.children().filter(|node| node.is_element());
+    let Some(paragraph) = children.next() else {
+        return Ok(None);
+    };
+    let expected_style = format!("background:transparent;filter:{reference};");
+    if children.next().is_some()
+        || !paragraph.has_tag_name("p")
+        || paragraph.attributes().len() != 1
+        || paragraph.attribute("style") != Some(expected_style.as_str())
+    {
+        return Ok(None);
+    }
+    for outer in [div, span] {
+        if outer
+            .attributes()
+            .any(|attribute| !matches!(attribute.name(), "class" | "style"))
+        {
+            return Ok(None);
+        }
+        let mut bounded = true;
+        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+            outer.attribute("style").unwrap_or_default(),
+            checkpoint,
+            |boundary| {
+                let raw = boundary.raw();
+                if raw.trim().trim_end_matches(';').trim().is_empty() {
+                    return Ok(true);
+                }
+                bounded &=
+                    crate::mermaid_style::parse_style_declaration(raw).is_some_and(
+                        |decl| match decl.property() {
+                            "color" | "fill" | "font-family" | "font-size" | "font-weight"
+                            | "font-style" => true,
+                            "background" => {
+                                crate::mermaid_style::is_supported_css_color_value(decl.value())
+                            }
+                            "display" => matches!(decl.value(), "table" | "table-cell"),
+                            "white-space" => matches!(decl.value(), "nowrap" | "break-spaces"),
+                            "line-height" => decl.value() == "1.5",
+                            "width" | "max-width" => decl.value() == "200px",
+                            "text-align" => decl.value() == "center",
+                            _ => false,
+                        },
+                    );
+                Ok(true)
+            },
+        )?;
+        if !bounded {
+            return Ok(None);
+        }
+    }
+    for node in document.descendants() {
+        checkpoint()?;
+        if node.is_element() && node.tag_name().namespace() != Some("http://www.w3.org/1999/xhtml")
+        {
+            return Ok(None);
+        }
+        if node == div || node == span || node == paragraph || node.is_root() {
+            continue;
+        }
+        if node.is_element()
+            && (!matches!(node.tag_name().name(), "span" | "br") || node.attributes().len() != 0)
+        {
+            return Ok(None);
+        }
+        if node.is_text()
+            && node.text().is_some_and(|text| !text.trim().is_empty())
+            && node
+                .parent()
+                .is_some_and(|parent| parent == div || parent == span || parent.is_root())
+        {
+            return Ok(None);
+        }
+    }
+    Ok(Some(reference))
 }
 
 fn writer_owned_fallback_background<'a, E>(
@@ -798,6 +974,70 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_text_filter_keeps_background_outside_and_requires_the_real_reference() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel rect{opacity:.5;fill:red}</style><g class="edgeLabel" transform="translate(20,30)"><foreignObject width="80" height="24" style="overflow: visible;" data-merman-fallback-text-filter="url(#glow)"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="background:rgba(255,0,0,0.7)"><span class="edgeLabel" style=";background:transparent"><p style="background:transparent;filter:url(#glow);">Hello</p></span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(source);
+        let document = roxmltree::Document::parse(&out).unwrap();
+        let filtered = document
+            .descendants()
+            .find(|n| n.attribute("filter") == Some("url(#glow)"))
+            .unwrap();
+        assert!(filtered.descendants().any(|n| n.has_tag_name("text")));
+        assert!(!filtered.descendants().any(|n| n.has_tag_name("rect")));
+        let background = filtered
+            .parent()
+            .unwrap()
+            .children()
+            .find(|n| n.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("rgba(255,0,0,0.7)"));
+        assert!(background.attribute("style").unwrap().contains("opacity:1"));
+        assert!(
+            filtered
+                .ancestors()
+                .any(|n| n.attribute("transform") == Some("translate(20,30)"))
+        );
+        for invalid in [
+            source.replace("overflow: visible;", "overflow: visible;filter:url(#other)"),
+            source.replace("<p style=", "<p xmlns=\"\" style="),
+            source.replace("<style>", "<style>foreignObject{filter:none!important}"),
+            source.replace("<style>", "<style>p{filter:none!important}"),
+            source.replace("<style>", "<style>.labelBkg{opacity:.2}"),
+            source.replace(
+                "background:transparent\"><p",
+                "background:transparent;transform:translateX(3px)\"><p",
+            ),
+            source.replace("filter:url(#glow);", "filter:url(#other);"),
+            source.replace("Hello</p>", "Hello</p><p>Other</p>"),
+            source.replace("Hello</p>", "Hello</p><span>Outside</span>"),
+            source.replace("Hello</p>", "Hello</p>Outside"),
+            source.replace("Hello</p>", "<span style='filter:none'>Hello</span></p>"),
+            source.replace("data-merman-fallback-text-filter=", "ignored="),
+            source.replace(
+                ".edgeLabel rect{opacity:.5;fill:red}",
+                "text{filter:none!important}",
+            ),
+            source.replace(
+                ".edgeLabel rect{opacity:.5;fill:red}",
+                ".edgeLabel rect{opacity:.2!important}",
+            ),
+        ] {
+            let out = foreign_object_label_fallback_svg_text(&invalid);
+            let document = roxmltree::Document::parse(&out).unwrap();
+            assert!(
+                !document
+                    .descendants()
+                    .any(|n| n.attribute("filter") == Some("url(#glow)")),
+                "{invalid}\n{out}"
+            );
+            assert!(
+                document.descendants().any(|n| n.has_tag_name("text")
+                    && n.text().is_some_and(|text| text.contains("Hello")))
+            );
+        }
+    }
+
+    #[test]
     fn foreign_object_overlay_does_not_inherit_background_color_by_default() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g style="background-color:#ff0000"><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
@@ -817,7 +1057,7 @@ mod tests {
             "explicit background-color: initial must not become the compatibility gray: {out}"
         );
 
-        for clear in ["transparent", "initial"] {
+        for clear in ["transparent", "initial", "unset", "rgba(0,0,0,0)", "#0000"] {
             let svg = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{{background-color:#ff0000}}.labelBkg .clear{{background-color:{clear}}}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="clear">Hello</span></div></foreignObject></svg>"#,
             );
@@ -827,9 +1067,9 @@ mod tests {
                 .nth(1)
                 .unwrap_or_else(|| panic!("expected fallback output: {out}"));
             assert!(
-                !fallback.contains(r##"fill="#ff0000""##)
+                fallback.contains(r##"fill="#ff0000""##)
                     && !fallback.contains("rgba(232, 232, 232, 0.5)"),
-                "a specified {clear} descendant must clear the parent fallback background: {out}"
+                "a specified {clear} descendant must leave its parent's background visible: {out}"
             );
         }
 

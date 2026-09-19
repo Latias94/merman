@@ -24,7 +24,7 @@ impl PreparedLabelEffect {
         id: &str,
         translation: (f64, f64),
     ) -> bool {
-        if self.translation != translation {
+        if !self.matches_translation(translation) {
             return false;
         }
         let reference = crate::svg::parity::shadow::write_theme_shadow_application(
@@ -37,6 +37,28 @@ impl PreparedLabelEffect {
         true
     }
 
+    pub(super) fn matches_translation(&self, translation: (f64, f64)) -> bool {
+        self.translation == translation
+    }
+
+    pub(super) fn html_reference(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+        id: &str,
+    ) -> String {
+        crate::svg::parity::shadow::write_theme_shadow_application(
+            out,
+            id,
+            &self.effect,
+            self.shadow.region(),
+        )
+    }
+
+    pub(super) fn record(&self, ctx: &FlowchartRenderCtx<'_>, id: &str) {
+        ctx.effect_evidence
+            .record_application(&self.effect, id, self.shadow.region());
+    }
+
     pub(super) fn close(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -44,8 +66,7 @@ impl PreparedLabelEffect {
         id: &str,
     ) {
         out.push_str("</g>");
-        ctx.effect_evidence
-            .record_application(&self.effect, id, self.shadow.region());
+        self.record(ctx, id);
     }
 }
 
@@ -54,6 +75,7 @@ pub(super) struct FlowchartLabelEffects {
     nodes: FxHashMap<String, PreparedLabelEffect>,
     // A verified Clear has no filter application to count, but still needs writer evidence.
     cleared_html_nodes: FxHashSet<String>,
+    cleared_html_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey>,
     edges: FxHashMap<crate::flowchart::FlowchartEdgeKey, PreparedLabelEffect>,
 }
 
@@ -170,8 +192,14 @@ impl FlowchartLabelEffects {
                     let Some(width) = node.label_width else {
                         continue;
                     };
-                    let Some(bounds) =
-                        plain_html_shadow_bounds(ctx, raw, width, height, text_style.as_ref())?
+                    let Some(bounds) = plain_html_shadow_bounds(
+                        ctx,
+                        raw,
+                        width,
+                        height,
+                        text_style.as_ref(),
+                        false,
+                    )?
                     else {
                         continue;
                     };
@@ -213,7 +241,9 @@ impl FlowchartLabelEffects {
                 }
             }
         }
-        if !ctx.edge_html_labels
+        let edge_effect = ctx.edge_theme.label_effect();
+        let edge_cleared = ctx.edge_html_labels && ctx.edge_theme.label_effect_is_cleared();
+        if (edge_effect.is_some() || edge_cleared)
             && super::style::label_shadow_structural_styles_are_bounded(
                 ctx.class_defs,
                 &[
@@ -225,7 +255,6 @@ impl FlowchartLabelEffects {
                     "row",
                 ],
             )
-            && let Some(effect) = ctx.edge_theme.label_effect()
         {
             for render_edge in render_edges {
                 let edge = render_edge.as_ref();
@@ -239,7 +268,9 @@ impl FlowchartLabelEffects {
                     continue;
                 };
                 let source = ctx.edge_style_plan.edge_for(edge.key)?;
-                if !source.label_shadow_source_is_bounded() {
+                if !source.label_shadow_source_is_bounded()
+                    || (ctx.edge_html_labels && !plain_html_edge_styles_are_bounded(ctx, source)?)
+                {
                     continue;
                 }
                 let raw = ctx
@@ -250,13 +281,45 @@ impl FlowchartLabelEffects {
                     ThemeTarget::EdgeLabel,
                     source.effective_edge_label_text_style(&ctx.text_style),
                 );
-                let Some(bounds) = sidecar.centered_shadow_bounds(
-                    FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
-                    raw,
-                    text_style.as_ref(),
-                ) else {
-                    continue;
+                let (bounds, translation) = if ctx.edge_html_labels {
+                    let content = ctx
+                        .edge_label_padding
+                        .content_box(label.width, label.height);
+                    let Some(bounds) = plain_html_shadow_bounds(
+                        ctx,
+                        raw,
+                        content.width,
+                        content.height,
+                        text_style.as_ref(),
+                        true,
+                    )?
+                    else {
+                        continue;
+                    };
+                    (bounds, (content.x, content.y))
+                } else {
+                    let Some(bounds) = sidecar.centered_shadow_bounds(
+                        FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
+                        raw,
+                        text_style.as_ref(),
+                    ) else {
+                        continue;
+                    };
+                    let plain = flowchart_label_plain_text(raw, "text", false);
+                    let label_box = super::render::edge_label::flowchart_svg_edge_label_box(
+                        label.width,
+                        label.height,
+                        ctx.measurer
+                            .measure_svg_create_text_bbox_y_offset_px(&plain, text_style.as_ref()),
+                        ctx.edge_label_padding,
+                    );
+                    (bounds, (label_box.translate_x, label_box.translate_y))
                 };
+                if edge_cleared {
+                    ctx.work_meter.charge(1)?;
+                    plan.cleared_html_edges.insert(edge.key);
+                    continue;
+                }
                 let root = hierarchy.edge_root(edge.key)?.unwrap_or("");
                 let offsets = hierarchy
                     .root_offsets(root)
@@ -275,21 +338,8 @@ impl FlowchartLabelEffects {
                     edge_cache,
                     false,
                 );
-                let plain = flowchart_label_plain_text(
-                    raw,
-                    edge.edge.label_type.as_deref().unwrap_or("text"),
-                    false,
-                );
-                let label_box = super::render::edge_label::flowchart_svg_edge_label_box(
-                    label.width,
-                    label.height,
-                    ctx.measurer
-                        .measure_svg_create_text_bbox_y_offset_px(&plain, text_style.as_ref()),
-                    ctx.edge_label_padding,
-                );
-                let translation = (label_box.translate_x, label_box.translate_y);
                 if let Some(prepared) = prepare_effect(
-                    effect,
+                    edge_effect.expect("selected edge label effect"),
                     resources,
                     bounds,
                     translation,
@@ -317,6 +367,9 @@ impl FlowchartLabelEffects {
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> Option<&PreparedLabelEffect> {
         self.edges.get(&key)
+    }
+    pub(super) fn html_edge_is_cleared(&self, key: crate::flowchart::FlowchartEdgeKey) -> bool {
+        self.cleared_html_edges.contains(&key)
     }
     pub(super) fn expected_applications(&self) -> usize {
         self.nodes.len() + self.edges.len()
@@ -377,6 +430,37 @@ fn plain_html_node_classes_are_bounded(
     Ok(true)
 }
 
+// The new SVG background siblings must not acquire paint from source selectors that
+// previously affected only HTML glyphs. Color remains a text-only source declaration.
+fn plain_html_edge_styles_are_bounded(
+    ctx: &FlowchartRenderCtx<'_>,
+    source: &FlowchartCompiledStyles,
+) -> crate::Result<bool> {
+    if source.label_div_decls.iter().any(|(property, _)| {
+        !matches!(
+            property.as_str(),
+            "color" | "fill" | "font-family" | "font-size" | "font-weight" | "font-style"
+        )
+    }) {
+        return Ok(false);
+    }
+    for class in ["root", "edgeLabels", "edgeLabel", "label", "labelBkg"] {
+        ctx.work_meter.charge(1)?;
+        if let Some(groups) = ctx.class_defs.get(class) {
+            for group in groups {
+                ctx.work_meter.charge(group.len())?;
+                if !crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw)
+                        .is_some_and(|declaration| declaration.property() == "color")
+                }) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
 // Ordinary HTML uses the layout-owned label box in top-left coordinates. Only transparent,
 // unstyled text markup can use this allocation; rich HTML needs its own geometry consumer.
 fn plain_html_shadow_bounds(
@@ -385,6 +469,7 @@ fn plain_html_shadow_bounds(
     width: f64,
     height: f64,
     style: &crate::text::TextStyle,
+    single_paragraph: bool,
 ) -> crate::Result<Option<[f64; 4]>> {
     use crate::environment::TextMeasurementOperation;
     let em = style.font_size;
@@ -428,6 +513,25 @@ fn plain_html_shadow_bounds(
             .any(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
     {
         return Ok(None);
+    }
+    if single_paragraph {
+        let mut children = document
+            .root_element()
+            .children()
+            .filter(|node| node.is_element());
+        if !children.next().is_some_and(|node| node.has_tag_name("p"))
+            || children.next().is_some()
+            || document
+                .descendants()
+                .filter(|node| node.has_tag_name("p"))
+                .count()
+                != 1
+            || document.root_element().children().any(|node| {
+                node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
+            })
+        {
+            return Ok(None);
+        }
     }
     // Match the existing host SVG-label allocation policy: reserve one em for glyph
     // overhang around measured content, then let the shared effect add its own outsets.

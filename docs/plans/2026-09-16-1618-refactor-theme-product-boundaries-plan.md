@@ -320,6 +320,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **HTML node increment (2026-09-19):** The [HTML node-label effect record](../knowledge/engineering/verification/2026-09-19-flowchart-html-node-effects.md) covers glyph-only filters for ordinary HTML NodeLabel terminals, source-class/markup boundaries, explicit Clear, viewport accounting and real browser/native export checks. Final renderer/facade Release tests passed 2,662/2,662 (two skips); scoped lint and independent review are recorded there. No dependency, embedded font, schema or public recipe changed. HTML EdgeLabel background separation, public text-glow bindings and complete three-target scene qualification still keep U6 open.
 
+**HTML edge increment (2026-09-19):** The [HTML edge-label effect record](../knowledge/engineering/verification/2026-09-19-flowchart-html-edge-effects.md) covers glyph-only effects while retaining natural HTML background geometry, bounded native projection, source-style refusal and explicit Clear. Final renderer/facade Release tests passed 2,664/2,664 (two skips); real browser/native probes, scoped lint, the full SVG structure gate and independent review are recorded there. No dependency, embedded font, schema or public recipe changed. Legacy transparent-background semantics, non-effect native background compositing, public text-glow bindings and complete three-target scene acceptance remain explicit follow-ups; this increment does not close U6 or C7a.
+
 ### U7. Deliver the complete Sequence scene
 
 **Goal:** Connect required Sequence styling and effects beyond palette changes.

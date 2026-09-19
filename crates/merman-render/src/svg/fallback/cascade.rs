@@ -666,6 +666,74 @@ impl CascadeIndex {
 
     /// Reject projection when new SVG-only selectors can change the generated terminals.
     /// This reuses the bounded source matcher; it does not interpret additional CSS properties.
+    /// The writer's HTML glyph filter cannot stand in for unprojected effects on its
+    /// original HTML ancestors, or for a stylesheet overriding the paragraph itself.
+    pub(super) fn permits_html_text_filter<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        foreign_object: &str,
+        inner: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(inner);
+        let mut first = Some(foreign_object);
+        loop {
+            let (raw, namespace) = if let Some(tag) = first.take() {
+                (tag, Namespace::Svg)
+            } else if let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+                (tag.raw(), Namespace::Xhtml)
+            } else {
+                break;
+            };
+            if end_tag_name(raw).is_some() {
+                path.pop();
+                continue;
+            }
+            if start_tag_name(raw).is_none() {
+                continue;
+            }
+            let element = Self::source_element(raw, namespace, checkpoint)?;
+            if namespace == Namespace::Svg
+                && (element
+                    .attributes
+                    .get("style")
+                    .and_then(Option::as_deref)
+                    .is_some_and(|style| style.trim() != "overflow: visible;")
+                    || ["filter", "transform", "opacity", "x", "y"]
+                        .iter()
+                        .any(|name| element.attributes.contains_key(*name)))
+            {
+                return Ok(false);
+            }
+            path.push(element);
+            for index in self.candidate_rules_for_path(&path, selector_limit)? {
+                let rule = &self.rules[index];
+                if matches_branch(&rule.branch, &path, checkpoint)?
+                    && rule.declarations.iter().any(|declaration| {
+                        match declaration.property.as_str() {
+                            "color" | "fill" | "font-family" | "font-size" | "font-weight"
+                            | "font-style" | "text-anchor" | "text-align" | "line-height" => false,
+                            "background" | "background-color" => declaration.important,
+                            "margin" => declaration.value != "0" || declaration.important,
+                            _ => true,
+                        }
+                    })
+                {
+                    return Ok(false);
+                }
+            }
+            if self.budget.matching_exhausted {
+                return Ok(false);
+            }
+            if raw.trim_end().ends_with("/>") {
+                path.pop();
+            }
+        }
+        Ok(true)
+    }
+
     pub(super) fn permits_in_place_fallback<E>(
         &mut self,
         ancestors: &[SourceElement],
@@ -698,11 +766,30 @@ impl CascadeIndex {
                 let rule = &self.rules[index];
                 if matches_branch(&rule.branch, &path, checkpoint)?
                     && rule.declarations.iter().any(|declaration| {
-                        // Only text's explicitly emitted normal-priority properties are isolated.
-                        // A declaration matching its new parent/background is never overridden.
-                        path.last()
-                            .is_none_or(|element| element.local_name != "text")
-                            || !projection_overrides(declaration)
+                        // Only explicitly emitted paint/typography overrides are isolated.
+                        // Parent rules and important declarations remain outside this projection.
+                        let element = path.last().expect("projected element");
+                        if element.local_name == "text" {
+                            !projection_overrides(declaration)
+                        } else if element.local_name == "rect"
+                            && element
+                                .inline
+                                .iter()
+                                .any(|d| d.property == "opacity" && d.value == "1")
+                            && element
+                                .inline
+                                .iter()
+                                .any(|d| d.property == "stroke" && d.value == "none")
+                            && element.inline.iter().any(|d| d.property == "fill")
+                        {
+                            declaration.important
+                                || !matches!(
+                                    declaration.property.as_str(),
+                                    "fill" | "stroke" | "opacity" | "background-color"
+                                )
+                        } else {
+                            true
+                        }
                     })
                 {
                     return Ok(false);
@@ -977,13 +1064,18 @@ impl CascadeIndex {
             if background_style.background_color_specified {
                 background_color_specified = true;
                 match background_style.background_color {
-                    Some(color) if !color.eq_ignore_ascii_case("transparent") => {
+                    Some(color)
+                        if !merman_core::theme_color::ThemeColor::parse(&color).is_ok_and(
+                            |value| {
+                                value.channel(merman_core::theme_color::ColorChannel::Alpha) == 0.0
+                            },
+                        ) =>
+                    {
                         label_background = Some(color);
                     }
-                    // `transparent`, `initial`, and `unset` are specified values that
-                    // clear an earlier owner background; they must not leave a stale
-                    // parent rectangle visible in the generated fallback.
-                    Some(_) | None => label_background = None,
+                    // Transparent descendants paint no background; they do not erase
+                    // an ancestor's background. This is not an inherited property.
+                    Some(_) | None => {}
                 }
             }
         }
