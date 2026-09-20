@@ -3204,7 +3204,7 @@ mod tests {
                 && capability.logical_family_kind == "flowchart"
                 && capability.metadata_id.as_deref() == Some("flowchart")
                 && capability.render_model_kind.as_deref() == Some("flowchart")
-                && capability.has_detector
+                && !capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser
                 && capability.has_combined_parser
