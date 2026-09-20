@@ -339,8 +339,17 @@ The SHA backend candidate is now [accepted](sha2_upgrade_2026-09-20.md): the wor
 to 0.11.0 preserves both the framed resource fingerprint and raw public artifact digest while
 confirming a 14.58% Class-medium latency reduction against an adjacent old-SHA baseline with
 identical benchmark source. All five controls pass. Continue attributing the remaining Class
-cost and renew matched alpha.6 and final-candidate artifact evidence; the isolated native win
-does not close this release-range regression.
+cost and renew final-candidate artifact evidence; the isolated native win does not close this
+release-range regression. The [September 21 matched renewal](alpha6_current_class_2026-09-21.md)
+compares published alpha.6 with post-upgrade source `aa35110ee`: Class tiny remains +209.94%
+(50.65 to 156.99 µs), and Class medium +102.32% (600.34 to 1,214.61 µs). Both clear the unchanged
+10%/50 µs regression gate with stable calibration, eight balanced confirmation pairs and exact
+SVG identities. These current observations supersede the pre-upgrade values for this source;
+they remain release-range evidence, not theme-only attribution.
+Two-pair stage diagnostics show sub-microsecond parse deltas and family SVG emission increases
+of 16.50/92.57 µs. Layout projection identities differ and that stage is not sampled. Continue
+attributing emission and standalone finalization while preserving this layout attribution gap;
+do not infer a finalizer-only cause by subtracting independent stage measurements.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

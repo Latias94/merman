@@ -390,10 +390,10 @@ Flowchart tiny/medium grew from 10,678/76,558 to 11,199/81,318 bytes, Sequence t
 21,276/32,120 to 21,692/32,568, and State tiny/medium from 7,879/42,220 to 7,888/42,285.
 Their timings are therefore not treated as matched regressions.
 
-Class tiny and Class medium retained byte-identical SVG identities and completed the decision-grade
+Class tiny and Class medium retained byte-identical SVG identities and completed the pre-SHA-upgrade
 confirmation at `target/bench/experiments/theme-perf-current-20260920/alpha6-to-alpha7-class-confirmation.json`:
 
-| Fixture | alpha.6 | current | Relative change (95% simultaneous bound) | Absolute change (95% bound) |
+| Fixture | alpha.6 | Pre-SHA-upgrade candidate | Relative change (95% simultaneous bound) | Absolute change (95% bound) |
 | --- | ---: | ---: | ---: | ---: |
 | class_tiny | 50.42 µs | 202.98 µs | +302.53% (+299.76% to +305.94%) | +152.56 µs (+151.38 to +153.93 µs) |
 | class_medium | 602.61 µs | 1,444.84 µs | +139.77% (+138.61% to +140.74%) | +842.23 µs (+838.38 to +845.30 µs) |
@@ -433,6 +433,19 @@ Native Assets and theme-authoring smokes pass; Android device execution remains 
 Earlier installed-package and archive receipts still belong to their recorded revisions and
 must be regenerated for the final candidate. This adjacent optimization does not establish
 recovery against alpha.6 or close C7a/U10.
+
+The [September 21 post-upgrade renewal](../../../performance/alpha6_current_class_2026-09-21.md)
+now measures that remaining gap directly against published alpha.6. Current source `aa35110ee`
+retains exact Class SVG bytes: tiny rises from 50.65 to 156.99 µs (+209.94%, simultaneous bounds
++208.27–211.56%), and medium from 600.34 to 1,214.61 µs (+102.32%, +101.93–102.65%). Both remain
+confirmed regressions under the unchanged 10%/50 µs gate. Each executable passes eight A/A
+calibration pairs, followed by eight balanced confirmation pairs; source and output postflight
+checks pass without contract failures. These figures supersede the pre-upgrade table for current
+source. The separate adjacent SHA improvement stays valid; neither result closes U10.
+The same-binary stage follow-up finds sub-microsecond parse deltas and 16.50/92.57 µs added family
+SVG emission time in two diagnostic pairs. Layout projection identities differ by 46 bytes per
+fixture, so layout timing is correctly rejected. Stage estimates do not assign the remaining
+end-to-end cost to one owner; emission/finalization and the unmatched layout stage remain open.
 
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
