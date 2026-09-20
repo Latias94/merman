@@ -9,6 +9,7 @@ fn graph(algorithm: Algorithm) -> Graph {
             .map(|(i, (width, height))| Node {
                 id: format!("n{i}"),
                 kind: NodeKind::Leaf,
+                container: Default::default(),
                 label_text: None,
                 width,
                 height,
@@ -414,5 +415,209 @@ fn mixed_root_scopes_match_actual_elkjs_container_resolution() {
             }
         }
         assert_eq!(result.edges.len(), 2);
+    }
+}
+
+#[test]
+fn explicit_container_algorithms_and_title_minima_match_elkjs() {
+    // Mermaid 12 metadata presets, executed by elkjs 0.9.3. Root Box isolates each
+    // container extent; wide titles exercise sizing before and after provider execution.
+    let cases = [
+        (
+            Algorithm::Layered,
+            30.0,
+            [
+                [154.0, 85.0, 0.0, 0.0],
+                [15.0, 44.2, 40.0, 20.0],
+                [79.0, 40.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Layered,
+            300.0,
+            [
+                [330.0, 85.0, 0.0, 0.0],
+                [103.0, 44.2, 40.0, 20.0],
+                [167.0, 40.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Box,
+            30.0,
+            [
+                [90.0, 140.0, 0.0, 0.0],
+                [15.0, 25.0, 60.0, 20.0],
+                [15.0, 95.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Box,
+            300.0,
+            [
+                [330.0, 140.0, 0.0, 0.0],
+                [15.0, 25.0, 300.0, 20.0],
+                [15.0, 95.0, 300.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Rectpacking,
+            30.0,
+            [
+                [135.0, 60.0, 0.0, 0.0],
+                [10.0, 20.0, 40.0, 30.0],
+                [65.0, 20.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Rectpacking,
+            300.0,
+            [
+                [330.0, 60.0, 0.0, 0.0],
+                [10.0, 20.0, 137.5, 30.0],
+                [162.5, 20.0, 157.5, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Force,
+            30.0,
+            [
+                [164.8461790112895, 71.08753373701688, 0.0, 0.0],
+                [109.84617901128951, 25.0, 40.0, 20.0],
+                [15.0, 26.08753373701689, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Force,
+            300.0,
+            [
+                [330.0, 71.08753373701688, 0.0, 0.0],
+                [109.84617901128951, 25.0, 40.0, 20.0],
+                [15.0, 26.08753373701689, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Stress,
+            30.0,
+            [
+                [179.74360154767774, 72.15639226832202, 0.0, 0.0],
+                [124.74360154767774, 25.0, 40.0, 20.0],
+                [15.0, 27.156392268322023, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Stress,
+            300.0,
+            [
+                [179.74360154767774, 72.15639226832202, 0.0, 0.0],
+                [124.74360154767774, 25.0, 40.0, 20.0],
+                [15.0, 27.156392268322023, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::MrTree,
+            30.0,
+            [
+                [90.0, 135.0, 0.0, 0.0],
+                [50.0, 40.0, 40.0, 20.0],
+                [40.0, 110.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::MrTree,
+            300.0,
+            [
+                [330.0, 135.0, 0.0, 0.0],
+                [50.0, 40.0, 40.0, 20.0],
+                [40.0, 110.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Radial,
+            30.0,
+            [
+                [60.0, 40.0, 0.0, 0.0],
+                [92.08203932499369, 29.999999999999993, 40.0, 20.0],
+                [15.0, 25.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Radial,
+            300.0,
+            [
+                [330.0, 40.0, 0.0, 0.0],
+                [92.08203932499369, 29.999999999999993, 40.0, 20.0],
+                [15.0, 25.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::SporeOverlap,
+            30.0,
+            [
+                [180.0, 115.0, 0.0, 0.0],
+                [15.0, 25.0, 40.0, 20.0],
+                [105.0, 70.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::SporeOverlap,
+            300.0,
+            [
+                [330.0, 115.0, 0.0, 0.0],
+                [15.0, 25.0, 40.0, 20.0],
+                [105.0, 70.0, 60.0, 30.0],
+            ],
+        ),
+    ];
+    for (algorithm, title_width, expected) in cases {
+        let mut graph = graph(Algorithm::Box);
+        graph.id = "root".into();
+        graph.nodes.truncate(2);
+        for (node, id) in graph.nodes.iter_mut().zip(["a", "b"]) {
+            node.id = id.into();
+            node.parent = Some("g".into());
+        }
+        let mut group = graph.nodes[0].clone();
+        group.id = "g".into();
+        group.kind = NodeKind::Group;
+        group.parent = None;
+        group.width = 900.0; // Nonempty Mermaid groups discard their measured input dimensions.
+        group.height = 900.0;
+        group.label_text = Some("Group".into());
+        group.label = Some(Label {
+            width: title_width,
+            height: 10.0,
+        });
+        group.container = ContainerNodeOptions {
+            algorithm: Some(algorithm),
+            padding: 15.0,
+        };
+        // Metadata wins over direction; no elk.direction is emitted for these containers.
+        group.direction = Some(Direction::Up);
+        graph.nodes.insert(0, group);
+        graph.edges.truncate(1);
+        graph.edges[0].id = "inside".into();
+        graph.edges[0].source = "a".into();
+        graph.edges[0].target = "b".into();
+        graph.edges[0].label = None;
+        let result = super::super::layout(&graph).unwrap();
+        let group = &result.nodes[0];
+        let origin = (group.x - group.width / 2.0, group.y - group.height / 2.0);
+        let mut actual = vec![[group.width, group.height, 0.0, 0.0]];
+        actual.extend(result.nodes[1..].iter().map(|node| {
+            [
+                node.x - node.width / 2.0 - origin.0,
+                node.y - node.height / 2.0 - origin.1,
+                node.width,
+                node.height,
+            ]
+        }));
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            for (a, e) in actual.into_iter().zip(expected) {
+                assert!(
+                    (a - e).abs() < 1e-7,
+                    "{algorithm:?} title={title_width}: actual={a}, expected={e}"
+                );
+            }
+        }
     }
 }

@@ -959,6 +959,7 @@ mod tests {
         for index in 0..group_count {
             let id = format!("group-{index}");
             subgraphs.push(FlowSubgraph {
+                metadata: None,
                 id: id.clone(),
                 title: format!("Group {index}"),
                 dir: None,
@@ -1000,6 +1001,7 @@ mod tests {
         model.nodes[0].label = Some("节点\u{1b}".to_string());
         model.nodes[1].label = Some("🧭".to_string());
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "G".to_string(),
             title: "组\u{7}".to_string(),
             dir: None,
@@ -1374,6 +1376,7 @@ mod tests {
             ],
             edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
             subgraphs: vec![FlowSubgraph {
+                metadata: None,
                 id: "TOP".to_string(),
                 title: "Top Group".to_string(),
                 dir: Some("TB".to_string()),
@@ -1433,6 +1436,7 @@ mod tests {
             ],
             edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
             subgraphs: vec![FlowSubgraph {
+                metadata: None,
                 id: "TOP".to_string(),
                 title: "Top Group".to_string(),
                 dir: Some("TB".to_string()),

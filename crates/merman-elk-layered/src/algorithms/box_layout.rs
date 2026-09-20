@@ -28,6 +28,9 @@ pub struct Rectangle {
     pub priority: i32,
     pub horizontal_content_alignment: ContentAlignment,
     pub vertical_content_alignment: ContentAlignment,
+    /// Active child sizing constraints, after resolving their effective minimum. `None`
+    /// means the child provider has already fixed its size through `ElkUtil.resizeNode`.
+    pub minimum_size: Option<crate::LSize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,6 +130,16 @@ pub fn layout(
                 return Err(Error::InvalidRectangle { index, field });
             }
         }
+        if let Some(minimum) = rectangle.minimum_size {
+            for (field, value) in [
+                ("minimum_width", minimum.width),
+                ("minimum_height", minimum.height),
+            ] {
+                if !value.is_finite() || value < 0.0 {
+                    return Err(Error::InvalidRectangle { index, field });
+                }
+            }
+        }
     }
     // ELK's recursive engine bypasses the layout provider for an empty node, even with padding
     // or MINIMUM_SIZE. This is the elkjs entry-point result, not placeBoxes' internal empty case.
@@ -134,6 +147,23 @@ pub fn layout(
         return Ok(Layout::default());
     }
     let order = sort(rectangles, options.interactive, work)?;
+    // Box sorts using incoming dimensions, then ElkUtil.resizeNode resets each unfixed child
+    // to its effective minimum. In particular, Radial leaves these constraints active.
+    let mut resized;
+    let rectangles = if rectangles.iter().any(|node| node.minimum_size.is_some()) {
+        work.check(rectangles.len())?;
+        resized = rectangles.to_vec();
+        for node in &mut resized {
+            charge(work, 1)?;
+            if let Some(minimum) = node.minimum_size {
+                node.width = minimum.width;
+                node.height = minimum.height;
+            }
+        }
+        &resized[..]
+    } else {
+        rectangles
+    };
     let mut max_row_width: f64 = 0.0;
     let mut total_area = 0.0;
     for &index in &order {
@@ -649,6 +679,24 @@ mod tests {
 
     #[test]
     fn invalid_and_overflowing_geometry_is_rejected() {
+        for minimum in [-1.0, f64::NAN, f64::INFINITY] {
+            let child = Rectangle {
+                width: 40.0,
+                height: 20.0,
+                minimum_size: Some(crate::LSize {
+                    width: minimum,
+                    height: 20.0,
+                }),
+                ..Default::default()
+            };
+            assert!(matches!(
+                layout(&[child], &Options::default(), &mut crate::NoopWorkControl),
+                Err(Error::InvalidRectangle {
+                    field: "minimum_width",
+                    ..
+                })
+            ));
+        }
         let input = rectangles(&[(-1.0, 20.0)]);
         assert_eq!(
             layout(&input, &Options::default(), &mut NoopWorkControl),

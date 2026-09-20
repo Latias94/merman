@@ -45,6 +45,21 @@ struct GraphRandomSeedContext {
 }
 
 impl LGraph {
+    /// Size returned for a completed provider invocation's root by
+    /// `ElkGraphLayoutTransferrer.applyParentNodeLayout` and `ElkUtil.resizeNode`.
+    /// This final minimum-size clamp does not realign the graph contents a second time.
+    pub fn exported_root_size(&self) -> LSize {
+        let mut size = LSize {
+            width: self.size.width + self.padding.left + self.padding.right,
+            height: self.size.height + self.padding.top + self.padding.bottom,
+        };
+        if let Some(minimum) = self.options.effective_node_size_minimum() {
+            size.width = size.width.max(minimum.width);
+            size.height = size.height.max(minimum.height);
+        }
+        size
+    }
+
     pub fn new(id: impl Into<String>, options: LayeredOptions) -> Self {
         let id = id.into();
         Self::new_with_random_seed_authority(

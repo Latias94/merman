@@ -16,17 +16,24 @@ pub(super) struct FlatLayout {
     pub layout: LayoutResult,
     pub size: source_port::LSize,
     pub content_shifts: HashMap<String, Point>,
+    pub size_constraints_active: bool,
 }
 
-pub(super) enum ScopeContext {
+pub(super) enum ScopeContext<'a> {
     Root,
-    OrdinaryContainer { label: Option<Label> },
+    Container { node: &'a Node, mode: ContainerMode },
+}
+
+pub(super) struct NodeContext {
+    pub mode: ContainerMode,
+    pub size_constraints_active: bool,
 }
 
 pub(super) fn layout(
     graph: &Graph,
     scope: &source_port::GraphSeedScope,
-    context: ScopeContext,
+    context: ScopeContext<'_>,
+    node_contexts: &[NodeContext],
     operation_seed: Option<source_port::OperationSeed>,
     work: &mut dyn WorkControl,
 ) -> Result<FlatLayout> {
@@ -92,27 +99,38 @@ pub(super) fn layout(
     let mut content_shifts = HashMap::new();
     // Ordinary directional containers retain buildSubgraphLayoutOptions' padding and node
     // spacing. Their algorithms do not inherit the root-only Rectpacking preset.
-    let (container_padding, minimum_width) = match context {
-        ScopeContext::Root => (None, 0.0),
-        ScopeContext::OrdinaryContainer { label } => (
-            Some(box_layout::Padding {
-                top: 24.0,
-                left: 24.0,
-                right: 24.0,
-                bottom: 24.0,
-            }),
-            label.map_or(0.0, |label| label.width),
+    let (container_padding, minimum, explicit) = match context {
+        ScopeContext::Root => (None, None, false),
+        ScopeContext::Container { node, mode } => (
+            Some(provider_padding(mode.padding(node))),
+            mode.minimum(node),
+            matches!(mode, ContainerMode::Explicit(_)),
         ),
     };
+    let minimum = effective_minimum(minimum);
+    let minimum_width = minimum.width;
+    let minimum_height = minimum.height;
     match graph.options.algorithm {
         Algorithm::Layered => unreachable!("layered graphs use the compound-aware pipeline"),
         Algorithm::Box | Algorithm::Rectpacking => {
             let rectangles: Vec<_> = graph
                 .nodes
                 .iter()
-                .map(|node| box_layout::Rectangle {
+                .zip(node_contexts)
+                .map(|(node, context)| box_layout::Rectangle {
                     width: node.width,
                     height: node.height,
+                    horizontal_content_alignment: if matches!(
+                        context.mode,
+                        ContainerMode::Explicit(_)
+                    ) {
+                        box_layout::ContentAlignment::Center
+                    } else {
+                        box_layout::ContentAlignment::Start
+                    },
+                    minimum_size: context
+                        .size_constraints_active
+                        .then(|| effective_minimum(context.mode.minimum(node))),
                     ..Default::default()
                 })
                 .collect();
@@ -122,16 +140,22 @@ pub(super) fn layout(
                     options.padding = padding;
                     options.spacing = 50.0;
                     options.minimum_width = minimum_width;
+                    options.minimum_height = minimum_height;
+                    if explicit {
+                        options.aspect_ratio = 2.0;
+                        options.expand_nodes = true;
+                    }
                 }
                 box_layout::layout(&rectangles, &options, work)?
             } else {
                 // render.ts RECTPACKING_OPTIONS. SCANLINE is absent from elkjs 0.9.3's
                 // enum, so it resolves to GREEDY, the kernel's implemented default.
-                let options = if let Some(padding) = container_padding {
+                let options = if !explicit && let Some(padding) = container_padding {
                     rectpacking::Options {
                         padding,
                         spacing: 50.0,
                         minimum_width,
+                        minimum_height,
                         ..Default::default()
                     }
                 } else {
@@ -143,6 +167,9 @@ pub(super) fn layout(
                         compaction_iterations: 10,
                         eliminate_whitespace: true,
                         horizontal_content_alignment: box_layout::ContentAlignment::Center,
+                        padding: container_padding.unwrap_or_default(),
+                        minimum_width,
+                        minimum_height,
                         ..Default::default()
                     }
                 };
@@ -211,6 +238,9 @@ pub(super) fn layout(
             if let Some(padding) = container_padding {
                 options.padding = padding;
                 options.spacing = 50.0;
+                if explicit {
+                    options.aspect_ratio = 2.0;
+                }
             }
             let placed = if graph.options.algorithm == Algorithm::Force {
                 force::layout(&nodes, &edges, &options, work)?
@@ -270,7 +300,8 @@ pub(super) fn layout(
             let nodes: Vec<_> = graph
                 .nodes
                 .iter()
-                .map(|node| mrtree::Node {
+                .zip(node_contexts)
+                .map(|(node, context)| mrtree::Node {
                     width: node.width,
                     height: node.height,
                     // Mermaid leaf nodes have no ELK node-label array. MrTree derives identity
@@ -281,12 +312,7 @@ pub(super) fn layout(
                         String::new()
                     },
                     padding: if node.kind == NodeKind::Group {
-                        box_layout::Padding {
-                            top: 24.0,
-                            right: 24.0,
-                            bottom: 24.0,
-                            left: 24.0,
-                        }
+                        provider_padding(context.mode.padding(node))
                     } else {
                         mrtree::Node::default().padding
                     },
@@ -303,6 +329,9 @@ pub(super) fn layout(
             if let Some(padding) = container_padding {
                 options.padding = padding;
                 options.spacing = 50.0;
+                if explicit {
+                    options.aspect_ratio = 2.0;
+                }
             }
             let placed = mrtree::layout(
                 &nodes,
@@ -431,10 +460,41 @@ pub(super) fn layout(
             }
         }
     }
-    size.width = size.width.max(minimum_width);
+    // Force's initial export clears NODE_SIZE_CONSTRAINTS before Stress imports the graph
+    // again, so the subsequent majorization export must not restore its old title minimum.
+    if !matches!(
+        graph.options.algorithm,
+        Algorithm::Stress | Algorithm::Radial
+    ) {
+        size.width = size.width.max(minimum_width);
+        size.height = size.height.max(minimum_height);
+    }
     Ok(FlatLayout {
         layout: result,
         size,
         content_shifts,
+        // CalculateGraphSize writes dimensions directly. Other providers export through
+        // ElkUtil.resizeNode, which fixes the owner's size for its parent's invocation.
+        size_constraints_active: graph.options.algorithm == Algorithm::Radial,
+    })
+}
+
+fn provider_padding(padding: source_port::ElkPadding) -> box_layout::Padding {
+    box_layout::Padding {
+        top: padding.top,
+        right: padding.right,
+        bottom: padding.bottom,
+        left: padding.left,
+    }
+}
+
+fn effective_minimum(minimum: Option<source_port::LSize>) -> source_port::LSize {
+    minimum.map_or(source_port::LSize::default(), |size| source_port::LSize {
+        width: if size.width <= 0.0 { 20.0 } else { size.width },
+        height: if size.height <= 0.0 {
+            20.0
+        } else {
+            size.height
+        },
     })
 }

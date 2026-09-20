@@ -73,6 +73,31 @@ pub enum Algorithm {
     SporeOverlap,
 }
 
+impl Algorithm {
+    /// Exact Mermaid 12 container allowlist. Root loaders have a different set of names.
+    pub fn from_container_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "elk.layered" => Self::Layered,
+            "elk.box" => Self::Box,
+            "elk.rectpacking" => Self::Rectpacking,
+            "elk.force" => Self::Force,
+            "elk.stress" => Self::Stress,
+            "elk.mrtree" => Self::MrTree,
+            "elk.radial" => Self::Radial,
+            "elk.sporeOverlap" => Self::SporeOverlap,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ContainerNodeOptions {
+    /// A valid metadata algorithm; absent or invalid metadata leaves this unset.
+    pub algorithm: Option<Algorithm>,
+    /// Mermaid's measured node padding, used for the title minimum (not ELK content padding).
+    pub padding: f64,
+}
+
 /// Mermaid resolves container placement independently from root placement in named presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContainerOptions {
@@ -225,6 +250,7 @@ pub struct Node {
     pub kind: NodeKind,
     /// ELK container title text. Leaf text is already measured and is not an ELK node label.
     pub label_text: Option<String>,
+    pub container: ContainerNodeOptions,
     pub width: f64,
     pub height: f64,
     pub parent: Option<String>,

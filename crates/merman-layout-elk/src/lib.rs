@@ -12,16 +12,18 @@
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
 //! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
-//! handle flat graphs and ordinary recursive containers; metadata algorithms and cross-provider
-//! boundary edges are still being integrated.
+//! handle flat graphs and recursive containers, including Mermaid's explicit metadata presets
+//! and cross-boundary downgrade. Remaining cross-provider boundary routes are rejected explicitly.
 //! New layout behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::num::NonZeroU64;
 
+mod container;
 mod flat;
 mod model;
+use container::ContainerMode;
 use merman_elk_layered as source_port;
 pub use model::*;
 pub use source_port::{
@@ -97,7 +99,7 @@ impl SourcePhaseDiagnostics {
         if graph.options.algorithm != Algorithm::Layered {
             return Err(Error::LayeredDiagnosticsRequired);
         }
-        let input = graph_to_source_input(graph);
+        let input = graph_to_source_input(graph)?;
         let lgraph = match operation_seed {
             Some(operation_seed) => source_port::import_graph_with_operation_seed(
                 &input,
@@ -168,8 +170,12 @@ impl SourcePhaseDiagnostics {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    NodeSize(#[from] source_port::NodeSizeError),
     #[error("phase diagnostics require the Layered algorithm")]
     LayeredDiagnosticsRequired,
+    #[error("phase diagnostics require one scope; use layout for separately scheduled containers")]
+    SeparateScopesDiagnosticsUnsupported,
     #[error("cross-provider hierarchy routing is not yet available for edge `{edge_id}`")]
     UnsupportedCrossProviderEdge { edge_id: String },
     #[error(transparent)]
@@ -262,49 +268,50 @@ pub fn layout_with_operation_seed_and_work_control(
     layout_scopes(graph, Some(operation_seed.source_port_seed()), work_control)
 }
 
-fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
-    graph_to_source_input_with_root_context(graph, None, None)
-}
-
-fn graph_to_source_input_with_root_context(
-    graph: &Graph,
-    root_spacing_base: Option<f64>,
-    root_label: Option<Label>,
-) -> ElkInputGraph {
-    let mut options = layered_options_to_source(graph);
-    if let Some(base) = root_spacing_base {
-        options.spacing = source_port::SpacingOptions::layered_base_value(base);
+fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
+    let index = HierarchyIndex::build(graph, &mut NoopWorkControl)?;
+    if index
+        .scopes
+        .iter()
+        .any(|scope| scope.algorithm != Algorithm::Layered)
+    {
+        return Err(Error::LayeredDiagnosticsRequired);
     }
-    if let Some(label) = root_label {
-        apply_root_inside_top_center_label_padding(&mut options, label);
+    if index.scopes.len() > 1 {
+        return Err(Error::SeparateScopesDiagnosticsUnsupported);
     }
+    let options = layered_options_to_source(graph);
     let node_ids_with_direct_children = graph
         .nodes
         .iter()
         .filter_map(|node| node.parent.as_deref())
         .collect::<HashSet<_>>();
 
-    ElkInputGraph {
+    Ok(ElkInputGraph {
         id: graph.id.clone(),
         options,
         nodes: graph
             .nodes
             .iter()
-            .map(|node| ElkInputNode {
+            .enumerate()
+            .map(|(node_index, node)| ElkInputNode {
                 id: node.id.clone(),
-                width: node.width,
-                height: node.height,
-                parent: node.parent.clone(),
-                direction: node.direction.map(direction_to_source),
-                hierarchy_handling: match (node.kind, node.hierarchy_handling) {
-                    (NodeKind::Group, Some(hierarchy_handling)) => {
-                        Some(hierarchy_handling_to_source(hierarchy_handling))
-                    }
-                    (NodeKind::Group, None) => Some(hierarchy_handling_to_source(
-                        graph.options.layered.hierarchy_handling,
-                    )),
-                    (NodeKind::Leaf, _) => None,
+                width: if index.children[node_index].is_empty() {
+                    node.width
+                } else {
+                    0.0
                 },
+                height: if index.children[node_index].is_empty() {
+                    node.height
+                } else {
+                    0.0
+                },
+                parent: node.parent.clone(),
+                direction: index.container_modes[node_index]
+                    .direction(node)
+                    .map(direction_to_source),
+                hierarchy_handling: (node.kind == NodeKind::Group)
+                    .then(|| hierarchy_handling_to_source(index.resolved_handling[node_index])),
                 layer_constraint: node.layer_constraint.map(layer_constraint_to_source),
                 port_constraints: None,
                 node_label_placement: match node.kind {
@@ -325,8 +332,10 @@ fn graph_to_source_input_with_root_context(
                     },
                 ),
                 nested_options: (node.kind == NodeKind::Group).then(|| {
-                    Box::new(container_options_to_source(
+                    Box::new(resolved_container_options(
                         graph,
+                        node,
+                        index.container_modes[node_index],
                         graph.direction,
                         graph.options.layered.hierarchy_handling,
                     ))
@@ -362,13 +371,21 @@ fn graph_to_source_input_with_root_context(
                 priority_straightness: 0,
             })
             .collect(),
-    }
+    })
 }
 
-fn apply_root_inside_top_center_label_padding(options: &mut SourceLayeredOptions, label: Label) {
+fn apply_root_inside_top_center_label_padding(
+    options: &mut SourceLayeredOptions,
+    label: Label,
+) -> Result<()> {
+    options.include_inside_top_center_label_minimum(source_port::LSize {
+        width: label.width,
+        height: label.height,
+    })?;
     if label.height > 0.0 {
         options.padding.top += label.height + options.node_labels_padding.top;
     }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -376,6 +393,8 @@ struct HierarchyIndex<'a> {
     graph: &'a Graph,
     parent: Vec<Option<usize>>,
     children: Vec<Vec<usize>>,
+    container_modes: Vec<ContainerMode>,
+    resolved_handling: Vec<HierarchyHandling>,
     node_scope: Vec<usize>,
     edge_model_order: Vec<usize>,
     child_scope_by_anchor: Vec<Option<usize>>,
@@ -428,6 +447,7 @@ struct ScopeLayout {
     size: source_port::LSize,
     edge_metadata: HashMap<String, ScopeEdgeMetadata>,
     content_shifts: HashMap<String, Point>,
+    size_constraints_active: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -466,10 +486,21 @@ fn layout_scopes(
                 index.scopes[scope]
                     .anchor
                     .map_or(flat::ScopeContext::Root, |anchor| {
-                        flat::ScopeContext::OrdinaryContainer {
-                            label: graph.nodes[anchor].label,
+                        flat::ScopeContext::Container {
+                            node: &graph.nodes[anchor],
+                            mode: index.container_modes[anchor],
                         }
                     }),
+                &index.scopes[scope]
+                    .nodes
+                    .iter()
+                    .map(|&node| flat::NodeContext {
+                        mode: index.container_modes[node],
+                        size_constraints_active: index.child_scope_by_anchor[node]
+                            .and_then(|child| arena[child].as_ref())
+                            .is_some_and(|child| child.size_constraints_active),
+                    })
+                    .collect::<Vec<_>>(),
                 operation_seed,
                 work_control,
             )?;
@@ -478,6 +509,7 @@ fn layout_scopes(
                 size: output.size,
                 edge_metadata,
                 content_shifts: output.content_shifts,
+                size_constraints_active: output.size_constraints_active,
             });
             continue;
         }
@@ -519,6 +551,7 @@ fn layout_scopes(
             size: actual_source_graph_size(&lgraph),
             edge_metadata,
             content_shifts: HashMap::new(),
+            size_constraints_active: false,
         });
     }
 
@@ -658,6 +691,9 @@ impl<'a> HierarchyIndex<'a> {
         }
         detect_parent_cycles(graph, &parent)?;
 
+        let (container_modes, include_children) =
+            container::resolve(graph, &parent, &children, &node_by_id, work_control)?;
+
         work_control.check(1)?;
         work_control.charge(1)?;
         let mut scopes = vec![ScopePlan {
@@ -693,15 +729,24 @@ impl<'a> HierarchyIndex<'a> {
             .collect::<Vec<_>>();
         while let Some((node_index, scope, parent_handling, parent_direction)) = search.pop() {
             let node = &graph.nodes[node_index];
+            let mode = container_modes[node_index];
             let handling = if node.kind == NodeKind::Group {
-                node.hierarchy_handling.unwrap_or(parent_handling)
+                if include_children[node_index] {
+                    HierarchyHandling::IncludeChildren
+                } else if matches!(mode, ContainerMode::Explicit(_)) {
+                    HierarchyHandling::SeparateChildren
+                } else {
+                    node.hierarchy_handling.unwrap_or(parent_handling)
+                }
             } else {
                 parent_handling
             };
-            let direction = node.direction.unwrap_or(parent_direction);
+            let direction = mode.direction(node).unwrap_or(parent_direction);
             // Unconfigured containers resolve to ELK's default provider, not their parent's
             // non-layered provider. A direction option explicitly selects the diagram provider.
-            let algorithm = if node.direction.is_some() {
+            let algorithm = if let ContainerMode::Explicit(algorithm) = mode {
+                algorithm
+            } else if mode.direction(node).is_some() {
                 graph.options.algorithm
             } else {
                 Algorithm::Layered
@@ -728,7 +773,13 @@ impl<'a> HierarchyIndex<'a> {
                     anchor: Some(node_index),
                     depth: scopes[scope].depth + 1,
                     seed_scope,
-                    direction: if node.direction.is_none()
+                    direction: if matches!(mode, ContainerMode::Explicit(_)) {
+                        if algorithm == Algorithm::MrTree {
+                            Direction::Down
+                        } else {
+                            Direction::Right
+                        }
+                    } else if mode.direction(node).is_none()
                         && scopes[scope].algorithm != Algorithm::Layered
                     {
                         Direction::Right
@@ -914,6 +965,8 @@ impl<'a> HierarchyIndex<'a> {
             graph,
             parent,
             children,
+            container_modes,
+            resolved_handling,
             node_scope,
             edge_model_order,
             child_scope_by_anchor,
@@ -941,13 +994,19 @@ impl<'a> HierarchyIndex<'a> {
         work_control.check(materialized)?;
         work_control.charge(materialized)?;
 
-        let mut options = if scope.anchor.is_some() {
-            container_options_to_source(self.graph, scope.direction, scope.handling)
+        let mut options = if let Some(anchor) = scope.anchor {
+            resolved_container_options(
+                self.graph,
+                &self.graph.nodes[anchor],
+                self.container_modes[anchor],
+                scope.direction,
+                scope.handling,
+            )
         } else {
             layered_options_to_source_for(self.graph, scope.direction, scope.handling)
         };
         if let Some(label) = scope.anchor.and_then(|node| self.graph.nodes[node].label) {
-            apply_root_inside_top_center_label_padding(&mut options, label);
+            apply_root_inside_top_center_label_padding(&mut options, label)?;
         }
 
         let nodes = scope
@@ -960,12 +1019,20 @@ impl<'a> HierarchyIndex<'a> {
                     .map(|layout| layout.size);
                 // Mermaid removes a non-empty group's explicit size before ELK layout. A parent
                 // scope must therefore consume the completed child extent, not the input size.
-                let width = child_size
-                    .map(|size| source.width.max(size.width))
-                    .unwrap_or(source.width);
-                let height = child_size
-                    .map(|size| source.height.max(size.height))
-                    .unwrap_or(source.height);
+                let width = child_size.map(|size| size.width).unwrap_or_else(|| {
+                    if self.children[*node_index].is_empty() {
+                        source.width
+                    } else {
+                        0.0
+                    }
+                });
+                let height = child_size.map(|size| size.height).unwrap_or_else(|| {
+                    if self.children[*node_index].is_empty() {
+                        source.height
+                    } else {
+                        0.0
+                    }
+                });
                 ElkInputNode {
                     id: source.id.clone(),
                     width,
@@ -973,16 +1040,11 @@ impl<'a> HierarchyIndex<'a> {
                     parent: self.parent[*node_index]
                         .filter(|parent| self.node_scope[*parent] == scope_index)
                         .map(|parent| self.graph.nodes[parent].id.clone()),
-                    direction: source.direction.map(direction_to_source),
-                    hierarchy_handling: match (source.kind, source.hierarchy_handling) {
-                        (NodeKind::Group, Some(handling)) => {
-                            Some(hierarchy_handling_to_source(handling))
-                        }
-                        (NodeKind::Group, None) => {
-                            Some(hierarchy_handling_to_source(scope.handling))
-                        }
-                        (NodeKind::Leaf, _) => None,
-                    },
+                    direction: self.container_modes[*node_index]
+                        .direction(source)
+                        .map(direction_to_source),
+                    hierarchy_handling: (source.kind == NodeKind::Group)
+                        .then(|| hierarchy_handling_to_source(self.resolved_handling[*node_index])),
                     layer_constraint: source.layer_constraint.map(layer_constraint_to_source),
                     port_constraints: None,
                     node_label_placement: match source.kind {
@@ -1003,8 +1065,10 @@ impl<'a> HierarchyIndex<'a> {
                         },
                     ),
                     nested_options: (source.kind == NodeKind::Group).then(|| {
-                        Box::new(container_options_to_source(
+                        Box::new(resolved_container_options(
                             self.graph,
+                            source,
+                            self.container_modes[*node_index],
                             scope.direction,
                             scope.handling,
                         ))
@@ -1590,10 +1654,7 @@ fn source_graph_requires_compound_pipeline(graph: &LGraph) -> bool {
 }
 
 fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
-    source_port::LSize {
-        width: graph.size.width + graph.padding.left + graph.padding.right,
-        height: graph.size.height + graph.padding.top + graph.padding.bottom,
-    }
+    graph.exported_root_size()
 }
 
 fn source_graph_output_work_units(graph: &LGraph) -> std::result::Result<usize, WorkError> {
@@ -1936,6 +1997,23 @@ fn container_options_to_source(
     options.spacing.edge_node_between_layers = 30.0;
     options.spacing.edge_edge = 20.0;
     set_mermaid_port_clearance(&mut options);
+    options
+}
+
+fn resolved_container_options(
+    graph: &Graph,
+    node: &Node,
+    mode: ContainerMode,
+    direction: Direction,
+    handling: HierarchyHandling,
+) -> SourceLayeredOptions {
+    let mut options = container_options_to_source(graph, direction, handling);
+    options.padding = mode.padding(node);
+    options.node_size_minimum = mode.minimum(node);
+    options.node_size_include_labels = node.label.is_some();
+    if matches!(mode, ContainerMode::Explicit(_)) {
+        options.horizontal_content_alignment = source_port::ContentAlignment::Center;
+    }
     options
 }
 
@@ -2531,6 +2609,7 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Leaf,
+            container: Default::default(),
             label_text: None,
             width: 80.0,
             height: 40.0,
@@ -2571,7 +2650,7 @@ mod tests {
         child.parent = Some("frame".into());
         let mut graph = flat_graph(vec![container, child], vec![]);
         graph.options.layered.node_placement = NodePlacementStrategy::NetworkSimplex;
-        let source = graph_to_source_input(&graph);
+        let source = graph_to_source_input(&graph).unwrap();
         let imported = source_port::import_graph(&source).unwrap();
         let container = &imported.layerless_nodes[0];
         assert_eq!(
@@ -2629,6 +2708,7 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
             label_text: None,
             width: 0.0,
             height: 0.0,
@@ -2771,6 +2851,7 @@ mod tests {
                     })
                     .collect();
                 Some(ScopeLayout {
+                    size_constraints_active: false,
                     content_shifts: HashMap::new(),
                     layout: LayoutResult { nodes, edges },
                     size: source_port::LSize {
@@ -2947,7 +3028,8 @@ mod tests {
                     })
                     .collect(),
             );
-            let imported = source_port::import_graph(&graph_to_source_input(&flat)).unwrap();
+            let imported =
+                source_port::import_graph(&graph_to_source_input(&flat).unwrap()).unwrap();
             let sort_work = match edge_count {
                 1 => 0,
                 8 => 24,
@@ -3380,6 +3462,7 @@ mod tests {
         let group = |id: &str, parent: Option<&str>, label: Label| Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
             label_text: None,
             width: 0.0,
             height: 0.0,
@@ -3484,6 +3567,7 @@ mod tests {
                 Node {
                     id: "one".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
                     label_text: None,
                     width: 0.0,
                     height: 0.0,
@@ -3568,6 +3652,7 @@ mod tests {
         let empty_group = Node {
             id: "B".to_string(),
             kind: NodeKind::Group,
+            container: Default::default(),
             label_text: None,
             width: 0.0,
             height: 0.0,
@@ -3646,7 +3731,7 @@ mod tests {
         let mut graph = flat_graph(vec![leaf("A")], vec![]);
         graph.options.layered.inside_self_loops_activate = true;
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert!(input.options.inside_self_loops_activate);
     }
@@ -3656,7 +3741,7 @@ mod tests {
         let mut graph = flat_graph(vec![leaf("A")], vec![]);
         graph.options.layered.random_seed = 0;
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert_eq!(input.options.random_seed, 0);
     }
@@ -3726,7 +3811,7 @@ mod tests {
             }],
         );
 
-        let input = graph_to_source_input(&graph);
+        let input = graph_to_source_input(&graph).unwrap();
 
         assert!(input.edges[0].inside_self_loops_yo);
     }
@@ -4059,6 +4144,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
                     label_text: None,
                     width: 0.0,
                     height: 0.0,
@@ -4104,6 +4190,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
                     label_text: None,
                     width: 0.0,
                     height: 0.0,
@@ -4150,6 +4237,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
                     label_text: None,
                     width: 0.0,
                     height: 0.0,
@@ -4193,6 +4281,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    container: Default::default(),
                     label_text: None,
                     width: 0.0,
                     height: 0.0,

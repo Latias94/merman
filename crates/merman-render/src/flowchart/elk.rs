@@ -814,6 +814,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         cluster_label_base_style,
         cluster_title_wrapping_width: wrapping_width,
         cluster_wrap_mode,
+        node_padding,
     };
     let node_measure_ctx = NodeMeasureContext {
         model: render_model,
@@ -915,6 +916,7 @@ struct ElkMeasureContext<'a> {
     cluster_label_base_style: &'a TextStyle,
     cluster_title_wrapping_width: f64,
     cluster_wrap_mode: WrapMode,
+    node_padding: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -1761,6 +1763,7 @@ fn flow_node_to_elk_node(
     elk::Node {
         id: node.id.clone(),
         kind: elk::NodeKind::Leaf,
+        container: Default::default(),
         label_text: None,
         width,
         height,
@@ -1787,6 +1790,7 @@ fn subgraph_to_elk_node(
         return elk::Node {
             id: sg.id.clone(),
             kind: elk::NodeKind::Leaf,
+            container: Default::default(),
             label_text: None,
             width,
             height,
@@ -1801,6 +1805,15 @@ fn subgraph_to_elk_node(
     elk::Node {
         id: sg.id.clone(),
         kind: elk::NodeKind::Group,
+        container: elk::ContainerNodeOptions {
+            algorithm: sg
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("algorithm"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(elk::Algorithm::from_container_name),
+            padding: ctx.node_padding,
+        },
         label_text: Some(
             ctx.model
                 .subgraph_title_for_render(declaration_ordinal, sg)
@@ -1832,6 +1845,32 @@ mod tests {
     use serde_json::json;
 
     const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
+
+    #[test]
+    fn elk_subgraph_algorithm_metadata_survives_parse_and_measurement() {
+        for (requested, expected) in [
+            ("elk.box", Some(elk::Algorithm::Box)),
+            ("elk.layered", Some(elk::Algorithm::Layered)),
+            ("elk.radial", Some(elk::Algorithm::Radial)),
+            ("ELK.BOX", None),
+            ("box", None),
+            ("elk.unknown", None),
+        ] {
+            let source = format!(
+                "flowchart TB\nsubgraph G[Group]\nA --> B\nend\nG@{{algorithm: {requested}}}\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .expect("parse")
+                .expect("diagram");
+            let graph =
+                super::build_flowchart_elk_graph(&parsed, &NonLatticeComputedLengthMeasurer, None)
+                    .expect("measured graph");
+            let group = graph.nodes.iter().find(|node| node.id == "G").unwrap();
+            assert_eq!(group.container.algorithm, expected, "{requested}");
+            assert_eq!(group.container.padding, 15.0);
+        }
+    }
 
     struct NonLatticeComputedLengthMeasurer;
 
@@ -2047,6 +2086,7 @@ mod tests {
 
     fn subgraph(id: String, nodes: Vec<String>) -> FlowSubgraph {
         FlowSubgraph {
+            metadata: None,
             title: id.clone(),
             id,
             dir: None,
@@ -2564,6 +2604,7 @@ mod tests {
             vec![edge("L-A-B", "A", "B", None)],
         );
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "cluster".to_string(),
             title: "Cluster".to_string(),
             dir: Some("LR".to_string()),
@@ -2622,6 +2663,7 @@ mod tests {
         );
         model.direction = Some("LR".to_string());
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "A".to_string(),
             title: "A".to_string(),
             dir: None,
@@ -2632,6 +2674,7 @@ mod tests {
             nodes: vec!["a".to_string(), "b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "B".to_string(),
             title: "B".to_string(),
             dir: None,
@@ -2671,6 +2714,7 @@ mod tests {
             vec![],
         );
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "cluster".to_string(),
             title: "Cluster".to_string(),
             dir: None,
@@ -2681,6 +2725,7 @@ mod tests {
             nodes: vec!["cluster-a".to_string(), "cluster-b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "later-cluster".to_string(),
             title: "Later Cluster".to_string(),
             dir: None,
@@ -2729,6 +2774,7 @@ mod tests {
             vec![],
         );
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "foo".to_string(),
             title: "Foo SubGraph".to_string(),
             dir: None,
@@ -2739,6 +2785,7 @@ mod tests {
             nodes: vec!["C".to_string(), "D".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "bar".to_string(),
             title: "Bar SubGraph".to_string(),
             dir: None,
@@ -3152,6 +3199,7 @@ mod tests {
         );
         model.direction = Some("LR".to_string());
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "TOP".to_string(),
             title: "TOP".to_string(),
             dir: Some("TB".to_string()),
@@ -3162,6 +3210,7 @@ mod tests {
             nodes: vec!["B1".to_string(), "B2".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "B1".to_string(),
             title: "B1".to_string(),
             dir: Some("RL".to_string()),
@@ -3172,6 +3221,7 @@ mod tests {
             nodes: vec!["i1".to_string(), "f1".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
+            metadata: None,
             id: "B2".to_string(),
             title: "B2".to_string(),
             dir: Some("BT".to_string()),

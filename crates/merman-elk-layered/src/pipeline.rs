@@ -11,9 +11,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalNodeResizingProcessor.java
 
 use super::options::{
-    CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
-    GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
-    PortConstraints, WrappingStrategy,
+    ContentAlignment, CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting,
+    ElkDirection, GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy,
+    OrderingStrategy, PortConstraints, WrappingStrategy,
 };
 use crate::RandomSeedError;
 use crate::compound::{
@@ -67,6 +67,8 @@ use crate::work::{
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
+    #[error(transparent)]
+    NodeSize(#[from] crate::options::NodeSizeError),
     #[error(transparent)]
     NetworkSimplex(#[from] crate::common::networksimplex::NetworkSimplexError),
     #[error(transparent)]
@@ -684,6 +686,15 @@ pub fn execute_ported_processors_with_work_control(
         executed.push(slot.kind);
     }
 
+    // Compound layout resizes through its scheduled HierarchicalNodeResizer. Flat layout
+    // applies ElkLayered.resizeGraph after direction postprocessing and component combination.
+    if graph.options.hierarchy_handling != super::options::HierarchyHandling::IncludeChildren
+        && graph.options.node_size_minimum.is_some()
+    {
+        work_control.charge(checked_add(graph.layerless_nodes.len(), 1)?)?;
+        resize_graph_to_minimum(graph)?;
+    }
+
     Ok(executed)
 }
 
@@ -695,8 +706,23 @@ fn prepare_single_graph_processors(
     // nested graph to resolve options and random seeds. Charge that complete hierarchy atomically
     // before configuration mutates any graph; a root-only preflight would under-account this API.
     charge_hierarchy_work(graph, work_control)?;
+    validate_node_size_minima(graph)?;
     configure_graph_properties(graph)?;
     Ok(assemble_processors_for_graph(graph))
+}
+
+fn validate_node_size_minima(graph: &LGraph) -> PipelineResult<()> {
+    let mut pending = vec![graph];
+    while let Some(graph) = pending.pop() {
+        graph.options.validate_node_size_minimum()?;
+        pending.extend(
+            graph
+                .layerless_nodes
+                .iter()
+                .filter_map(|node| node.nested_graph.as_deref()),
+        );
+    }
+    Ok(())
 }
 
 /// Execute the source-backed layered pipeline for a compound graph hierarchy.
@@ -817,6 +843,7 @@ fn execute_ported_compound_processors_to(
     if stop.is_none() {
         validate_ported_graph_processors(graph)?;
     }
+    validate_node_size_minima(graph)?;
     charge_compound_preprocess_work(graph, work_control)?;
     preprocess_source_ported_compound_graph(graph);
     charge_hierarchy_work(graph, work_control)?;
@@ -1400,7 +1427,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::EndLabelSorter => sort_end_labels(graph),
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
         ProcessorKind::EndLabelPostprocessor => postprocess_end_labels(graph),
-        ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph),
+        ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph)?,
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -2746,7 +2773,7 @@ fn charge_compound_preprocess_work(
     Ok(())
 }
 
-fn resize_hierarchical_node_graph(graph: &mut LGraph) {
+fn resize_hierarchical_node_graph(graph: &mut LGraph) -> PipelineResult<()> {
     let layered_nodes = graph
         .layers
         .iter()
@@ -2756,15 +2783,42 @@ fn resize_hierarchical_node_graph(graph: &mut LGraph) {
         graph.layerless_nodes[node].layer_index = None;
     }
     graph.layers.clear();
+    resize_graph_to_minimum(graph)
+}
+
+fn resize_graph_to_minimum(graph: &mut LGraph) -> PipelineResult<()> {
+    graph.options.validate_node_size_minimum()?;
     let old_size = actual_graph_size(graph);
-    let new_size = LSize {
-        width: old_size.width.max(0.0),
-        height: old_size.height.max(0.0),
-    };
+    let mut new_size = old_size;
+    if let Some(minimum) = graph.options.effective_node_size_minimum() {
+        new_size.width = new_size.width.max(minimum.width);
+        new_size.height = new_size.height.max(minimum.height);
+    }
     resize_graph_no_really_i_mean_it(graph, old_size, new_size);
+    Ok(())
 }
 
 fn resize_graph_no_really_i_mean_it(graph: &mut LGraph, old_size: LSize, new_size: LSize) {
+    fn alignment_offset(alignment: ContentAlignment, old: f64, new: f64) -> f64 {
+        if new <= old {
+            return 0.0;
+        }
+        match alignment {
+            ContentAlignment::Start => 0.0,
+            ContentAlignment::Center => (new - old) / 2.0,
+            ContentAlignment::End => new - old,
+        }
+    }
+    graph.offset.x += alignment_offset(
+        graph.options.horizontal_content_alignment,
+        old_size.width,
+        new_size.width,
+    );
+    graph.offset.y += alignment_offset(
+        graph.options.vertical_content_alignment,
+        old_size.height,
+        new_size.height,
+    );
     if graph.graph_properties.external_ports
         && (new_size.width > old_size.width || new_size.height > old_size.height)
     {
@@ -6144,6 +6198,187 @@ mod tests {
         );
         assert!(graph.size.width > 0.0);
         assert!(graph.size.height > 0.0);
+    }
+
+    #[test]
+    fn minimum_size_and_content_alignment_match_elkjs_provider_results() {
+        use crate::options::{ElkPadding, HierarchyHandling};
+
+        // Captured from pinned elkjs 0.9.3. INCLUDE_CHILDREN applies its resizer before
+        // direction postprocessing; its DOWN behavior is intentionally not normalized.
+        for (direction, handling, expected_size, expected_position) in [
+            (
+                ElkDirection::Right,
+                HierarchyHandling::SeparateChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Down,
+                HierarchyHandling::SeparateChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Right,
+                HierarchyHandling::IncludeChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Down,
+                HierarchyHandling::IncludeChildren,
+                (120.0, 120.0),
+                (0.0, 50.0),
+            ),
+        ] {
+            let mut child = node("a");
+            child.width = 40.0;
+            child.height = 20.0;
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "r".into(),
+                options: LayeredOptions {
+                    direction,
+                    hierarchy_handling: handling,
+                    padding: ElkPadding::uniform(0.0),
+                    node_size_minimum: Some(LSize {
+                        width: 120.0,
+                        height: 80.0,
+                    }),
+                    horizontal_content_alignment: ContentAlignment::Center,
+                    ..Default::default()
+                },
+                nodes: vec![child],
+                edges: vec![],
+            })
+            .unwrap();
+            execute_ported_processors(&mut graph).unwrap();
+            let size = graph.exported_root_size();
+            let child = &graph.layerless_nodes[0];
+            assert_eq!(
+                (size.width, size.height),
+                expected_size,
+                "{direction:?} {handling:?}"
+            );
+            assert_eq!(
+                (
+                    child.position.x + graph.offset.x + graph.padding.left,
+                    child.position.y + graph.offset.y + graph.padding.top
+                ),
+                expected_position,
+                "{direction:?} {handling:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn compound_title_minimum_matches_elkjs_symmetric_label_grid() {
+        use crate::options::{ElkPadding, HierarchyHandling, NodeLabelPlacement};
+
+        let mut group = node("g");
+        group.width = 0.0;
+        group.height = 0.0;
+        group.node_label_placement = NodeLabelPlacement::InsideTopCenter;
+        group.label = Some(ElkInputLabel::center("label", 100.0, 10.0));
+        group.nested_options = Some(Box::new(LayeredOptions {
+            padding: ElkPadding::uniform(0.0),
+            node_size_minimum: Some(LSize::default()),
+            node_size_include_labels: true,
+            ..Default::default()
+        }));
+        let mut child = node("a");
+        child.width = 1.0;
+        child.height = 1.0;
+        child.parent = Some("g".into());
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "r".into(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                hierarchy_handling: HierarchyHandling::IncludeChildren,
+                ..Default::default()
+            },
+            nodes: vec![group, child],
+            edges: vec![],
+        })
+        .unwrap();
+        execute_ported_compound_processors(&mut graph).unwrap();
+        let group = &graph.layerless_nodes[0];
+        let nested = group.nested_graph.as_ref().unwrap();
+        assert_eq!(
+            group.size,
+            LSize {
+                width: 110.0,
+                height: 30.0
+            }
+        );
+        assert_eq!(
+            graph.exported_root_size(),
+            LSize {
+                width: 134.0,
+                height: 54.0
+            }
+        );
+        assert_eq!(
+            nested.layerless_nodes[0].position.y + nested.offset.y + nested.padding.top,
+            15.0
+        );
+    }
+
+    #[test]
+    fn non_finite_minimum_and_overflowing_title_are_rejected() {
+        for width in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "root".into(),
+                options: LayeredOptions {
+                    node_size_minimum: Some(LSize {
+                        width,
+                        height: 80.0,
+                    }),
+                    horizontal_content_alignment: ContentAlignment::Center,
+                    ..Default::default()
+                },
+                nodes: vec![node("child")],
+                edges: vec![],
+            })
+            .unwrap();
+            assert!(matches!(
+                execute_ported_processors(&mut graph),
+                Err(PipelineError::NodeSize(_))
+            ));
+            assert_eq!(graph.offset, LPoint::default());
+        }
+        let mut options = LayeredOptions {
+            node_size_include_labels: true,
+            ..Default::default()
+        };
+        assert!(
+            options
+                .include_inside_top_center_label_minimum(LSize {
+                    width: 40.0,
+                    height: f64::MAX
+                })
+                .is_err()
+        );
+        assert_eq!(options.node_size_minimum, None);
+    }
+
+    #[test]
+    fn minimum_size_defaults_only_apply_when_constraint_is_enabled() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        resize_graph_to_minimum(&mut graph).unwrap();
+        assert_eq!(actual_graph_size(&graph), LSize::default());
+        graph.options.node_size_minimum = Some(LSize {
+            width: 0.0,
+            height: -1.0,
+        });
+        resize_graph_to_minimum(&mut graph).unwrap();
+        assert_eq!(
+            actual_graph_size(&graph),
+            LSize {
+                width: 20.0,
+                height: 20.0
+            }
+        );
     }
 
     #[test]

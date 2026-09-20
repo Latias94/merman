@@ -646,6 +646,9 @@ pub struct FlowSubgraph {
     #[serde(default)]
     pub styles: Vec<String>,
     pub nodes: Vec<String>,
+    /// Opaque subgraph metadata forwarded to layout engines, including `algorithm`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -261,6 +261,19 @@ pub enum NodeLabelPlacement {
     OutsideRightBottom,
 }
 
+/// Alignment of graph contents when a minimum size leaves additional space on an axis.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ContentAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("ELK node size minimum must have finite dimensions")]
+pub struct NodeSizeError;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     pub direction: ElkDirection,
@@ -272,6 +285,12 @@ pub struct LayeredOptions {
     pub edge_routing: EdgeRouting,
     pub padding: ElkPadding,
     pub node_labels_padding: ElkPadding,
+    /// `Some` enables ELK's `MINIMUM_SIZE` constraint; dimensions include graph padding.
+    pub node_size_minimum: Option<crate::graph::LSize>,
+    pub node_size_default_minimum: bool,
+    pub node_size_include_labels: bool,
+    pub horizontal_content_alignment: ContentAlignment,
+    pub vertical_content_alignment: ContentAlignment,
     pub spacing: SpacingOptions,
     pub cycle_breaking_strategy: CycleBreakingStrategy,
     pub layering_strategy: LayeringStrategy,
@@ -429,6 +448,11 @@ impl Default for LayeredOptions {
             edge_routing: EdgeRouting::Orthogonal,
             padding: ElkPadding::default(),
             node_labels_padding: ElkPadding::uniform(5.0),
+            node_size_minimum: None,
+            node_size_default_minimum: true,
+            node_size_include_labels: false,
+            horizontal_content_alignment: ContentAlignment::Start,
+            vertical_content_alignment: ContentAlignment::Start,
             spacing: SpacingOptions::default(),
             cycle_breaking_strategy: CycleBreakingStrategy::Greedy,
             layering_strategy: LayeringStrategy::NetworkSimplex,
@@ -478,6 +502,65 @@ impl Default for LayeredOptions {
 }
 
 impl LayeredOptions {
+    pub fn validate_node_size_minimum(&self) -> Result<(), NodeSizeError> {
+        if self
+            .node_size_minimum
+            .is_some_and(|size| !size.width.is_finite() || !size.height.is_finite())
+        {
+            return Err(NodeSizeError);
+        }
+        Ok(())
+    }
+    pub(crate) fn effective_node_size_minimum(&self) -> Option<crate::graph::LSize> {
+        self.node_size_minimum.map(|mut minimum| {
+            if self.node_size_default_minimum {
+                if minimum.width <= 0.0 {
+                    minimum.width = 20.0;
+                }
+                if minimum.height <= 0.0 {
+                    minimum.height = 20.0;
+                }
+            }
+            minimum
+        })
+    }
+
+    /// Accounts for Mermaid's single inside-top-center container title in the source
+    /// `NODE_LABELS` minimum. ELK's default symmetric label grid reserves both outer rows.
+    /// A standalone scope uses this before import because its owner label is outside the graph.
+    pub fn include_inside_top_center_label_minimum(
+        &mut self,
+        label: crate::graph::LSize,
+    ) -> Result<(), NodeSizeError> {
+        self.validate_node_size_minimum()?;
+        if !self.node_size_include_labels {
+            return Ok(());
+        }
+        if !label.width.is_finite() || !label.height.is_finite() {
+            return Err(NodeSizeError);
+        }
+        let width = if label.width > 0.0 {
+            label.width + self.node_labels_padding.left + self.node_labels_padding.right
+        } else {
+            0.0
+        };
+        let height = if label.height > 0.0 {
+            2.0 * label.height
+                + 2.0 * self.spacing.label_label
+                + self.node_labels_padding.top
+                + self.node_labels_padding.bottom
+        } else {
+            0.0
+        };
+        if !width.is_finite() || !height.is_finite() {
+            return Err(NodeSizeError);
+        }
+        let minimum = self.node_size_minimum.get_or_insert_default();
+        minimum.width = minimum.width.max(width);
+        minimum.height = minimum.height.max(height);
+        Ok(())
+    }
+
     /// Options set by Mermaid's ELK adapter before calling `elk.layout(...)`.
     ///
     /// Source:

@@ -114,6 +114,8 @@ impl ElkInputLabel {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ImportError {
+    #[error(transparent)]
+    NodeSize(#[from] crate::options::NodeSizeError),
     #[error("ELK graph has duplicate node id: {id}")]
     DuplicateNode { id: String },
     #[error("ELK graph has duplicate edge id: {id}")]
@@ -1103,6 +1105,18 @@ fn import_hierarchical_graph(
                     &mut nested_graph,
                     &parent_graph.layerless_nodes[node_index],
                 );
+                // The input exposes a single owner title. This is the Mermaid-reachable
+                // NodeLabelAndSizeCalculator minimum used by ElkGraphImporter.
+                if node.node_label_placement == NodeLabelPlacement::InsideTopCenter
+                    && let Some(label) = node.label.as_ref()
+                {
+                    nested_graph
+                        .options
+                        .include_inside_top_center_label_minimum(LSize {
+                            width: label.width,
+                            height: label.height,
+                        })?;
+                }
                 parent_graph.layerless_nodes[node_index].compound = true;
                 Some((
                     node_index,

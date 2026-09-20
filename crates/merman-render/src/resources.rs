@@ -1811,6 +1811,7 @@ mod tests {
                 length: 1,
             }],
             subgraphs: vec![FlowSubgraph {
+                metadata: None,
                 id: "cluster".to_string(),
                 title: "Cluster".to_string(),
                 dir: None,

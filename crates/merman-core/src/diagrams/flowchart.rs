@@ -1865,6 +1865,7 @@ fn flow_subgraph_to_model(
         dir: sg.dir,
         has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
+        metadata: sg.metadata,
     };
     (subgraph, render_title_source)
 }
@@ -1959,6 +1960,103 @@ mod tests {
         assert_eq!(node.provenance, FlowNodeProvenance::Authored);
         assert_eq!(node.shape, None);
         assert_eq!(node.label, None);
+    }
+
+    #[test]
+    fn flowchart_subgraph_metadata_survives_render_model_projection() {
+        // Mermaid 12 FlowDB forwards the shallow-merged metadata unchanged to group nodes.
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, context) = parse_flowchart_model_with_render_context(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G[Group Title]\n A\nend\n",
+                "subgraph H\n B\nend\n",
+                "G@{\nalgorithm: elk.box\ncustom:\n  first: 1\nview: collapsed\n}\n",
+                "G@{\nalgorithm: elk.rectpacking\ncustom:\n  second: 2\nview: expanded\nlabel: Ignored\n}\n",
+            ),
+            &meta,
+        )
+        .expect("subgraph metadata should parse");
+        let group = model.subgraphs.iter().find(|sg| sg.id == "G").unwrap();
+        assert_eq!(group.title, "Group Title");
+        assert_eq!(
+            group.metadata,
+            Some(json!({
+                "algorithm": "elk.rectpacking",
+                "custom": { "second": 2 },
+                "view": "expanded",
+                "label": "Ignored",
+            }))
+        );
+        assert!(!context.is_subgraph_collapsed("G"));
+        assert!(
+            model
+                .subgraphs
+                .iter()
+                .find(|sg| sg.id == "H")
+                .unwrap()
+                .metadata
+                .is_none()
+        );
+
+        let serialized = serde_json::to_value(group).unwrap();
+        let restored: FlowSubgraph = serde_json::from_value(serialized.clone()).unwrap();
+        assert_eq!(restored.metadata, group.metadata);
+        assert_eq!(
+            serialized["metadata"],
+            group.metadata.as_ref().unwrap().clone()
+        );
+        let mut without_metadata = serialized;
+        without_metadata.as_object_mut().unwrap().remove("metadata");
+        let restored: FlowSubgraph = serde_json::from_value(without_metadata).unwrap();
+        assert!(restored.metadata.is_none());
+        assert!(
+            serde_json::to_value(restored)
+                .unwrap()
+                .get("metadata")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn flowchart_subgraph_metadata_stays_with_its_declaration() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G[First]\n A\nend\n",
+                "G@{ algorithm: elk.box }\n",
+                "subgraph G[Second]\n B\nend\n",
+                "G@{ algorithm: elk.radial }\n",
+            ),
+            &meta,
+        )
+        .expect("duplicate subgraph declarations should parse");
+        assert_eq!(model.subgraphs.len(), 2);
+        for (title, algorithm) in [("First", "elk.box"), ("Second", "elk.radial")] {
+            let group = model.subgraphs.iter().find(|sg| sg.title == title).unwrap();
+            assert_eq!(group.metadata.as_ref().unwrap()["algorithm"], algorithm);
+        }
+    }
+
+    #[test]
+    fn flowchart_subgraph_metadata_preserves_algorithm_values_for_layout_resolution() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        for (authored, expected) in [
+            ("null", json!(null)),
+            ("42", json!(42)),
+            ("unknown-layout", json!("unknown-layout")),
+            ("[elk.box]", json!(["elk.box"])),
+        ] {
+            let input =
+                format!("flowchart TD\nsubgraph G\n A\nend\nG@{{ algorithm: {authored} }}\n");
+            let model = parse_flowchart_model_for_render(&input, &meta)
+                .expect("opaque metadata should parse");
+            assert_eq!(
+                model.subgraphs[0].metadata.as_ref().unwrap()["algorithm"],
+                expected
+            );
+        }
     }
 
     #[test]

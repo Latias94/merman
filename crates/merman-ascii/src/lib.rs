@@ -1179,6 +1179,7 @@ mod tests {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A")];
         model.subgraphs = vec![FlowSubgraph {
+            metadata: None,
             id: "cluster".to_string(),
             title: "cluster".to_string(),
             dir: None,
@@ -1214,6 +1215,7 @@ mod tests {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A")];
         model.subgraphs = vec![FlowSubgraph {
+            metadata: None,
             id: "cluster".to_string(),
             title: "Line\nTwo".to_string(),
             dir: None,

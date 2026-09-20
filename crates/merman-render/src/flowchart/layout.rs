@@ -4752,6 +4752,7 @@ flowchart TD
         let mut subgraphs = Vec::with_capacity(depth);
         for i in 0..depth {
             subgraphs.push(FlowSubgraph {
+                metadata: None,
                 id: format!("n{i}"),
                 title: format!("n{i}"),
                 dir: None,
