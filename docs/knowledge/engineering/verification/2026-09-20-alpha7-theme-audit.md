@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: bdb209e11, 3a5b61b0c, 11c6b443e, f3a783c2944a77bc3b561b29f64b41af450ebe8b, b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
+source_commits: bdb209e11, f3a783c2944a77bc3b561b29f64b41af450ebe8b, b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
