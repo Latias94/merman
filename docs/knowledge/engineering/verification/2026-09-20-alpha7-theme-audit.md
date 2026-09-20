@@ -14,14 +14,13 @@ This record is a current-source audit, not a release approval. The completed evi
 to retain the complete Cyberpunk recipe and its bounded native qualification profile, but C7a
 remains open. No tag, publication, push or public catalog promotion was performed.
 
-The strongest current result is the integrated-source installed Python, Node Darwin ARM64 and
-Node WASM consumer refresh. The evidence is execution-local and host-bound: macOS ARM64, system
-fonts, selected SVG/PNG scenes and the installed consumer profiles described below. It does not
-establish the release matrix or the U10 cost gate. The accepted XML/reference single-pass
-implementation is integrated at `bdb209e11`. The Web package/browser record has now been rebuilt
-from that source. Typst, CLI/LSP, C ABI, Apple, Flutter and other artifact records remain historical
-until rebuilt from the integrated source; their semantic results remain evidence of their recorded
-earlier sources only.
+The strongest current result is the integrated-source Python, Node Darwin ARM64, Node WASM, Web,
+CLI/LSP, C ABI, Apple and Flutter consumer refresh. The evidence is execution-local and host-bound:
+macOS ARM64, system fonts, selected SVG/PNG scenes and the installed/source consumer profiles
+described below. It does not establish the release matrix or the U10 cost gate. The accepted
+XML/reference single-pass implementation is integrated at `bdb209e11`; all renewed records below
+are bound to that source. Typst remains historical until the required Binaryen 131 toolchain is
+available, and other hosted/registry/device routes remain unverified.
 
 # Completed evidence
 
@@ -245,7 +244,7 @@ XCFramework builder then completed all three slices (macOS universal, iOS device
 and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
 diagnostic and remains outside the release publication set.
 
-The current source record also reran the real Dart Native Assets entry point with
+The current bdb-bound Flutter record reran the real Dart Native Assets entry point with
 `dart run tool/theme_authoring_smoke.dart` from `platforms/flutter`. It passed the same two
 materializations, 22 support queries, five expected errors and three budgeted operations per
 consumer; the retained log is
@@ -259,8 +258,8 @@ archive was reported at 8 MB compressed with 0 package warnings, and its legal/n
 listed. The dry run is package-shape evidence only; it does not prove pub.dev publication or
 consumer execution on every supported target.
 
-The recorded pre-integration C ABI consumer smoke passed with both empty defaults and an explicit SVG
-feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
+The earlier C ABI compatibility smoke passed with both empty defaults and an explicit SVG
+feature selection; the current full source consumer is recorded separately below. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
 --test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
 including the feature-gated shared theme-authoring error vectors. The test loads a compiled C
 consumer and passes it the Rust API entrypoint; it covers the source-built ABI bridge and
@@ -271,8 +270,8 @@ default-empty ABI check separately. A current rerun also passed both tests (2/2)
 `target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest-current.log` with SHA-256
 `55e0d12d0ee1cb243d5446ca83c3bcffb98cd67cea553180aaf0beea9c4b3ae7`.
 
-The current Apple Swift consumer record executes the shared theme goldens through both the one-shot API and
-a fresh reusable engine: 2 light/dark materializations, 22 support queries, and 5 expected error
+The earlier Apple Swift golden smoke executes the shared theme vectors through both the one-shot API and
+a fresh reusable engine; the current bdb-bound record is linked separately below: 2 light/dark materializations, 22 support queries, and 5 expected error
 calls per consumer (58 calls total). Materialized specs and support responses are compared as
 complete JSON values; errors preserve the shared authoring and resource envelopes, with only
 nonempty diagnostic messages excluded from exact comparison. The existing SVG, ASCII, callback,
@@ -285,8 +284,9 @@ executable and static-library hashes are recorded in
 local package's generated UniFFI path, not registry installation, iOS execution, Swift 5.9, or the
 full preset-edit/export journey.
 
-The [Apple recipe follow-up](2026-09-20-apple-preset-recipe-journeys.md) now rebuilds the macOS
-XCFramework from native source `3433717b9` and executes its ARM64 SwiftPM consumer. Both entry
+The earlier [Apple recipe follow-up](2026-09-20-apple-preset-recipe-journeys.md) rebuilt the macOS
+XCFramework from native source `3433717b9`; the current bdb-bound Apple record is linked in the
+consumer matrix below. Both entry
 points match the shared complete catalog, export all ten presets and compare their imported
 State SVGs. Cyberpunk additionally matches Class/Flowchart/Sequence/XY, and ten malformed recipe
 requests reject. Three fresh processes import actual original, Class-color-edited and
