@@ -1659,6 +1659,16 @@ fn layered_options_to_source_for(
     options.edge_routing = edge_routing_to_source(graph.options.layered.edge_routing);
     options.cycle_breaking_strategy =
         cycle_breaking_to_source(graph.options.layered.cycle_breaking);
+    options.layering_strategy = match graph.options.layered.layering {
+        LayeringStrategy::NetworkSimplex => source_port::LayeringStrategy::NetworkSimplex,
+        LayeringStrategy::LongestPath => source_port::LayeringStrategy::LongestPath,
+        LayeringStrategy::LongestPathSource => source_port::LayeringStrategy::LongestPathSource,
+        LayeringStrategy::CoffmanGraham => source_port::LayeringStrategy::CoffmanGraham,
+        LayeringStrategy::MinWidth => source_port::LayeringStrategy::MinWidth,
+        LayeringStrategy::StretchWidth => source_port::LayeringStrategy::StretchWidth,
+        LayeringStrategy::Interactive => source_port::LayeringStrategy::Interactive,
+    };
+    options.layering_coffman_graham_layer_bound = graph.options.layered.layering_layer_bound;
     options.node_placement_strategy =
         node_placement_to_source(graph.options.layered.node_placement);
     options.node_placement_bk_fixed_alignment =
@@ -2301,6 +2311,30 @@ mod tests {
             edges,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn coffman_graham_bound_changes_the_published_layout() {
+        let mut graph = flat_graph(
+            vec![leaf("A"), leaf("B"), leaf("C"), leaf("D")],
+            vec![
+                edge("ab", "A", "B"),
+                edge("ac", "A", "C"),
+                edge("bd", "B", "D"),
+                edge("cd", "C", "D"),
+            ],
+        );
+        graph.options.layered.layering = LayeringStrategy::CoffmanGraham;
+        graph.options.layered.layering_layer_bound = 1;
+        let narrow = layout(&graph).unwrap();
+        graph.options.layered.layering_layer_bound = 2;
+        let wide = layout(&graph).unwrap();
+        let y = |result: &LayoutResult, id: &str| {
+            result.nodes.iter().find(|node| node.id == id).unwrap().y
+        };
+        assert_ne!(y(&narrow, "B"), y(&narrow, "C"));
+        assert_eq!(y(&wide, "B"), y(&wide, "C"));
+        assert!(y(&narrow, "D") - y(&narrow, "A") > y(&wide, "D") - y(&wide, "A"));
     }
 
     #[test]

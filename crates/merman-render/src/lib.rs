@@ -17,6 +17,8 @@ pub mod class;
 mod config;
 pub mod cynefin;
 mod dagre;
+#[cfg(feature = "layout-elk")]
+mod elk_options;
 mod entities;
 pub mod environment;
 pub mod er;

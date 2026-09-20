@@ -64,6 +64,8 @@ pub struct LayeredOptions {
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
     pub cycle_breaking: CycleBreakingStrategy,
+    pub layering: LayeringStrategy,
+    pub layering_layer_bound: i32,
     pub node_placement: NodePlacementStrategy,
     pub node_placement_alignment: NodePlacementAlignment,
     pub model_order: ModelOrderStrategy,
@@ -84,6 +86,8 @@ impl Default for LayeredOptions {
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
             cycle_breaking: CycleBreakingStrategy::Greedy,
+            layering: LayeringStrategy::NetworkSimplex,
+            layering_layer_bound: 4,
             node_placement: NodePlacementStrategy::BrandesKoepf,
             node_placement_alignment: NodePlacementAlignment::None,
             model_order: ModelOrderStrategy::NodesAndEdges,
@@ -121,6 +125,18 @@ pub enum CycleBreakingStrategy {
     DepthFirst,
     Interactive,
     GreedyModelOrder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayeringStrategy {
+    #[default]
+    NetworkSimplex,
+    LongestPath,
+    LongestPathSource,
+    CoffmanGraham,
+    MinWidth,
+    StretchWidth,
+    Interactive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
