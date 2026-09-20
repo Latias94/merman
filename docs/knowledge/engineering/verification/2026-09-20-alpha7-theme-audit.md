@@ -260,7 +260,8 @@ capability.
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
-| Python, Node Darwin ARM64, Node WASM | Current-source Python record plus refreshed Node WASM and Darwin ARM64 pack/install smoke | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange; current Node contract and 29-operation installed smoke per target | No current registry installation, other Node hosts or mobile runtime |
+| Python | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source wheel; no current registry installation or other host evidence |
+| Node Darwin ARM64, Node WASM | Refreshed pack/install smoke and content-capability correction below | 30 SVG renders and eight expected content-capability rejections per target; shared authoring/support/catalog vectors | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
 | C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
@@ -468,9 +469,9 @@ excluded from the measured interval, not that the timing samples are invalid. It
 decision remains inconclusive because this host contributes only one target result. These are
 current-source cross-transport observations with eight cold samples and three warm passes, not a
 matched alpha.6/alpha.7 regression comparison or balanced confirmation run; they do not close U10.
-The full corpus still exposes six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. Those
-remain transport coverage findings, while the representative samples are retained as diagnostic
-evidence rather than release admission.
+At that checkpoint, six KaTeX/math fixtures returned `MERMAN_INVALID_TRANSPORT`. The later
+content-capability correction below resolves their error classification; the representative
+timing samples remain diagnostic evidence rather than release admission.
 
 The current Node package contracts were rerun with the repository-required npm 12 CLI
 (`12.0.2`): `npm test` passed 109/109 and `npm run check:packages` passed the candidate package
@@ -490,6 +491,52 @@ rejections. The WASM and native smoke logs are respectively
 `fb589f4c3663a646ae54d604b258179b97f70d0a74df22acf7395c199d9115b2`. This refresh supersedes
 the historical local installed artifacts for these two macOS-hosted targets; registry installs,
 other Node hosts and mobile runtimes remain unverified.
+
+### Node content-capability correction
+
+An installed font-resource probe exposed a Node error-decoder defect: it treated every
+`missing-capability` response from an advertised operation as a transport contradiction. The
+Rust engines correctly returned `embedded-fonts` or `math` as the missing capability, but the
+JavaScript adapter discarded that diagnostic. SVG operation availability does not promise that
+these optional content capabilities exist.
+
+Commit `3c19a74d6` changes the adapter to compare the missing capability against the operation
+prerequisite and the runtime capability catalog. Unknown operations and denial of an advertised
+capability still fail closed; unadvertised content capabilities retain `MermanOperationError`,
+`MERMAN_UNSUPPORTED_OPERATION`, and the original capability ID. Regression tests cover async
+and sync calls, future capability IDs, and both primary and supplemental catalog contradictions.
+The Node suite passes 111/111 with npm 12.0.2.
+
+Both refreshed local package groups passed assembly, verification, offline tarball installation
+and the expanded installed smoke: 30 SVG renders, 23 JSON operations, 44 support queries, six
+authoring diagnostics, two resource-limit checks and eight expected content-capability failures
+per target. Font assets reject in request and constructor paths, using both the spec selection
+and the complete recipe. Resource-free font-family names remain in the SVG without embedded font
+data. This does not prove actual host-font absence, offline browser glyph appearance or portable
+font qualification.
+
+All six math fixtures in the benchmark corpus were also replayed through the installed WASM and
+Darwin ARM64 packages, both synchronously and asynchronously: 24 calls returned the expected
+`missing-capability: math`. Math remains explicitly unavailable in these package recipes; no
+feature was enabled and no benchmark timing or budget changed.
+
+The final two build receipts bind commit `3c19a74d6` and source digest
+`sha256:411d5537f7ebc4d906600423c739b16b6a9ab5ab2a3454ff59077dad96a5bdc1`.
+Receipts, pack records, installation logs, smoke output and the six-fixture replay script/logs are
+retained under `target/bench/experiments/node-content-capabilities-3c19a74d6/`. The smoke JSON
+SHA-256 values are `8b1f7325b4fbeaa6bcae931fcde5c559a98faa7d2be91304d73bb1503c24b523`
+(WASM) and `08ee388674e6b39dd817967d905474e3267d0de305df4f680038b350476c5244`
+(Darwin ARM64). Packed sizes are 113,988 bytes (loader), 10,562,660 bytes (native target) and
+7,025,279 bytes (WASM). These are local artifact observations, not matched footprint regressions.
+Node 26.8.2/npm 12.0.2 executed this replay; it does not establish the Node 24 CI runtime lane.
+Three read-only simplification reviewers found no reuse, quality or efficiency issue; a targeted
+manual correctness review and `git diff --check` also passed.
+
+Reproduce this boundary through the existing Node owners: `npm test` under npm 12,
+`build-candidate.mjs --candidate node-wasm`, `build-candidate.mjs --candidate napi --target darwin-arm64`,
+and the corresponding `assemble-packages.mjs` / `verify-packages.mjs --packed-root` paths.
+Pack with `npm pack`, install each tarball group with `npm install --offline --ignore-scripts`,
+then run `smoke-installed-package.mjs --project <consumer> --version 0.8.0-alpha.7 --target <target>`.
 
 # Classification and C7b deferral
 
