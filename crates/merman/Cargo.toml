@@ -131,6 +131,11 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "native_export"
+harness = false
+required-features = ["png", "pdf"]
+
+[[bench]]
 name = "ascii_pipeline"
 harness = false
 required-features = ["ascii"]

@@ -80,6 +80,35 @@ first-touch initialization. These are diagnostic baselines, not alpha.6 regressi
 alpha.6's presentation catalog does not implement the current theme-authoring/discovery contract.
 Latency samples do not establish allocation counts or peak memory.
 
+### Native SVG/PNG/PDF throughput
+
+`merman`'s `native_export` bench measures the public `Renderer` source-to-output path for the
+unchanged public Cyberpunk Flowchart, Sequence and XY Chart fixtures, each with the native default
+theme and the complete Cyberpunk preset. It reuses the renderer and precompiled theme, uses strict
+parsing, native SVG text (`htmlLabels: false`), a resvg-safe pipeline, fixed diagram IDs, system
+fonts and default render/export resource limits. PNG uses the default 1x scale without a fit box.
+
+```bash
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf --bench native_export -- --test
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf --bench native_export -- \
+  --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
+```
+
+Each of the 18 rows includes parse, layout, SVG emission, terminal encoding, request cloning and
+output destruction. Preflight warms first-use font discovery; this is neither process cold start
+nor export from a previously rendered document. Flat sampling avoids linear iteration growth for
+expensive PDF cases; slow cases may exceed the requested measurement duration to collect all
+samples. Criterion reports throughput as complete outputs per second.
+
+Pre/postflight requires identical output bytes. SVG must parse, PNG must decode with positive
+dimensions, and PDF must have valid framing; these checks do not establish visual qualification.
+Preflight emits source/output hashes. Set `MERMAN_BENCH_ARTIFACT_DIR` to retain the actual output
+files outside the timed loop, and use a separate `CRITERION_HOME` for each measured feature lane.
+A failed or rejected output stops the run rather than becoming a fast timing sample. These are
+diagnostic baselines until a separate matched, calibrated comparison establishes a revision claim.
+
 ### ASCII semantic-depth benchmark
 
 The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,
