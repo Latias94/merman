@@ -385,3 +385,57 @@ fn usecase_dagre_extracts_only_boundaries_without_external_connections() {
         assert_eq!(nodes.iter().filter(|node| node["id"] == "S").count(), 1);
     }
 }
+
+#[test]
+fn usecase_dagre_keeps_self_loop_segments_and_helper_labels() {
+    for source in [
+        "usecase-beta\nA(Alpha)\nA first@-- \"first loop\" --> A",
+        "usecase-beta\nsystemBoundary S[System]\nA(Alpha)\nend\nA first@-- \"first loop\" --> A",
+    ] {
+        let (projection, svg) =
+            render_config(source, json!({"layout":"dagre", "htmlLabels":false}));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let paths: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node
+                        .attribute("data-id")
+                        .is_some_and(|id| id.contains("cyclic-special"))
+            })
+            .collect();
+        assert_eq!(paths.len(), 3, "{source}");
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.attribute("marker-end").is_some())
+        );
+        assert!(paths.iter().all(|path| path.attribute("data-id").is_some()));
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g") && node.attribute("class") == Some("label edgeLabel")
+            })
+            .collect();
+        assert_eq!(
+            labels
+                .iter()
+                .filter(|label| {
+                    label
+                        .descendants()
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                        .contains("first loop")
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            projection["layout"]["UsecaseDiagram"]["edges"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+}

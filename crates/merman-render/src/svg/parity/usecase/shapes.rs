@@ -1,6 +1,46 @@
 use super::*;
 use merman_core::diagrams::usecase::UsecaseNode;
 
+pub(super) fn write_dagre_helper(
+    out: &mut String,
+    node: &LayoutNode,
+    config: &merman_core::MermaidConfig,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        escape_attr(&node.id),
+        fmt(node.x),
+        fmt(node.y)
+    );
+    if config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true) {
+        out.push_str(r#"<foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display:table-cell;white-space:nowrap;line-height:1.5;max-width:10px;text-align:center"><span class="nodeLabel"/></div></foreignObject>"#);
+    } else {
+        out.push_str(r#"<g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/></text></g>"#);
+    }
+    out.push_str("</g></g>");
+}
+
+pub(super) fn write_empty_edge_label(
+    out: &mut String,
+    id: &str,
+    config: &merman_core::MermaidConfig,
+) {
+    let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
+    let _ = write!(
+        out,
+        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({},0)">"#,
+        escape_attr(id),
+        if html { "-2" } else { "0" }
+    );
+    if html {
+        out.push_str(r#"<foreignObject width="4" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display:table-cell;white-space:nowrap;line-height:1.5;max-width:200px;text-align:center"><span class="edgeLabel"/></div></foreignObject>"#);
+    } else {
+        out.push_str(r#"<text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/></text>"#);
+    }
+    out.push_str("</g></g>");
+}
+
 pub(super) fn rect(
     out: &mut String,
     class: &str,

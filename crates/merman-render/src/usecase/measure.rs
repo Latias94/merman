@@ -340,6 +340,7 @@ pub(super) fn measure(
                 package: false,
                 ellipse,
                 table: None,
+                dagre_helper: false,
             });
         }
     }
@@ -371,6 +372,7 @@ pub(super) fn measure(
             package: false,
             ellipse: false,
             table: None,
+            dagre_helper: false,
         });
     }
     for node in &model.json_nodes {
@@ -443,6 +445,7 @@ pub(super) fn measure(
             is_boundary: false,
             package: false,
             ellipse: false,
+            dagre_helper: false,
             table: Some(UsecaseJsonTablePlan {
                 rows,
                 key_width,
@@ -479,6 +482,7 @@ pub(super) fn measure(
             package: boundary.package,
             ellipse: false,
             table: None,
+            dagre_helper: false,
         });
     }
     let mut edges = Vec::new();
@@ -524,6 +528,9 @@ pub(super) fn measure(
             }
         };
         edges.push(UsecaseEdgePlan {
+            original_id: None,
+            self_loop_node: None,
+            dagre_recursive: false,
             id: edge.id.clone(),
             source: edge.source.clone(),
             target: edge.target.clone(),
@@ -549,6 +556,9 @@ pub(super) fn measure(
     for note in &model.notes {
         work.charge_adapter(1)?;
         edges.push(UsecaseEdgePlan {
+            original_id: None,
+            self_loop_node: None,
+            dagre_recursive: false,
             id: format!("{}-edge", note.id),
             source: note.id.clone(),
             target: note.target.clone(),

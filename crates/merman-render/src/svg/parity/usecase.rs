@@ -399,7 +399,9 @@ pub(crate) fn render_usecase_diagram_svg_model(
             plan.start_marker.as_deref(),
             plan.end_marker.as_deref(),
         );
-        let relation = relationships.get(plan.id.as_str()).copied();
+        let relation = relationships
+            .get(plan.original_id.as_deref().unwrap_or(&plan.id))
+            .copied();
         let label = relation.map(|edge| match edge.relationship_type {
             UsecaseRelationshipType::Association => plan
                 .label
@@ -434,28 +436,41 @@ pub(crate) fn render_usecase_diagram_svg_model(
         }
         let _ = write!(
             out,
-            r#"<path id="usecase-{}-{}" data-id="{}" data-et="edge" data-usecase-id="{}" data-usecase-kind="{}" class="{}" d="{}" fill="none""#,
+            r#"<path id="{}{}-{}" data-id="{}" data-et="edge" class="{}" d="{}" fill="none""#,
+            if plan.dagre_recursive { "" } else { "usecase-" },
             dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&plan.id),
-            escape_attr(&plan.id),
-            if plan.internal {
-                "note-connector"
-            } else {
-                "relationship"
-            },
             escape_attr(&classes),
             path
         );
-        if plan.internal {
+        if !plan.dagre_recursive {
+            let _ = write!(
+                out,
+                r#" data-usecase-id="{}" data-usecase-kind="{}""#,
+                escape_attr(&plan.id),
+                if plan.internal {
+                    "note-connector"
+                } else {
+                    "relationship"
+                }
+            );
+        }
+        if plan.dagre_recursive {
+            // Extracted edges are absent from the top-level LayoutData annotation pass.
+        } else if plan.internal {
             out.push_str(" aria-hidden=\"true\"");
         } else {
-            let name = format!(
-                "{} from {} to {}",
-                label.unwrap_or_default(),
-                source_labels[plan.source.as_str()],
-                source_labels[plan.target.as_str()]
-            );
+            let name = if plan.original_id.is_some() {
+                plan.id.clone()
+            } else {
+                format!(
+                    "{} from {} to {}",
+                    label.unwrap_or_default(),
+                    source_labels[plan.source.as_str()],
+                    source_labels[plan.target.as_str()]
+                )
+            };
             let _ = write!(out, r#" role="img" aria-label="{}""#, escape_attr(&name));
         }
         let mut edge_style = relation
@@ -492,6 +507,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     measurer,
                 );
             }
+        } else if plan.original_id.is_some() {
+            shapes::write_empty_edge_label(&mut out, &plan.id, config);
         }
     }
     out.push_str("</g><g class=\"nodes\">");
@@ -503,6 +520,10 @@ pub(crate) fn render_usecase_diagram_svg_model(
     {
         options.checkpoint_emit()?;
         let node = geometry[plan.id.as_str()];
+        if plan.dagre_helper {
+            shapes::write_dagre_helper(&mut out, node, config);
+            continue;
+        }
         let source = source_nodes.get(plan.id.as_str()).copied();
         let note = notes.get(plan.id.as_str()).copied();
         let json = json_nodes.get(plan.id.as_str()).copied();

@@ -14,6 +14,96 @@ use std::collections::{HashMap, HashSet};
 
 type DagreGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 
+/// Usecase retains the three shared-Dagre segments; it is absent from the source merge allowlist.
+pub(super) fn expand_self_loops(
+    nodes: &mut Vec<UsecaseNodePlan>,
+    edges: &mut Vec<UsecaseEdgePlan>,
+    config: &Value,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<()> {
+    work.charge_adapter(work.checked_add(nodes.len(), edges.len())?)?;
+    if !edges.iter().any(|edge| edge.source == edge.target) {
+        return Ok(());
+    }
+    let parents: HashMap<_, _> = nodes
+        .iter()
+        .map(|node| (node.id.clone(), node.parent.clone()))
+        .collect();
+    let mut helpers = HashSet::new();
+    let mut projected = indexmap::IndexMap::new();
+    for edge in edges.drain(..) {
+        work.charge_adapter(1)?;
+        if edge.source != edge.target {
+            projected.insert(edge.id.clone(), edge);
+            continue;
+        }
+        let helper_ids = [
+            format!("{}---{}---1", edge.source, edge.source),
+            format!("{}---{}---2", edge.source, edge.source),
+        ];
+        for id in &helper_ids {
+            if helpers.insert(id.clone()) {
+                work.charge_adapter(1)?;
+                nodes.push(UsecaseNodePlan {
+                    id: id.clone(),
+                    parent: parents[&edge.source].clone(),
+                    source_label: String::new(),
+                    label: UsecaseLabelPlan {
+                        text: String::new(),
+                        label_type: UsecaseLabelType::Text,
+                        metrics: TextMetrics {
+                            width: 0.0,
+                            height: 0.0,
+                            line_count: 1,
+                        },
+                        style: text_style(config, None),
+                        max_width: Some(10.0),
+                        styles: indexmap::IndexMap::new(),
+                    },
+                    stereotype: None,
+                    folded_stereotype: false,
+                    // labelRect replaces the initial 10x10 layout hint with its tiny drawn rect.
+                    width: 0.1,
+                    height: 0.1,
+                    is_boundary: false,
+                    package: false,
+                    ellipse: false,
+                    table: None,
+                    dagre_helper: true,
+                });
+            }
+        }
+        let mut first = edge.clone();
+        first.id = format!("{}-cyclic-special-1", edge.source);
+        first.original_id = Some(edge.id.clone());
+        first.self_loop_node = Some(edge.source.clone());
+        first.target = helper_ids[0].clone();
+        first.label = None;
+        first.end_marker = None;
+        let mut middle = edge.clone();
+        middle.id = format!("{}-cyclic-special-mid", edge.source);
+        middle.original_id = Some(edge.id.clone());
+        middle.self_loop_node = Some(edge.source.clone());
+        middle.source = helper_ids[0].clone();
+        middle.target = helper_ids[1].clone();
+        middle.start_marker = None;
+        middle.end_marker = None;
+        let mut last = edge;
+        last.original_id = Some(last.id.clone());
+        last.self_loop_node = Some(last.source.clone());
+        last.id = format!("{}-cyclic-special-2", last.source);
+        last.source = helper_ids[1].clone();
+        last.label = None;
+        last.start_marker = None;
+        // Source Graphlib keys are node-scoped: a later parallel self-loop replaces this triple.
+        for segment in [first, middle, last] {
+            projected.insert(segment.id.clone(), segment);
+        }
+    }
+    *edges = projected.into_values().collect();
+    Ok(())
+}
+
 struct Fragment {
     nodes: Vec<LayoutNode>,
     edges: Vec<LayoutEdge>,
@@ -78,7 +168,7 @@ pub(super) fn layout(
     model: &UsecaseDiagramRenderModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
-    edge_plans: &[UsecaseEdgePlan],
+    edge_plans: &mut [UsecaseEdgePlan],
     work: &mut OperationLayoutWorkControl,
 ) -> Result<UsecaseDiagramLayout> {
     let mut root = graph(GraphLabel {
@@ -116,7 +206,7 @@ pub(super) fn layout(
             root.set_parent_ref(&plan.id, parent);
         }
     }
-    for plan in edge_plans {
+    for plan in edge_plans.iter() {
         work.charge_adapter(1)?;
         let source = plan_by_id[plan.source.as_str()];
         let target = plan_by_id[plan.target.as_str()];
@@ -129,9 +219,21 @@ pub(super) fn layout(
             external.extend(source.parent.as_deref());
             external.extend(target.parent.as_deref());
         }
-        let (width, height) = plan.label.as_ref().map_or((0.0, 0.0), |label| {
-            (label.metrics.width, label.metrics.height)
-        });
+        let (width, height) = plan.label.as_ref().map_or(
+            (
+                if config
+                    .get("htmlLabels")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true)
+                {
+                    4.0
+                } else {
+                    0.0
+                },
+                0.0,
+            ),
+            |label| (label.metrics.width, label.metrics.height),
+        );
         root.set_edge_named(
             plan.source.clone(),
             plan.target.clone(),
@@ -201,6 +303,7 @@ pub(super) fn layout(
     )?;
     let mut nodes = Vec::with_capacity(plans.len());
     let mut edges = outer.edges;
+    let mut recursive_edges = HashSet::new();
     for placed in outer.nodes {
         if let Some(mut child) = extracted.remove(&placed.id) {
             // positionNode(clusterNode): the child DOM retains its own graph coordinates.
@@ -213,6 +316,7 @@ pub(super) fn layout(
                 nodes.push(node);
             }
             for mut edge in child.edges.drain(..) {
+                recursive_edges.insert(edge.id.clone());
                 work.charge_adapter(edge.points.len().saturating_add(1))?;
                 for point in &mut edge.points {
                     point.x += dx;
@@ -229,6 +333,10 @@ pub(super) fn layout(
         }
     }
     let bounds = painted_bounds(&nodes, &edges, &plan_by_id, title_margins);
+    drop(edge_by_id);
+    for plan in edge_plans.iter_mut() {
+        plan.dagre_recursive = recursive_edges.contains(&plan.id);
+    }
     Ok(UsecaseDiagramLayout {
         nodes,
         edges,

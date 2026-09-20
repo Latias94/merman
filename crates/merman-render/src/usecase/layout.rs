@@ -8,7 +8,7 @@ pub(super) fn layout(
     model: &UsecaseDiagramRenderModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
-    edge_plans: &[UsecaseEdgePlan],
+    edge_plans: &mut [UsecaseEdgePlan],
     work: &mut OperationLayoutWorkControl,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecaseDiagramLayout> {
@@ -433,7 +433,20 @@ pub(super) fn prepare_edge_paths(
             }
             points
         } else {
-            edge_points(edge, &layout.nodes, plans)
+            if let Some(id) = plan
+                .self_loop_node
+                .as_deref()
+                .filter(|_| !plan.dagre_recursive)
+            {
+                // Top-level normalization retains the original self-edge endpoints. Recursive
+                // Dagre paint instead receives the actual helper-node endpoints.
+                let mut paint_edge = edge.clone();
+                paint_edge.from = id.to_owned();
+                paint_edge.to = id.to_owned();
+                edge_points(&paint_edge, &layout.nodes, plans)
+            } else {
+                edge_points(edge, &layout.nodes, plans)
+            }
         };
         // Empty diagrams can have one coincident endpoint after source deduplication.
         // Do not synthesize a second terminal, which would change the source fallback.

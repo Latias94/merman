@@ -65,11 +65,15 @@ pub(crate) struct UsecaseNodePlan {
     pub package: bool,
     pub ellipse: bool,
     pub table: Option<UsecaseJsonTablePlan>,
+    pub dagre_helper: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct UsecaseEdgePlan {
     pub id: String,
+    pub original_id: Option<String>,
+    pub self_loop_node: Option<String>,
+    pub dagre_recursive: bool,
     pub source: String,
     pub target: String,
     pub label: Option<UsecaseLabelPlan>,
@@ -109,12 +113,17 @@ pub(crate) fn prepare_usecase_diagram(
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (nodes, edges) = measure::measure(model, effective_config, measurer, &mut work)?;
+    let (mut nodes, mut edges) = measure::measure(model, effective_config, measurer, &mut work)?;
+    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == crate::layout_backend::GraphLayoutBackend::Dagre
+    {
+        dagre::expand_self_loops(&mut nodes, &mut edges, effective_config, &mut work)?;
+    }
     let mut layout = layout::layout(
         model,
         effective_config,
         &nodes,
-        &edges,
+        &mut edges,
         &mut work,
         #[cfg(feature = "layout-elk")]
         operation_seed,
