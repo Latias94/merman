@@ -260,7 +260,7 @@ capability.
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
-| Python, Node Darwin ARM64, Node WASM | Installed-consumer record from clean `0c1b1047a`; current Node contracts 109/109 and package checks | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange; current Node contract and package shape | Installed artifacts remain historical; no current registry installation or mobile runtime |
+| Python, Node Darwin ARM64, Node WASM | Current-source Python record plus refreshed Node WASM and Darwin ARM64 pack/install smoke | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange; current Node contract and 29-operation installed smoke per target | No current registry installation, other Node hosts or mobile runtime |
 | Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
 | C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
@@ -480,6 +480,16 @@ requires npm 12's named `npm pack --json` result shape. The test log is
 `b605de3d2bc04e9a769a72c1875c361d027a73e63890000f80f8af0b162cd6f3`. These checks validate the
 current JavaScript contract and package shape; they do not refresh the installed-consumer record
 or establish registry and mobile runtime evidence.
+
+The current-source candidate refresh then rebuilt both `node-wasm` and macOS ARM64 N-API from
+commit `7e66c9b13`, assembled and verified both package groups, packed them with npm 12, and
+installed each into a fresh local consumer. The installed smoke passed for both targets with the
+same 29 SVG/theme-authoring operations, including complete-scene recipes and five expected
+rejections. The WASM and native smoke logs are respectively
+`ecc052db7cc1ebaaad48acc7c519c2dce77ebf5e0ff199b5bcb3cdee3d55dd8d` and
+`fb589f4c3663a646ae54d604b258179b97f70d0a74df22acf7395c199d9115b2`. This refresh supersedes
+the historical local installed artifacts for these two macOS-hosted targets; registry installs,
+other Node hosts and mobile runtimes remain unverified.
 
 # Classification and C7b deferral
 
