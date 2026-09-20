@@ -16,6 +16,18 @@ These are the translated port's historical derivation points, not the workspace'
 
 The crate contains the production layered graph, option model, processor assembly, and layout phases used by `merman-layout-elk`. Corrections and new behavior must continue to follow the pinned Eclipse ELK sources rather than approximating fixture output.
 
+## Layer assignment
+
+The layered pipeline supports `NETWORK_SIMPLEX`, `LONGEST_PATH`, `LONGEST_PATH_SOURCE`,
+`COFFMAN_GRAHAM`, `MIN_WIDTH`, `STRETCH_WIDTH`, and `INTERACTIVE`. The six additional
+strategies are translated from the same Eclipse ELK revision above and checked against
+elkjs 0.9.3 phase outputs. Their source references live beside the implementations in
+`src/p2layers/`.
+
+Adaptive layering searches honor the caller's work control. Stretch-width rejects mixed
+zero and positive normal-node heights with a typed error because the upstream normalization
+can make its retry loop nonterminating. An interrupted assignment does not commit partial layers.
+
 ## Random seed authority
 
 Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This source port does not read time or process randomness for that branch. A graph must either retain a nonzero source seed or be imported with an `OperationSeed` before a configurator or pipeline entry point executes.

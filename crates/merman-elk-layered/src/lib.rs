@@ -50,10 +50,11 @@ pub use intermediate::IntermediateError;
 pub use options::{
     Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
     ElkDirection, ElkPadding, FixedAlignment, GreedySwitchType, HierarchyHandling, LayerConstraint,
-    LayeredOptions, LongEdgeOrderingStrategy, NodeLabelPlacement, NodePlacementStrategy,
-    OrderingStrategy, PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy,
-    SelfLoopOrderingStrategy, SpacingOptions,
+    LayeredOptions, LayeringStrategy, LongEdgeOrderingStrategy, NodeLabelPlacement,
+    NodePlacementStrategy, OrderingStrategy, PortConstraints, PortSortingStrategy,
+    SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, SpacingOptions,
 };
+pub use p2layers::LayeringError;
 pub use p3order::sweep::{HierarchySweepDebugTrace, HierarchySweepNodeDebug};
 pub use pipeline::{
     GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,
