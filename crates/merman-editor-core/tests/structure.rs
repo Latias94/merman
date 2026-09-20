@@ -649,3 +649,38 @@ fn selection_chain_ranges(selection: &merman_editor_core::EditorSelectionRange) 
     }
     ranges
 }
+
+#[test]
+fn new_families_support_navigation_and_rename_across_preamble() {
+    let harness = SnapshotHarness::new();
+    for (family, body) in [
+        ("agentflow", "agentflow-beta\nA[Worker]\nA-->B\n"),
+        ("usecase", "usecase-beta\nactor A\nA --> B\n"),
+    ] {
+        let source = format!("---\ntitle: 中文😀\n---\n{body}");
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/{family}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("family source should be accepted");
+        let position = Position::new(5, 0);
+        let definition = goto_definition(&snapshot, position).expect("entity definition");
+        assert_eq!(definition.fact_source, FenceTextIndexSource::ParserComplete);
+        assert_eq!(definition.range.start.line, 4, "{family}");
+        let refs = references(&snapshot, position, true).expect("entity references");
+        assert_eq!(refs.len(), 2, "{family}");
+        let prepare = prepare_rename(&snapshot, position).expect("rename target");
+        assert_eq!(prepare.placeholder, "A");
+        let edit = rename(&snapshot, position, "Customer").unwrap().unwrap();
+        let changes = edit.changes.get(snapshot.uri()).unwrap();
+        assert_eq!(changes.len(), 2, "{family}");
+        assert!(changes.iter().all(|change| change.new_text == "Customer"));
+        assert!(matches!(
+            rename(&snapshot, position, "invalid id"),
+            Err(RenameError::InvalidName)
+        ));
+    }
+}

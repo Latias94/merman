@@ -442,11 +442,15 @@ fn click_action_prefix(word: &str) -> bool {
     !word.is_empty() && ("href".starts_with(word) || "call".starts_with(word))
 }
 
-fn invalid_click_statement(evidence: FlowchartClickEditorEvidence) -> LexError {
-    evidence.iter().fold(
-        LexError::new("Invalid click statement".to_string()),
-        |error, expected| error.expecting(expected.kind, expected.span),
-    )
+fn click_statement_error(
+    message: impl Into<String>,
+    evidence: FlowchartClickEditorEvidence,
+) -> LexError {
+    evidence
+        .iter()
+        .fold(LexError::new(message), |error, expected| {
+            error.expecting(expected.kind, expected.span)
+        })
 }
 
 pub(super) fn parse_click_stmt(
@@ -484,7 +488,10 @@ pub(super) fn parse_click_stmt(
             click_following_span(&p, action_end),
         );
         let Some(link) = p.take_quoted() else {
-            return Err(invalid_click_statement(interaction_evidence));
+            return Err(click_statement_error(
+                "Invalid click statement",
+                interaction_evidence,
+            ));
         };
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word();
@@ -492,7 +499,10 @@ pub(super) fn parse_click_stmt(
             .as_deref()
             .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
         {
-            return Err(LexError::new("Invalid click target"));
+            return Err(click_statement_error(
+                "Invalid click target",
+                interaction_evidence,
+            ));
         }
         tooltip = maybe_tt;
         action = ClickAction::Link {
@@ -501,7 +511,10 @@ pub(super) fn parse_click_stmt(
         };
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(LexError::new("Unexpected content after click statement"));
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
         }
         return Ok(ClickStmt {
             ids,
@@ -537,7 +550,10 @@ pub(super) fn parse_click_stmt(
             p.i += 1;
         }
         if p.i == start {
-            return Err(invalid_click_statement(interaction_evidence));
+            return Err(click_statement_error(
+                "Invalid click statement",
+                interaction_evidence,
+            ));
         }
         p.skip_ws();
         if p.peek() == Some(b'(') {
@@ -546,7 +562,10 @@ pub(super) fn parse_click_stmt(
                 p.i += 1;
             }
             if p.peek() != Some(b')') {
-                return Err(LexError::new("Unterminated click callback arguments"));
+                return Err(click_statement_error(
+                    "Unterminated click callback arguments",
+                    interaction_evidence,
+                ));
             }
             p.i += 1;
         }
@@ -555,7 +574,10 @@ pub(super) fn parse_click_stmt(
         action = ClickAction::Callback;
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(LexError::new("Unexpected content after click statement"));
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
         }
         return Ok(ClickStmt {
             ids,
@@ -569,13 +591,17 @@ pub(super) fn parse_click_stmt(
     }
 
     if let Some(link) = p.take_quoted() {
+        let interaction_evidence = FlowchartClickEditorEvidence::new(None, after_target);
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word();
         if maybe_target
             .as_deref()
             .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
         {
-            return Err(LexError::new("Invalid click target"));
+            return Err(click_statement_error(
+                "Invalid click target",
+                interaction_evidence,
+            ));
         }
         tooltip = maybe_tt;
         action = ClickAction::Link {
@@ -584,7 +610,10 @@ pub(super) fn parse_click_stmt(
         };
         p.skip_ws();
         if p.i != p.s.len() {
-            return Err(LexError::new("Unexpected content after click statement"));
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
         }
         return Ok(ClickStmt {
             ids,
@@ -592,17 +621,17 @@ pub(super) fn parse_click_stmt(
             tooltip,
             action,
             editor_evidence: Default::default(),
-            interaction_evidence: FlowchartClickEditorEvidence::new(None, after_target),
+            interaction_evidence,
             recovery_error: None,
         });
     }
 
     let function_start = p.i;
     let Some(function_name) = p.take_word() else {
-        return Err(invalid_click_statement(FlowchartClickEditorEvidence::new(
-            after_target,
-            None,
-        )));
+        return Err(click_statement_error(
+            "Invalid click statement",
+            FlowchartClickEditorEvidence::new(after_target, None),
+        ));
     };
     let function_span = p.source_span(function_start, p.i);
     let interaction_evidence = if click_action_prefix(&function_name) {
@@ -614,7 +643,10 @@ pub(super) fn parse_click_stmt(
     action = ClickAction::Callback;
     p.skip_ws();
     if p.i != p.s.len() {
-        return Err(LexError::new("Unexpected content after click statement"));
+        return Err(click_statement_error(
+            "Unexpected content after click statement",
+            interaction_evidence,
+        ));
     }
     Ok(ClickStmt {
         ids,

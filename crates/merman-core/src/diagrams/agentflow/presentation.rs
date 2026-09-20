@@ -4,7 +4,7 @@ use super::{Declaration, ParseFailure, Parser};
 use crate::diagrams::flowchart::{
     self, ClickAction, FlowEdgeDefaults, FlowchartModel, LinkStylePos, Tok,
 };
-use crate::{EditorSemanticKind, SourceSpan};
+use crate::{EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -161,6 +161,12 @@ impl Parser<'_> {
                         self.failure("expected style value", SourceSpan::new(start, start + end))
                     );
                 }
+                let Some(target_span) = style.target_span else {
+                    return Err(
+                        self.failure("expected style target", SourceSpan::new(start, start + end))
+                    );
+                };
+                let id_span = SourceSpan::new(start + target_span.start, start + target_span.end);
                 // style calls addVertex; unlike class it creates an unknown node, but its statement
                 // contributes no members to the enclosing flow. Edge ids return before node mutation.
                 if !self
@@ -168,19 +174,22 @@ impl Parser<'_> {
                     .iter()
                     .any(|edge| edge.id.as_deref() == Some(&style.target))
                 {
-                    self.upsert_node(
-                        Declaration {
-                            id: style.target.clone(),
-                            label: None,
-                            syntax_shape: None,
-                            metadata: Map::new(),
-                            metadata_span: None,
-                            authored_shape: None,
-                            class: None,
-                        },
-                        start,
-                        source,
-                        true,
+                    self.upsert_node(Declaration {
+                        id: style.target.clone(),
+                        id_span,
+                        label: None,
+                        syntax_shape: None,
+                        metadata: Map::new(),
+                        metadata_span: None,
+                        authored_shape: None,
+                        class: None,
+                    });
+                    let reference = self.declared_entities.contains(&style.target);
+                    self.push_symbol(
+                        &style.target,
+                        EditorSemanticKind::Object,
+                        id_span,
+                        reference,
                     );
                     self.presentation
                         .nodes
@@ -199,14 +208,22 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for id in class.ids {
+                for (id, span) in class.ids.into_iter().zip(class.id_spans) {
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     self.presentation
                         .class_defs
                         .entry(id.clone())
                         .or_default()
                         .extend(class.styles.iter().cloned());
-                    self.push_symbol(&id, EditorSemanticKind::Class, start, source, false);
+                    let span = SourceSpan::new(start + span.start, start + span.end);
+                    self.facts
+                        .push_symbol(EditorSemanticSymbol::class_definition(
+                            id,
+                            None,
+                            EditorSemanticKind::Class,
+                            span,
+                            span,
+                        ));
                 }
             }
             Tok::ClassAssignStmt(class) => {
@@ -221,44 +238,56 @@ impl Parser<'_> {
                         SourceSpan::new(start, start + end),
                     ));
                 }
-                for target in class.targets {
+                for (target, span) in class.targets.into_iter().zip(class.target_spans) {
                     self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
                     self.assign_class(&target, &class.class_name);
-                    self.push_symbol(&target, EditorSemanticKind::Object, start, source, true);
+                    let span = SourceSpan::new(start + span.start, start + span.end);
+                    self.push_symbol(&target, EditorSemanticKind::Object, span, true);
                 }
             }
             Tok::ClickStmt(click) => {
-                for id in click.ids.iter().flat_map(|ids| ids.split(',')) {
-                    self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
-                    if let Some(tooltip) = &click.tooltip {
-                        self.presentation.tooltips.insert(
-                            id.to_string(),
-                            crate::sanitize::sanitize_text(tooltip, &self.meta.effective_config),
+                for (ids, group_span) in click.ids.iter().zip(&click.id_spans) {
+                    let mut offset = 0;
+                    for id in ids.split(',') {
+                        let span = SourceSpan::new(
+                            start + group_span.start + offset,
+                            start + group_span.start + offset + id.len(),
                         );
-                    }
-                    self.assign_class(id, "clickable");
-                    if let Some(node) = self.presentation.nodes.get_mut(id) {
-                        match &click.action {
-                            ClickAction::Link { href, target } => {
-                                node.link =
-                                    crate::utils::format_url(href, &self.meta.effective_config);
-                                node.link_target = target.clone();
-                            }
-                            ClickAction::Callback => {
-                                if self
-                                    .meta
-                                    .effective_config
-                                    .as_value()
-                                    .get("securityLevel")
-                                    .and_then(Value::as_str)
-                                    == Some("loose")
-                                {
-                                    node.have_callback = true;
+                        offset += id.len() + 1;
+                        self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
+                        if let Some(tooltip) = &click.tooltip {
+                            self.presentation.tooltips.insert(
+                                id.to_string(),
+                                crate::sanitize::sanitize_text(
+                                    tooltip,
+                                    &self.meta.effective_config,
+                                ),
+                            );
+                        }
+                        self.assign_class(id, "clickable");
+                        if let Some(node) = self.presentation.nodes.get_mut(id) {
+                            match &click.action {
+                                ClickAction::Link { href, target } => {
+                                    node.link =
+                                        crate::utils::format_url(href, &self.meta.effective_config);
+                                    node.link_target = target.clone();
+                                }
+                                ClickAction::Callback => {
+                                    if self
+                                        .meta
+                                        .effective_config
+                                        .as_value()
+                                        .get("securityLevel")
+                                        .and_then(Value::as_str)
+                                        == Some("loose")
+                                    {
+                                        node.have_callback = true;
+                                    }
                                 }
                             }
                         }
+                        self.push_symbol(id, EditorSemanticKind::Object, span, true);
                     }
-                    self.push_symbol(id, EditorSemanticKind::Object, start, source, true);
                 }
             }
             Tok::LinkStyleStmt(style) => {

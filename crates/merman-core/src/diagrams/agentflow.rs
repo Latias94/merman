@@ -606,6 +606,7 @@ struct Parser<'a> {
     meta: &'a ParseMetadata,
     control: &'a OperationControl,
     facts: EditorSemanticFacts,
+    declared_entities: HashSet<String>,
     presentation: AgentflowPresentation,
     diagnostic_spans: HashMap<String, SourceSpan>,
     direction: String,
@@ -634,6 +635,7 @@ impl<'a> Parser<'a> {
             meta,
             control,
             facts,
+            declared_entities: HashSet::new(),
             presentation: AgentflowPresentation::default(),
             diagnostic_spans: HashMap::new(),
             direction: "TB".to_string(),
@@ -772,20 +774,20 @@ impl<'a> Parser<'a> {
                 let (id, title, metadata) = if rest.trim().is_empty() {
                     (None, None, Map::new())
                 } else {
-                    match parse_declaration(rest.trim(), line_start, line, self.control) {
+                    match parse_declaration(
+                        rest,
+                        line_start + line.find(trimmed).unwrap_or(0) + "flow".len(),
+                        rest,
+                        self.control,
+                    ) {
                         Ok(Declaration {
                             id,
+                            id_span,
                             label: title,
                             metadata,
                             ..
                         }) => {
-                            self.push_symbol(
-                                &id,
-                                EditorSemanticKind::Namespace,
-                                line_start,
-                                line,
-                                false,
-                            );
+                            self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, false);
                             (Some(id), title, metadata)
                         }
                         Err(error) => return Ok(Err(error)),
@@ -804,12 +806,17 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("connector")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let declaration =
-                    match parse_declaration(rest.trim(), line_start, line, self.control) {
-                        Ok(value) => value,
-                        Err(error) => return Ok(Err(error)),
-                    };
+                let declaration = match parse_declaration(
+                    rest,
+                    line_start + line.find(trimmed).unwrap_or(0) + "connector".len(),
+                    rest,
+                    self.control,
+                ) {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error)),
+                };
                 let id = declaration.id.clone();
+                let id_span = declaration.id_span;
                 let first = !self.connector_index.contains_key(&id);
                 if first {
                     // addConnector replaces a pre-existing ordinary vertex, preserving map order.
@@ -830,20 +837,16 @@ impl<'a> Parser<'a> {
                 let title = declaration.label.filter(|title| !title.is_empty());
                 let metadata = declaration.metadata;
                 self.upsert_connector(id.clone(), title.clone(), Map::new());
-                let node_index = self.upsert_node(
-                    Declaration {
-                        id: id.clone(),
-                        label: title,
-                        syntax_shape: None,
-                        metadata: Map::new(),
-                        metadata_span: None,
-                        authored_shape: None,
-                        class: None,
-                    },
-                    line_start,
-                    line,
-                    false,
-                );
+                let node_index = self.upsert_node(Declaration {
+                    id: id.clone(),
+                    id_span,
+                    label: title,
+                    syntax_shape: None,
+                    metadata: Map::new(),
+                    metadata_span: None,
+                    authored_shape: None,
+                    class: None,
+                });
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
                 if let Some(&index) = self.sub_graph_index.get(&id) {
                     self.sub_graphs[index].metadata.extend(metadata);
@@ -855,7 +858,7 @@ impl<'a> Parser<'a> {
                 self.diagnostic_spans
                     .entry(id.clone())
                     .or_insert_with(|| span_of(line_start, line, trimmed));
-                self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, false);
+                self.push_symbol(&id, EditorSemanticKind::Object, id_span, false);
                 continue;
             }
             match self
@@ -968,6 +971,7 @@ impl<'a> Parser<'a> {
     ) -> std::result::Result<String, ParseFailure> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
+        let id_span = declaration.id_span;
         let class = declaration.class.clone();
         let mapped_element = if declaration.metadata_span.is_some() {
             statement.trim()
@@ -984,31 +988,27 @@ impl<'a> Parser<'a> {
                 .iter()
                 .any(|edge| edge.id.as_deref() == Some(&id))
         {
-            self.upsert_node(
-                Declaration {
-                    id: id.clone(),
-                    label: declaration.label.clone(),
-                    syntax_shape: declaration.syntax_shape.clone(),
-                    metadata: Map::new(),
-                    metadata_span: None,
-                    authored_shape: None,
-                    class: None,
-                },
-                line_start,
-                line,
-                reference,
-            );
+            self.upsert_node(Declaration {
+                id: id.clone(),
+                id_span,
+                label: declaration.label.clone(),
+                syntax_shape: declaration.syntax_shape.clone(),
+                metadata: Map::new(),
+                metadata_span: None,
+                authored_shape: None,
+                class: None,
+            });
         }
         if declaration.metadata_span.is_some()
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
             self.sub_graphs[index].metadata.extend(declaration.metadata);
-            self.push_symbol(&id, EditorSemanticKind::Namespace, line_start, line, true);
+            self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, true);
         } else if declaration.metadata_span.is_some()
             && let Some(&index) = self.connector_index.get(&id)
         {
             self.connectors[index].metadata.extend(declaration.metadata);
-            self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
+            self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else if let Some(edge) = self
             .edges
             .iter_mut()
@@ -1017,10 +1017,12 @@ impl<'a> Parser<'a> {
             self.presentation
                 .attach_edge_metadata(&id, &declaration.metadata);
             edge.metadata.extend(declaration.metadata);
-            self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
+            self.push_symbol(&id, EditorSemanticKind::Object, id_span, true);
         } else {
             declaration.validate_shape()?;
-            self.upsert_node(declaration, line_start, line, reference);
+            let reference = reference && self.declared_entities.contains(&id);
+            self.upsert_node(declaration);
+            self.push_symbol(&id, EditorSemanticKind::Object, id_span, reference);
         }
         if let Some(class) = class {
             self.assign_class(&id, &class);
@@ -1152,13 +1154,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn upsert_node(
-        &mut self,
-        declaration: Declaration,
-        line_start: usize,
-        line: &str,
-        reference: bool,
-    ) -> usize {
+    fn upsert_node(&mut self, declaration: Declaration) -> usize {
         let Declaration {
             id,
             label,
@@ -1208,7 +1204,6 @@ impl<'a> Parser<'a> {
             self.connectors[connector].title =
                 self.nodes[index].label.clone().filter(|label| label != &id);
         }
-        self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, reference);
         index
     }
 
@@ -1314,14 +1309,12 @@ impl<'a> Parser<'a> {
         &mut self,
         id: &str,
         kind: EditorSemanticKind,
-        line_start: usize,
-        line: &str,
+        span: SourceSpan,
         reference: bool,
     ) {
-        let Some(relative) = line.find(id) else {
-            return;
-        };
-        let span = SourceSpan::new(line_start + relative, line_start + relative + id.len());
+        if !reference {
+            self.declared_entities.insert(id.to_string());
+        }
         let symbol = if reference {
             EditorSemanticSymbol::reference(id, None, kind, span, span)
         } else {
@@ -1700,6 +1693,7 @@ fn find_labeled_arrow(source: &str, from: usize) -> Option<Operator> {
 
 struct Declaration {
     id: String,
+    id_span: SourceSpan,
     label: Option<String>,
     syntax_shape: Option<String>,
     metadata: Map<String, Value>,
@@ -1819,8 +1813,11 @@ fn parse_declaration(
     if let Some(Value::String(shape)) = metadata.get_mut("shape") {
         *shape = resolve_shape(shape);
     }
+    let id_start = line_start + line.find(statement).unwrap_or(0);
+    let id_span = SourceSpan::new(id_start, id_start + id.len());
     Ok(Declaration {
         id,
+        id_span,
         label,
         syntax_shape: shape.map(resolve_shape),
         metadata,
@@ -2088,6 +2085,122 @@ mod tests {
             config: MermaidConfig::empty_object(),
             effective_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn editor_edge_endpoints_declare_entities_once_and_preserve_occurrence_spans() {
+        use crate::EditorSemanticRole::{Entity, Reference};
+
+        let source = "agentflow-beta\nflow Team\nA[Worker]-->B-->A-->A\nend\n";
+        let metadata = meta();
+        let control = OperationControl::new();
+        let mut parser = Parser::new(source, &metadata, &control);
+        parser.parse().unwrap().unwrap();
+        let symbols = &parser.facts.symbols;
+        assert_eq!(
+            symbols
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.role))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Team", Entity),
+                ("A", Entity),
+                ("B", Entity),
+                ("A", Reference),
+                ("A", Reference),
+            ]
+        );
+        let edge_start = source.find("A[Worker]").unwrap();
+        assert_eq!(
+            symbols[1..]
+                .iter()
+                .map(|symbol| symbol.selection)
+                .collect::<Vec<_>>(),
+            [0, 12, 16, 20]
+                .map(|offset| SourceSpan::new(edge_start + offset, edge_start + offset + 1))
+        );
+        for symbol in symbols {
+            assert_eq!(
+                &source[symbol.selection.start..symbol.selection.end],
+                symbol.name
+            );
+        }
+    }
+
+    #[test]
+    fn editor_container_identifiers_do_not_select_keyword_prefixes_or_duplicate_symbols() {
+        use crate::EditorSemanticRole::{Entity, Reference};
+
+        let source = "agentflow-beta\nflow f[f]\nconnector c[c]\nc-->f\nend\nf@{view: collapsed}\n";
+        let metadata = meta();
+        let control = OperationControl::new();
+        let mut parser = Parser::new(source, &metadata, &control);
+        parser.parse().unwrap().unwrap();
+        let symbols = &parser.facts.symbols;
+        assert_eq!(
+            symbols
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.role))
+                .collect::<Vec<_>>(),
+            vec![
+                ("f", Entity),
+                ("c", Entity),
+                ("c", Reference),
+                ("f", Reference),
+                ("f", Reference),
+            ]
+        );
+        assert_eq!(symbols[0].selection.start, source.find("f[f]").unwrap());
+        assert_eq!(symbols[1].selection.start, source.find("c[c]").unwrap());
+        assert_eq!(symbols[4].kind, EditorSemanticKind::Namespace);
+        for symbol in symbols {
+            assert_eq!(
+                &source[symbol.selection.start..symbol.selection.end],
+                symbol.name
+            );
+        }
+    }
+
+    #[test]
+    fn editor_presentation_symbols_use_lexer_spans_and_separate_class_definitions() {
+        use crate::EditorSemanticRole::{ClassDefinition, Entity, Reference};
+
+        let source = "agentflow-beta\nclassDef c fill:red\nstyle s fill:blue\nc-->s\nclass c,c c\nclick c,c \"https://example.com\"\n";
+        let metadata = meta();
+        let control = OperationControl::new();
+        let mut parser = Parser::new(source, &metadata, &control);
+        parser.parse().unwrap().unwrap();
+        let symbols = &parser.facts.symbols;
+        assert_eq!(
+            symbols
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.role))
+                .collect::<Vec<_>>(),
+            vec![
+                ("c", ClassDefinition),
+                ("s", Entity),
+                ("c", Entity),
+                ("s", Reference),
+                ("c", Reference),
+                ("c", Reference),
+                ("c", Reference),
+                ("c", Reference),
+            ]
+        );
+        let expected_starts = [
+            source.find("c fill:red").unwrap(),
+            source.find("s fill:blue").unwrap(),
+            source.find("c-->s").unwrap(),
+            source.find("c-->s").unwrap() + 4,
+            source.find("class c,c").unwrap() + 6,
+            source.find("class c,c").unwrap() + 8,
+            source.find("click c,c").unwrap() + 6,
+            source.find("click c,c").unwrap() + 8,
+        ];
+        for (symbol, start) in symbols.iter().zip(expected_starts) {
+            assert_eq!(symbol.selection, SourceSpan::new(start, start + 1));
+            assert_eq!(&source[start..start + 1], symbol.name);
         }
     }
 

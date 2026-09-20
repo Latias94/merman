@@ -1539,6 +1539,32 @@ fn completion_payload_contexts_return_no_body_items() {
 }
 
 #[test]
+fn completion_offers_agentflow_and_usecase_headers() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/new-families.mmd",
+            1,
+            String::new(),
+            DocumentKind::Diagram,
+        )
+        .expect("empty source should be accepted");
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
+
+    for label in ["agentflow-beta", "usecase-beta"] {
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| panic!("missing {label} header completion"));
+        assert_eq!(
+            item.data.as_ref().unwrap().kind,
+            CompletionDataKind::DiagramHeader
+        );
+    }
+}
+
+#[test]
 fn completion_bounds_unavailable_facts_to_source_start() {
     let harness = SnapshotHarness::new();
     let source_start = harness
