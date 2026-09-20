@@ -1122,6 +1122,11 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
             ),
     )
     .expect("read signed upstream fixture");
+    // Keep the label identity regression independent of the release's default alignment.
+    let text = text.replace(
+        "securityLevel: loose",
+        "securityLevel: loose\n  elk:\n    nodePlacementAlignment: NONE",
+    );
 
     let engine = Engine::new();
     let parsed = futures::executor::block_on(
@@ -1155,8 +1160,11 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
 
     let lower_label = lower.label.as_ref().expect("l1 layout label");
     let upper_label = upper.label.as_ref().expect("l2 layout label");
-    assert!(approx_eq(lower_label.y, 108.5), "lower={lower:?}");
-    assert!(approx_eq(upper_label.y, 68.5), "upper={upper:?}");
+    // elkjs 0.9.3 with Mermaid 12 container options, explicit NONE alignment,
+    // 75.84 x 54 nodes and 13.44 x 24 labels: global label top-left y=117.1/72.1.
+    // Merman stores label centers, so add half the measured label height.
+    assert!(approx_eq(lower_label.y, 129.1), "lower={lower:?}");
+    assert!(approx_eq(upper_label.y, 84.1), "upper={upper:?}");
     assert!(
         lower_label.y > upper_label.y,
         "l1 must remain on the lower route and l2 on the upper route"
