@@ -121,6 +121,19 @@ pub struct AgentflowDiagnostic {
     pub severity: String,
     pub message: String,
     pub node_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<AgentflowDiagnosticPosition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentflowDiagnosticPosition {
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+    pub start_index: usize,
+    pub end_index: usize,
 }
 
 /// Typed data consumed by the Agentflow renderer and projected to Mermaid-compatible JSON.
@@ -133,6 +146,8 @@ pub struct AgentflowDiagramRenderModel {
     pub direction: String,
     #[serde(default)]
     pub diagnostics: Vec<AgentflowDiagnostic>,
+    #[serde(default)]
+    pub warning_facts: Vec<crate::DiagramWarningFact>,
     #[serde(default)]
     pub vertices: Vec<AgentflowNode>,
     #[serde(default)]
@@ -359,6 +374,7 @@ impl AgentflowDiagramRenderModel {
                         id: "CONTAINMENT_VIOLATION".into(), severity: "warning".into(),
                         message: format!("Container \"{}\" cannot contain \"{}\" because \"{}\" already contains it. The nesting that would close the loop is dropped.", graph.id, child, child),
                         node_id: child.clone(),
+                        position: None,
                     });
                 } else {
                     result.parents.insert(child, &graph.id);
@@ -459,15 +475,26 @@ struct Context {
     nodes: Vec<String>,
     direction: Option<String>,
     global: bool,
+    declaration_span: Option<SourceSpan>,
 }
 
 /// Parse the compatibility JSON path used by the public Mermaid facade.
 pub(crate) fn parse_agentflow(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_agentflow_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_agentflow_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<family::WarningSemanticParse> {
     let control = OperationControl::new();
     let construction = construct(code, meta, &control)
         .expect("a private operation control cannot be cancelled")
         .map_err(|failure| family::CombinedSemanticFailure::into_error(failure))?;
-    render_model_to_compat_json(&construction.model, meta)
+    Ok(family::WarningSemanticParse::new(
+        render_model_to_compat_json(&construction.model, meta)?,
+        construction.model.warning_facts,
+    ))
 }
 
 pub(crate) fn parse_agentflow_model_for_render_controlled(
@@ -486,16 +513,19 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
     control: &OperationControl,
 ) -> OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct(code, meta, control)?;
-    Ok(family::CombinedSemanticParse::from_construction(
-        construction,
-        |construction| {
-            (
-                render_model_to_compat_json(&construction.model, meta),
-                construction.editor_facts,
-            )
-        },
-        family::CombinedSemanticFailure::into_parts,
-    ))
+    Ok(
+        family::CombinedSemanticParse::from_construction_with_warning_facts(
+            construction,
+            |construction| {
+                (
+                    render_model_to_compat_json(&construction.model, meta),
+                    construction.editor_facts,
+                    construction.model.warning_facts,
+                )
+            },
+            family::CombinedSemanticFailure::into_parts,
+        ),
+    )
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -507,6 +537,7 @@ pub(crate) fn render_model_to_compat_json(
     })?;
     if let Some(root) = value.as_object_mut() {
         root.remove("presentation");
+        root.remove("warningFacts");
         root.insert("type".into(), Value::String(meta.diagram_type.clone()));
         for collection in ["vertices", "subGraphs", "connectors"] {
             if let Some(items) = root.get_mut(collection).and_then(Value::as_array_mut) {
@@ -576,6 +607,7 @@ struct Parser<'a> {
     control: &'a OperationControl,
     facts: EditorSemanticFacts,
     presentation: AgentflowPresentation,
+    diagnostic_spans: HashMap<String, SourceSpan>,
     direction: String,
     nodes: Vec<AgentflowNode>,
     node_index: HashMap<String, usize>,
@@ -603,6 +635,7 @@ impl<'a> Parser<'a> {
             control,
             facts,
             presentation: AgentflowPresentation::default(),
+            diagnostic_spans: HashMap::new(),
             direction: "TB".to_string(),
             nodes: Vec::new(),
             node_index: HashMap::new(),
@@ -723,7 +756,7 @@ impl<'a> Parser<'a> {
                         span_of(line_start, line, trimmed),
                     )));
                 };
-                self.close_context(context);
+                self.close_context(context, span_of(line_start, line, trimmed).end);
                 continue;
             }
             if trimmed == "global" {
@@ -758,10 +791,12 @@ impl<'a> Parser<'a> {
                         Err(error) => return Ok(Err(error)),
                     }
                 };
+                let declaration_span = id.as_ref().map(|_| span_of(line_start, line, trimmed));
                 self.contexts.push(Context {
                     id,
                     title,
                     metadata,
+                    declaration_span,
                     ..Default::default()
                 });
                 continue;
@@ -817,6 +852,9 @@ impl<'a> Parser<'a> {
                     self.connectors[index].metadata.extend(metadata);
                 }
                 self.record_members(std::iter::once(id.clone()));
+                self.diagnostic_spans
+                    .entry(id.clone())
+                    .or_insert_with(|| span_of(line_start, line, trimmed));
                 self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, false);
                 continue;
             }
@@ -851,6 +889,7 @@ impl<'a> Parser<'a> {
         }
         let mut model = AgentflowDiagramRenderModel {
             presentation: self.presentation.clone(),
+            warning_facts: Vec::new(),
             direction: self.direction.clone(),
             diagnostics: self
                 .nodes
@@ -875,6 +914,24 @@ impl<'a> Parser<'a> {
             acc_descr: self.acc_descr.clone(),
         };
         model.diagnostics.extend(model.containment().diagnostics);
+        for diagnostic in &mut model.diagnostics {
+            diagnostic.position = self
+                .diagnostic_spans
+                .get(&diagnostic.node_id)
+                .map(|span| diagnostic_position(self.source, *span));
+        }
+        model.warning_facts = model
+            .diagnostics
+            .iter()
+            .map(|diagnostic| {
+                let mut fact = crate::DiagramWarningFact::new(
+                    diagnostic.rule_id(),
+                    diagnostic.message.clone(),
+                );
+                fact.span = self.diagnostic_spans.get(&diagnostic.node_id).copied();
+                fact
+            })
+            .collect();
         Ok(Ok(model))
     }
 
@@ -912,6 +969,14 @@ impl<'a> Parser<'a> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
         let class = declaration.class.clone();
+        let mapped_element = if declaration.metadata_span.is_some() {
+            statement.trim()
+        } else {
+            &statement[..find_top_level_marker(statement, ":::").unwrap_or(statement.len())]
+        };
+        self.diagnostic_spans
+            .entry(id.clone())
+            .or_insert_with(|| span_of(line_start, line, mapped_element.trim()));
         if declaration.metadata_span.is_some()
             && (self.sub_graph_index.contains_key(&id) || self.connector_index.contains_key(&id))
             && !self
@@ -1153,7 +1218,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn close_context(&mut self, context: Context) {
+    fn close_context(&mut self, context: Context, end: usize) {
         if context.global {
             self.global_nodes.extend(context.nodes);
             for graph in &mut self.sub_graphs {
@@ -1169,6 +1234,11 @@ impl<'a> Parser<'a> {
             .id
             .unwrap_or_else(|| format!("subGraph{}", self.subgraph_count));
         self.subgraph_count += 1;
+        if let Some(span) = context.declaration_span {
+            self.diagnostic_spans
+                .entry(id.clone())
+                .or_insert(SourceSpan::new(span.start, end));
+        }
         let mut seen = HashSet::new();
         let nodes: Vec<_> = context
             .nodes
@@ -1388,8 +1458,44 @@ fn shape_diagnostic(node: &AgentflowNode) -> Option<AgentflowDiagnostic> {
         id: id.into(),
         severity: severity.into(),
         node_id: node.id.clone(),
+        position: None,
         message: format!("shape \"{shape}\" {reason}, using \"roundedRect\""),
     })
+}
+
+fn diagnostic_position(source: &str, span: SourceSpan) -> AgentflowDiagnosticPosition {
+    let start = span.start.min(source.len());
+    let end = span.end.min(source.len());
+    let line_column = |offset: usize| {
+        let prefix = &source[..offset];
+        (
+            prefix.bytes().filter(|byte| *byte == b'\n').count() + 1,
+            prefix
+                .rsplit_once('\n')
+                .map_or(prefix.len(), |(_, line)| line.len()),
+        )
+    };
+    let (start_line, start_column) = line_column(start);
+    let (end_line, end_column) = line_column(end);
+    AgentflowDiagnosticPosition {
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        start_index: start,
+        end_index: end,
+    }
+}
+
+impl AgentflowDiagnostic {
+    fn rule_id(&self) -> &'static str {
+        match self.id.as_str() {
+            "SHAPE_REMOVED" => crate::AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+            "SHAPE_UNSUPPORTED" => crate::AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID,
+            "CONTAINMENT_VIOLATION" => crate::AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID,
+            _ => "merman.semantic.agentflow.diagnostic",
+        }
+    }
 }
 
 fn vertex_kind(shape: Option<&str>) -> AgentflowVertexKind {

@@ -9,6 +9,12 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+pub const AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID: &str = "merman.semantic.agentflow.shape_removed";
+pub const AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID: &str =
+    "merman.semantic.agentflow.shape_unsupported";
+pub const AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID: &str =
+    "merman.semantic.agentflow.containment_violation";
+
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
     "merman.authoring.flowchart.explicit_direction";
@@ -784,6 +790,7 @@ impl RenderSemanticModel {
             Self::CustomJson(v) => {
                 Self::remap_json_warning_fact_spans(&mut v.value, &mut remap);
             }
+            Self::Agentflow(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             Self::Flowchart(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             Self::Block(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             Self::GitGraph(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),

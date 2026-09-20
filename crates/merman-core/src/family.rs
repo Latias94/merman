@@ -1622,6 +1622,7 @@ const AGENTFLOW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 43,
     detector: Some(ordered(43, crate::detect::detector_agentflow)),
     semantic: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow)),
+    warning_semantic: crate::diagrams::agentflow::parse_agentflow_with_warning_facts,
     combined: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow_json_and_editor_facts)),
     typed: Some(ordered(43, render_agentflow)),
     render_kind: Some("agentflow"),
