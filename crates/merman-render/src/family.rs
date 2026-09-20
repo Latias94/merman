@@ -1113,7 +1113,8 @@ pub fn plan_render_with_policy(
         && meta.effective_config.get_str("layout") != Some("swimlane");
     let presentation_aspects = render_policy.resolve_aspects(
         flowchart_svg_applicable,
-        crate::uses_elk_layout(&meta.effective_config),
+        crate::layout_backend::resolve_graph_layout(meta.effective_config.as_value()).requested
+            == "elk",
         capability_is_available(RenderCapability::LayoutElk, session),
     );
 
@@ -1130,19 +1131,11 @@ pub fn plan_render_with_policy(
 fn prepare_class_family(
     model: ClassDiagram,
     meta: &ParseMetadata,
-    diagram_type: &str,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
     Ok(BuiltinFamilyArtifact::Class(prepare_pair(
         model,
-        |model| {
-            crate::layout_class_typed_by_engine(
-                diagram_type,
-                model,
-                &meta.effective_config,
-                execution,
-            )
-        },
+        |model| crate::layout_class_typed_by_engine(model, &meta.effective_config, execution),
     )?))
 }
 
@@ -1157,9 +1150,8 @@ fn prepare_class_render(
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
-    let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
-    let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
+    let family = prepare_class_family(model, &meta, &execution)?;
 
     Ok(FamilyRenderArtifact {
         metadata: meta,
@@ -1340,7 +1332,6 @@ fn prepare_non_class_render(
                 flowchart_svg_label_preparation,
                 |model, label_sources, svg_label_sidecar| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
-                        diagram_type,
                         model,
                         label_sources,
                         &meta.effective_config,

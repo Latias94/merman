@@ -104,39 +104,6 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
     assert_eq!(artifact.family_kind().as_str(), "mindmap");
 }
 
-#[cfg(not(feature = "layout-elk"))]
-#[test]
-fn elk_flowchart_reports_the_missing_layout_capability() {
-    let parsed = parse_for_render(
-        "---\nconfig:\n  layout: elk\n---\nflowchart TD\n  start[Start] --> finish[Finish]\n",
-    );
-    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
-        Err(error) => error,
-        Ok(_) => panic!("ELK Flowchart must be rejected without layout-elk"),
-    };
-
-    assert_eq!(
-        error.to_string(),
-        "render session lacks capability `layout-elk` required by diagram `flowchart-v2`"
-    );
-}
-
-#[cfg(not(feature = "layout-elk"))]
-#[test]
-fn elk_er_reports_the_missing_layout_capability() {
-    let parsed =
-        parse_for_render("---\nconfig:\n  layout: elk\n---\nerDiagram\n  A ||--o{ B : contains\n");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
-        Err(error) => error,
-        Ok(_) => panic!("ELK ER must be rejected without layout-elk"),
-    };
-
-    assert_eq!(
-        error.to_string(),
-        "render session lacks capability `layout-elk` required by diagram `er`"
-    );
-}
-
 #[test]
 fn state_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("stateDiagram-v2\n[*] --> Active\n");

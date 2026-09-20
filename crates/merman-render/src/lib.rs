@@ -33,6 +33,7 @@ pub mod info;
 pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
+mod layout_backend;
 mod layout_work;
 pub mod math;
 mod mermaid_style;
@@ -373,25 +374,32 @@ impl std::ops::Deref for LayoutExecution<'_> {
 }
 
 fn uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
-    effective_config.get_str("layout") == Some("elk")
+    layout_backend::resolve_graph_layout(effective_config.as_value()).backend
+        == layout_backend::GraphLayoutBackend::Elk
 }
 
 pub(crate) fn layout_class_typed_by_engine(
-    diagram_type: &str,
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    if uses_elk_layout(effective_config) {
-        return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
-    }
-
     options
         .work_meter_ref()
         .preflight_class_complexity(model, OperationPhase::Layout)?;
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
+    #[cfg(feature = "layout-elk")]
+    if uses_elk_layout(effective_config) {
+        return class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
+            model,
+            effective_config,
+            options.text_measurer(),
+            options.math_renderer(),
+            options.elk_operation_seed(),
+            &mut work_control,
+        );
+    }
     class::layout_class_diagram_typed_with_config(
         model,
         effective_config,
@@ -401,51 +409,13 @@ pub(crate) fn layout_class_typed_by_engine(
     )
 }
 
-#[cfg(feature = "layout-elk")]
-fn layout_class_elk_typed_by_feature(
-    _diagram_type: &str,
-    model: &ClassDiagram,
-    effective_config: &merman_core::MermaidConfig,
-    options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramLayout> {
-    options
-        .work_meter_ref()
-        .preflight_class_complexity(model, OperationPhase::Layout)?;
-    let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
-    let preparation_work = class::class_layout_work_units(model, &work_control)?;
-    work_control.charge_adapter(preparation_work)?;
-    class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
-        model,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        options.elk_operation_seed(),
-        &mut work_control,
-    )
-}
-
-#[cfg(not(feature = "layout-elk"))]
-fn layout_class_elk_typed_by_feature(
-    diagram_type: &str,
-    _model: &ClassDiagram,
-    _effective_config: &merman_core::MermaidConfig,
-    _options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramLayout> {
-    Err(Error::MissingCapability {
-        capability: RenderCapability::LayoutElk,
-        diagram_type: diagram_type.to_string(),
-    })
-}
-
 #[cfg(all(test, feature = "layout-elk"))]
 pub(crate) fn layout_flowchart_typed_by_engine(
-    diagram_type: &str,
     model: &FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
     layout_flowchart_typed_with_render_labels_by_engine(
-        diagram_type,
         model,
         &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
         effective_config,
@@ -455,21 +425,25 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 }
 
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
-    diagram_type: &str,
     model: &FlowchartModel,
     render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
+    #[cfg(feature = "layout-elk")]
     if uses_elk_layout(effective_config) {
-        return layout_flowchart_elk_typed_by_feature(
-            diagram_type,
+        return flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
             model,
             render_label_sources,
             effective_config,
-            options,
-            svg_label_sidecar,
+            flowchart::elk::FlowchartElkLayoutExecution::new(
+                options.text_measurer(),
+                options.math_renderer(),
+                options.elk_operation_seed(),
+                svg_label_sidecar,
+                options.work_meter(),
+            ),
         );
     }
 
@@ -482,44 +456,6 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
         svg_label_sidecar,
         options.work_meter(),
     )
-}
-
-#[cfg(feature = "layout-elk")]
-fn layout_flowchart_elk_typed_by_feature(
-    _diagram_type: &str,
-    model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    effective_config: &merman_core::MermaidConfig,
-    options: &LayoutExecution<'_>,
-    svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
-) -> Result<model::FlowchartLayout> {
-    flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
-        model,
-        render_label_sources,
-        effective_config,
-        flowchart::elk::FlowchartElkLayoutExecution::new(
-            options.text_measurer(),
-            options.math_renderer(),
-            options.elk_operation_seed(),
-            svg_label_sidecar,
-            options.work_meter(),
-        ),
-    )
-}
-
-#[cfg(not(feature = "layout-elk"))]
-fn layout_flowchart_elk_typed_by_feature(
-    diagram_type: &str,
-    _model: &FlowchartModel,
-    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
-    _effective_config: &merman_core::MermaidConfig,
-    _options: &LayoutExecution<'_>,
-    _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
-) -> Result<model::FlowchartLayout> {
-    Err(Error::MissingCapability {
-        capability: RenderCapability::LayoutElk,
-        diagram_type: diagram_type.to_string(),
-    })
 }
 
 #[cfg(test)]
@@ -587,7 +523,6 @@ mod tests {
             panic!("expected flowchart render model");
         };
         layout_flowchart_typed_by_engine(
-            &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
             &LayoutExecution::new(options, session),
@@ -605,7 +540,6 @@ mod tests {
             panic!("expected class render model");
         };
         layout_class_typed_by_engine(
-            &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
             &LayoutExecution::new(options, session),
@@ -674,7 +608,7 @@ mod tests {
 
     #[cfg(feature = "layout-elk")]
     #[test]
-    fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
+    fn render_model_dispatch_uses_elk_for_scoped_flowchart_layout() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -683,7 +617,7 @@ mod tests {
                 r#"---
 config:
   flowchart:
-    defaultRenderer: elk
+    layout: elk
 ---
 flowchart TD
 A-->B
@@ -693,8 +627,9 @@ A-->B
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.metadata().diagram_type, "flowchart-elk");
+        assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
         let layout = flowchart_layout(&parsed, &LayoutOptions::default(), &session);
+        assert!(layout.uses_elk_adapter_dom);
         let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
         assert!(b.y > a.y);
@@ -1123,12 +1058,59 @@ id1(Start)-->id2(Stop)
         assert_eq!(edge_attr_value(path, "data-id"), "L_A_A_0");
     }
 
+    #[test]
+    fn graph_layout_unregistered_loader_falls_back_to_dagre() {
+        let mut requests = vec!["unknown", "ELK"];
+        if !cfg!(feature = "layout-elk") {
+            requests.push("elk");
+        }
+        for body in [
+            "flowchart TD\nA[Alpha] --> B[Beta]\nB --> C[Gamma]",
+            "classDiagram\nAnimal <|-- Duck",
+            "erDiagram\nCUSTOMER ||--o{ ORDER : places",
+        ] {
+            let render = |layout: &str| {
+                let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                let plan = crate::family::plan_render(&parsed, &session).unwrap();
+                assert!(
+                    !plan
+                        .required_capabilities()
+                        .contains(&RenderCapability::LayoutElk)
+                );
+                assert!(plan.missing_capabilities().is_empty());
+                let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session)
+                    .expect("unregistered loader falls back before capability admission");
+                let geometry = artifact.layout_json().unwrap()["layout"].clone();
+                let svg = artifact
+                    .render_svg(
+                        &crate::svg::SvgRenderOptions {
+                            diagram_id: Some("fallback-test".into()),
+                            ..Default::default()
+                        },
+                        &crate::svg::SvgDebugOptions::default(),
+                    )
+                    .unwrap()
+                    .svg()
+                    .to_owned();
+                (geometry, svg)
+            };
+            let expected = render("dagre");
+            for request in &requests {
+                assert_eq!(render(request), expected, "{request}: {body}");
+            }
+        }
+    }
+
     #[cfg(not(feature = "layout-elk"))]
     #[test]
-    fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
+    fn flowchart_elk_alias_uses_dagre_geometry_when_loader_is_absent() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_with_type_sync(
                 "flowchart-elk",
@@ -1137,53 +1119,62 @@ id1(Start)-->id2(Stop)
             )
             .unwrap()
             .unwrap();
-
-        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
-            Err(error) => error,
-            Ok(_) => panic!("expected unsupported diagram error"),
-        };
-        assert!(matches!(
-            err,
-            Error::MissingCapability {
-                capability: RenderCapability::LayoutElk,
-                diagram_type,
-            }
-                if diagram_type == "flowchart-elk"
-        ));
-    }
-
-    #[cfg(not(feature = "layout-elk"))]
-    #[test]
-    fn render_model_dispatch_rejects_class_elk_without_feature() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let parsed = Engine::new()
+        let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let geometry = artifact.layout_json().unwrap()["layout"].clone();
+        let dagre_parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                r#"---
-config:
-  layout: elk
----
-classDiagram
-Animal <|-- Duck
-"#,
+                "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA-->B;",
                 ParseOptions::strict(),
             )
             .unwrap()
             .unwrap();
+        let dagre_session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let dagre_artifact =
+            crate::family::prepare(dagre_parsed, &LayoutOptions::default(), dagre_session).unwrap();
+        assert_eq!(geometry, dagre_artifact.layout_json().unwrap()["layout"]);
+        let svg = artifact
+            .render_svg(
+                &crate::svg::SvgRenderOptions::default(),
+                &crate::svg::SvgDebugOptions::default(),
+            )
+            .unwrap()
+            .svg()
+            .to_owned();
+        assert!(svg.contains("edgePath"), "{svg}");
+    }
 
-        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
-            Err(error) => error,
-            Ok(_) => panic!("expected unsupported diagram error"),
-        };
-        assert!(matches!(
-            err,
-            Error::MissingCapability {
-                capability: RenderCapability::LayoutElk,
-                diagram_type,
-            }
-                if diagram_type == "classDiagram"
-        ));
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn registered_elk_denied_by_host_policy_does_not_fall_back() {
+        for body in [
+            "flowchart TD\nA-->B",
+            "classDiagram\nAnimal <|-- Duck",
+            "erDiagram\nCUSTOMER ||--o{ ORDER : places",
+        ] {
+            let source = format!("---\nconfig:\n  layout: elk\n---\n{body}\n");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_capability_policy(RenderCapabilityPolicy::deny_all())
+                .begin_session()
+                .unwrap();
+            let plan = crate::family::plan_render(&parsed, &session).unwrap();
+            assert_eq!(plan.missing_capabilities(), &[RenderCapability::LayoutElk]);
+            assert!(matches!(
+                crate::family::prepare(parsed, &LayoutOptions::default(), session),
+                Err(Error::MissingCapability {
+                    capability: RenderCapability::LayoutElk,
+                    ..
+                })
+            ));
+        }
     }
 
     #[test]

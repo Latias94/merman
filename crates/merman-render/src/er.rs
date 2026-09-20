@@ -16,8 +16,10 @@ use std::sync::Arc;
 
 mod config;
 
+#[cfg(feature = "layout-elk")]
+use crate::layout_backend::GraphLayoutBackend;
+use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
-use config::{ErLayoutAlgorithm, ErLayoutSettings};
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
@@ -850,29 +852,21 @@ fn layout_er_diagram_typed_with_elk_authority(
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
 
-    if settings.algorithm == ErLayoutAlgorithm::Elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            let operation_seed = match elk_authority {
-                ErElkAuthority::Operation(operation_seed) => Some(operation_seed),
-            };
-            return layout_er_diagram_elk_typed(
-                model,
-                effective_config,
-                measurer,
-                settings,
-                operation_seed,
-                work_control,
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            let _ = elk_authority;
-            return Err(Error::MissingCapability {
-                capability: crate::RenderCapability::LayoutElk,
-                diagram_type: "er".to_string(),
-            });
-        }
+    #[cfg(not(feature = "layout-elk"))]
+    let _ = elk_authority;
+    #[cfg(feature = "layout-elk")]
+    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == GraphLayoutBackend::Elk
+    {
+        let ErElkAuthority::Operation(operation_seed) = elk_authority;
+        return layout_er_diagram_elk_typed(
+            model,
+            effective_config,
+            measurer,
+            settings,
+            Some(operation_seed),
+            work_control,
+        );
     }
 
     layout_er_diagram_dagre_typed(model, measurer, settings, work_control)
@@ -940,7 +934,6 @@ fn layout_er_diagram_dagre_typed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
-        algorithm: _,
         graph: graph_label,
         label_style,
         attr_style,
@@ -1682,7 +1675,6 @@ fn er_elk_graph(
     settings: &ErLayoutSettings,
 ) -> Result<elk::Graph> {
     let ErLayoutSettings {
-        algorithm: _,
         graph,
         label_style,
         attr_style,

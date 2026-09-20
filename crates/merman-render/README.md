@@ -33,7 +33,7 @@ The base crate provides SVG and the shared Mermaid/Dagre rendering path with no 
 | `math` | RaTeX parsing, layout, SVG output, and embedded math fonts. |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Explicit host runtime adapters; none are selected by default. |
 
-Omitting an optional layout or math backend preserves parsing and semantic support. Rendering a diagram that needs the missing backend returns a typed capability error instead of silently choosing a different layout.
+Omitting an optional backend preserves parsing and semantic support. Flowchart, Class, and ER follow Mermaid 12's registered-layout lookup: an unknown layout, or an ELK request in a build without `layout-elk`, resolves to Dagre before capability admission. The original requested configuration remains available in the prepared artifact metadata. An installed backend denied by the host policy still returns a typed capability error. Layout failures, cancellation, work limits, and missing math support do not trigger layout fallback.
 
 ## Render Environment
 

@@ -130,23 +130,8 @@ impl SvgPlanPayload {
                 required_capability_id: aspect.required_capability_id().map(str::to_string),
             })
             .collect::<Vec<_>>();
-        if let Some(aspect) = presentation_aspects.iter().find(|aspect| {
-            aspect.state == "blocked"
-                && aspect
-                    .required_capability_id
-                    .as_ref()
-                    .is_none_or(|capability_id| {
-                        missing_capability_ids.binary_search(capability_id).is_err()
-                    })
-        }) {
-            return Err(BindingError::new(
-                BindingStatus::InternalError,
-                format!(
-                    "SVG capability plan reported blocked presentation aspect `{}` without a missing required capability",
-                    aspect.id
-                ),
-            ));
-        }
+        // Presentation describes the requested profile. Capability admission describes the
+        // resolved operation, which can be ready through an absent-loader Dagre fallback.
 
         Ok(Self {
             schema_version: SVG_PLAN_SCHEMA_VERSION,
@@ -244,7 +229,7 @@ mod tests {
             "flowchart TD\nA --> B",
             br#"{
                 "presentation":{"profile":"merman-modern"},
-                "site_config":{"flowchart":{"defaultRenderer":"dagre-wrapper"}}
+                "site_config":{"flowchart":{"layout":"dagre"}}
             }"#,
         );
         assert_eq!(dagre["presentation_aspects"][1]["state"], "active");
@@ -264,7 +249,7 @@ mod tests {
             default_flowchart["presentation_aspects"][2]["state"],
             expected
         );
-        assert_eq!(default_flowchart["ready"], cfg!(feature = "layout-elk"));
+        assert_eq!(default_flowchart["ready"], true);
     }
 
     #[cfg(feature = "svg")]
@@ -274,18 +259,14 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
             b"",
         );
-        let expected_missing = if cfg!(feature = "layout-elk") {
-            serde_json::json!([])
+        let required = if cfg!(feature = "layout-elk") {
+            serde_json::json!(["layout-elk"])
         } else {
-            serde_json::json!(["layout-elk"])
+            serde_json::json!([])
         };
-
-        assert_eq!(
-            value["required_capability_ids"],
-            serde_json::json!(["layout-elk"])
-        );
-        assert_eq!(value["missing_capability_ids"], expected_missing);
-        assert_eq!(value["ready"], cfg!(feature = "layout-elk"));
+        assert_eq!(value["required_capability_ids"], required);
+        assert_eq!(value["missing_capability_ids"], serde_json::json!([]));
+        assert_eq!(value["ready"], true);
     }
 
     #[cfg(feature = "svg")]
@@ -295,17 +276,18 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B",
             b"",
         );
-        let expected_missing = [
-            (!cfg!(feature = "layout-elk")).then_some("layout-elk"),
-            (!cfg!(feature = "math")).then_some("math"),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        let expected_missing = [(!cfg!(feature = "math")).then_some("math")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         assert_eq!(
             value["required_capability_ids"],
-            serde_json::json!(["layout-elk", "math"])
+            if cfg!(feature = "layout-elk") {
+                serde_json::json!(["layout-elk", "math"])
+            } else {
+                serde_json::json!(["math"])
+            }
         );
         assert_eq!(
             value["missing_capability_ids"],

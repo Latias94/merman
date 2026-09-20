@@ -185,7 +185,7 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
     let base = Engine::new().with_site_config(config(json!({
         "theme": "forest",
         "look": "classic",
-        "flowchart": { "defaultRenderer": "dagre" },
+        "flowchart": { "layout": "dagre" },
     })));
     let explicit = config(json!({
         "theme": "dark",
@@ -208,7 +208,7 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
     assert_eq!(forward["theme"], "dark");
     assert_eq!(forward["look"], "handDrawn");
     assert_eq!(forward["themeVariables"]["lineColor"], "#123456");
-    assert_eq!(forward["flowchart"]["defaultRenderer"], "elk");
+    assert_eq!(forward["flowchart"]["layout"], "elk");
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
         .with_presentation(presentation())
         .with_site_config(config(json!({
             "flowchart": {
-                "defaultRenderer": "dagre-wrapper",
+                "layout": "dagre",
                 "edgeLabelPadding": 0,
                 "compactEdgeCorners": false,
             },
@@ -322,7 +322,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
 "#;
 
     let effective = effective_config(&renderer, source);
-    assert_eq!(effective["flowchart"]["defaultRenderer"], "dagre-wrapper");
+    assert_eq!(effective["flowchart"]["layout"], "dagre");
     let svg = renderer.render_svg(source);
     let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
     let label = document
@@ -345,7 +345,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
     let isolated = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
-            "flowchart": { "defaultRenderer": "dagre-wrapper" },
+            "flowchart": { "layout": "dagre" },
         })));
     let effective = effective_config(&isolated, source);
     assert!(effective["flowchart"].get("edgeCornerRadius").is_none());
@@ -381,7 +381,7 @@ fn render_plan_reports_each_presentation_aspect_independently() {
     let dagre = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
-            "flowchart": { "defaultRenderer": "dagre-wrapper" },
+            "flowchart": { "layout": "dagre" },
         })))
         .plan_svg("flowchart TD\nA --> B");
     assert!(dagre.is_ready());
@@ -397,6 +397,7 @@ fn render_plan_reports_each_presentation_aspect_independently() {
     let default_flowchart = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .plan_svg("flowchart TD\nA --> B");
+    assert!(default_flowchart.is_ready());
     let expected_state = if merman::svg::layout_elk_available() {
         PresentationAspectState::Active
     } else {

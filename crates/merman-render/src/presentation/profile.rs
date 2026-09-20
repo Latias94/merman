@@ -233,7 +233,7 @@ fn profile_defaults(profile: PresentationProfile) -> MermaidConfig {
             MermaidConfig::from_value(serde_json::json!({
                 "theme": "redux",
                 "look": "neo",
-                "flowchart": { "defaultRenderer": "elk" },
+                "flowchart": { "layout": "elk" },
                 "themeVariables": Value::Object(theme_variables),
             }))
         }

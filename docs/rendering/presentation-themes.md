@@ -70,7 +70,7 @@ Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`
 
 Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
 
-`merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. A build without `layout-elk` can still discover and select the profile for diagrams that do not require that aspect. Use the SVG plan or presentation catalog to detect blocked aspects for the actual artifact and diagram.
+`merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. The profile selects `flowchart.layout: elk`; an explicit scoped `layout: dagre` overrides that aspect. In a build without `layout-elk`, Flowcharts render through Mermaid 12's Dagre fallback while the SVG plan reports the ELK presentation aspect as blocked and the operation as ready. A host policy that denies a compiled ELK backend still blocks the operation.
 
 ## Terminal themes
 

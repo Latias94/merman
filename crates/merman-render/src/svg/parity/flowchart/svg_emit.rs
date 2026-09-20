@@ -121,7 +121,7 @@ pub(super) fn render_flowchart_svg_model(
     } = prepare_flowchart_render_config(
         model,
         effective_config_value,
-        diagram_type,
+        layout.uses_elk_adapter_dom,
         presentation_policy,
     );
 

@@ -145,11 +145,11 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
         ),
         (
             "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\n",
-            "class",
+            "classDiagram",
         ),
         (
             "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\nnote for Animal \"classDiagram-v2 is note text\"\n",
-            "class",
+            "classDiagram",
         ),
     ] {
         let engine = Engine::new();
@@ -160,7 +160,7 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
         assert_eq!(
             parsed.metadata().diagram_type,
             expected_role,
-            "Class detection must follow Mermaid's renderer-aware detector contract for {source:?}"
+            "Class detection must follow Mermaid 12's syntax-only detector contract for {source:?}"
         );
         assert_eq!(
             class_model(&parsed).diagram_type,

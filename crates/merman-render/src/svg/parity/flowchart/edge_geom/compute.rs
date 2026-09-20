@@ -40,11 +40,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         rounded_line_with_marker_offsets_for_edge_type,
     };
 
-    let is_elk_layout = ctx.diagram_type == "flowchart-elk"
-        || ctx
-            .config
-            .get_str("layout")
-            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
+    let is_elk_layout = ctx.uses_elk_adapter_dom;
     dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
     let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
 
