@@ -40,20 +40,6 @@ pub(crate) fn missing_rect_section_points(
         points[0] = intersect(start, &centers[1]);
     }
     points[1] = intersect(end, &points[0]);
-    // `cutter2` still applies the end-node intersection when both route points
-    // are at the same center (the fallback point is the preceding center). Keep
-    // a drawable two-point route for that case instead of collapsing it to a
-    // single center point. This is relevant to self-loops and overlapping nodes.
-    if (points[1].x - points[0].x).abs() <= 1e-6
-        && (points[1].y - points[0].y).abs() <= 1e-6
-        && end.width > 0.0
-        && end.height > 0.0
-    {
-        points[1] = LayoutPoint {
-            x: end.x + end.width / 2.0,
-            y: end.y,
-        };
-    }
     // The source removes a tail closer than 2px, then restores the original centers if
     // fewer than two valid points survive. Consecutive deduplication runs afterwards.
     if (points[1].x - points[0].x).hypot(points[1].y - points[0].y) < 2.0
@@ -61,7 +47,11 @@ pub(crate) fn missing_rect_section_points(
     {
         points = centers;
     }
-    points.to_vec()
+    if (points[1].x - points[0].x).abs() <= 1e-6 && (points[1].y - points[0].y).abs() <= 1e-6 {
+        vec![points[0].clone()]
+    } else {
+        points.to_vec()
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +88,23 @@ mod tests {
         assert!((points[0].y - 10.0).abs() < f64::EPSILON);
         assert!((points[1].x - 30.0).abs() < f64::EPSILON);
         assert!((points[1].y - 10.0).abs() < f64::EPSILON);
+
+        // Touching rectangles intersect at the same border point. The source
+        // restores centers for that short route instead of choosing a new border.
+        let touching = LayoutNode { x: 50.0, ..end };
+        let points = missing_rect_section_points(&start, &touching);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].x, 10.0);
+        assert_eq!(points[1].x, 50.0);
+
+        // A tiny coincident node reaches the center fallback and final dedup.
+        let tiny = LayoutNode {
+            width: 1.0,
+            height: 1.0,
+            ..start
+        };
+        let points = missing_rect_section_points(&tiny, &tiny);
+        assert_eq!(points.len(), 1);
+        assert_eq!((points[0].x, points[0].y), (10.0, 10.0));
     }
 }
