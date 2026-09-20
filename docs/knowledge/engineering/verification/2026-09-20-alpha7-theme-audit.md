@@ -92,6 +92,16 @@ plugin because its returned theme catalog differs from the shared
 `preset-catalog.json`. The generated artifact is retained for diagnosis, but no Typst consumer
 pass is claimed.
 
+The current platform binding owner rebuilt the macOS ARM64 Flutter native asset and passed the
+Android ARM64 Rust clippy checks, Flutter analysis, the theme-authoring consumer (2 materializations,
+22 support queries, 5 expected errors and 3 budgeted operations) and the ABI 3 Dart contract
+tests. The aggregate owner command still exits nonzero because the installed Dart formatter
+(Flutter 3.12.2) rewrites one checked-in contract test; the working tree was restored after
+confirming that diff was formatter-only, so no formatting change is claimed. The current Apple
+XCFramework builder then completed all three slices (macOS universal, iOS device and iOS simulator)
+and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
+diagnostic and remains outside the release publication set.
+
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
 plan passed the repository's release artifact-bundle verifier for the `macos-15` native
