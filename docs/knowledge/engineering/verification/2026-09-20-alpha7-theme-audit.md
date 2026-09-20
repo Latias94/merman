@@ -148,6 +148,11 @@ The current source also passes `release_surface_contract.py --version 0.8.0-alph
 `verify_release_changelog.py --version 0.8.0-alpha.7`. These are preparation checks; the
 date-required immutable preflight remains intentionally unexecuted.
 
+The Android module's local Kotlin/JVM transport suite also passed with
+`platforms/android/gradlew test --no-daemon --max-workers=1` (`BUILD SUCCESSFUL`, 15 actionable
+tasks). No `adb` device is available in this host, so Android instrumentation and runtime JNI
+execution remain unverified.
+
 The current Web package group was rebuilt from source `7f35c9080` after the profile-aware portable
 font smoke repair. Node 24.21.0 with npm 12.0.2 passed the owner smoke matrix, WASM input and
 package verification, and DOM safety smoke for all five packages. A fresh offline npm consumer
