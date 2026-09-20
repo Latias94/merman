@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: f3a783c2944a77bc3b561b29f64b41af450ebe8b, b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
+source_commits: bdb209e11, 3a5b61b0c, 11c6b443e, f3a783c2944a77bc3b561b29f64b41af450ebe8b, b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -17,7 +17,9 @@ remains open. No tag, publication, push or public catalog promotion was performe
 The strongest current result is a clean-source native qualification replay plus installed Python,
 Node Darwin ARM64, Node WASM and Web package consumer exchange. The evidence is execution-local and host-bound:
 macOS ARM64, system fonts, selected SVG/PNG scenes and the installed consumer profiles described
-below. It does not establish the release matrix or the U10 cost gate.
+below. It does not establish the release matrix or the U10 cost gate. The accepted XML/reference
+single-pass implementation is now integrated at `bdb209e11`; package and archive witnesses bound
+to `f3a783c29` remain historical until they are rebuilt from this source.
 
 # Completed evidence
 
@@ -177,11 +179,12 @@ must not be converted into a support percentage or a rendered-terminal claim.
 
 # Artifact and legal observations
 
-The current Python/Node artifacts at `f3a783c29` are macOS ARM64 observations: wheel
+The Python/Node artifacts at `f3a783c29` are macOS ARM64 historical observations: wheel
 9,047,190 bytes, Node root package 113,984 bytes, native package 10,552,336 bytes and Node WASM
-package 7,029,534 bytes. Their embedded payloads and SHA-256 values are recorded in the
-[September 21 installed record](2026-09-21-installed-theme-consumers.md). These are current
-artifact identities, not matched alpha.6 deltas or a budget change.
+package 7,029,534 bytes. Their embedded payloads and SHA-256 values remain recorded in the
+[installed record](2026-09-21-installed-theme-consumers.md), but the accepted `bdb209e11` source
+change invalidates them as final-candidate identities. Renewal from the integrated source is
+required; no package budget is changed by this classification.
 
 The 13 Rust license reports pass generator `--check`; release legal projections pass for 382
 files; third-party and package legal checks pass for 24 governed packages; representative
@@ -692,11 +695,12 @@ missing-font visual behavior, exercise PNG/PDF in Node, or complete the six-jour
 
 ### Installed consumers after reference graph reuse
 
-The [September 21 installed refresh](2026-09-21-installed-theme-consumers.md) rebuilds Python,
-Darwin ARM64 Node and explicit Node WASM from `f3a783c29`, including `b707f6e5b`, using the
-existing package owners and Node 24.21.0/npm 12.0.2. Fresh offline consumers pass the complete
-Python smoke and both expanded Node smokes. Node contracts pass 111/111; Python owner tests
-pass 9/9. The wheel's embedded legal report binds the current root lockfile digest.
+The [installed refresh](2026-09-21-installed-theme-consumers.md) rebuilds Python, Darwin ARM64
+Node and explicit Node WASM from `f3a783c29`, including `b707f6e5b`, using the existing package
+owners and Node 24.21.0/npm 12.0.2. Fresh offline consumers pass the complete Python smoke and
+both expanded Node smokes. Node contracts pass 111/111; Python owner tests pass 9/9. These are
+historical witnesses after `bdb209e11`; the wheel's legal digest and all package identities must
+be renewed from the integrated source before C7a closure.
 
 All three packages export byte-identical complete Cyberpunk recipes and directly import each
 other's saved files. The 27 renders produce byte-identical Flowchart, Sequence and XY outputs
