@@ -676,14 +676,16 @@ void preservesScopedPresetQualification() {
 }
 
 void preservesPresetFamilyDesigns() {
-  final vectors = jsonDecode(
-    File.fromUri(
-      Platform.script.resolve(
-        '../../../crates/merman-theme-authoring-fixtures/'
-        'fixtures/authoring-v1/preset-catalog.json',
-      ),
-    ).readAsStringSync(),
-  ) as List;
+  final vectors =
+      jsonDecode(
+            File.fromUri(
+              Platform.script.resolve(
+                '../../../crates/merman-theme-authoring-fixtures/'
+                'fixtures/authoring-v1/preset-catalog.json',
+              ),
+            ).readAsStringSync(),
+          )
+          as List;
   for (final vector in vectors) {
     final json = Map<String, Object?>.from(vector as Map);
     final expected = json['family_designs'] as List;
@@ -765,10 +767,8 @@ void preservesPresetFamilyDesigns() {
     );
     for (final invalid in <Object?>[null, 1, '', 'Invalid Value']) {
       _expectContractFailure(
-        () => MermanThemePresetFamilyDesign.fromJson({
-          ...valid,
-          field: invalid,
-        }),
+        () =>
+            MermanThemePresetFamilyDesign.fromJson({...valid, field: invalid}),
       );
     }
   }
