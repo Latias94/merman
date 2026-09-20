@@ -2604,6 +2604,7 @@ fn class_measured_to_elk_graph(
                     });
             elk::Node {
                 id: id.clone(),
+                label_text: is_group.then(|| id.clone()),
                 kind: if is_group {
                     elk::NodeKind::Group
                 } else {

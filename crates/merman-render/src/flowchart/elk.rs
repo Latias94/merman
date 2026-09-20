@@ -1761,6 +1761,7 @@ fn flow_node_to_elk_node(
     elk::Node {
         id: node.id.clone(),
         kind: elk::NodeKind::Leaf,
+        label_text: None,
         width,
         height,
         parent,
@@ -1786,6 +1787,7 @@ fn subgraph_to_elk_node(
         return elk::Node {
             id: sg.id.clone(),
             kind: elk::NodeKind::Leaf,
+            label_text: None,
             width,
             height,
             parent,
@@ -1799,6 +1801,11 @@ fn subgraph_to_elk_node(
     elk::Node {
         id: sg.id.clone(),
         kind: elk::NodeKind::Group,
+        label_text: Some(
+            ctx.model
+                .subgraph_title_for_render(declaration_ordinal, sg)
+                .to_owned(),
+        ),
         width: 0.0,
         height: 0.0,
         parent,

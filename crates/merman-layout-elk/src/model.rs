@@ -223,6 +223,8 @@ pub enum SelfLoopOrderingStrategy {
 pub struct Node {
     pub id: String,
     pub kind: NodeKind,
+    /// ELK container title text. Leaf text is already measured and is not an ELK node label.
+    pub label_text: Option<String>,
     pub width: f64,
     pub height: f64,
     pub parent: Option<String>,

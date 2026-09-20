@@ -12,11 +12,24 @@ use source_port::algorithms::{
 #[cfg(test)]
 mod tests;
 
+pub(super) struct FlatLayout {
+    pub layout: LayoutResult,
+    pub size: source_port::LSize,
+    pub content_shifts: HashMap<String, Point>,
+}
+
+pub(super) enum ScopeContext {
+    Root,
+    OrdinaryContainer { label: Option<Label> },
+}
+
 pub(super) fn layout(
     graph: &Graph,
+    scope: &source_port::GraphSeedScope,
+    context: ScopeContext,
     operation_seed: Option<source_port::OperationSeed>,
     work: &mut dyn WorkControl,
-) -> Result<LayoutResult> {
+) -> Result<FlatLayout> {
     let units = graph
         .nodes
         .len()
@@ -75,6 +88,22 @@ pub(super) fn layout(
             })
             .collect(),
     };
+    let mut size;
+    let mut content_shifts = HashMap::new();
+    // Ordinary directional containers retain buildSubgraphLayoutOptions' padding and node
+    // spacing. Their algorithms do not inherit the root-only Rectpacking preset.
+    let (container_padding, minimum_width) = match context {
+        ScopeContext::Root => (None, 0.0),
+        ScopeContext::OrdinaryContainer { label } => (
+            Some(box_layout::Padding {
+                top: 24.0,
+                left: 24.0,
+                right: 24.0,
+                bottom: 24.0,
+            }),
+            label.map_or(0.0, |label| label.width),
+        ),
+    };
     match graph.options.algorithm {
         Algorithm::Layered => unreachable!("layered graphs use the compound-aware pipeline"),
         Algorithm::Box | Algorithm::Rectpacking => {
@@ -88,13 +117,25 @@ pub(super) fn layout(
                 })
                 .collect();
             let packed = if graph.options.algorithm == Algorithm::Box {
-                box_layout::layout(&rectangles, &box_layout::Options::default(), work)?
+                let mut options = box_layout::Options::default();
+                if let Some(padding) = container_padding {
+                    options.padding = padding;
+                    options.spacing = 50.0;
+                    options.minimum_width = minimum_width;
+                }
+                box_layout::layout(&rectangles, &options, work)?
             } else {
                 // render.ts RECTPACKING_OPTIONS. SCANLINE is absent from elkjs 0.9.3's
                 // enum, so it resolves to GREEDY, the kernel's implemented default.
-                rectpacking::layout(
-                    &rectangles,
-                    &rectpacking::Options {
+                let options = if let Some(padding) = container_padding {
+                    rectpacking::Options {
+                        padding,
+                        spacing: 50.0,
+                        minimum_width,
+                        ..Default::default()
+                    }
+                } else {
+                    rectpacking::Options {
                         aspect_ratio: 1.6,
                         try_box: true,
                         expand_nodes: true,
@@ -103,11 +144,24 @@ pub(super) fn layout(
                         eliminate_whitespace: true,
                         horizontal_content_alignment: box_layout::ContentAlignment::Center,
                         ..Default::default()
-                    },
-                    work,
-                )?
+                    }
+                };
+                rectpacking::layout(&rectangles, &options, work)?
+            };
+            size = source_port::LSize {
+                width: packed.width,
+                height: packed.height,
             };
             for (node, position) in result.nodes.iter_mut().zip(packed.rectangles) {
+                if position.content_shift_x != 0.0 || position.content_shift_y != 0.0 {
+                    content_shifts.insert(
+                        node.id.clone(),
+                        Point {
+                            x: position.content_shift_x,
+                            y: position.content_shift_y,
+                        },
+                    );
+                }
                 node.width = position.width;
                 node.height = position.height;
                 node.x = position.x + position.width / 2.0;
@@ -145,15 +199,19 @@ pub(super) fn layout(
                     projected
                 })
                 .collect();
-            let options = force::Options {
+            let mut options = force::Options {
                 resolved_seed: algorithms::resolve_seed(
                     graph.options.layered.random_seed,
                     operation_seed,
-                    &source_port::GraphSeedScope::root(graph.id.as_str()),
+                    scope,
                     algorithms::RandomDomain::Force,
                 )?,
                 ..Default::default()
             };
+            if let Some(padding) = container_padding {
+                options.padding = padding;
+                options.spacing = 50.0;
+            }
             let placed = if graph.options.algorithm == Algorithm::Force {
                 force::layout(&nodes, &edges, &options, work)?
             } else {
@@ -180,6 +238,10 @@ pub(super) fn layout(
                     },
                     work,
                 )?
+            };
+            size = source_port::LSize {
+                width: placed.width,
+                height: placed.height,
             };
             for (node, position) in result.nodes.iter_mut().zip(placed.nodes) {
                 node.x = position.x + node.width / 2.0;
@@ -213,7 +275,21 @@ pub(super) fn layout(
                     height: node.height,
                     // Mermaid leaf nodes have no ELK node-label array. MrTree derives identity
                     // from its local ordinal when the first label text is absent.
-                    label: String::new(),
+                    label: if node.kind == NodeKind::Group {
+                        node.label_text.clone().unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
+                    padding: if node.kind == NodeKind::Group {
+                        box_layout::Padding {
+                            top: 24.0,
+                            right: 24.0,
+                            bottom: 24.0,
+                            left: 24.0,
+                        }
+                    } else {
+                        mrtree::Node::default().padding
+                    },
                     ..Default::default()
                 })
                 .collect();
@@ -221,6 +297,13 @@ pub(super) fn layout(
                 .iter()
                 .map(|&(source, target)| mrtree::Edge { source, target })
                 .collect();
+            let mut options = mrtree::Options {
+                ..Default::default()
+            };
+            if let Some(padding) = container_padding {
+                options.padding = padding;
+                options.spacing = 50.0;
+            }
             let placed = mrtree::layout(
                 &nodes,
                 &edges,
@@ -231,10 +314,14 @@ pub(super) fn layout(
                         Direction::Left => mrtree::Direction::Left,
                         Direction::Right => mrtree::Direction::Right,
                     },
-                    ..Default::default()
+                    ..options
                 },
                 work,
             )?;
+            size = source_port::LSize {
+                width: placed.width,
+                height: placed.height,
+            };
             for (node, position) in result.nodes.iter_mut().zip(placed.nodes) {
                 node.x = position.x + node.width / 2.0;
                 node.y = position.y + node.height / 2.0;
@@ -262,7 +349,16 @@ pub(super) fn layout(
                 .iter()
                 .map(|&(source, target)| radial::Edge::new(source, target))
                 .collect();
-            let placed = radial::layout(&nodes, &edges, &radial::Options::default(), work)?;
+            let mut options = radial::Options::default();
+            if let Some(padding) = container_padding {
+                options.padding = padding;
+                options.spacing = 50.0;
+            }
+            let placed = radial::layout(&nodes, &edges, &options, work)?;
+            size = source_port::LSize {
+                width: placed.width,
+                height: placed.height,
+            };
             for (node, position) in result.nodes.iter_mut().zip(placed.nodes) {
                 node.x = position.x + node.width / 2.0;
                 node.y = position.y + node.height / 2.0;
@@ -292,7 +388,7 @@ pub(super) fn layout(
                     graph.options.layered.random_seed
                 },
                 operation_seed,
-                &source_port::GraphSeedScope::root(graph.id.as_str()),
+                scope,
                 algorithms::RandomDomain::SporeOverlap,
             )?;
             let mut random = algorithms::random_stream(seed);
@@ -309,13 +405,16 @@ pub(super) fn layout(
                 .iter()
                 .map(|&(source, target)| spore_overlap::Edge { source, target })
                 .collect();
-            let placed = spore_overlap::layout(
-                &nodes,
-                &edges,
-                &spore_overlap::Options::default(),
-                &mut random,
-                work,
-            )?;
+            let mut options = spore_overlap::Options::default();
+            if let Some(padding) = container_padding {
+                options.padding = padding;
+                options.spacing = 50.0;
+            }
+            let placed = spore_overlap::layout(&nodes, &edges, &options, &mut random, work)?;
+            size = source_port::LSize {
+                width: placed.width,
+                height: placed.height,
+            };
             for (node, position) in result.nodes.iter_mut().zip(placed.nodes) {
                 node.x = position.x + node.width / 2.0;
                 node.y = position.y + node.height / 2.0;
@@ -332,5 +431,10 @@ pub(super) fn layout(
             }
         }
     }
-    Ok(result)
+    size.width = size.width.max(minimum_width);
+    Ok(FlatLayout {
+        layout: result,
+        size,
+        content_shifts,
+    })
 }

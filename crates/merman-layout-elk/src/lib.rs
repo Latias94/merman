@@ -12,7 +12,8 @@
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
 //! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
-//! currently accept flat measured graphs; mixed hierarchy dispatch is still being integrated.
+//! handle flat graphs and ordinary recursive containers; metadata algorithms and cross-provider
+//! boundary edges are still being integrated.
 //! New layout behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -169,8 +170,8 @@ impl SourcePhaseDiagnostics {
 pub enum Error {
     #[error("phase diagnostics require the Layered algorithm")]
     LayeredDiagnosticsRequired,
-    #[error("non-layered hierarchy dispatch is not yet available")]
-    NonLayeredHierarchy,
+    #[error("cross-provider hierarchy routing is not yet available for edge `{edge_id}`")]
+    UnsupportedCrossProviderEdge { edge_id: String },
     #[error(transparent)]
     Box(#[from] source_port::algorithms::box_layout::Error),
     #[error(transparent)]
@@ -223,8 +224,8 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Executes the selected source-backed ELK provider. Non-layered hierarchy currently returns a
-/// typed error instead of flattening the graph or substituting the Layered provider.
+/// Executes the selected source-backed ELK provider. Unsupported cross-provider boundary edges
+/// return a typed error instead of flattening the graph or substituting the Layered provider.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
     let mut work_control = NoopWorkControl;
     layout_with_work_control(graph, &mut work_control)
@@ -384,6 +385,7 @@ struct HierarchyIndex<'a> {
 
 #[derive(Debug)]
 struct ScopePlan {
+    algorithm: Algorithm,
     parent: Option<usize>,
     anchor: Option<usize>,
     depth: usize,
@@ -425,6 +427,7 @@ struct ScopeLayout {
     layout: LayoutResult,
     size: source_port::LSize,
     edge_metadata: HashMap<String, ScopeEdgeMetadata>,
+    content_shifts: HashMap<String, Point>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -447,12 +450,6 @@ fn layout_scopes(
     work_control: &mut dyn WorkControl,
 ) -> Result<LayoutResult> {
     let index = HierarchyIndex::build(graph, work_control)?;
-    if graph.options.algorithm != Algorithm::Layered {
-        if graph.nodes.iter().any(|node| node.parent.is_some()) {
-            return Err(Error::NonLayeredHierarchy);
-        }
-        return flat::layout(graph, operation_seed, work_control);
-    }
     work_control.check(index.scopes.len())?;
     work_control.charge(index.scopes.len())?;
     let mut arena = std::iter::repeat_with(|| None)
@@ -460,6 +457,30 @@ fn layout_scopes(
         .collect::<Vec<Option<ScopeLayout>>>();
 
     for &scope in &index.postorder {
+        if index.scopes[scope].algorithm != Algorithm::Layered {
+            let (input, edge_metadata) =
+                index.materialize_flat_scope(scope, &arena, work_control)?;
+            let output = flat::layout(
+                &input,
+                &index.scopes[scope].seed_scope,
+                index.scopes[scope]
+                    .anchor
+                    .map_or(flat::ScopeContext::Root, |anchor| {
+                        flat::ScopeContext::OrdinaryContainer {
+                            label: graph.nodes[anchor].label,
+                        }
+                    }),
+                operation_seed,
+                work_control,
+            )?;
+            arena[scope] = Some(ScopeLayout {
+                layout: output.layout,
+                size: output.size,
+                edge_metadata,
+                content_shifts: output.content_shifts,
+            });
+            continue;
+        }
         let (input, segments, edge_metadata) =
             index.materialize_scope(scope, &arena, work_control)?;
         let mut lgraph = match operation_seed {
@@ -497,6 +518,7 @@ fn layout_scopes(
             layout: source_graph_to_layout_result(&lgraph),
             size: actual_source_graph_size(&lgraph),
             edge_metadata,
+            content_shifts: HashMap::new(),
         });
     }
 
@@ -504,6 +526,84 @@ fn layout_scopes(
 }
 
 impl<'a> HierarchyIndex<'a> {
+    fn materialize_flat_scope(
+        &self,
+        scope_index: usize,
+        arena: &[Option<ScopeLayout>],
+        work: &mut dyn WorkControl,
+    ) -> Result<(Graph, HashMap<String, ScopeEdgeMetadata>)> {
+        let scope = &self.scopes[scope_index];
+        // Cross-provider boundary routing is a separate contract. Until its source handling
+        // is integrated, reject it instead of inventing provider ports or silently losing edges.
+        if let Some(edge) = scope.edges.iter().find(|edge| edge.segment.is_some()) {
+            return Err(Error::UnsupportedCrossProviderEdge {
+                edge_id: self.graph.edges[edge.original].id.clone(),
+            });
+        }
+        let units = scope
+            .nodes
+            .len()
+            .checked_add(scope.edges.len())
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        work.check(units)?;
+        work.charge(units)?;
+        let nodes = scope
+            .nodes
+            .iter()
+            .map(|&index| {
+                let mut node = self.graph.nodes[index].clone();
+                node.parent = None;
+                if let Some(child) = self.child_scope_by_anchor[index] {
+                    let size = arena[child]
+                        .as_ref()
+                        .expect("children are laid out in postorder")
+                        .size;
+                    node.width = size.width;
+                    node.height = size.height;
+                } else if node.kind == NodeKind::Group {
+                    // Empty groups have no ELK container options or node labels.
+                    node.kind = NodeKind::Leaf;
+                    node.label_text = None;
+                }
+                node
+            })
+            .collect();
+        let edges = scope
+            .edges
+            .iter()
+            .map(|edge| self.graph.edges[edge.original].clone())
+            .collect();
+        let metadata = scope
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    self.graph.edges[edge.original].id.clone(),
+                    ScopeEdgeMetadata {
+                        original: edge.original,
+                        segment: None,
+                    },
+                )
+            })
+            .collect();
+        let mut options = self.graph.options.clone();
+        options.algorithm = scope.algorithm;
+        Ok((
+            Graph {
+                id: scope
+                    .anchor
+                    .map(|node| self.graph.nodes[node].id.clone())
+                    .unwrap_or_else(|| self.graph.id.clone()),
+                direction: scope.direction,
+                nodes,
+                edges,
+                options,
+                spacing: self.graph.spacing,
+            },
+            metadata,
+        ))
+    }
+
     fn build(graph: &'a Graph, work_control: &mut dyn WorkControl) -> Result<Self> {
         let unique_items = graph
             .nodes
@@ -561,6 +661,7 @@ impl<'a> HierarchyIndex<'a> {
         work_control.check(1)?;
         work_control.charge(1)?;
         let mut scopes = vec![ScopePlan {
+            algorithm: graph.options.algorithm,
             parent: None,
             anchor: None,
             depth: 0,
@@ -598,6 +699,13 @@ impl<'a> HierarchyIndex<'a> {
                 parent_handling
             };
             let direction = node.direction.unwrap_or(parent_direction);
+            // Unconfigured containers resolve to ELK's default provider, not their parent's
+            // non-layered provider. A direction option explicitly selects the diagram provider.
+            let algorithm = if node.direction.is_some() {
+                graph.options.algorithm
+            } else {
+                Algorithm::Layered
+            };
             resolved_handling[node_index] = handling;
             node_scope[node_index] = scope;
             preorder_position[node_index] = hierarchy_preorder.len();
@@ -606,18 +714,27 @@ impl<'a> HierarchyIndex<'a> {
             let separates = node.kind == NodeKind::Group
                 && !children[node_index].is_empty()
                 && (parent_handling == HierarchyHandling::SeparateChildren
-                    || handling == HierarchyHandling::SeparateChildren);
+                    || handling == HierarchyHandling::SeparateChildren
+                    || scopes[scope].algorithm != Algorithm::Layered
+                    || algorithm != scopes[scope].algorithm);
             let child_scope = if separates {
                 work_control.check(1)?;
                 work_control.charge(1)?;
                 let child_scope = scopes.len();
                 let seed_scope = scopes[scope].seed_scope.child(node.id.as_str());
                 scopes.push(ScopePlan {
+                    algorithm,
                     parent: Some(scope),
                     anchor: Some(node_index),
                     depth: scopes[scope].depth + 1,
                     seed_scope,
-                    direction,
+                    direction: if node.direction.is_none()
+                        && scopes[scope].algorithm != Algorithm::Layered
+                    {
+                        Direction::Right
+                    } else {
+                        direction
+                    },
                     handling,
                     nodes: Vec::new(),
                     children: Vec::new(),
@@ -630,12 +747,18 @@ impl<'a> HierarchyIndex<'a> {
             } else {
                 scope
             };
-            search.extend(
-                children[node_index]
-                    .iter()
-                    .rev()
-                    .map(|child| (*child, child_scope, handling, direction)),
-            );
+            search.extend(children[node_index].iter().rev().map(|child| {
+                (
+                    *child,
+                    child_scope,
+                    handling,
+                    if separates {
+                        scopes[child_scope].direction
+                    } else {
+                        direction
+                    },
+                )
+            }));
         }
         for node in 0..graph.nodes.len() {
             scopes[node_scope[node]].nodes.push(node);
@@ -1325,10 +1448,10 @@ fn flatten_scope_layouts(
     let mut stack = vec![0usize];
     while let Some(scope) = stack.pop() {
         order.push(scope);
-        let layout = &arena[scope]
+        let scope_result = arena[scope]
             .as_ref()
-            .expect("scope layout exists before flatten")
-            .layout;
+            .expect("scope layout exists before flatten");
+        let layout = &scope_result.layout;
         let child_by_id = index.scopes[scope]
             .children
             .iter()
@@ -1347,8 +1470,16 @@ fn flatten_scope_layouts(
             offsets[child] = Point {
                 // Mermaid accumulates nested coordinates from group top-left positions, while the
                 // public Merman node layout is center-based.
-                x: offsets[scope].x + node.x - node.width / 2.0,
-                y: offsets[scope].y + node.y - node.height / 2.0,
+                x: offsets[scope].x + node.x - node.width / 2.0
+                    + scope_result
+                        .content_shifts
+                        .get(&node.id)
+                        .map_or(0.0, |shift| shift.x),
+                y: offsets[scope].y + node.y - node.height / 2.0
+                    + scope_result
+                        .content_shifts
+                        .get(&node.id)
+                        .map_or(0.0, |shift| shift.y),
             };
             children.push(child);
         }
@@ -2400,6 +2531,7 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Leaf,
+            label_text: None,
             width: 80.0,
             height: 40.0,
             parent: None,
@@ -2497,6 +2629,7 @@ mod tests {
         Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: parent.map(str::to_string),
@@ -2638,6 +2771,7 @@ mod tests {
                     })
                     .collect();
                 Some(ScopeLayout {
+                    content_shifts: HashMap::new(),
                     layout: LayoutResult { nodes, edges },
                     size: source_port::LSize {
                         width: 100.0,
@@ -3246,6 +3380,7 @@ mod tests {
         let group = |id: &str, parent: Option<&str>, label: Label| Node {
             id: id.to_string(),
             kind: NodeKind::Group,
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: parent.map(str::to_string),
@@ -3349,6 +3484,7 @@ mod tests {
                 Node {
                     id: "one".to_string(),
                     kind: NodeKind::Group,
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
@@ -3432,6 +3568,7 @@ mod tests {
         let empty_group = Node {
             id: "B".to_string(),
             kind: NodeKind::Group,
+            label_text: None,
             width: 0.0,
             height: 0.0,
             parent: None,
@@ -3922,6 +4059,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
@@ -3966,6 +4104,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
@@ -4011,6 +4150,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,
@@ -4053,6 +4193,7 @@ mod tests {
                 Node {
                     id: "cluster".to_string(),
                     kind: NodeKind::Group,
+                    label_text: None,
                     width: 0.0,
                     height: 0.0,
                     parent: None,

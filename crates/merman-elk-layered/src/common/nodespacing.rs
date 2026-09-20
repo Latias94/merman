@@ -332,6 +332,30 @@ fn placement_start_and_spacing(
         alignment
     };
 
+    // PortPlacementCalculator's default (no PORTS_OVERHANG) branch keeps the initial
+    // coordinate when the content cell is too small. In particular a single port on a
+    // negative-width cell stays at the leading surrounding margin, rather than recentering.
+    // Multiple ports may require negative spacing; clamping it changes the source geometry.
+    let calculated_span = if alignment == PortAlignment::Distributed {
+        placement_span + 2.0 * port_spacing
+    } else {
+        placement_span
+    };
+    if available_space < calculated_span {
+        if alignment == PortAlignment::Distributed {
+            let spacing =
+                port_spacing + (available_space - calculated_span) / (port_count + 1) as f64;
+            return (spacing, spacing);
+        }
+        let spacing = if port_count > 1 {
+            port_spacing + (available_space - calculated_span) / (port_count - 1) as f64
+        } else {
+            // The source divides by zero here, but the spacing is never used for one port.
+            port_spacing
+        };
+        return (0.0, spacing);
+    }
+
     match alignment {
         PortAlignment::Begin => (0.0, port_spacing),
         PortAlignment::Center => ((available_space - placement_span) / 2.0, port_spacing),

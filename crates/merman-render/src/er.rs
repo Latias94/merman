@@ -1718,6 +1718,7 @@ fn er_elk_graph(
         nodes.push(elk::Node {
             id: subgraph.id.clone(),
             kind: elk::NodeKind::Group,
+            label_text: Some(subgraph.title.clone()),
             width: 0.0,
             height: 0.0,
             parent: parent_by_member
@@ -1756,6 +1757,7 @@ fn er_elk_graph(
         elk::Node {
             id: entity.id.clone(),
             kind: elk::NodeKind::Leaf,
+            label_text: None,
             width,
             height,
             parent: parent_by_member

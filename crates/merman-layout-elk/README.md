@@ -25,14 +25,17 @@ The workspace license is MIT OR Apache-2.0; the translated ELK implementation re
 ## Additional provider integration
 
 `LayoutOptions::algorithm` selects Box, Rectpacking, Force, Stress, Mr. Tree, Radial, or SPOrE
-for measured flat graphs. The adapter preserves provider errors and caller work interruption;
+for measured graphs. Ordinary child containers resolve to Layered; a container direction selects
+the diagram's provider. Scopes execute in postorder, retaining provider extents and packing
+content shifts. The adapter preserves provider errors and caller work interruption;
 it does not substitute Layered when a selected provider fails. Radial's availability in this
 internal API does not imply a Mermaid root loader named `elk.radial`.
 
-This is an intermediate integration boundary: non-layered graphs with parent relationships
-return `NonLayeredHierarchy` until mixed hierarchy dispatch is complete. The renderer still
-selects Layered and does not advertise these additional names yet. Packing results retain empty
-edge routes so the renderer can distinguish absent sections from routed two-point sections.
+This is an intermediate integration boundary: cross-provider boundary edges return
+`UnsupportedCrossProviderEdge` until their source handling is integrated. Explicit metadata algorithms
+and their cross-boundary downgrade are still pending. The renderer still selects Layered and
+does not advertise these additional names yet. Packing results retain empty edge routes so the
+renderer can distinguish absent sections from routed two-point sections.
 
 SPOrE's source uses ambient `Math.random` only to separate coincident centers. The adapter uses
 a separate operation-owned deterministic stream when an operation seed is supplied, or the

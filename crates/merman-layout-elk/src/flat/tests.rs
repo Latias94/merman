@@ -9,6 +9,7 @@ fn graph(algorithm: Algorithm) -> Graph {
             .map(|(i, (width, height))| Node {
                 id: format!("n{i}"),
                 kind: NodeKind::Leaf,
+                label_text: None,
                 width,
                 height,
                 parent: None,
@@ -198,7 +199,7 @@ fn provider_errors_preserve_work_classification() {
 }
 
 #[test]
-fn additional_providers_do_not_flatten_hierarchy_or_enter_layered_diagnostics() {
+fn cross_provider_boundary_edges_are_not_flattened_or_sent_to_layered_diagnostics() {
     for algorithm in [
         Algorithm::Box,
         Algorithm::Rectpacking,
@@ -217,7 +218,7 @@ fn additional_providers_do_not_flatten_hierarchy_or_enter_layered_diagnostics() 
         graph.nodes[1].parent = Some("n0".into());
         assert!(matches!(
             super::super::layout(&graph),
-            Err(Error::NonLayeredHierarchy)
+            Err(Error::UnsupportedCrossProviderEdge { .. })
         ));
     }
 }
@@ -270,5 +271,148 @@ fn mrtree_node_ids_do_not_become_synthetic_root_labels() {
     assert_eq!(actual.edges, expected.edges);
     for (a, e) in actual.nodes.iter().zip(expected.nodes) {
         assert_eq!((a.x, a.y, a.width, a.height), (e.x, e.y, e.width, e.height));
+    }
+}
+
+#[test]
+fn mixed_root_scopes_match_actual_elkjs_container_resolution() {
+    // Real target ordinary container options, with a painted title and both an internal edge
+    // and an edge attached to the group itself. Optional direction selects the diagram provider.
+    let cases = [
+        (
+            Algorithm::Box,
+            false,
+            [
+                [146.0, 61.5, 172.0, 93.0],
+                [30.0, 40.0, 30.0, 50.0],
+                [104.0, 68.2, 40.0, 20.0],
+                [178.0, 69.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Box,
+            true,
+            [
+                [114.0, 89.0, 108.0, 148.0],
+                [30.0, 40.0, 30.0, 50.0],
+                [104.0, 49.0, 40.0, 20.0],
+                [114.0, 124.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Force,
+            false,
+            [
+                [314.75964927325157, 129.89663305134906, 172.0, 93.0],
+                [65.0, 75.0, 30.0, 50.0],
+                [272.75964927325157, 136.59663305134904, 40.0, 20.0],
+                [346.75964927325157, 137.39663305134906, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Force,
+            true,
+            [
+                [
+                    312.5284522612195,
+                    136.8642048608271,
+                    182.8461790112895,
+                    79.08753373701688,
+                ],
+                [65.0, 75.0, 30.0, 50.0],
+                [359.95154176686424, 131.32043799231866, 40.0, 20.0],
+                [275.1053627555748, 137.40797172933554, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Rectpacking,
+            false,
+            [
+                [101.0, 61.5, 172.0, 93.0],
+                [217.0, 61.5, 30.0, 93.0],
+                [59.0, 68.2, 40.0, 20.0],
+                [133.0, 69.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::Rectpacking,
+            true,
+            [
+                [69.0, 89.0, 108.0, 148.0],
+                [153.0, 89.0, 30.0, 148.0],
+                [59.0, 49.0, 40.0, 20.0],
+                [69.0, 124.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::MrTree,
+            false,
+            [
+                [134.0, 94.5, 172.0, 93.0],
+                [134.0, 186.5, 30.0, 50.0],
+                [92.0, 101.2, 40.0, 20.0],
+                [166.0, 102.0, 60.0, 30.0],
+            ],
+        ),
+        (
+            Algorithm::MrTree,
+            true,
+            [
+                [102.0, 119.5, 108.0, 143.0],
+                [102.0, 236.5, 30.0, 50.0],
+                [118.0, 98.0, 40.0, 20.0],
+                [118.0, 173.0, 60.0, 30.0],
+            ],
+        ),
+    ];
+    for (algorithm, directional, expected) in cases {
+        let mut graph = graph(algorithm);
+        graph.id = "root".into();
+        let mut group = graph.nodes[0].clone();
+        group.id = "g".into();
+        group.kind = NodeKind::Group;
+        group.width = 0.0;
+        group.height = 0.0;
+        group.label = Some(Label {
+            width: 30.0,
+            height: 10.0,
+        });
+        group.label_text = Some("Group".into());
+        if directional {
+            group.direction = Some(Direction::Down);
+            group.hierarchy_handling = Some(HierarchyHandling::SeparateChildren);
+        }
+        graph.nodes[0].id = "a".into();
+        graph.nodes[0].parent = Some("g".into());
+        graph.nodes[1].id = "b".into();
+        graph.nodes[1].parent = Some("g".into());
+        graph.nodes[2].id = "c".into();
+        graph.nodes.insert(0, group);
+        graph.edges[0].id = "inside".into();
+        graph.edges[0].source = "a".into();
+        graph.edges[0].target = "b".into();
+        graph.edges[0].label = None;
+        graph.edges[1].id = "outside".into();
+        graph.edges[1].source = "g".into();
+        graph.edges[1].target = "c".into();
+        graph.edges[1].label = Some(Label {
+            width: 10.0,
+            height: 6.0,
+        });
+        let result = super::super::layout(&graph).unwrap();
+        assert_eq!(result.nodes.len(), expected.len());
+        for (node, wanted) in result.nodes.iter().zip(expected) {
+            for (actual, expected) in [node.x, node.y, node.width, node.height]
+                .into_iter()
+                .zip(wanted)
+            {
+                assert!(
+                    (actual - expected).abs() < 1e-7,
+                    "{algorithm:?} directional={directional} node={} actual={actual} expected={expected}",
+                    node.id
+                );
+            }
+        }
+        assert_eq!(result.edges.len(), 2);
     }
 }
