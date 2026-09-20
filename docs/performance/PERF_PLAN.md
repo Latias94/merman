@@ -347,9 +347,13 @@ compares published alpha.6 with post-upgrade source `aa35110ee`: Class tiny rema
 SVG identities. These current observations supersede the pre-upgrade values for this source;
 they remain release-range evidence, not theme-only attribution.
 Two-pair stage diagnostics show sub-microsecond parse deltas and family SVG emission increases
-of 16.50/92.57 µs. Layout projection identities differ and that stage is not sampled. Continue
-attributing emission and standalone finalization while preserving this layout attribution gap;
-do not infer a finalizer-only cause by subtracting independent stage measurements.
+of 16.50/92.57 µs. Layout projection identities differ only in the default secure-key list;
+geometry matches, but that changed-config stage is not sampled. Four fresh CPU captures retain
+the measured binary identities: current standalone finalization accounts for 2,393 of 7,493
+main-thread end-to-end samples, including 2,327 in XML/reference resource-budget checking.
+These overlapping samples identify the next owner to investigate, not removable time. Preserve
+the new artifact/resource/admission contract and do not infer a finalizer-only cause by subtracting
+independent stage measurements.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

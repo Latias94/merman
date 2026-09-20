@@ -68,7 +68,7 @@ are attribution evidence only; they do not admit a production optimization.
 - `parse` reuses an engine; `parse_cold_engine` constructs an engine inside the operation. The
   latter is not process cold start.
 - `layout` times family preparation with parsing and cloned-input/session setup outside timing.
-- `render` times `PreparedFamilyArtifact::render_svg` with family preparation outside timing.
+- `render` times `FamilyRenderArtifact::render_svg` with family preparation outside timing.
   It returns a `RenderedFamilySvg` before standalone finalization.
 - `end_to_end` times the public `Renderer::render` SVG operation. Its additional work includes
   operation setup, standalone finalization, resource accounting, digests and target admission.
@@ -89,9 +89,22 @@ to one of those operations or justify removing its contract.
 The layout projections change from 23,769 to 23,723 bytes for tiny and from 41,398 to 41,352
 bytes for medium. Their hashes differ, so discovery rejects both rows before timing. The
 report records a suite contract failure plus two failed rows. This is an incomparable stage,
-not a failed renderer operation or evidence that layout has no regression. The 46-byte change
-has not been attributed or normalized away. The diagnostic batch stopped there; after inspecting
-that failure, the independently comparable render stage was run with the registered settings.
+not a failed renderer operation or evidence that layout has no regression. The diagnostic batch
+stopped there; after inspecting that failure, the independently comparable render stage was run
+with the registered settings.
+
+A subsequent untimed probe exports the same `family::prepare(...).layout_json()` projection from
+each cached Cargo library. Both fixtures reproduce the original byte counts and SHA-256 hashes.
+Recursive comparison finds exactly one changed field: `/meta/effective_config/secure` loses
+`fontFamily`, `altFontFamily` and `themeVariables`. Every other field, including geometry, matches.
+This follows the source-presentation policy change in `81e008f66`: validated source colors and
+typography replace the former blanket lock, while arbitrary stylesheets and host controls remain
+protected. The three release-profile `merman-core::source_presentation` integration tests pass
+again, covering init/frontmatter values, injection rejection and explicit host locks. The stale
+trust-boundary sentence in the threat model is corrected in `76fec3a15`.
+
+The layout projection is still a changed configuration contract. Its exact-output comparator and
+rejected report remain unchanged; matching geometry alone does not retroactively admit timings.
 
 All three sampled stage reports pass executable/source/output postflight checks. The parse
 deltas are below one microsecond in these observations, while family SVG rendering adds about
@@ -99,6 +112,46 @@ deltas are below one microsecond in these observations, while family SVG renderi
 Prioritize named operations in family emission and standalone finalization, while retaining the
 unmeasured layout delta as an open attribution gap. No new optimization is admitted from these
 two-pair diagnostics.
+
+## CPU attribution after the SHA upgrade
+
+Four serial ten-second, one-millisecond macOS `sample` captures attach to the recorded benchmark
+executables during Class-medium measurement: alpha.6/current end-to-end, then alpha.6/current
+family render. Every process exits successfully and repeats the registered SVG identity and
+postflight check. Executable digests match before and after. The Criterion runs use two seconds
+of warmup and fifteen seconds of measurement; their sampler-affected times are excluded from
+latency evidence.
+
+The current end-to-end capture contains 7,493 main-thread samples. Counts below include descendants
+and overlap; they cannot be added together or multiplied by the unprofiled latency to derive a
+removable-time estimate.
+
+| Named current path | Inclusive samples | Share of main-thread samples |
+| --- | ---: | ---: |
+| Standalone finalization (`finalize_standalone_with_portability`) | 2,393 | 31.94% |
+| XML/reference resource-budget check (`check_svg_resource_budget_with_controls`) | 2,327 | 31.06% |
+| XML element validation (`validate_well_formed_element`, inside that check) | 796 | 10.62% |
+| Prepared-text partition entry point | 426 | 5.69% |
+| Family SVG emission (`render_family_artifact_svg`) | 1,563 | 20.86% |
+
+Source comparison explains a material contract difference: alpha.6's default `render_svg_target`
+returns family output through `SvgOutput::new`; current source always finalizes the standalone
+artifact and builds its resource/digest/admission evidence. The new named finalization paths are
+absent from the alpha.6 capture and present in current source. This supports investigating the
+added boundary; it does not assign the whole release-range delta to themes or permit bypassing
+resource checks for default output.
+
+The family-render captures contain no standalone finalizer, matching the benchmark boundary.
+Current family render records 719 samples at the prepared-text partition entry point out of
+7,507 main-thread samples. Its Criterion setup also prepares artifacts outside the timed region
+but inside the sampled process, so that ratio is not the partition's share of timed render work.
+As established by the earlier source trace, default Class has an empty prepared-text ledger;
+this entry point performs reserved-spelling search, not token-bearing tag rewriting. Some optimized
+children have deduplicated symbols, which further limits line-level attribution.
+
+The next candidate should address measured XML/reference scanning or ownership of already
+validated facts, with exact error/resource/cancellation preservation. The profile alone does not
+justify deleting either digest, skipping XML checks or reviving rejected per-tag-copy work.
 
 ## Limits and next decision
 
@@ -163,3 +216,16 @@ CARGO_BUILD_JOBS=1 python3 tools/bench/compare_self.py \
 For each diagnostic, replace the filter group with `parse`, `parse_cold_engine`, `layout` or
 `render`, set `--evidence-mode diagnostic --pairs 2`, and use a distinct output path. Keep
 toolchains, features, fixtures, sample size, warmup and measurement duration unchanged.
+
+The follow-up evidence is retained in
+`target/bench/experiments/class-finalization-attribution-20260921/`: the common untimed probe,
+exact Cargo artifact manifests and linked-library hashes, four full sample call graphs, profile
+commands/identities, projection differences and nextest log. The ledger records all controls.
+`sample_profiles.py` reproduces the four registered captures using the prior confirmation's
+verified executable paths; run it without competing builds or benchmarks.
+
+| Follow-up receipt | SHA-256 |
+| --- | --- |
+| `layout-differences.json` | `f8aaf924cccfa9c824ff905b66916a5c7f3791aae5cb481e0bb5471f045fe197` |
+| `profile-runs.json` | `c1c760af712c9370503ae26e8991f00ba97f3fd04e5757ae2541d92d587fc4a9` |
+| `profile-symbol-counts.json` | `035e75b756065739832a54dc14eeb505a7da29fb62bea38a7c5babe12faacf71` |

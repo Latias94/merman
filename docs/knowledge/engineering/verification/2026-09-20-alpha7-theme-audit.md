@@ -122,6 +122,13 @@ Unsupported/Unverified receipts and host/resource residuals. The current Web/Typ
 consumer results below are reproducible candidate baselines; they are not evidence that the
 historical alpha.6 deltas are theme-only costs.
 
+The source-presentation trust boundary also differs from alpha.6: commit `81e008f66` replaces
+blanket font/theme-variable locks with validated CSS values for init and frontmatter, while the
+seven-key default secure policy protects host controls and arbitrary stylesheets. Explicit host
+locks remain effective. The September 21 follow-up passes all three `source_presentation`
+integration tests again and corrects a stale threat-model sentence in `76fec3a15`. This is a
+documented authority change, not an implication that source text may provide arbitrary CSS.
+
 # Preset and capability boundaries
 
 Brutalist and Spotless retain their earlier six native Flowchart/State/Sequence cells. Cyberpunk
@@ -444,8 +451,13 @@ checks pass without contract failures. These figures supersede the pre-upgrade t
 source. The separate adjacent SHA improvement stays valid; neither result closes U10.
 The same-binary stage follow-up finds sub-microsecond parse deltas and 16.50/92.57 µs added family
 SVG emission time in two diagnostic pairs. Layout projection identities differ by 46 bytes per
-fixture, so layout timing is correctly rejected. Stage estimates do not assign the remaining
-end-to-end cost to one owner; emission/finalization and the unmatched layout stage remain open.
+fixture, so layout timing is correctly rejected. A hash-matched projection probe identifies only
+the changed default secure-key list; all other fields, including geometry, match. Four fresh CPU
+captures locate 2,393 of 7,493 current end-to-end main-thread samples in standalone finalization,
+including 2,327 in XML/reference budget checks. Current output adds finalization and admission
+work after family emission that the alpha.6 default path did not perform. These overlapping
+samples support owner-level investigation, not a removable-cost estimate or a theme-only cause.
+The full latency gap and the unmatched layout timing remain open.
 
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
