@@ -99,6 +99,20 @@ use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{apply_shape_data_value_to_node, value_to_bool, value_to_string};
 use subgraph::SubgraphBuilder;
 
+/// Lex the presentation directives shared by Flowchart and Agentflow.
+/// Family-specific mutation order remains the caller's responsibility.
+pub(crate) fn lex_presentation_statement(
+    source: &str,
+) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    let mut lexer = Lexer::new(source);
+    lexer
+        .lex_style_stmt()
+        .or_else(|| lexer.lex_classdef_stmt())
+        .or_else(|| lexer.lex_class_assign_stmt())
+        .or_else(|| lexer.lex_click_stmt())
+        .or_else(|| lexer.lex_link_style_stmt())
+}
+
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
     let mut lexer = Lexer::new(candidate);
     matches!(

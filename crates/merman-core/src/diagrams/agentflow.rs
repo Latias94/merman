@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
+mod presentation;
+pub use presentation::AgentflowPresentation;
+
 /// Semantic kind derived from the authored shape or declaration keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -124,6 +127,9 @@ pub struct AgentflowDiagnostic {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentflowDiagramRenderModel {
+    /// Presentation state is retained for rendering and omitted by the semantic JSON projection.
+    #[serde(default)]
+    pub presentation: AgentflowPresentation,
     pub direction: String,
     #[serde(default)]
     pub diagnostics: Vec<AgentflowDiagnostic>,
@@ -269,6 +275,7 @@ impl AgentflowDiagramRenderModel {
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
+        self.presentation.apply_to_flowchart(&mut model);
         let collapsed = self
             .sub_graphs
             .iter()
@@ -499,6 +506,7 @@ pub(crate) fn render_model_to_compat_json(
         Error::diagram_parse_fallback(meta.diagram_type.clone(), error.to_string())
     })?;
     if let Some(root) = value.as_object_mut() {
+        root.remove("presentation");
         root.insert("type".into(), Value::String(meta.diagram_type.clone()));
         for collection in ["vertices", "subGraphs", "connectors"] {
             if let Some(items) = root.get_mut(collection).and_then(Value::as_array_mut) {
@@ -567,6 +575,7 @@ struct Parser<'a> {
     meta: &'a ParseMetadata,
     control: &'a OperationControl,
     facts: EditorSemanticFacts,
+    presentation: AgentflowPresentation,
     direction: String,
     nodes: Vec<AgentflowNode>,
     node_index: HashMap<String, usize>,
@@ -593,6 +602,7 @@ impl<'a> Parser<'a> {
             meta,
             control,
             facts,
+            presentation: AgentflowPresentation::default(),
             direction: "TB".to_string(),
             nodes: Vec::new(),
             node_index: HashMap::new(),
@@ -765,14 +775,57 @@ impl<'a> Parser<'a> {
                         Err(error) => return Ok(Err(error)),
                     };
                 let id = declaration.id.clone();
-                let label = declaration.label.clone();
-                let metadata = declaration.metadata.clone();
-                let node_index = self.upsert_node(declaration, line_start, line, false);
+                let first = !self.connector_index.contains_key(&id);
+                if first {
+                    // addConnector replaces a pre-existing ordinary vertex, preserving map order.
+                    if let Some(&index) = self.node_index.get(&id) {
+                        self.nodes[index] = AgentflowNode {
+                            id: id.clone(),
+                            label: Some(id.clone()),
+                            shape: None,
+                            vertex_kind: AgentflowVertexKind::Connector,
+                            metadata: Map::new(),
+                            parent_id: None,
+                        };
+                    }
+                    self.presentation
+                        .nodes
+                        .insert(id.clone(), Default::default());
+                }
+                let title = declaration.label.filter(|title| !title.is_empty());
+                let metadata = declaration.metadata;
+                self.upsert_connector(id.clone(), title.clone(), Map::new());
+                let node_index = self.upsert_node(
+                    Declaration {
+                        id: id.clone(),
+                        label: title,
+                        syntax_shape: None,
+                        metadata: Map::new(),
+                        metadata_span: None,
+                        authored_shape: None,
+                        class: None,
+                    },
+                    line_start,
+                    line,
+                    false,
+                );
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
+                if let Some(&index) = self.sub_graph_index.get(&id) {
+                    self.sub_graphs[index].metadata.extend(metadata);
+                } else {
+                    let index = self.connector_index[&id];
+                    self.connectors[index].metadata.extend(metadata);
+                }
                 self.record_members(std::iter::once(id.clone()));
-                self.upsert_connector(id.clone(), label, metadata);
                 self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, false);
                 continue;
+            }
+            match self
+                .parse_presentation_statement(trimmed, line_start + line.find(trimmed).unwrap_or(0))
+            {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(error) => return Ok(Err(error)),
             }
             match self.parse_edge_statement(trimmed, line_start, &line) {
                 Ok(true) => continue,
@@ -797,6 +850,7 @@ impl<'a> Parser<'a> {
             }
         }
         let mut model = AgentflowDiagramRenderModel {
+            presentation: self.presentation.clone(),
             direction: self.direction.clone(),
             diagnostics: self
                 .nodes
@@ -857,6 +911,29 @@ impl<'a> Parser<'a> {
     ) -> std::result::Result<String, ParseFailure> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
+        let class = declaration.class.clone();
+        if declaration.metadata_span.is_some()
+            && (self.sub_graph_index.contains_key(&id) || self.connector_index.contains_key(&id))
+            && !self
+                .edges
+                .iter()
+                .any(|edge| edge.id.as_deref() == Some(&id))
+        {
+            self.upsert_node(
+                Declaration {
+                    id: id.clone(),
+                    label: declaration.label.clone(),
+                    syntax_shape: declaration.syntax_shape.clone(),
+                    metadata: Map::new(),
+                    metadata_span: None,
+                    authored_shape: None,
+                    class: None,
+                },
+                line_start,
+                line,
+                reference,
+            );
+        }
         if declaration.metadata_span.is_some()
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
@@ -872,11 +949,16 @@ impl<'a> Parser<'a> {
             .iter_mut()
             .find(|edge| edge.id.as_deref() == Some(&id))
         {
+            self.presentation
+                .attach_edge_metadata(&id, &declaration.metadata);
             edge.metadata.extend(declaration.metadata);
             self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
         } else {
             declaration.validate_shape()?;
             self.upsert_node(declaration, line_start, line, reference);
+        }
+        if let Some(class) = class {
+            self.assign_class(&id, &class);
         }
         Ok(id)
     }
@@ -999,6 +1081,8 @@ impl<'a> Parser<'a> {
             let counter = if count == 0 { 0 } else { count + 1 };
             edge.id = Some(format!("L_{}_{}_{counter}", edge.start, edge.end));
         }
+        self.presentation
+            .add_edge(edge.id.as_deref().expect("edge id is assigned above"));
         self.edges.push(edge);
         Ok(())
     }
@@ -1017,6 +1101,7 @@ impl<'a> Parser<'a> {
             metadata,
             ..
         } = declaration;
+        self.presentation.nodes.entry(id.clone()).or_default();
         let label = metadata
             .get("label")
             .and_then(Value::as_str)
@@ -1053,6 +1138,11 @@ impl<'a> Parser<'a> {
             self.node_index.insert(id.clone(), index);
             index
         };
+        if let Some(&connector) = self.connector_index.get(&id) {
+            self.nodes[index].vertex_kind = AgentflowVertexKind::Connector;
+            self.connectors[connector].title =
+                self.nodes[index].label.clone().filter(|label| label != &id);
+        }
         self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, reference);
         index
     }
@@ -1509,6 +1599,7 @@ struct Declaration {
     metadata: Map<String, Value>,
     metadata_span: Option<SourceSpan>,
     authored_shape: Option<Value>,
+    class: Option<String>,
 }
 
 impl Declaration {
@@ -1583,6 +1674,18 @@ fn parse_declaration(
         (statement, Map::new())
     };
     let head = head.trim();
+    let (head, class) = if let Some(start) = find_top_level_marker(head, ":::") {
+        let class = head[start + 3..].trim();
+        if !is_style_identifier(class) {
+            return Err(ParseFailure::Syntax {
+                message: "expected class identifier after :::".into(),
+                span: span_of(line_start, line, &head[start..]),
+            });
+        }
+        (&head[..start], Some(class.to_string()))
+    } else {
+        (head, None)
+    };
     let id_end = head
         .find(['[', '(', '{', '<', '>', '|'])
         .unwrap_or(head.len());
@@ -1617,6 +1720,7 @@ fn parse_declaration(
         metadata,
         metadata_span,
         authored_shape,
+        class,
     })
 }
 
@@ -1664,11 +1768,24 @@ fn split_edge_id(source: &str) -> (&str, Option<String>) {
     (prefix.trim_end(), Some(edge_id.to_string()))
 }
 
+fn is_style_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && !value.contains(":::")
+        && !value.contains("==")
+        && value
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || "!#$%&'*+.-/\\_`?:,=".contains(ch))
+}
+
 fn is_identifier(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|ch| !ch.is_whitespace() && ch != '"')
 }
 
 fn find_metadata_start(value: &str) -> Option<usize> {
+    find_top_level_marker(value, "@{")
+}
+
+fn find_top_level_marker(value: &str, marker: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
     let mut escaped = false;
@@ -1687,14 +1804,14 @@ fn find_metadata_start(value: &str) -> Option<usize> {
             quote = Some(ch);
             continue;
         }
-        if ch == '[' || ch == '(' {
+        if depth == 0 && value[index..].starts_with(marker) {
+            return Some(index);
+        }
+        if matches!(ch, '[' | '(' | '{') {
             depth += 1;
         }
-        if ch == ']' || ch == ')' {
+        if matches!(ch, ']' | ')' | '}') {
             depth = depth.saturating_sub(1);
-        }
-        if ch == '@' && value[index..].starts_with("@{") && depth == 0 {
-            return Some(index);
         }
     }
     None
@@ -2366,6 +2483,140 @@ a --> b
         assert_eq!(context.collapsed_replacement("B"), Some("A"));
         assert_eq!(context.collapsed_replacement("a"), Some("A"));
         assert_eq!(context.collapsed_replacement("b"), Some("A"));
+    }
+
+    #[test]
+    fn presentation_directives_preserve_order_without_changing_domain_membership() {
+        let source = "agentflow-beta\nclass a hot\nclassDef hot fill:#ff0000,color:#123456\nclassDef hot stroke:#0000ff\nflow f[Worker]\n a[Task]:::hot --> b\n style ghost fill:#00ff00\nend\nclass f hot\nstyle a stroke-width:3px\nstyle a fill:#ffff00\nclick a href \"https://example.com\" \"Open task\" _blank\n";
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(model.sub_graphs[0].nodes, ["b", "a"]);
+        assert!(
+            model
+                .vertices
+                .iter()
+                .any(|node| node.id == "ghost" && node.parent_id.is_none())
+        );
+        let semantic = render_model_to_compat_json(&model, &meta()).unwrap();
+        assert!(semantic.get("presentation").is_none());
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(
+            flow.class_defs["hot"],
+            ["fill:#ff0000", "color:#123456", "stroke:#0000ff"]
+        );
+        let node = flow.nodes.iter().find(|node| node.id == "a").unwrap();
+        assert_eq!(node.classes, ["af-kind-task", "hot", "clickable"]);
+        assert_eq!(node.styles, ["stroke-width:3px", "fill:#ffff00"]);
+        assert_eq!(node.link.as_deref(), Some("https://example.com/"));
+        assert_eq!(node.link_target.as_deref(), Some("_blank"));
+        assert_eq!(flow.tooltips["a"], "Open task");
+        assert_eq!(flow.subgraphs[0].classes, ["hot"]);
+    }
+
+    #[test]
+    fn edge_style_defaults_and_metadata_follow_source_mutation_order() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\na e@--> b\nlinkStyle default stroke:#ff0000\nlinkStyle 0 interpolate basis stroke:#0000ff\ne@{ animate: true, animation: fast, curve: linear }\nclassDef marked stroke-width:4px\nclass e marked\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(
+            flow.edge_defaults.as_ref().unwrap().style,
+            ["stroke:#ff0000"]
+        );
+        assert_eq!(flow.edges[0].style, ["stroke:#0000ff", "fill:none"]);
+        assert_eq!(flow.edges[0].classes, ["marked"]);
+        assert_eq!(flow.edges[0].interpolate.as_deref(), Some("linear"));
+        assert_eq!(flow.edges[0].animate, Some(true));
+        assert_eq!(flow.edges[0].animation.as_deref(), Some("fast"));
+        assert_eq!(model.edges[0].metadata["curve"], "linear");
+        assert!(
+            parse_agentflow("agentflow-beta\na --> b\nlinkStyle 1 stroke:red\n", &meta()).is_err()
+        );
+    }
+
+    #[test]
+    fn first_connector_declaration_replaces_vertex_state_and_later_declarations_preserve_it() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\na[Old]:::red@{ shape: cloud, instruction: old }\nstyle a fill:red\nconnector a[API]\nclass a blue\nconnector a[Updated]\na[Final]@{ instruction: call }\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert!(model.vertices.is_empty());
+        assert_eq!(model.connectors[0].title.as_deref(), Some("Final"));
+        assert_eq!(
+            model.connectors[0].metadata,
+            serde_json::from_value(json!({"instruction":"call"})).unwrap()
+        );
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(flow.nodes[0].classes, ["af-kind-connector", "blue"]);
+        assert!(flow.nodes[0].styles.is_empty());
+        for source in [
+            "agentflow-beta\na:::red[ignored]\n",
+            "agentflow-beta\na\nclass a red[ignored]\n",
+        ] {
+            assert!(parse_agentflow(source, &meta()).is_err());
+        }
+    }
+
+    #[test]
+    fn default_curve_is_captured_when_an_edge_is_created() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nlinkStyle default interpolate basis\na --> b\nlinkStyle default interpolate linear\nb --> c\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(flow.edges[0].interpolate.as_deref(), Some("basis"));
+        assert_eq!(flow.edges[1].interpolate.as_deref(), Some("linear"));
+    }
+
+    #[test]
+    fn container_vertex_styles_override_container_classes_and_inline_groups_keep_classes() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow f\n a:::red & b:::blue --> c:::green\nend\nclassDef first fill:red\nclass f first\nstyle f stroke:blue\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(flow.subgraphs[0].styles, ["stroke:blue"]);
+        assert!(flow.subgraphs[0].classes.is_empty());
+        for (node, class) in flow.nodes.iter().zip(["red", "blue", "green"]) {
+            assert_eq!(node.classes[1], class);
+        }
+        assert!(model.vertices.iter().all(|node| node.id != "f"));
+    }
+
+    #[test]
+    fn click_callbacks_respect_security_and_directives_reject_unconsumed_content() {
+        for (security, callback) in [("strict", false), ("loose", true)] {
+            let mut metadata = meta();
+            metadata.effective_config =
+                MermaidConfig::from_value(json!({"securityLevel":security}));
+            let model = parse_agentflow_model_for_render_controlled(
+                "agentflow-beta\na\nclick a call test(\"one\", two) \"Run\"\nclick unknown \"https://example.com\"\n",
+                &metadata, &OperationControl::new(),
+            ).unwrap().unwrap();
+            let (flow, _) = model.to_flowchart_model();
+            assert_eq!(flow.nodes.len(), 1);
+            assert_eq!(flow.nodes[0].have_callback, callback);
+            assert_eq!(flow.tooltips["a"], "Run");
+        }
+        for statement in [
+            "classDef hot",
+            "classDef hot[ignored] fill:red",
+            "style a[ignored] fill:red",
+            "style a",
+            "linkStyle default",
+            "class a hot garbage",
+            "click a \"https://example.com\" garbage",
+            "click a callback \"tip\" garbage",
+            "click a \"https://example.com\" _unknown",
+        ] {
+            assert!(
+                parse_agentflow(&format!("agentflow-beta\na\n{statement}\n"), &meta()).is_err(),
+                "{statement}"
+            );
+        }
     }
 
     #[test]

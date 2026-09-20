@@ -487,12 +487,22 @@ pub(super) fn parse_click_stmt(
             return Err(invalid_click_statement(interaction_evidence));
         };
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err(LexError::new("Invalid click target"));
+        }
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(LexError::new("Unexpected content after click statement"));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
@@ -535,13 +545,18 @@ pub(super) fn parse_click_stmt(
             while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
                 p.i += 1;
             }
-            if p.peek() == Some(b')') {
-                p.i += 1;
+            if p.peek() != Some(b')') {
+                return Err(LexError::new("Unterminated click callback arguments"));
             }
+            p.i += 1;
         }
 
         tooltip = p.take_quoted();
         action = ClickAction::Callback;
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(LexError::new("Unexpected content after click statement"));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
@@ -555,12 +570,22 @@ pub(super) fn parse_click_stmt(
 
     if let Some(link) = p.take_quoted() {
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err(LexError::new("Invalid click target"));
+        }
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(LexError::new("Unexpected content after click statement"));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
@@ -587,6 +612,10 @@ pub(super) fn parse_click_stmt(
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
+    p.skip_ws();
+    if p.i != p.s.len() {
+        return Err(LexError::new("Unexpected content after click statement"));
+    }
     Ok(ClickStmt {
         ids,
         id_spans,

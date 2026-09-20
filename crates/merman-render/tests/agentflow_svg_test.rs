@@ -142,3 +142,61 @@ fn agentflow_cyclic_container_references_preserve_visible_nodes() {
         }
     }
 }
+
+#[test]
+fn agentflow_authored_styles_links_and_animation_reach_the_svg() {
+    let input = r#"agentflow-beta LR
+classDef hot fill:#f1e2d3,stroke:#123abc
+flow worker[Worker]
+ a[Task]:::hot e@--> b[Done]
+end
+style b fill:#abc123
+linkStyle default stroke:#314159
+linkStyle 0 stroke:#271828,stroke-width:3px
+e@{ animate: true, animation: fast }
+click a href "https://example.com" "Open task" _blank
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    assert!(
+        artifact.layout_json().unwrap()["semantic"]
+            .get("presentation")
+            .is_none()
+    );
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("class")
+            .is_some_and(|classes| classes.split_whitespace().any(|class| class == "hot"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.tag_name().name() == "a"
+            && node.attributes().any(|attribute| {
+                attribute.name() == "href" && attribute.value() == "https://example.com/"
+            })
+    }));
+    assert!(document.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#abc123"))
+    }));
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("e"))
+        .expect("explicit edge id");
+    assert!(
+        edge.attribute("style")
+            .unwrap_or_default()
+            .contains("#271828")
+    );
+    assert!(
+        edge.attribute("class")
+            .unwrap_or_default()
+            .contains("edge-animation-fast")
+    );
+}
