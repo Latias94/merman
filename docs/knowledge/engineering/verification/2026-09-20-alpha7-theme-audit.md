@@ -46,6 +46,13 @@ The six Web/Typst profiles also pass all 24 existing size-budget metrics without
 Current post-link sizes are 3,691,445 (analysis), 5,219,068 (ASCII), 3,802,668 (editor), 16,314,028
 (full), 13,716,904 (render) and 11,198,698 bytes (Typst); exact archives and hashes are in the record.
 
+The [current CLI/LSP archive record](2026-09-20-cli-lsp-reference-plan-replay.md) also binds
+`f3a783c29`. Both archives pass execute-mode verification. The CLI's fresh qualification and
+reexecution match all 18 SVG/PNG observations for Brutalist, Spotless and Cyberpunk, and its
+archive companion retains 18 HostDependent cells while the shared catalog remains unqualified.
+Version/preparation checks and 110 archive/qualification contract tests pass. This closes the
+current macOS ARM64 archive witness, without extending it to hosted CI or other targets.
+
 The current source acceptance replay also passes
 `cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
 three public Cyberpunk Flowchart, Sequence and XY Chart recipe round-trip tests passed.
@@ -342,11 +349,12 @@ archive rows below:
 | `merman-cli-aarch64-apple-darwin.tar.xz` | 13,745,380 | `a5a132d375f8d04a785898bd75c6adcc960dd9e85afd3cbfdd079f0e00eb15bd` |
 | `merman-lsp-aarch64-apple-darwin.tar.xz` | 4,079,896 | `201313d1b706752bd62b2ec90197f2d2bb07d6a94e2efb97ae2d41328ef106ea` |
 
-The [current-source replay](2026-09-20-cli-lsp-current-archive-replay.md) subsequently rebuilt
-both archives from HEAD `58f3a1531` and passed the same CLI/LSP verifiers with `--execute`. The
-older archives fail against the current tree because their dependency-license projection is
-stale; they are not used as current evidence. The refreshed result remains macOS ARM64 only and
-does not imply Linux, Windows or Intel archive execution.
+The [earlier source replay](2026-09-20-cli-lsp-current-archive-replay.md) rebuilt both archives
+at `58f3a1531` and rejected the preceding archives' stale legal projections. The
+[current graph-reuse replay](2026-09-20-cli-lsp-reference-plan-replay.md) now replaces those
+local archive identities at `f3a783c29`: CLI 13,732,212 bytes and LSP 4,077,460 bytes. Both pass
+`--execute`, and the CLI also passes archive-bound qualification recording and fresh reexecution.
+These are macOS ARM64 observations; Linux, Windows, Intel and hosted CI remain unverified.
 
 Static release preparation also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
 `release-version.py check`, `cli_installation_contract.py` and the preparation-mode changelog
@@ -709,8 +717,8 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
 | Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render at `f3a783c29` pass shared goldens and exact three-family recipe SVG exchange; Typst passes its shared vectors and package consumer; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
-| Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
-| CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
+| Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
+| CLI/LSP archive replay | cargo-dist `f3a783c29` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
 | Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |
 | Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level; ARM64 Apple and external C consumers confirm Class Clear/transparent and source-owned facet precedence; C native exports also exercise supplied fonts and missing glyphs, while Aurora and unexecuted targets remain explicitly Unverified |

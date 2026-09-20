@@ -7,6 +7,10 @@ source_commit: 58f3a15310608a007600afe1fd9cd40083adcfe9
 
 # Result
 
+The [reference-graph refresh](2026-09-20-cli-lsp-reference-plan-replay.md) supersedes these
+local archive identities at `f3a783c29` and adds archive-bound preset qualification replay.
+This record retains the earlier source checkpoint.
+
 The cargo-dist `0.32.0` local ARM64 build was rerun from the current source tree with the
 descriptor-owned `dist` profile and `--artifacts local --target aarch64-apple-darwin`. Both
 current-source archives passed their structural and execute-mode verifiers:
