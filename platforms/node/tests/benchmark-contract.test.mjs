@@ -1347,6 +1347,14 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
     /trusted corpus manifest/i,
   );
 
+  const targetScopedCatalog = structuredClone(report);
+  const targetScopedCatalogDigest = `sha256:${"7".repeat(64)}`;
+  targetScopedCatalog.candidates[1].build_receipt.runtime_catalog_digest =
+    targetScopedCatalogDigest;
+  targetScopedCatalog.candidates[1].footprint.runtime_probe.runtime_catalog_digest =
+    targetScopedCatalogDigest;
+  assert.deepEqual(validateComparisonReport(targetScopedCatalog), targetScopedCatalog);
+
   const oldSchema = structuredClone(report);
   oldSchema.schema_version = 2;
   assert.throws(() => validateComparisonReport(oldSchema), /schema_version must be 3/i);
