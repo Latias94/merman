@@ -41,6 +41,10 @@ The current source acceptance replay also passes
 `cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
 three public Cyberpunk Flowchart, Sequence and XY Chart recipe round-trip tests passed.
 
+The release-mode support discovery gate also passes
+`cargo nextest run --release --locked -p merman-render --lib --test theme_support_discovery_test`
+with the support-manifest selection: 58 tests passed and 2,520 unrelated tests were skipped.
+
 The current literal Modern Mermaid matrix remains useful input coverage: 510 rows across SVG,
 PNG and PDF, with 480 successful outputs and 30 input-specific parse failures. The failures are
 classified as upstream-invalid or parser-specific before theme evaluation. The matrix measures
