@@ -124,7 +124,9 @@ where
             &mut lca_scratch,
         );
         let y_off = y_offset_for_root(root);
-        for lbl in [
+        let missing_section_label =
+            edge_geom::missing_section_label_position(ctx, e, ctx.tx, ctx.ty);
+        for (label_index, lbl) in [
             e.label.as_ref(),
             e.start_label_left.as_ref(),
             e.start_label_right.as_ref(),
@@ -132,7 +134,8 @@ where
             e.end_label_right.as_ref(),
         ]
         .into_iter()
-        .flatten()
+        .enumerate()
+        .filter_map(|(index, label)| label.map(|label| (index, label)))
         {
             let edge_label_padding = if ctx.edge_html_labels && lbl.width > 0.0 && lbl.height > 0.0
             {
@@ -152,12 +155,14 @@ where
                 lbl.height
             };
             let hh = label_height / 2.0;
-            include_rect(
-                lbl.x - hw,
-                lbl.y + y_off - hh,
-                lbl.x + hw,
-                lbl.y + y_off + hh,
-            );
+            let (x, y) = if label_index == 0
+                && let Some(point) = &missing_section_label
+            {
+                (point.x, point.y)
+            } else {
+                (lbl.x, lbl.y)
+            };
+            include_rect(x - hw, y + y_off - hh, x + hw, y + y_off + hh);
         }
     }
 
@@ -240,7 +245,7 @@ where
                 .iter()
                 .filter_map(|edge| ctx.layout_edges_by_id.get(edge.as_ref().id.as_str()))
                 .fold(0usize, |sum, edge| {
-                    sum.saturating_add(edge.points.len().saturating_mul(2).saturating_add(1))
+                    sum.saturating_add(edge.points.len().max(2).saturating_mul(2).saturating_add(1))
                 });
             ctx.work_meter.charge(route_work)?;
         }

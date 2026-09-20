@@ -25,7 +25,7 @@ pub(super) use curve_path::curve_path_d_and_bounds;
 pub(super) use degenerate_path::maybe_collapse_degenerate_subgraph_edge_route;
 pub(super) use elk_points::{
     ElkEndpointAdapterCorners, align_elk_endpoint_adapters_to_route,
-    apply_flowchart_elk_endpoint_cutter,
+    apply_flowchart_elk_endpoint_cutter, missing_section_label_position, missing_section_points,
 };
 pub(super) use fix_corners::maybe_fix_corners;
 pub(super) use intersect::{

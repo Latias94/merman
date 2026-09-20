@@ -15,6 +15,18 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     } = request;
 
     let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    if ctx.uses_elk_adapter_dom && le.points.is_empty() {
+        // Mermaid 12 renders providers without sections as clipped straight lines. Keep the
+        // raw layout empty so a real two-point section still follows the routed-edge path.
+        let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
+        return Some(ClippedEdgeRoute {
+            base_points: points.clone(),
+            points,
+            origin_x,
+            origin_y,
+            elk_endpoint_adapters: super::ElkEndpointAdapterCorners::default(),
+        });
+    }
     if le.points.len() < 2 {
         return None;
     }
@@ -164,13 +176,14 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         elk_endpoint_adapters,
         ..
     } = route;
+    let missing_section = is_elk_layout && le.points.is_empty();
     scratch.tmp_points_a = base_points;
     scratch.tmp_points_b = points;
     let base_points = &scratch.tmp_points_a;
     let points_after_intersect = &scratch.tmp_points_b;
 
     scratch.tmp_points_c.clear();
-    if let Some(tc) = le.to_cluster.as_deref() {
+    if !missing_section && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
         } else {
@@ -183,7 +196,8 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if let Some(fc) = le.from_cluster.as_deref()
+    if !missing_section
+        && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
         scratch.tmp_points_rev.clear();
@@ -206,7 +220,9 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
     let points_for_data_points = &scratch.tmp_points_b;
 
-    let interpolate = if is_elk_layout {
+    let interpolate = if missing_section {
+        "linear"
+    } else if is_elk_layout {
         "rounded"
     } else {
         edge.interpolate
@@ -246,7 +262,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if points_for_render.len() == 1 {
+    if !missing_section && points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
         points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
@@ -321,12 +337,14 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     } else {
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
-    maybe_collapse_degenerate_subgraph_edge_route(
-        ctx,
-        edge,
-        points_for_data_points,
-        &mut line_data,
-    );
+    if !missing_section {
+        maybe_collapse_degenerate_subgraph_edge_route(
+            ctx,
+            edge,
+            points_for_data_points,
+            &mut line_data,
+        );
+    }
 
     let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,

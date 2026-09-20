@@ -81,6 +81,11 @@ fn resolve_flowchart_edge_label_position(
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
     always_recompute: bool,
 ) -> crate::model::LayoutPoint {
+    if let Some(midpoint) =
+        edge_geom::missing_section_label_position(ctx, layout_edge, origin_x, origin_y)
+    {
+        return midpoint;
+    }
     let dagre_anchor = crate::model::LayoutPoint {
         x: label.x + ctx.tx - origin_x,
         y: label.y + ctx.ty - origin_y,

@@ -10,6 +10,45 @@
 use super::super::*;
 use super::{BoundaryNode, boundary_for_node, intersect_for_layout_shape};
 
+pub(in crate::svg::parity::flowchart) fn missing_section_points(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    origin_x: f64,
+    origin_y: f64,
+) -> Option<Vec<crate::model::LayoutPoint>> {
+    let start = boundary_for_node(ctx, &edge.from, origin_x, origin_y)?;
+    let end = boundary_for_node(ctx, &edge.to, origin_x, origin_y)?;
+    let centers = [
+        crate::model::LayoutPoint {
+            x: start.x,
+            y: start.y,
+        },
+        crate::model::LayoutPoint { x: end.x, y: end.y },
+    ];
+    let mut clipped = Vec::new();
+    apply_flowchart_elk_endpoint_cutter(ctx, edge, origin_x, origin_y, &centers, &mut clipped);
+    Some(clipped)
+}
+
+pub(in crate::svg::parity::flowchart) fn missing_section_label_position(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::model::LayoutEdge,
+    origin_x: f64,
+    origin_y: f64,
+) -> Option<crate::model::LayoutPoint> {
+    if !ctx.uses_elk_adapter_dom || !edge.points.is_empty() {
+        return None;
+    }
+    let source = ctx.edges_by_id.get(edge.id.as_str())?;
+    let points = missing_section_points(ctx, source, origin_x, origin_y)?;
+    let first = points.first()?;
+    let last = points.last()?;
+    Some(crate::model::LayoutPoint {
+        x: (first.x + last.x) / 2.0,
+        y: (first.y + last.y) / 2.0,
+    })
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::svg::parity::flowchart) struct ElkEndpointAdapterCorners {
     pub source: bool,

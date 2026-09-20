@@ -3258,6 +3258,63 @@ end
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn flowchart_elk_unrouted_container_edges_are_clipped_and_labels_are_centered() {
+    for algorithm in ["elk.box", "elk.rectpacking"] {
+        let source = format!(
+            "---\nconfig:\n  layout: elk\n  htmlLabels: false\n---\nflowchart TB\nsubgraph G[Container]\nA[Small] edge@-->|wide label sentinel| B[Wider target]\nend\nG@{{algorithm: {algorithm}}}\n"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+            .expect("parse")
+            .expect("diagram");
+        let layout = layout_flowchart_render_model(
+            parsed.clone(),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let raw_edge = layout.edges.iter().find(|edge| edge.id == "edge").unwrap();
+        assert!(
+            raw_edge.points.is_empty(),
+            "the provider must remain unrouted"
+        );
+        let svg = render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+        let points = flowchart_svg_edge_data_points(&svg, "edge");
+        assert_eq!(points.len(), 2, "{algorithm}: {points:?}");
+        for (point, id) in points.iter().zip(["A", "B"]) {
+            let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+            let dx = (point.x - node.x).abs();
+            let dy = (point.y - node.y).abs();
+            assert!(
+                ((dx - node.width / 2.0).abs() < 1e-6 && dy <= node.height / 2.0 + 1e-6)
+                    || ((dy - node.height / 2.0).abs() < 1e-6 && dx <= node.width / 2.0 + 1e-6),
+                "{algorithm}: {id}, {point:?}, {node:?}"
+            );
+        }
+        let (label, _, _) = flowchart_svg_edge_label_geometry(&svg, "edge");
+        assert!((label[0] - (points[0].x + points[1].x) / 2.0).abs() < 1e-6);
+        assert!((label[1] - (points[0].y + points[1].y) / 2.0).abs() < 1e-6);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let path = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some("edge"))
+            .unwrap();
+        let d = path.attribute("d").unwrap();
+        assert!(
+            d.contains('L') && !d.contains('C') && !d.contains('Q'),
+            "{d}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn flowchart_elk_parallel_edge_labels_remain_bound_to_explicit_ids() {
     let svg = render_flowchart_svg_from_text(
         r#"---
