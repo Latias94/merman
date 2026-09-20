@@ -479,10 +479,19 @@ mod tests {
         assert_eq!(runtime["metadata_ids"], json!(["theme-catalog"]));
         #[cfg(feature = "svg")]
         {
-            let expected: Value = serde_json::from_str(include_str!(
+            let mut expected: Value = serde_json::from_str(include_str!(
                 "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
             ))
             .unwrap();
+            let cyberpunk = expected
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|preset| preset["id"] == "cyberpunk")
+                .expect("Cyberpunk preset fixture");
+            cyberpunk["available"] = false.into();
+            cyberpunk["availability_reason_ids"] =
+                serde_json::json!(["theme-preset.resource-policy-rejected"]);
             assert_eq!(catalog["presets"], expected);
             assert_eq!(catalog["supported_output_ids"], json!(["svg"]));
             let encoded_limit = catalog["resource_limits"]

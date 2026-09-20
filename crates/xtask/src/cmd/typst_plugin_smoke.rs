@@ -83,10 +83,21 @@ pub(crate) fn validate_typst_plugin_with_input(
 
     let catalog_payload = call_json(&mut instance, "theme_catalog_json", Vec::new())?;
     let theme_catalog = assert_theme_operation_payload(&catalog_payload, "theme-catalog")?;
-    let expected_presets: JsonValue = serde_json::from_str(include_str!(
+    let mut expected_presets: JsonValue = serde_json::from_str(include_str!(
         "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
     ))
     .map_err(|error| smoke_error(format!("invalid preset catalog fixture: {error}")))?;
+    let cyberpunk = expected_presets
+        .as_array_mut()
+        .and_then(|presets| {
+            presets
+                .iter_mut()
+                .find(|preset| preset["id"] == "cyberpunk")
+        })
+        .ok_or_else(|| smoke_error("Cyberpunk preset fixture is missing"))?;
+    cyberpunk["available"] = false.into();
+    cyberpunk["availability_reason_ids"] =
+        serde_json::json!(["theme-preset.resource-policy-rejected"]);
     if theme_catalog
         .get("schema_version")
         .and_then(JsonValue::as_u64)

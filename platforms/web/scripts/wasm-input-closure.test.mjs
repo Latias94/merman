@@ -67,6 +67,7 @@ const expectedCrateDirectories = {
     "merman-core",
     "merman-editor-core",
     "merman-elk-layered",
+    "merman-export",
     "merman-layout-elk",
     "merman-render",
     "merman-theme-contract",
