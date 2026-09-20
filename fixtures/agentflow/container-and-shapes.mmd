@@ -1,0 +1,8 @@
+agentflow-beta LR
+connector api["API"]
+flow outer["Outer"]@{ view: collapsed }
+  decision["Decide"]@{ shape: decision }
+  tool["Search"]@{ shape: tool }
+  decision -- yes --> tool
+end
+tool --> api

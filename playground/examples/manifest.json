@@ -3,6 +3,41 @@
   "mermaidBaseline": "mermaid@11.17.2",
   "examples": [
     {
+      "diagramType": "agentflow",
+      "id": "agentflow-basic",
+      "title": "Agentflow Basic",
+      "category": "Flow",
+      "order": 1,
+      "aliases": [
+        "agentflow-beta",
+        "workflow",
+        "agent flow"
+      ],
+      "fixture": "fixtures/agentflow/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical Agentflow syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "agentflow",
+      "id": "agentflow-container-and-shapes",
+      "title": "Agentflow Container and Shapes",
+      "category": "Flow",
+      "order": 2,
+      "aliases": [
+        "containers",
+        "shape registry",
+        "collapsed flow"
+      ],
+      "fixture": "fixtures/agentflow/container-and-shapes.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates Agentflow containers, collapse state, and authored shapes."
+      }
+    },
+    {
       "diagramType": "architecture",
       "id": "architecture-services",
       "title": "Architecture Services",

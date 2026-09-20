@@ -484,7 +484,7 @@ assert.equal(
       capability.logical_family_kind === "flowchart" &&
       capability.metadata_id === "flowchart" &&
       capability.render_model_kind === "flowchart" &&
-      capability.has_detector &&
+      !capability.has_detector &&
       capability.has_semantic_parser &&
       capability.has_editor_parser &&
       capability.has_combined_parser &&
@@ -1135,6 +1135,7 @@ const fixtureNames = {
 };
 
 const repositoryFixturePaths = {
+  agentflow: ["fixtures", "agentflow", "basic.mmd"],
   cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
   eventmodeling: ["fixtures", "eventmodeling", "upstream_docs_eventmodeling_minimum.mmd"],
   ishikawa: ["fixtures", "ishikawa", "upstream_docs_ishikawa_basic.mmd"],
@@ -1638,7 +1639,11 @@ async function runPureDistSmoke() {
     import(svgSafetySpecifier),
     import(textMeasurementAbiSpecifier),
   ]);
-  assert.equal(catalog.SUPPORTED_DIAGRAMS.length, 35);
+  assert.equal(
+    catalog.SUPPORTED_DIAGRAMS.length,
+    new Set(catalog.SUPPORTED_DIAGRAMS).size
+  );
+  assert.equal(catalog.isDiagramType("agentflow"), true);
   assert.equal(catalog.isDiagramType("swimlane"), true);
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);

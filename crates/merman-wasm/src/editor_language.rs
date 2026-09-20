@@ -1297,7 +1297,7 @@ mod tests {
             .iter()
             .filter(|example| example["evidence"]["role"] == "family-baseline")
             .collect::<Vec<_>>();
-        assert_eq!(baselines.len(), 35);
+        assert_eq!(baselines.len(), merman_core::supported_diagrams().len());
 
         for example in baselines {
             let family = example["diagramType"].as_str().expect("diagram family");
