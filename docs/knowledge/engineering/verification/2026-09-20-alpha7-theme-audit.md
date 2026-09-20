@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, 4e03b93e7
+source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -216,6 +216,28 @@ midpoints rather than raw samples, compares different native transports and does
 or raster parity gates. The partial renderer is a context reference, not a release-equivalent
 semantic oracle.
 
+An adjacent published-alpha comparison was also run from the exact `v0.8.0-alpha.6` tag
+(`d529f858e`) to a clean current-source clone at `4e03b93e7`, with the same Rust 1.95 toolchain,
+feature set (`svg,layout-elk,layout-cytoscape`) and eight selected fixtures. The full discovery
+receipt is retained at `target/bench/experiments/theme-perf-current-20260920/alpha6-to-alpha7-quick-all.json`.
+Six fixtures were correctly excluded because their SVG identities changed between revisions:
+Flowchart tiny/medium grew from 10,678/76,558 to 11,199/81,318 bytes, Sequence tiny/medium from
+21,276/32,120 to 21,692/32,568, and State tiny/medium from 7,879/42,220 to 7,888/42,285.
+Their timings are therefore not treated as matched regressions.
+
+Class tiny and Class medium retained byte-identical SVG identities and completed the decision-grade
+confirmation at `target/bench/experiments/theme-perf-current-20260920/alpha6-to-alpha7-class-confirmation.json`:
+
+| Fixture | alpha.6 | current | Relative change (95% simultaneous bound) | Absolute change (95% bound) |
+| --- | ---: | ---: | ---: | ---: |
+| class_tiny | 50.42 µs | 202.98 µs | +302.53% (+299.76% to +305.94%) | +152.56 µs (+151.38 to +153.93 µs) |
+| class_medium | 602.61 µs | 1,444.84 µs | +139.77% (+138.61% to +140.74%) | +842.23 µs (+838.38 to +845.30 µs) |
+
+Both rows are `confirmed_regression` under eight calibration/confirmation pairs, 10,000 bootstrap
+resamples, 10% relative and 50 µs absolute thresholds. This is a release-range signal rather than
+theme-only attribution: the current report does not assign the cost to the presentation-theme
+change, and the U10 recovery gate remains open.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
@@ -226,9 +248,10 @@ growth bytes. The owner contract deliberately sets `candidate_admission: false`,
 reproducible memory evidence and a bounded risk signal, not release admission or a matched alpha.6
 comparison.
 
-Matched alpha.6 latency, cold start, themed/native workloads, PNG/PDF throughput, compile/discovery
-cost and same-source archive size comparisons remain unverified. The declared U10 rule still
-treats unavailable metrics as unverified; no default budget or limit was changed.
+Matched alpha.6 latency outside the two Class rows, cold start, themed/native workloads, PNG/PDF
+throughput, compile/discovery cost and same-source archive size comparisons remain unverified. The
+declared U10 rule still treats unavailable metrics as unverified; no default budget or limit was
+changed.
 
 # Open C7a gates
 
