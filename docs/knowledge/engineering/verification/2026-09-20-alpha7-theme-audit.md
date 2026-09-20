@@ -174,6 +174,11 @@ XCFramework builder then completed all three slices (macOS universal, iOS device
 and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
 diagnostic and remains outside the release publication set.
 
+The current-source C ABI consumer smoke was rerun with `cargo nextest run --locked -p merman-ffi
+--test c_consumer_smoke`: both the alpha5 compatibility consumer and the current C consumer passed
+(2/2). This strengthens the native C ABI lane on macOS ARM64; it does not establish the missing
+UniFFI, mobile, or non-macOS host journeys.
+
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
 plan passed the repository's release artifact-bundle verifier for the `macos-15` native
@@ -335,7 +340,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records | Complete for those consumers; C/UniFFI and mobile journeys remain limited to owner smokes |
+| Installed consumer journeys | Python, Node native/WASM, Web browser, Typst package and current C consumer records | Complete for those consumers; UniFFI and mobile journeys remain limited to owner smokes |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Complete for Python and Node native/WASM; broader transport parity remains open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
@@ -357,8 +362,8 @@ The following evidence is still required before C7a can be marked eligible:
   archive route now passes locally; Linux, Windows and Intel archive execution remain open.
 - Installed Web, Typst, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys,
   including the six public customization/resource journeys and explicit resource failures. Web
-  and Typst now pass on macOS ARM64; the remaining C/UniFFI and mobile evidence is still bounded
-  to the owner checks described above.
+  and Typst now pass on macOS ARM64; the current C consumer smoke passes, while UniFFI and mobile
+  evidence is still bounded to the owner checks described above.
 - Linux/Windows native and hosted compiler-floor results; the local Rust 1.95 floor check passes,
   but the current package evidence is macOS ARM64 only.
 - Portable-font, missing-font and controlled-font coverage beyond the named host-dependent cells;
