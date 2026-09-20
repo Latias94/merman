@@ -206,7 +206,10 @@ including the feature-gated shared theme-authoring error vectors. The test loads
 consumer and passes it the Rust API entrypoint; it is not an installed SDK archive replay and
 does not cover all six customization journeys. The captured SVG-enabled output is retained at
 `target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest.log`; `nextest.log` records the
-default-empty ABI check separately.
+default-empty ABI check separately. A current rerun also passed both tests (2/2) with nextest run
+`0a5ea627-05b1-49e7-a345-389c3ef44d42`; its log is
+`target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest-current.log` with SHA-256
+`55e0d12d0ee1cb243d5446ca83c3bcffb98cd67cea553180aaf0beea9c4b3ae7`.
 
 The Apple Swift consumer now executes the shared theme goldens through both the one-shot API and
 a fresh reusable engine: 2 light/dark materializations, 22 support queries, and 5 expected error
