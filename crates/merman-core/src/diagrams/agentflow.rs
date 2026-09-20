@@ -10,7 +10,7 @@ use crate::{
     SourceSpan, family,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 /// Semantic kind derived from the authored shape or declaration keyword.
@@ -70,6 +70,8 @@ pub struct AgentflowEdge {
     pub end: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[serde(skip)]
+    pub is_user_defined_id: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub edge_semantic: AgentflowEdgeSemantic,
@@ -155,95 +157,115 @@ impl AgentflowDiagramRenderModel {
     /// prevents the compatibility model from silently acquiring Flowchart-only fields.
     pub fn to_flowchart_model(
         &self,
-    ) -> Result<(
+    ) -> (
         crate::diagrams::flowchart::FlowchartModel,
         crate::diagrams::flowchart::FlowchartRenderContext,
-    )> {
+    ) {
+        use crate::diagrams::flowchart::{
+            FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowSubgraph,
+            FlowchartModel, FlowchartRenderContext,
+        };
         let nodes = self
             .vertices
             .iter()
             .map(|node| {
-                json!({
-                    "id": node.id,
-                    "label": node.label,
-                    "layoutShape": normalized_render_shape(node.shape.as_deref()),
-                    "shape": normalized_render_shape(node.shape.as_deref()),
-                    "classes": [node.vertex_kind.css_class()],
-                    "styles": []
-                })
+                flow_node(
+                    &node.id,
+                    node.label.clone(),
+                    normalized_render_shape(node.shape.as_deref()),
+                    node.vertex_kind,
+                )
             })
             .chain(self.connectors.iter().map(|connector| {
-                json!({
-                    "id": connector.id,
-                    "label": connector.title.as_deref().unwrap_or(&connector.id),
-                    "layoutShape": "roundedRect",
-                    "shape": "roundedRect",
-                    "classes": ["af-kind-connector"], "styles": []
-                })
+                flow_node(
+                    &connector.id,
+                    Some(
+                        connector
+                            .title
+                            .clone()
+                            .unwrap_or_else(|| connector.id.clone()),
+                    ),
+                    "roundedRect",
+                    AgentflowVertexKind::Connector,
+                )
             }))
-            .collect::<Vec<_>>();
+            .collect();
         let edges = self
             .edges
             .iter()
             .enumerate()
             .map(|(index, edge)| {
-                let arrow = match edge.edge_semantic {
-                    AgentflowEdgeSemantic::Sequence => "-->",
-                    AgentflowEdgeSemantic::Reference => "-.-",
-                    AgentflowEdgeSemantic::Failure => "--x",
+                let (arrow, end_marker, stroke_kind) = match edge.edge_semantic {
+                    AgentflowEdgeSemantic::Sequence => {
+                        ("-->", FlowEdgeMarker::Point, FlowEdgeStroke::Normal)
+                    }
+                    AgentflowEdgeSemantic::Reference => {
+                        ("-.-", FlowEdgeMarker::None, FlowEdgeStroke::Dotted)
+                    }
+                    AgentflowEdgeSemantic::Failure => {
+                        ("--x", FlowEdgeMarker::Cross, FlowEdgeStroke::Normal)
+                    }
                 };
-                json!({
-                    "id": edge.id.clone().unwrap_or_else(|| format!("edge-{index}")),
-                    "from": edge.start,
-                    "to": edge.end,
-                    "label": edge.label,
-                    "type": edge.edge_type,
-                    "arrow": arrow,
-                    "stroke": edge.stroke,
-                    "length": edge.length.max(1),
-                    "classes": [],
-                    "style": []
-                })
+                FlowEdge {
+                    id: edge.id.clone().unwrap_or_else(|| format!("edge-{index}")),
+                    from: edge.start.clone(),
+                    to: edge.end.clone(),
+                    label: edge.label.clone(),
+                    label_type: None,
+                    edge_type: Some(edge.edge_type.clone()),
+                    arrow: arrow.into(),
+                    start_marker: FlowEdgeMarker::None,
+                    end_marker,
+                    is_user_defined_id: edge.is_user_defined_id,
+                    stroke: Some(edge.stroke.clone()),
+                    stroke_kind,
+                    visibility: FlowEdgeVisibility::Visible,
+                    interpolate: None,
+                    classes: Vec::new(),
+                    style: Vec::new(),
+                    animate: None,
+                    animation: None,
+                    length: edge.length.max(1),
+                }
             })
-            .collect::<Vec<_>>();
+            .collect();
         let subgraphs = self
             .sub_graphs
             .iter()
-            .map(|graph| {
-                json!({
-                    "id": graph.id,
-                    "title": graph.title.clone().unwrap_or_default(),
-                    "dir": graph.direction,
-                    "nodes": graph.nodes,
-                    "classes": [],
-                    "styles": [],
-                    "metadata": graph.metadata
-                })
+            .map(|graph| FlowSubgraph {
+                id: graph.id.clone(),
+                title: graph.title.clone().unwrap_or_default(),
+                dir: graph.direction.clone(),
+                has_explicit_dir: graph.direction.is_some(),
+                label_type: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                nodes: graph.nodes.clone(),
+                metadata: (!graph.metadata.is_empty())
+                    .then(|| Value::Object(graph.metadata.clone())),
             })
-            .collect::<Vec<_>>();
-        let mut model: crate::diagrams::flowchart::FlowchartModel = serde_json::from_value(json!({
-            "keyword": "agentflow-beta",
-            "direction": self.direction,
-            "nodes": nodes,
-            "edges": edges,
-            "subgraphs": subgraphs,
-            "classDefs": {},
-            "vertexCalls": [],
-            "tooltips": {}
-        }))
-        .map_err(|error| {
-            Error::diagram_parse_fallback(
-                "agentflow".to_string(),
-                format!("agentflow flow layout projection failed: {error}"),
-            )
-        })?;
+            .collect();
+        let mut model = FlowchartModel {
+            keyword: "agentflow-beta".into(),
+            direction: Some(self.direction.clone()),
+            acc_title: self.acc_title.clone(),
+            acc_descr: self.acc_descr.clone(),
+            class_defs: Default::default(),
+            edge_defaults: None,
+            vertex_calls: Vec::new(),
+            nodes,
+            edges,
+            subgraphs,
+            tooltips: Default::default(),
+            warning_facts: Vec::new(),
+        };
         let collapsed = self
             .sub_graphs
             .iter()
             .filter(|graph| graph.metadata.get("view").and_then(Value::as_str) == Some("collapsed"))
             .map(|graph| graph.id.clone())
             .collect();
-        let context = crate::diagrams::flowchart::FlowchartRenderContext::new(
+        let context = FlowchartRenderContext::new(
             Default::default(),
             Default::default(),
             collapsed,
@@ -260,14 +282,42 @@ impl AgentflowDiagramRenderModel {
             // Agentflow retains authored loops even when their node is collapsed.
             authored_self_loop || edge.from != edge.to
         });
-        Ok((model, context))
+        (model, context)
+    }
+}
+
+fn flow_node(
+    id: &str,
+    label: Option<String>,
+    shape: &str,
+    kind: AgentflowVertexKind,
+) -> crate::diagrams::flowchart::FlowNode {
+    crate::diagrams::flowchart::FlowNode {
+        id: id.to_string(),
+        provenance: Default::default(),
+        label,
+        label_type: None,
+        layout_shape: Some(shape.to_string()),
+        shape: Some(shape.to_string()),
+        icon: None,
+        form: None,
+        pos: None,
+        img: None,
+        constraint: None,
+        asset_width: None,
+        asset_height: None,
+        classes: vec![kind.css_class().into()],
+        styles: Vec::new(),
+        link: None,
+        link_target: None,
+        have_callback: false,
     }
 }
 
 #[derive(Debug)]
-struct ParseFailure {
-    message: String,
-    span: SourceSpan,
+enum ParseFailure {
+    Syntax { message: String, span: SourceSpan },
+    Cancelled(crate::OperationCancelled),
 }
 
 struct Construction {
@@ -377,15 +427,12 @@ fn construct(
             model,
             editor_facts: parser.facts,
         })),
-        Err(failure) => {
+        Err(ParseFailure::Cancelled(cancelled)) => Err(cancelled),
+        Err(ParseFailure::Syntax { message, span }) => {
             let mut facts = parser.facts;
-            facts.mark_recovered_from_parse_error(failure.message.clone(), Some(failure.span));
+            facts.mark_recovered_from_parse_error(message.clone(), Some(span));
             Ok(Err(family::CombinedSemanticFailure::new(
-                Error::diagram_parse_exact(
-                    meta.diagram_type.clone(),
-                    failure.message,
-                    failure.span,
-                ),
+                Error::diagram_parse_exact(meta.diagram_type.clone(), message, span),
                 facts,
             )))
         }
@@ -464,6 +511,17 @@ impl<'a> Parser<'a> {
                     )));
                 }
             };
+            if self.direction == "TD" {
+                self.direction = "TB".to_string();
+            }
+        } else if self.source[header_start + header.len()..]
+            .trim_start_matches([' ', '\t', '\r'])
+            .starts_with(';')
+        {
+            return Ok(Err(self.failure(
+                "a semicolon after the agentflow header requires a direction",
+                SourceSpan::new(header_start, header_start + header.len()),
+            )));
         }
         self.facts
             .push_expected_syntax(crate::EditorExpectedSyntax::new(
@@ -471,32 +529,9 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(header_start, header_start + header.len()),
             ));
 
-        let mut offset = 0usize;
-        let mut lines = self.source.split_inclusive('\n');
-        while let Some(raw) = lines.next() {
+        for (line_start, line) in split_top_level(self.source, b";\n") {
             self.control.checkpoint()?;
-            let line_start = offset;
-            offset += raw.len();
-            let initial_line = raw
-                .strip_suffix('\n')
-                .unwrap_or(raw)
-                .strip_suffix('\r')
-                .unwrap_or(raw);
-            let mut logical_line = initial_line.to_string();
-            while let Some(metadata_start) = find_metadata_start(&logical_line)
-                && matching_brace(&logical_line, metadata_start).is_none()
-            {
-                let Some(next_raw) = lines.next() else {
-                    break;
-                };
-                offset += next_raw.len();
-                logical_line.push('\n');
-                logical_line.push_str(next_raw.strip_suffix('\n').unwrap_or(next_raw));
-            }
-            let line = logical_line;
-            let trimmed = strip_inline_comment(&line)
-                .trim()
-                .trim_start_matches('\u{feff}');
+            let trimmed = line.trim().trim_start_matches('\u{feff}');
             if trimmed.is_empty() || trimmed.starts_with("%%") || trimmed == header {
                 continue;
             }
@@ -559,7 +594,7 @@ impl<'a> Parser<'a> {
                 let (id, label, metadata) = if rest.trim().is_empty() {
                     (format!("flow-{}", self.sub_graphs.len()), None, Map::new())
                 } else {
-                    match parse_declaration(rest.trim(), line_start, &line) {
+                    match parse_declaration(rest.trim(), line_start, &line, self.control) {
                         Ok(value) => value,
                         Err(error) => return Ok(Err(error)),
                     }
@@ -577,11 +612,11 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("connector")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, label, metadata) = match parse_declaration(rest.trim(), line_start, &line)
-                {
-                    Ok(value) => value,
-                    Err(error) => return Ok(Err(error)),
-                };
+                let (id, label, metadata) =
+                    match parse_declaration(rest.trim(), line_start, &line, self.control) {
+                        Ok(value) => value,
+                        Err(error) => return Ok(Err(error)),
+                    };
                 let node_index = self.upsert_node(
                     id.clone(),
                     label.clone(),
@@ -644,7 +679,26 @@ impl<'a> Parser<'a> {
         line_start: usize,
         line: &str,
     ) -> std::result::Result<(), ParseFailure> {
-        let (id, label, metadata) = parse_declaration(statement, line_start, line)?;
+        let start = line_start + line.find(statement).unwrap_or(0);
+        for (offset, node) in split_top_level(statement, b"&") {
+            self.parse_node(node, start + offset, node)?;
+        }
+        if statement.trim_end().ends_with('&') {
+            return Err(self.failure(
+                "expected node after &",
+                SourceSpan::new(start, start + statement.len()),
+            ));
+        }
+        Ok(())
+    }
+
+    fn parse_node(
+        &mut self,
+        statement: &str,
+        line_start: usize,
+        line: &str,
+    ) -> std::result::Result<(), ParseFailure> {
+        let (id, label, metadata) = parse_declaration(statement, line_start, line, self.control)?;
         if id.is_empty() {
             return Err(self.failure(
                 "expected agentflow node identifier",
@@ -687,145 +741,109 @@ impl<'a> Parser<'a> {
         line_start: usize,
         line: &str,
     ) -> std::result::Result<bool, ParseFailure> {
-        let Some(first) = find_operator(statement, 0) else {
+        let Some(mut operator) = find_operator(statement, 0) else {
             return Ok(false);
         };
-        let source = statement[..first.start].trim();
-        if source.is_empty() {
-            return Err(self.failure("expected edge source", span_of(line_start, line, statement)));
-        }
-        let (source, explicit_edge_id) = split_edge_id(source);
+        let statement_start = line_start + line.find(statement).unwrap_or(0);
+        let (source, mut edge_id) = split_edge_id(&statement[..operator.start]);
+        let mut sources = self.parse_endpoint_group(source, statement_start)?;
         loop {
-            let (source_id, source_label, source_meta) =
-                parse_declaration(source, line_start, line)?;
-            let source_idx = self.upsert_node(
-                source_id.clone(),
-                source_label,
-                source_meta,
-                line_start,
-                line,
-                true,
-            );
-            self.assign_parent(&source_id, source_idx);
-            let rhs_start = first.end;
-            let Some(next) = find_operator(statement, rhs_start) else {
-                let target = statement[rhs_start..].trim();
-                if target.is_empty() {
-                    return Err(
-                        self.failure("expected edge target", span_of(line_start, line, statement))
-                    );
-                }
-                let (target_id, target_label, target_meta) =
-                    parse_declaration(target, line_start, line)?;
-                let target_idx = self.upsert_node(
-                    target_id.clone(),
-                    target_label,
-                    target_meta,
-                    line_start,
-                    line,
-                    true,
-                );
-                self.assign_parent(&target_id, target_idx);
-                let mut edge = edge_for(
-                    &source_id,
-                    &target_id,
-                    first.semantic,
-                    first.label.clone(),
-                    first.length,
-                );
-                edge.id = explicit_edge_id.clone();
-                self.push_edge(edge);
-                self.push_symbol(
-                    &target_id,
-                    EditorSemanticKind::Object,
-                    line_start,
-                    line,
-                    true,
-                );
-                return Ok(true);
-            };
-            let target = statement[rhs_start..next.start].trim();
-            if target.is_empty() {
-                return Err(
-                    self.failure("expected edge target", span_of(line_start, line, statement))
-                );
-            }
-            let (target_id, target_label, target_meta) =
-                parse_declaration(target, line_start, line)?;
-            let target_idx = self.upsert_node(
-                target_id.clone(),
-                target_label,
-                target_meta,
-                line_start,
-                line,
-                true,
-            );
-            self.assign_parent(&target_id, target_idx);
-            let mut edge = edge_for(
-                &source_id,
-                &target_id,
-                first.semantic,
-                first.label.clone(),
-                first.length,
-            );
-            edge.id = explicit_edge_id.clone();
-            self.push_edge(edge);
-            self.push_symbol(
-                &target_id,
-                EditorSemanticKind::Object,
-                line_start,
-                line,
-                true,
-            );
-            return self.parse_edge_chain_tail(statement, next, line_start, line, target_id);
-        }
-    }
-
-    fn parse_edge_chain_tail(
-        &mut self,
-        statement: &str,
-        op: Operator,
-        line_start: usize,
-        line: &str,
-        mut source_id: String,
-    ) -> std::result::Result<bool, ParseFailure> {
-        let mut current = op;
-        loop {
-            let next = find_operator(statement, current.end);
+            let next = find_operator(statement, operator.end);
             let target_end = next
                 .as_ref()
                 .map_or(statement.len(), |operator| operator.start);
-            let raw_target = statement[current.end..target_end].trim();
-            if raw_target.is_empty() {
-                return Err(
-                    self.failure("expected edge target", span_of(line_start, line, statement))
-                );
+            let raw_targets = &statement[operator.end..target_end];
+            let (target, next_edge_id) = if next.is_some() {
+                split_edge_id(raw_targets)
+            } else {
+                (raw_targets, None)
+            };
+            let targets = self.parse_endpoint_group(target, statement_start + operator.end)?;
+            // Mermaid emits one link for every source/target pair, then uses the target group
+            // as the source of the next link in a chain.
+            for source in &sources {
+                for target in &targets {
+                    let mut edge = edge_for(
+                        source,
+                        target,
+                        operator.semantic,
+                        operator.label.clone(),
+                        operator.length,
+                    );
+                    if Some(source) == sources.last() && Some(target) == targets.first() {
+                        edge.id = edge_id.clone();
+                    }
+                    self.push_edge(
+                        edge,
+                        SourceSpan::new(statement_start, statement_start + statement.len()),
+                    )?;
+                }
             }
-            let (id, label, metadata) = parse_declaration(raw_target, line_start, line)?;
-            let index = self.upsert_node(id.clone(), label, metadata, line_start, line, true);
-            self.assign_parent(&id, index);
-            self.push_edge(edge_for(
-                &source_id,
-                &id,
-                current.semantic,
-                current.label.clone(),
-                current.length,
-            ));
-            if let Some(next) = next {
-                source_id = id;
-                current = next;
-                continue;
-            }
-            return Ok(true);
+            let Some(next) = next else {
+                return Ok(true);
+            };
+            sources = targets;
+            operator = next;
+            edge_id = next_edge_id;
         }
     }
 
-    fn push_edge(&mut self, mut edge: AgentflowEdge) {
+    fn parse_endpoint_group(
+        &mut self,
+        group: &str,
+        source_start: usize,
+    ) -> std::result::Result<Vec<String>, ParseFailure> {
+        let mut ids = Vec::new();
+        for (offset, endpoint) in split_top_level(group, b"&") {
+            if ids.len() % 128 == 0 {
+                self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
+            }
+            let start = source_start + offset;
+            let (id, label, metadata) = parse_declaration(endpoint, start, endpoint, self.control)?;
+            let index = self.upsert_node(id.clone(), label, metadata, start, endpoint, true);
+            self.assign_parent(&id, index);
+            ids.push(id);
+        }
+        if ids.is_empty() || group.trim_end().ends_with('&') {
+            return Err(self.failure(
+                "expected edge endpoint",
+                SourceSpan::new(source_start, source_start + group.len()),
+            ));
+        }
+        Ok(ids)
+    }
+
+    fn push_edge(
+        &mut self,
+        mut edge: AgentflowEdge,
+        span: SourceSpan,
+    ) -> std::result::Result<(), ParseFailure> {
+        if self.edges.len() % 128 == 0 {
+            self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
+        }
+        let limit = self
+            .meta
+            .effective_config
+            .as_value()
+            .get("maxEdges")
+            .and_then(Value::as_f64)
+            .unwrap_or(500.0);
+        if self.edges.len() as f64 >= limit {
+            return Err(self.failure(
+                format!(
+                    "Edge limit exceeded. {} edges found, but the limit is {limit}.",
+                    self.edges.len()
+                ),
+                span,
+            ));
+        }
+        edge.is_user_defined_id = edge.id.is_some();
         if edge.id.as_ref().is_none_or(|id| {
             self.edges
                 .iter()
                 .any(|existing| existing.id.as_ref() == Some(id))
         }) {
+            edge.is_user_defined_id = false;
             let count = self
                 .edges
                 .iter()
@@ -835,6 +853,7 @@ impl<'a> Parser<'a> {
             edge.id = Some(format!("L_{}_{}_{counter}", edge.start, edge.end));
         }
         self.edges.push(edge);
+        Ok(())
     }
 
     fn upsert_node(
@@ -1011,7 +1030,7 @@ impl<'a> Parser<'a> {
     }
 
     fn failure(&self, message: impl Into<String>, span: SourceSpan) -> ParseFailure {
-        ParseFailure {
+        ParseFailure::Syntax {
             message: message.into(),
             span,
         }
@@ -1043,6 +1062,7 @@ fn edge_for(
         start: start.to_string(),
         end: end.to_string(),
         id: None,
+        is_user_defined_id: false,
         label,
         edge_semantic: semantic,
         edge_type: edge_type.to_string(),
@@ -1151,25 +1171,72 @@ fn vertex_kind(shape: Option<&str>) -> AgentflowVertexKind {
     }
 }
 
+fn opens_quote(source: &str, index: usize) -> bool {
+    matches!(source.as_bytes()[index], b'"' | b'\'')
+        && source[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_alphanumeric() && ch != '_')
+}
+
+/// Yield borrowed statements without splitting quoted labels, shapes or metadata blocks.
+fn split_top_level<'a>(
+    source: &'a str,
+    separators: &'static [u8],
+) -> impl Iterator<Item = (usize, &'a str)> {
+    let mut cursor = 0;
+    std::iter::from_fn(move || {
+        if cursor >= source.len() {
+            return None;
+        }
+        let start = cursor;
+        let mut depth = 0usize;
+        let mut quote = None;
+        let mut escaped = false;
+        while cursor < source.len() {
+            let byte = source.as_bytes()[cursor];
+            if let Some(delimiter) = quote {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == delimiter {
+                    quote = None;
+                }
+            } else if opens_quote(source, cursor) {
+                quote = Some(byte);
+            } else if depth == 0 && source.as_bytes()[cursor..].starts_with(b"%%") {
+                let end = cursor;
+                cursor = source[cursor..]
+                    .find('\n')
+                    .map_or(source.len(), |n| cursor + n + 1);
+                return Some((start, &source[start..end]));
+            } else if matches!(byte, b'[' | b'(' | b'{') {
+                depth += 1;
+            } else if matches!(byte, b']' | b')' | b'}') {
+                depth = depth.saturating_sub(1);
+            } else if depth == 0 && separators.contains(&byte) {
+                let end = cursor;
+                cursor += 1;
+                return Some((start, &source[start..end]));
+            }
+            cursor += 1;
+        }
+        Some((start, &source[start..]))
+    })
+}
+
 fn first_content_line(source: &str) -> Option<(usize, &str)> {
-    let mut offset = 0;
     let mut frontmatter = false;
-    for raw in source.split_inclusive('\n') {
-        let line = raw
-            .strip_suffix('\n')
-            .unwrap_or(raw)
-            .strip_suffix('\r')
-            .unwrap_or(raw);
+    for (offset, line) in split_top_level(source, b";\n") {
         let trimmed = line.trim().trim_start_matches('\u{feff}');
         if trimmed == "---" {
             frontmatter = !frontmatter;
-            offset += raw.len();
             continue;
         }
-        if !frontmatter && trimmed.starts_with("agentflow-beta") {
+        if !frontmatter && !trimmed.is_empty() {
             return Some((offset + line.find(trimmed).unwrap_or(0), trimmed));
         }
-        offset += raw.len();
     }
     None
 }
@@ -1179,52 +1246,26 @@ fn span_of(line_start: usize, line: &str, value: &str) -> SourceSpan {
     SourceSpan::new(line_start + start, line_start + start + value.len())
 }
 
-fn strip_inline_comment(value: &str) -> &str {
-    let bytes = value.as_bytes();
-    let mut quote = None;
-    let mut depth = 0usize;
-    let mut index = 0usize;
-    while index + 1 < bytes.len() {
-        let ch = bytes[index] as char;
-        if let Some(q) = quote {
-            if ch == q && (index == 0 || bytes[index - 1] != b'\\') {
-                quote = None;
-            }
-            index += 1;
-            continue;
-        }
-        if ch == '"' || ch == '\'' {
-            quote = Some(ch);
-            index += 1;
-            continue;
-        }
-        if matches!(ch, '[' | '(' | '{') {
-            depth += 1;
-        } else if matches!(ch, ']' | ')' | '}') {
-            depth = depth.saturating_sub(1);
-        } else if depth == 0 && bytes[index] == b'%' && bytes[index + 1] == b'%' {
-            return &value[..index];
-        }
-        index += 1;
-    }
-    value
-}
-
 fn find_operator(source: &str, from: usize) -> Option<Operator> {
     let bytes = source.as_bytes();
     let mut depth = 0usize;
     let mut quote = None;
+    let mut escaped = false;
     let mut index = from;
     while index < bytes.len() {
         let ch = bytes[index] as char;
         if let Some(q) = quote {
-            if ch == q && (index == 0 || bytes[index - 1] != b'\\') {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
                 quote = None;
             }
             index += 1;
             continue;
         }
-        if ch == '"' || ch == '\'' {
+        if opens_quote(source, index) {
             quote = Some(ch);
             index += 1;
             continue;
@@ -1240,58 +1281,27 @@ fn find_operator(source: &str, from: usize) -> Option<Operator> {
             continue;
         }
         if depth == 0 && bytes[index] == b'-' {
-            if source[index..].starts_with("-.-") {
-                let mut end = index + 3;
-                let mut label = None;
-                if source[end..].starts_with('|')
-                    && let Some(close) = source[end + 1..].find('|')
+            if let Some(mut operator) = link_at(source, index) {
+                let end = operator.end;
+                let label_start = end + source[end..].len() - source[end..].trim_start().len();
+                if source[label_start..].starts_with('|')
+                    && let Some(close) = source[label_start + 1..].find('|')
                 {
-                    let close = end + 1 + close;
-                    label = Some(unquote(source[end + 1..close].trim()));
-                    end = close + 1;
+                    let close = label_start + 1 + close;
+                    operator.label = Some(unquote(source[label_start + 1..close].trim()));
+                    operator.end = close + 1;
                 }
-                return Some(Operator {
-                    start: index,
-                    end,
-                    semantic: AgentflowEdgeSemantic::Reference,
-                    length: 1,
-                    label,
-                });
-            }
-            if source[index..].starts_with("-->") || source[index..].starts_with("--x") {
-                let semantic = if source[index..].starts_with("--x") {
-                    AgentflowEdgeSemantic::Failure
-                } else {
-                    AgentflowEdgeSemantic::Sequence
-                };
-                let mut end = index + 3;
-                let mut label = None;
-                if source[end..].starts_with('|')
-                    && let Some(close) = source[end + 1..].find('|')
-                {
-                    let close = end + 1 + close;
-                    label = Some(unquote(source[end + 1..close].trim()));
-                    end = close + 1;
-                }
-                return Some(Operator {
-                    start: index,
-                    end,
-                    semantic,
-                    length: 1,
-                    label,
-                });
+                return Some(operator);
             }
             if source[index..].starts_with("--") {
                 let label_start = index + 2;
-                if let Some((arrow_start, arrow_end, semantic)) =
-                    find_labeled_arrow(source, label_start)
-                {
-                    let label = source[label_start..arrow_start].trim();
+                if let Some(arrow) = find_labeled_arrow(source, label_start) {
+                    let label = source[label_start..arrow.start].trim();
                     return Some(Operator {
                         start: index,
-                        end: arrow_end,
-                        semantic,
-                        length: 1,
+                        end: arrow.end,
+                        semantic: arrow.semantic,
+                        length: arrow.length,
                         label: (!label.is_empty()).then(|| unquote(label)),
                     });
                 }
@@ -1302,48 +1312,71 @@ fn find_operator(source: &str, from: usize) -> Option<Operator> {
     None
 }
 
-fn find_labeled_arrow(source: &str, from: usize) -> Option<(usize, usize, AgentflowEdgeSemantic)> {
-    for (offset, ch) in source[from..].char_indices() {
-        if ch != '-' {
-            continue;
+fn link_at(source: &str, start: usize) -> Option<Operator> {
+    let bytes = &source.as_bytes()[start..];
+    let (width, semantic, length) = if bytes.starts_with(b"--") {
+        let dashes = bytes.iter().take_while(|&&byte| byte == b'-').count();
+        let semantic = match bytes.get(dashes) {
+            Some(b'>') => AgentflowEdgeSemantic::Sequence,
+            Some(b'x') => AgentflowEdgeSemantic::Failure,
+            _ => return None,
+        };
+        (dashes + 1, semantic, dashes - 1)
+    } else if bytes.starts_with(b"-.") {
+        let dots = bytes[1..].iter().take_while(|&&byte| byte == b'.').count();
+        if bytes.get(dots + 1) != Some(&b'-') {
+            return None;
         }
-        let index = from + offset;
-        if source[index..].starts_with("-->") || source[index..].starts_with("--x") {
-            let semantic = if source[index..].starts_with("--x") {
-                AgentflowEdgeSemantic::Failure
-            } else {
-                AgentflowEdgeSemantic::Sequence
-            };
-            return Some((index, index + 3, semantic));
-        }
-    }
-    None
+        (dots + 2, AgentflowEdgeSemantic::Reference, dots)
+    } else {
+        return None;
+    };
+    Some(Operator {
+        start,
+        end: start + width,
+        semantic,
+        length: length.min(10),
+        label: None,
+    })
+}
+
+fn find_labeled_arrow(source: &str, from: usize) -> Option<Operator> {
+    source[from..]
+        .char_indices()
+        .filter(|(_, ch)| *ch == '-')
+        .find_map(|(offset, _)| {
+            link_at(source, from + offset)
+                .filter(|operator| operator.semantic != AgentflowEdgeSemantic::Reference)
+        })
 }
 
 fn parse_declaration(
     statement: &str,
     line_start: usize,
     line: &str,
+    control: &OperationControl,
 ) -> std::result::Result<(String, Option<String>, Map<String, Value>), ParseFailure> {
     let statement = statement.trim().trim_end_matches(';').trim();
     if statement.is_empty() {
-        return Err(ParseFailure {
+        return Err(ParseFailure::Syntax {
             message: "expected declaration".to_string(),
             span: span_of(line_start, line, statement),
         });
     }
     let metadata_start = find_metadata_start(statement);
     let (head, metadata) = if let Some(start) = metadata_start {
-        let end = matching_brace(statement, start).ok_or_else(|| ParseFailure {
+        let end = matching_brace(statement, start).ok_or_else(|| ParseFailure::Syntax {
             message: "unterminated agentflow metadata".to_string(),
             span: span_of(line_start, line, statement),
         })?;
         (
             &statement[..start],
-            parse_metadata(&statement[start + 2..end - 1]).map_err(|message| ParseFailure {
-                message,
-                span: span_of(line_start, line, &statement[start..end]),
-            })?,
+            parse_metadata(&statement[start + 2..end - 1], control)
+                .map_err(ParseFailure::Cancelled)?
+                .map_err(|message| ParseFailure::Syntax {
+                    message,
+                    span: span_of(line_start, line, &statement[start..end]),
+                })?,
         )
     } else {
         (statement, Map::new())
@@ -1359,7 +1392,7 @@ fn parse_declaration(
         .trim()
         .to_string();
     if id.is_empty() {
-        return Err(ParseFailure {
+        return Err(ParseFailure::Syntax {
             message: "expected agentflow node identifier".to_string(),
             span: span_of(line_start, line, head),
         });
@@ -1368,7 +1401,7 @@ fn parse_declaration(
     let mut metadata = metadata;
     let (label, shape) = parse_label(remainder);
     if head[..id_end].trim() != id || (!remainder.is_empty() && shape.is_none()) {
-        return Err(ParseFailure {
+        return Err(ParseFailure::Syntax {
             message: "invalid agentflow declaration or unsupported edge operator".into(),
             span: span_of(line_start, line, statement),
         });
@@ -1410,6 +1443,7 @@ fn parse_label(remainder: &str) -> (Option<String>, Option<&'static str>) {
 }
 
 fn split_edge_id(source: &str) -> (&str, Option<String>) {
+    let source = source.trim_end();
     let Some(separator) = source.rfind(char::is_whitespace) else {
         return (source, None);
     };
@@ -1425,24 +1459,25 @@ fn split_edge_id(source: &str) -> (&str, Option<String>) {
 }
 
 fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    !value.is_empty() && value.chars().all(|ch| !ch.is_whitespace() && ch != '"')
 }
 
 fn find_metadata_start(value: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
+    let mut escaped = false;
     for (index, ch) in value.char_indices() {
         if let Some(q) = quote {
-            if ch == q {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' && q == '"' {
+                escaped = true;
+            } else if ch == q {
                 quote = None;
             }
             continue;
         }
-        if ch == '"' || ch == '\'' {
+        if opens_quote(value, index) {
             quote = Some(ch);
             continue;
         }
@@ -1462,15 +1497,20 @@ fn find_metadata_start(value: &str) -> Option<usize> {
 fn matching_brace(value: &str, start: usize) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
+    let mut escaped = false;
     for (index, ch) in value[start..].char_indices() {
         let index = start + index;
         if let Some(q) = quote {
-            if ch == q {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' && q == '"' {
+                escaped = true;
+            } else if ch == q {
                 quote = None;
             }
             continue;
         }
-        if ch == '"' || ch == '\'' {
+        if opens_quote(value, index) {
             quote = Some(ch);
             continue;
         }
@@ -1487,70 +1527,91 @@ fn matching_brace(value: &str, start: usize) -> Option<usize> {
     None
 }
 
-fn parse_metadata(body: &str) -> std::result::Result<Map<String, Value>, String> {
-    let mut result = Map::new();
-    let normalized = normalize_block_scalars(body);
-    for part in split_metadata(&normalized) {
-        let Some((key, value)) = split_once_unquoted(part, ':') else {
-            return Err(format!("invalid agentflow metadata entry: {part}"));
-        };
-        let key = unquote(key.trim());
-        if key.is_empty() {
-            return Err("agentflow metadata key cannot be empty".to_string());
+fn parse_metadata(
+    body: &str,
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
+    let mut result = crate::inline_config::parse_mermaid_inline_object_controlled(body, control)?;
+    if result.is_err() && body.contains('\n') {
+        let stripped = strip_line_trailing_commas(body);
+        if stripped != body {
+            if let Ok(value) =
+                crate::inline_config::parse_mermaid_inline_object_controlled(&stripped, control)?
+            {
+                result = Ok(value);
+            }
         }
-        result.insert(
-            key,
-            strip_prototype_keys(parse_metadata_value(value.trim())),
-        );
     }
-    Ok(result)
+    Ok(result.and_then(|value| match strip_prototype_keys(value) {
+        Value::Null => Ok(Map::new()),
+        Value::Object(object) => Ok(object),
+        _ => Err("agentflow metadata must be an object".to_string()),
+    }))
 }
 
-fn normalize_block_scalars(body: &str) -> String {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut output = Vec::with_capacity(lines.len());
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = lines[index];
-        let Some((key, value)) = split_once_unquoted(line.trim(), ':') else {
-            output.push(line.to_string());
-            index += 1;
-            continue;
-        };
-        let marker = value.trim();
-        if marker != "|" && marker != ">" {
-            output.push(line.to_string());
-            index += 1;
-            continue;
+/// Mermaid retries invalid block YAML once after removing syntactically trailing commas.
+fn strip_line_trailing_commas(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut quote = None;
+    let mut flow_depth = 0usize;
+    let mut scalar_indent = None;
+    for (line_index, line) in body.split('\n').enumerate() {
+        if line_index != 0 {
+            out.push('\n');
         }
         let indent = line.len() - line.trim_start().len();
-        let mut content = Vec::new();
-        index += 1;
-        while index < lines.len() {
-            let candidate = lines[index];
-            let candidate_trimmed = candidate.trim();
-            let candidate_indent = candidate.len() - candidate.trim_start().len();
-            if !candidate_trimmed.is_empty()
-                && candidate_indent <= indent
-                && split_once_unquoted(candidate_trimmed, ':').is_some()
-            {
-                break;
-            }
-            content.push(candidate.trim());
-            index += 1;
+        if scalar_indent.is_some_and(|base| line.trim().is_empty() || indent > base) {
+            out.push_str(line);
+            continue;
         }
-        let joined = if marker == "|" {
-            format!("{}\n", content.join("\n"))
+        scalar_indent = None;
+        let mut escaped = false;
+        let mut comment = line.len();
+        for (index, ch) in line.char_indices() {
+            if let Some(q) = quote {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' && q == '"' {
+                    escaped = true;
+                } else if ch == q {
+                    quote = None;
+                }
+            } else if ch == '"' || ch == '\'' {
+                quote = Some(ch);
+            } else if ch == '#'
+                && (index == 0 || matches!(line.as_bytes()[index - 1], b' ' | b'\t'))
+            {
+                comment = index;
+                break;
+            } else if matches!(ch, '[' | '{') {
+                flow_depth += 1;
+            } else if matches!(ch, ']' | '}') {
+                flow_depth = flow_depth.saturating_sub(1);
+            }
+        }
+        if quote.is_some() || flow_depth > 0 {
+            out.push_str(line);
+            continue;
+        }
+        let code = &line[..comment];
+        let trimmed = code.trim_end_matches([' ', '\t']);
+        if code.rsplit_once(':').is_some_and(|(_, value)| {
+            let value = value.trim();
+            value.starts_with(['|', '>'])
+                && value[1..]
+                    .chars()
+                    .all(|ch| ch.is_ascii_digit() || ch == '+' || ch == '-')
+        }) {
+            scalar_indent = Some(indent);
+            out.push_str(line);
+        } else if let Some(code) = trimmed.strip_suffix(',') {
+            out.push_str(code);
+            out.push_str(&line[trimmed.len()..]);
         } else {
-            format!("{}\n", content.join(" "))
-        };
-        let escaped = joined
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('\n', "\\n");
-        output.push(format!("{}: \"{}\"", key.trim(), escaped));
+            out.push_str(line);
+        }
     }
-    output.join("\n")
+    out
 }
 
 fn strip_prototype_keys(value: Value) -> Value {
@@ -1569,96 +1630,6 @@ fn strip_prototype_keys(value: Value) -> Value {
         ),
         other => other,
     }
-}
-
-fn split_metadata(value: &str) -> Vec<&str> {
-    let mut result = Vec::new();
-    let mut start = 0;
-    let mut depth = 0usize;
-    let mut quote = None;
-    for (index, ch) in value.char_indices() {
-        if let Some(q) = quote {
-            if ch == q {
-                quote = None;
-            }
-            continue;
-        }
-        if ch == '"' || ch == '\'' {
-            quote = Some(ch);
-            continue;
-        }
-        if matches!(ch, '[' | '{' | '(') {
-            depth += 1;
-        }
-        if matches!(ch, ']' | '}' | ')') {
-            depth = depth.saturating_sub(1);
-        }
-        if (ch == ',' || ch == '\n') && depth == 0 {
-            if !value[start..index].trim().is_empty() {
-                result.push(value[start..index].trim());
-            }
-            start = index + ch.len_utf8();
-        }
-    }
-    if !value[start..].trim().is_empty() {
-        result.push(value[start..].trim());
-    }
-    result
-}
-
-fn split_once_unquoted(value: &str, separator: char) -> Option<(&str, &str)> {
-    let mut quote = None;
-    let mut depth = 0usize;
-    for (index, ch) in value.char_indices() {
-        if let Some(q) = quote {
-            if ch == q {
-                quote = None;
-            }
-            continue;
-        }
-        if ch == '"' || ch == '\'' {
-            quote = Some(ch);
-            continue;
-        }
-        if matches!(ch, '[' | '{' | '(') {
-            depth += 1;
-        }
-        if matches!(ch, ']' | '}' | ')') {
-            depth = depth.saturating_sub(1);
-        }
-        if ch == separator && depth == 0 {
-            return Some((&value[..index], &value[index + separator.len_utf8()..]));
-        }
-    }
-    None
-}
-
-fn parse_metadata_value(value: &str) -> Value {
-    if value.eq_ignore_ascii_case("true") {
-        return Value::Bool(true);
-    }
-    if value.eq_ignore_ascii_case("false") {
-        return Value::Bool(false);
-    }
-    if value.eq_ignore_ascii_case("null") {
-        return Value::Null;
-    }
-    if let Ok(number) = value.parse::<i64>() {
-        return Value::Number(number.into());
-    }
-    if let Ok(number) = value.parse::<f64>() {
-        if let Some(number) = serde_json::Number::from_f64(number) {
-            return Value::Number(number);
-        }
-    }
-    if (value.starts_with('[') && value.ends_with(']'))
-        || (value.starts_with('{') && value.ends_with('}'))
-    {
-        if let Ok(parsed) = json5::from_str::<Value>(value) {
-            return parsed;
-        }
-    }
-    Value::String(unquote(value))
 }
 
 fn unquote(value: &str) -> String {
@@ -1680,6 +1651,7 @@ fn unquote(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::{MermaidConfig, OperationControl};
+    use serde_json::json;
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -1769,6 +1741,8 @@ mod tests {
         assert_eq!(model.edges[0].metadata["instruction"], "hand off");
         assert_eq!(model.edges[0].metadata["weight"], 5);
         assert_eq!(model.vertices.len(), 2);
+        let (flow, _) = model.to_flowchart_model();
+        assert!(flow.edges[0].is_user_defined_id);
     }
 
     #[test]
@@ -1812,6 +1786,112 @@ mod tests {
     }
 
     #[test]
+    fn statement_separators_preserve_quoted_and_metadata_content() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta LR; flow f[Worker]; a[\"甲; %% literal\"]@{instruction: \"read; write\"}; a --> b; end; %% ignored; c\nconnector api[API]; b --> api",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(model.vertices.len(), 2);
+        assert_eq!(model.vertices[0].label.as_deref(), Some("甲; %% literal"));
+        assert_eq!(model.vertices[0].metadata["instruction"], "read; write");
+        assert_eq!(model.sub_graphs[0].nodes, ["a", "b"]);
+        assert_eq!(model.edges.len(), 2);
+        assert_eq!(model.connectors[0].id, "api");
+    }
+
+    #[test]
+    fn endpoint_groups_expand_in_order_with_one_explicit_id() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta TD; a[A & label] & b 边@---> c & d next@--x e; c -..- |reference| e",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let links = model
+            .edges
+            .iter()
+            .map(|edge| (edge.start.as_str(), edge.end.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            links,
+            [
+                ("a", "c"),
+                ("a", "d"),
+                ("b", "c"),
+                ("b", "d"),
+                ("c", "e"),
+                ("d", "e"),
+                ("c", "e")
+            ]
+        );
+        assert_eq!(model.edges[2].id.as_deref(), Some("边"));
+        assert_eq!(model.edges[5].id.as_deref(), Some("next"));
+        assert_eq!(model.edges[0].length, 2);
+        assert_eq!(model.edges[6].length, 2);
+        assert_eq!(model.edges[6].label.as_deref(), Some("reference"));
+        assert_eq!(model.direction, "TB");
+        assert_eq!(model.vertices[0].label.as_deref(), Some("A & label"));
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(
+            flow.edges
+                .iter()
+                .filter(|edge| edge.is_user_defined_id)
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn endpoint_expansion_obeys_the_secure_edge_limit() {
+        let mut meta = meta();
+        meta.effective_config = MermaidConfig::from_value(json!({"maxEdges": 3}));
+        let result = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\na & b --> c & d",
+            &meta,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Edge limit exceeded")
+        );
+    }
+
+    #[test]
+    fn metadata_uses_yaml_nesting_and_preserves_literal_commas() {
+        let model = parse_agentflow_model_for_render_controlled(
+            r#"agentflow-beta
+a[Don't stop]@{
+  shape: task,
+  instruction: "don't \"stop\"", # trailing comma
+  details:
+    retries: 3
+    enabled: true
+  lines: |
+    keep, commas,
+}
+a --> b
+"#,
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let node = &model.vertices[0];
+        assert_eq!(node.label.as_deref(), Some("Don't stop"));
+        assert_eq!(node.metadata["instruction"], "don't \"stop\"");
+        assert_eq!(
+            node.metadata["details"],
+            json!({"retries": 3, "enabled": true})
+        );
+        assert_eq!(node.metadata["lines"], "keep, commas,\n");
+        assert_eq!(model.edges.len(), 1);
+    }
+
+    #[test]
     fn semantic_projection_strips_presentation_but_keeps_domain_metadata() {
         let json = parse_agentflow("agentflow-beta\nflow f@{ view: collapsed, instruction: run }\n a@{ shape: decision, icon: test, instruction: decide }\nend\na --> b\n", &meta()).unwrap();
         assert_eq!(json["vertices"][0]["shape"], "diamond");
@@ -1835,7 +1915,7 @@ mod tests {
             &meta(), &OperationControl::new()).unwrap().unwrap();
         assert!(model.vertices.iter().all(|node| node.id != "api"));
         assert_eq!(model.connectors.len(), 1);
-        let (flow, context) = model.to_flowchart_model().unwrap();
+        let (flow, context) = model.to_flowchart_model();
         let connector = flow.nodes.iter().find(|node| node.id == "api").unwrap();
         assert_eq!(connector.label.as_deref(), Some("API"));
         assert!(context.is_subgraph_collapsed("outer"));
@@ -1871,7 +1951,7 @@ mod tests {
         assert_eq!(model.diagnostics[0].id, "SHAPE_REMOVED");
         assert_eq!(model.diagnostics[1].id, "SHAPE_UNSUPPORTED");
         assert_eq!(model.diagnostics.len(), 2);
-        let (flow, _) = model.to_flowchart_model().unwrap();
+        let (flow, _) = model.to_flowchart_model();
         assert!(
             flow.nodes
                 .iter()
@@ -1888,7 +1968,7 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(model.edges[0].id.as_deref(), Some("L_a_b_0"));
-        let (flow, _) = model.to_flowchart_model().unwrap();
+        let (flow, _) = model.to_flowchart_model();
         assert_eq!(flow.edges.len(), 2);
         assert_eq!((&*flow.edges[0].from, &*flow.edges[0].to), ("f", "f"));
         assert_eq!(

@@ -1673,12 +1673,7 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Agentflow(model) => {
-            let (flowchart, render_context) =
-                model
-                    .to_flowchart_model()
-                    .map_err(|error| Error::InvalidModel {
-                        message: format!("failed to adapt agentflow layout model: {error}"),
-                    })?;
+            let (flowchart, render_context) = model.to_flowchart_model();
             let flow = prepare_flowchart_artifact(
                 flowchart,
                 render_context,
