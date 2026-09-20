@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
+source_commits: f3a783c2944a77bc3b561b29f64b41af450ebe8b, b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, d529f858e, 4e03b93e7
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -29,13 +29,22 @@ CLI matches all 18 scoped SVG/PNG observations, and a detached clean checkout re
 the same qualification object byte-for-byte. The record binds source `a4a04ef1b`, the lockfile,
 qualification executable, CLI and scene record digests.
 
-The [installed-consumer record](2026-09-19-installed-theme-recipe-consumers.md) rebuilds the Python
-wheel, Node Darwin ARM64 package and Node WASM package from clean source `0c1b1047a`. The direct
-versioned recipe is accepted after JSON save/load, complete Cyberpunk files move between separate
-Python and Node processes, and all three transports render identical SVG bytes for Flowchart,
-Sequence and XY Chart. Node contracts pass 109/109 under Node 24.21.0/npm 12.0.2; focused Python
-owner tests pass 27/27. The same tranche repairs the standalone Node lock and regenerates legal
-projections without changing the intended capability recipe.
+The [current Python/Node record](2026-09-21-installed-theme-consumers.md) rebuilds the wheel,
+Darwin ARM64 package and Node WASM package from `f3a783c29`. Fresh installed consumers exchange
+complete versioned Cyberpunk files and render identical Flowchart, Sequence and XY SVG bytes
+in 27 comparisons. Node contracts pass 111/111 under Node 24.21.0/npm 12.0.2, the complete Python
+smoke passes, and focused Python owner tests pass 9/9. The
+[earlier record](2026-09-19-installed-theme-recipe-consumers.md) preserves the initial standalone
+Node lock and legal-projection repairs; its package identities are historical.
+
+The [current Web/Typst record](2026-09-21-web-typst-consumers.md) also binds `f3a783c29`.
+All five Web packages pass the owner matrix and installed Chromium loading. Web full/render
+extend the exact saved-recipe SVG witness to two browser packages, with shared support,
+materialization and error vectors. The Typst publish package passes 22 positive fixtures,
+nine expected failures and shared theme vectors under the explicitly recorded local compiler.
+The six Web/Typst profiles also pass all 24 existing size-budget metrics without changing limits.
+Current post-link sizes are 3,691,445 (analysis), 5,219,068 (ASCII), 3,802,668 (editor), 16,314,028
+(full), 13,716,904 (render) and 11,198,698 bytes (Typst); exact archives and hashes are in the record.
 
 The current source acceptance replay also passes
 `cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
@@ -161,11 +170,11 @@ must not be converted into a support percentage or a rendered-terminal claim.
 
 # Artifact and legal observations
 
-The final installed artifacts are macOS ARM64 observations: Python wheel 9,042,331 bytes, Node
-root package 113,927 bytes, Node native package 10,541,620 bytes and Node WASM package 7,032,865
-bytes. Their embedded native/WASM payloads are recorded with SHA-256 values in the installed
-consumer record. These sizes are current artifact identities, not matched alpha.6 deltas or a
-budget change.
+The current Python/Node artifacts at `f3a783c29` are macOS ARM64 observations: wheel
+9,047,190 bytes, Node root package 113,984 bytes, native package 10,552,336 bytes and Node WASM
+package 7,029,534 bytes. Their embedded payloads and SHA-256 values are recorded in the
+[September 21 installed record](2026-09-21-installed-theme-consumers.md). These are current
+artifact identities, not matched alpha.6 deltas or a budget change.
 
 The 13 Rust license reports pass generator `--check`; release legal projections pass for 382
 files; third-party and package legal checks pass for 24 governed packages; representative
@@ -187,7 +196,7 @@ The Android module's local Kotlin/JVM transport suite also passed with
 tasks). No `adb` device is available in this host, so Android instrumentation and runtime JNI
 execution remain unverified.
 
-The current Web package group was rebuilt from source `7f35c9080` after the profile-aware portable
+The earlier Web package group was rebuilt from source `7f35c9080` after the profile-aware portable
 font smoke repair. Node 24.21.0 with npm 12.0.2 passed the owner smoke matrix, WASM input and
 package verification, and DOM safety smoke for all five packages. A fresh offline npm consumer
 installed all five tarballs and a real headless Chromium consumer loaded each package. Full and
@@ -196,12 +205,12 @@ expected ASCII output. The installed capabilities matched each package recipe, i
 `embedded-fonts` only on the complete package. The package-group legal digest is
 `sha256:027ad254790e94b51b4d9a3322647baff65c86cfb08936ca24ad418bc503ea36`.
 
-The Web WASM size matrix passed the checked-in budgets for all five profiles. Current stripped
+At that checkpoint the Web WASM size matrix passed all five checked-in profile budgets. Stripped
 bytes are 3,691,349 (analysis), 5,218,980 (ascii), 3,802,570 (editor), 16,291,188 (full) and
-13,694,329 (render). The complete Web contract suite now passes 147/147 after the closure
+13,694,329 (render). The complete Web contract suite passed 147/147 after the closure
 expectation was aligned with the current `web-full` ownership of `merman-export`.
 
-The Web owner smoke was rerun from the current checkout after refreshing all five WASM profiles
+The September 20 Web owner smoke was rerun after refreshing all five WASM profiles
 and package artifacts. Build transactions were `2124c76371ac` (full), `182394750950` (analysis),
 `562ca2bf9112` (render), `bc04461cb812` (editor) and `4491a5510907` (ascii). The full smoke then
 passed WASM input verification, package prepack checks, the 35-diagram package matrix and DOM
@@ -209,9 +218,9 @@ safety for all five profiles. The captured log is
 `target/bench/experiments/web-consumer-current-20260920/smoke.log`, SHA-256
 `ab8b44bb8f41a4db62f9eee82ef757e859221a5ce1b984b909204f6d9464a6c2`.
 
-The current Typst WASM artifact was built with the required Binaryen 131 tool and passed the size
+The earlier Typst WASM artifact used the required Binaryen 131 tool and passed the size
 budget: 18,321,200 raw bytes, 11,177,136 stripped bytes, 4,253,078 gzip bytes and 3,144,348
-brotli bytes. Binaryen 131 `typst-package-smoke` now passes the real package consumer: 22 positive
+brotli bytes. That Binaryen 131 `typst-package-smoke` passed the real package consumer: 22 positive
 fixtures, 9 expected compile failures, 22 support vectors, 2 materializations and 3 structured
 errors. The shared catalog remains the metadata source, while the constrained Typst policy projects
 Cyberpunk as unavailable with `theme-preset.resource-policy-rejected`; this is an explicit resource
@@ -302,10 +311,10 @@ transport artifacts retain their separate unverified or historical-source bounda
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
-| Python | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source wheel; no current registry installation or other host evidence |
-| Node Darwin ARM64, Node WASM | Refreshed pack/install smoke, content-capability correction and customized recipe exchange below | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
-| Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
-| Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
+| Python | Fresh installed wheel at `f3a783c29` | Complete UniFFI smoke, shared authoring/support/catalog vectors and exact recipe SVG exchange with Node/Web | Local macOS ARM64 wheel; registry installation and other hosts remain unverified |
+| Node Darwin ARM64, Node WASM | `f3a783c29` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
+| Web browser packages | `f3a783c29` package group and installed Chromium record | Five capability projections, owner matrix/DOM safety and exact full/render recipe exchange with Python/Node | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
+| Typst WASM | `f3a783c29`, Binaryen 131 and Typst 0.15.1 package smoke | 22 positive fixtures, nine expected failures and shared theme vectors; four size metrics pass | CI Typst 0.15.0 remains unexecuted locally; constrained resource rejection does not promote qualification |
 | C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 host reference; packaged source-crate consumption, broader journeys and other hosts remain unverified |
 | Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
 | Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
@@ -699,7 +708,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
 | Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM rebuilt from `f3a783c29` pass installed authoring/support and exact three-family file exchange; Apple retains its local authoring/support/errors, complete preset exchange and scoped Class paint evidence; remaining journeys and other transports stay open |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render at `f3a783c29` pass shared goldens and exact three-family recipe SVG exchange; Typst passes its shared vectors and package consumer; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |

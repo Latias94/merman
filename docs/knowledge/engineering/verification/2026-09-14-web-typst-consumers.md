@@ -2,6 +2,9 @@
 
 Source: `0e0caebdbb3330b7b44f04d2271d3d45a52b92d8`.
 
+The [current-source refresh](2026-09-21-web-typst-consumers.md) supersedes these local
+artifact identities and consumer results at `f3a783c29`; this record retains the earlier snapshot.
+
 ## Result
 
 The canonical Web workspace built all five package profiles from one source. The existing Web
