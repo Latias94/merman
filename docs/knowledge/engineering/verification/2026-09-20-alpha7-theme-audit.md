@@ -285,18 +285,19 @@ shape or source-level tests into release publication evidence.
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
 plan passed the repository's release artifact-bundle verifier for the `macos-15` native
-`aarch64-apple-darwin` route. A serial local build from source `0f5125e75` produced and verified
-both native archives with the real CLI and LSP smoke contracts:
+`aarch64-apple-darwin` route. A serial local build from source `0f5125e75` produced the historical
+archive rows below:
 
 | Archive | Packed bytes | SHA-256 |
 | --- | ---: | --- |
 | `merman-cli-aarch64-apple-darwin.tar.xz` | 13,745,380 | `a5a132d375f8d04a785898bd75c6adcc960dd9e85afd3cbfdd079f0e00eb15bd` |
 | `merman-lsp-aarch64-apple-darwin.tar.xz` | 4,079,896 | `201313d1b706752bd62b2ec90197f2d2bb07d6a94e2efb97ae2d41328ef106ea` |
 
-The archive checks used `scripts/verify_cli_release_archive.py` and
-`scripts/verify_lsp_release_archive.py` with `--execute`, including the generated sidecar
-checksums. These are current-source macOS ARM64 results; they do not imply Linux, Windows or
-Intel archive execution.
+The [current-source replay](2026-09-20-cli-lsp-current-archive-replay.md) subsequently rebuilt
+both archives from HEAD `58f3a1531` and passed the same CLI/LSP verifiers with `--execute`. The
+older archives fail against the current tree because their dependency-license projection is
+stale; they are not used as current evidence. The refreshed result remains macOS ARM64 only and
+does not imply Linux, Windows or Intel archive execution.
 
 Static release preparation also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
 `release-version.py check`, `cli_installation_contract.py` and the preparation-mode changelog
