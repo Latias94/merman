@@ -698,10 +698,10 @@ impl FeatureGraph {
     fn validate_product_feature_contracts(&self) -> Result<usize, XtaskError> {
         let facade = self.package("merman")?;
         let facade_defaults = direct_feature_members(facade, "default")?;
-        let expected_defaults = BTreeSet::from(["complete-svg".to_string()]);
+        let expected_defaults = BTreeSet::from(["complete-svg-elk".to_string()]);
         if facade_defaults != expected_defaults {
             return Err(matrix_error(format!(
-                "{}: merman default must equal `complete-svg`; expected {expected_defaults:?}, found {facade_defaults:?}",
+                "{}: merman default must equal `complete-svg-elk`; expected {expected_defaults:?}, found {facade_defaults:?}",
                 facade.manifest_path.display()
             )));
         }
@@ -730,11 +730,14 @@ impl FeatureGraph {
 
         let rustdoc = self.package("merman-rustdoc")?;
         let rustdoc_defaults = direct_feature_members(rustdoc, "default")?;
-        let expected_rustdoc_defaults =
-            BTreeSet::from(["svg".to_string(), "layout-cytoscape".to_string()]);
+        let expected_rustdoc_defaults = BTreeSet::from([
+            "svg".to_string(),
+            "layout-cytoscape".to_string(),
+            "layout-elk".to_string(),
+        ]);
         if rustdoc_defaults != expected_rustdoc_defaults {
             return Err(matrix_error(format!(
-                "{}: merman-rustdoc default must equal `svg` and `layout-cytoscape`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
+                "{}: merman-rustdoc default must equal `svg`, `layout-cytoscape`, and `layout-elk`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -1333,7 +1336,7 @@ mod tests {
             package(
                 "merman",
                 &[
-                    ("default", &["complete-svg"]),
+                    ("default", &["complete-svg-elk"]),
                     ("complete-svg", &["svg", "layout-cytoscape", "math"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
@@ -1341,7 +1344,7 @@ mod tests {
             package(
                 "merman-rustdoc",
                 &[
-                    ("default", &["svg", "layout-cytoscape"]),
+                    ("default", &["svg", "layout-cytoscape", "layout-elk"]),
                     ("complete-svg", &["svg", "layout-cytoscape", "math"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
@@ -1382,7 +1385,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("default must equal `complete-svg`"),
+                .contains("default must equal `complete-svg-elk`"),
             "{error}"
         );
     }
@@ -1429,9 +1432,9 @@ mod tests {
 
             let error = graph.validate_product_feature_contracts().unwrap_err();
             assert!(
-                error
-                    .to_string()
-                    .contains("merman-rustdoc default must equal `svg` and `layout-cytoscape`"),
+                error.to_string().contains(
+                    "merman-rustdoc default must equal `svg`, `layout-cytoscape`, and `layout-elk`"
+                ),
                 "{error}"
             );
         }

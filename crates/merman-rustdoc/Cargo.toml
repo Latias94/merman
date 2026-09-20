@@ -20,7 +20,7 @@ proc-macro = true
 artifact-profile-required = true
 
 [features]
-default = ["svg", "layout-cytoscape"]
+default = ["svg", "layout-cytoscape", "layout-elk"]
 complete-svg = ["svg", "layout-cytoscape", "math"]
 complete-svg-elk = ["complete-svg", "layout-elk"]
 svg = [

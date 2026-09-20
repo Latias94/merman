@@ -68,16 +68,16 @@ select their own direct leaf set instead.
 
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
-| Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
+| Deterministic SVG in Rust | `merman` | Default `complete-svg-elk`, or `default-features = false, features = ["svg"]` for basic SVG |
 | Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
 | Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
 | Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
-| Complete CLI | `merman-cli` | Default direct leaves without ELK, or the exact `cli-release` recipe with ELK |
+| Complete CLI | `merman-cli` | Default direct leaves including ELK, or the exact `cli-release` recipe |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | CLI `rustdoc`; documented crates consume committed files through native `include_str!` |
-| One-step Rustdoc attributes | `merman-rustdoc` | Default `svg + layout-cytoscape`; add `math` or `complete-svg` for mathematical labels |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `svg + layout-cytoscape + layout-elk`; add `math` or `complete-svg` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The ordinary `merman = { path = "crates/merman" }` dependency uses the same `complete-svg`
+The ordinary `merman = { path = "crates/merman" }` dependency uses the `complete-svg-elk`
 aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
@@ -262,10 +262,11 @@ packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
-features compile SVG and Cytoscape into the proc-macro host. Add `math` for mathematical labels,
+features compile SVG, Cytoscape, and ELK into the proc-macro host. Add `math` for mathematical labels,
 or select `complete-svg` explicitly for SVG, Cytoscape, and math. This smaller default applies to
 the current source and the next release after `0.8.0-alpha.6`; the published alpha.6 macro still
-includes math by default. The `merman` facade default remains `complete-svg`.
+includes math by default. The `merman` facade default is `complete-svg-elk`; `complete-svg`
+remains the explicit lean aggregate.
 The explicit `complete-svg-elk` feature adds the EPL-2.0 ELK closure when a documentation artifact
 needs it. Optional dependency gating can keep that closure out of ordinary builds, but selecting
 the explicit ELK feature, `--all-features`, or an artifact profile that lists `layout-elk` compiles

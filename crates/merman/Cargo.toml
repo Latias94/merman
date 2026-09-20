@@ -45,7 +45,7 @@ artifact-profile-required = true
 [features]
 # The facade is the ergonomic Rust entry point. Low-level implementation crates stay
 # default-empty; this product default intentionally provides a complete deterministic SVG path.
-default = ["complete-svg"]
+default = ["complete-svg-elk"]
 system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]

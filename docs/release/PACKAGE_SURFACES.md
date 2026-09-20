@@ -50,9 +50,9 @@ library for Markdown recognition and HTML embedding, and the renderer owns SVG s
 isolation. The shared library does not depend on either product or select rendering features; it
 is published in the workspace dependency order before both consumers.
 
-In the current source and the next release after `0.8.0-alpha.6`, the macro defaults to `svg` and
-`layout-cytoscape`; mathematical labels require `math` or `complete-svg`. The published alpha.6
-macro still includes math by default. The `merman` facade retains its `complete-svg` default, and
+In the current source and the next release after `0.8.0-alpha.6`, the macro defaults to `svg`,
+`layout-cytoscape`, and `layout-elk`; mathematical labels require `math` or `complete-svg`. The published alpha.6
+macro still includes math by default. The `merman` facade uses `complete-svg-elk` by default, and
 both packages retain their explicit `complete-svg` and `complete-svg-elk` aggregates. Keep the
 macro dependency optional when ordinary builds should avoid its renderer closure; use generated
 fragments when documentation builds must avoid it too. See [ADR-0088](../adr/0088-lean-rustdoc-default-features.md).

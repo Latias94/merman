@@ -42,10 +42,10 @@
 //! - `math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `svg`.
 //!
-//! The default feature set is [`complete-svg`](#features): it supports deterministic SVG
-//! rendering, the Cytoscape layout engine, and math labels without compiling the optional ELK
-//! implementation or ambient system adapters. Add `complete-svg-elk` when the artifact is
-//! intentionally allowed to include the EPL-2.0 ELK closure. Use `default-features = false` with
+//! The default feature set is [`complete-svg-elk`](#features): it supports Mermaid 12's default
+//! ELK SVG path, deterministic rendering, the Cytoscape layout engine, and math labels without
+//! ambient system adapters. Use [`complete-svg`](#features) for the explicit lean SVG aggregate,
+//! or `default-features = false` with
 //! the direct capability leaves when you need a measured artifact closure.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's

@@ -69,6 +69,7 @@ default = [
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-elk",
     "markdown",
     "math",
     "network-icons",
