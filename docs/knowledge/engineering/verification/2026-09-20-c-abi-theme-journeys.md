@@ -10,7 +10,7 @@ related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.
 
 An independently compiled C executable now exercises the current `c-abi-native` dynamic library through ABI 3. The run completes 120 fresh processes: 107 successful operations and 13 expected errors. Each successfully constructed engine repeats its operation and requires identical data, metadata and status; constructor failures are checked separately. Both checked-in C examples and the current/alpha.5 C smoke functions also run against this dynamic library.
 
-This is macOS ARM64 source-built consumer evidence. It extends the prior Rust-linked C tests with an external executable, complete recipe editing, and caller-supplied font/export checks. It is not an installed SDK archive or hosted Linux/Windows/Intel result. The complete C7a matrix remains open.
+This is macOS ARM64 source-built consumer evidence. It extends the prior Rust-linked C tests with an external executable, complete recipe editing, and caller-supplied font/export checks. The [declared C ABI distribution](../../../../crates/merman-ffi/README.md#build-from-source) is a source crate with a reproducible host reference profile; no generic prebuilt C SDK archive is published. Packaged source-crate consumption and hosted Linux/Windows/Intel execution remain unverified. The complete C7a matrix remains open.
 
 # Actual consumer paths
 

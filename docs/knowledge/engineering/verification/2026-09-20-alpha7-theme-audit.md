@@ -245,7 +245,7 @@ The current-source C ABI consumer smoke passed with both empty defaults and an e
 feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
 --test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
 including the feature-gated shared theme-authoring error vectors. The test loads a compiled C
-consumer and passes it the Rust API entrypoint; it is not an installed SDK archive replay and
+consumer and passes it the Rust API entrypoint; it covers the source-built ABI bridge and
 does not cover all six customization journeys. The captured SVG-enabled output is retained at
 `target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest.log`; `nextest.log` records the
 default-empty ABI check separately. A current rerun also passed both tests (2/2) with nextest run
@@ -286,13 +286,20 @@ The following matrix is the candidate delivery boundary. A passing local consume
 listed contract only; it does not inherit a different host, installed archive, device or export
 capability.
 
+The [C ABI distribution contract](../../../../crates/merman-ffi/README.md#build-from-source)
+publishes `merman-ffi` as a source crate, with no generic prebuilt C SDK. The
+[`c-abi-native` profile](../../../../capabilities/artifact-profiles-v1.json) defines a reproducible
+host reference build for custom source embedders. Its source-built consumer receipts are therefore
+the relevant host evidence; packaged source-crate consumption remains a separate unverified case.
+A generic C SDK archive is not a declared delivery artifact or an additional C7a gate.
+
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
 | Python | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source wheel; no current registry installation or other host evidence |
 | Node Darwin ARM64, Node WASM | Refreshed pack/install smoke, content-capability correction and customized recipe exchange below | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
-| C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 dylib, not installed SDK archive; broader journeys and hosts remain open |
+| C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 host reference; packaged source-crate consumption, broader journeys and other hosts remain unverified |
 | Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
 | Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
@@ -664,7 +671,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI archive installation, mobile and remaining six-journey routes remain limited |
+| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; rebuilt local Apple consumer passes authoring/support/errors, complete preset exchange, scoped Class paint edits and fresh-process output/metadata comparisons; remaining journeys and final installed transport parity stay open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
@@ -684,7 +691,8 @@ The following evidence is still required before C7a can be marked eligible:
 
 - Same-source CLI/LSP archive assembly and replay for every declared host. The macOS ARM64
   archive route now passes locally; Linux, Windows and Intel archive execution remain open.
-- Installed Web, Typst, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys,
+- Installed Web, Typst, UniFFI and relevant mobile/Apple/Flutter consumer journeys, plus C ABI
+  packaged-source consumption under its declared source-crate distribution contract,
   including the six public customization/resource journeys and explicit resource failures. Web
   and Typst now pass on macOS ARM64; the SVG-enabled C consumer and Apple shared theme goldens pass,
   while complete native customization journeys and mobile execution remain open.
