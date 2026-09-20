@@ -12,9 +12,18 @@ pub(crate) fn resolve_appearance(
 ) {
     let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
     for key in ["theme", "look", "layout"] {
-        let value = [source, initialize, defaults]
+        // The selected 11.x runtime still supplies this family default in its renderer.
+        // Keep it below all user layers during the transition; remove this bridge when U2/U15
+        // promotes the generated 12.x config containing swimlane.layout.
+        let legacy_family_default = (section == "swimlane"
+            && key == "layout"
+            && defaults.as_value().pointer("/swimlane/layout").is_none())
+        .then(|| Value::String("swimlane".to_string()));
+        let value = [source, initialize]
             .into_iter()
-            .find_map(|layer| read_appearance(layer, section, key));
+            .find_map(|layer| read_appearance(layer, section, key))
+            .or(legacy_family_default.as_ref())
+            .or_else(|| read_appearance(defaults, section, key));
         let Some(value) = value else {
             continue;
         };
