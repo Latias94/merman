@@ -308,8 +308,20 @@ growth bytes. The owner contract deliberately sets `candidate_admission: false`,
 reproducible memory evidence and a bounded risk signal, not release admission or a matched alpha.6
 comparison.
 
+The [theme-operation checkpoint](../../../performance/theme_operations_2026-09-20.md) adds a
+current native baseline at `bb411e505`: 13 operations in each of SVG-only and advanced Cargo feature
+lanes, 30 Criterion samples per row, and 780 retained samples. Both lanes pass the shared authoring,
+support and preset-catalog contracts plus export/recompile fingerprint checks (13/13 test-mode
+cases each). Default definition compilation averages 45.005/45.218 µs, Cyberpunk preset compilation
+222.539/226.832 µs, and reused-engine catalog construction 1,494.846/1,514.842 µs (SVG/advanced).
+The 22-query support batch averages 28.198/29.112 µs. Catalog requests compile all ten preset
+descriptors for policy availability; reusing an engine does not cache that work. No production
+cache or resource budget changed. These warm-process samples do not establish cold-start,
+allocation, cross-transport or packaged-artifact costs. Alpha.6's presentation catalog is a
+different contract, so the checkpoint makes no historical delta claim.
+
 Matched alpha.6 latency outside the two Class rows, cold start, themed/native workloads, PNG/PDF
-throughput, compile/discovery cost and same-source archive size comparisons remain unverified. The
+throughput, matched compile/discovery deltas and same-source archive size comparisons remain unverified. The
 declared U10 rule still treats unavailable metrics as unverified; no default budget or limit was
 changed.
 
@@ -354,7 +366,7 @@ The candidate evidence is classified as follows:
 | Completed | Typed theme tokens, source-backed fixture matrix, default/Clear/Transparent semantics, light/dark exchange, CSS boundary, Web and Typst consumer contracts, macOS ARM64 CLI/LSP replay, legal projections and local Rust 1.95 floor contract. |
 | Limited support | Host-dependent native Cyberpunk scenes, selected Brutalist/Spotless cells, portable-font gaps, browser/PDF/HTML resource boundaries, and diagnostic mmdr/memory measurements. These retain explicit host or evidence-class receipts. |
 | Explicitly unsupported or unverified | Aurora browser `backdrop-filter` cells, Typst Cyberpunk under the constrained resource policy, 343 discovery `Unsupported` responses, 99 discovery `Unverified` responses, and every unexecuted hosted archive or consumer route. Empty catalog qualification cells remain intentional. |
-| Performance and size change | Current artifact sizes and the two matched Class regressions are measured; alpha.6 attribution, cold start, first render, PNG/PDF throughput, compile/discovery cost and cross-host size deltas remain unverified. No budget was relaxed. |
+| Performance and size change | Current artifact sizes, the two matched Class regressions and native compile/discovery diagnostic baselines are measured; alpha.6 attribution, cold start, first render, PNG/PDF throughput, matched compile/discovery deltas and cross-host size deltas remain unverified. No budget was relaxed. |
 | Preset conclusion | All ten preset IDs have representative literal execution, but only named Brutalist/Spotless/Cyberpunk cells have qualification evidence. This is insufficient for portfolio-wide catalog promotion. |
 
 C7b is explicitly deferred. Its known scope includes Class's four Text routes, Block's 32 legacy
@@ -378,7 +390,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
 | Cold start, first render and export throughput | Current cold-parse Criterion run, mmdr diagnostic and alpha.6 Class confirmation | Partial; cold start/first render and PNG/PDF throughput are not decision-grade |
 | Large-diagram memory | 30 fresh-process pairs, six scales and 10,000 bootstrap resamples | Infrastructure smoke passed; owner contract excludes release admission |
-| Theme compile and discovery cost | Discovery receipts and current fixture/support inventory | Structural discovery evidence exists; matched compile/discovery cost remains unverified |
+| Theme compile and discovery cost | Current two-feature-lane Criterion checkpoint: 26 rows, 780 samples and shared golden/fingerprint gates | Native warm-process baseline measured; matched historical deltas, allocation costs and transport overhead remain unverified |
 | Architecture and delivery impact | Typed capability boundary, dependency observations, no Inter/new proof engine and C7b scope | Complete as a bounded impact audit; follow-up work is explicitly deferred |
 
 # Open C7a gates
