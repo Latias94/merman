@@ -14,7 +14,7 @@ use crate::text::{
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -22,7 +22,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) mod config;
+mod measured;
 use self::config::{ClassConfigView, ClassLayoutSettings};
+use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 
@@ -78,9 +80,9 @@ pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
 
 /// Estimates the source-backed graph preparation work shared by Class Dagre and ELK layouts.
 ///
-/// Both backends build the same compound graph before dispatch. Namespace extraction walks the
-/// edge set while copying nested descendants, so charge that amplification in addition to the
-/// linear graph-construction baseline.
+/// Both backends share source measurements. The conservative family allowance also covers Dagre
+/// namespace extraction, which scans edges while copying nested descendants, in addition to the
+/// linear measurement and projection baseline.
 pub(crate) fn class_layout_work_units(
     model: &ClassDiagramModel,
     work_control: &OperationLayoutWorkControl,
@@ -116,17 +118,11 @@ pub(crate) fn class_member_create_text_input(
         .replace('>', "&gt;")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClassLayoutEngine {
-    Dagre,
-    CaptureDagreInput,
-    #[cfg(feature = "layout-elk")]
-    Elk(Option<elk::ElkOperationSeed>),
-}
-
-enum ClassLayoutResult {
-    Layout(ClassDiagramLayout),
-    DagreInput(Box<ClassLayoutGraph>),
+struct MeasuredClassDiagram {
+    graph: MeasuredGraph,
+    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    node_label_metrics_by_id: HashMap<String, (f64, f64)>,
+    namespace_label_metrics_by_id: HashMap<String, (f64, f64)>,
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -1959,18 +1955,10 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    match layout_class_diagram_typed_inner(
-        model,
-        effective_config.as_value(),
-        effective_config,
-        measurer,
-        math_renderer,
-        ClassLayoutEngine::Dagre,
-        Some(work_control),
-    )? {
-        ClassLayoutResult::Layout(layout) => Ok(layout),
-        ClassLayoutResult::DagreInput(_) => unreachable!("Dagre layout returned its input graph"),
-    }
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let measured =
+        measure_class_diagram(model, effective_config, measurer, math_renderer, &settings)?;
+    layout_class_diagram_dagre(model, measured, &settings, work_control)
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1986,46 +1974,39 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    match layout_class_diagram_typed_inner(
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let measured =
+        measure_class_diagram(model, effective_config, measurer, math_renderer, &settings)?;
+    layout_class_diagram_elk_from_measured(
         model,
-        effective_config.as_value(),
-        effective_config,
-        measurer,
-        math_renderer,
-        ClassLayoutEngine::Elk(Some(operation_seed)),
-        Some(work_control),
-    )? {
-        ClassLayoutResult::Layout(layout) => Ok(layout),
-        ClassLayoutResult::DagreInput(_) => unreachable!("ELK layout returned a Dagre input graph"),
-    }
+        measured,
+        ClassElkLayoutSettings {
+            namespace_padding: settings.namespace_padding,
+            title_margin_top: settings.title_margin_top,
+            title_margin_bottom: settings.title_margin_bottom,
+            effective_config: effective_config.as_value(),
+        },
+        operation_seed,
+        work_control,
+    )
 }
 
-fn layout_class_diagram_typed_inner(
+fn measure_class_diagram(
     model: &ClassDiagramModel,
-    effective_config: &Value,
     mermaid_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    engine: ClassLayoutEngine,
-    work_control: Option<&mut OperationLayoutWorkControl>,
-) -> Result<ClassLayoutResult> {
+    settings: &ClassLayoutSettings,
+) -> Result<MeasuredClassDiagram> {
     validate_class_namespace_hierarchy(model)?;
-    let diagram_dir = rank_dir_from(&model.direction);
-    let ClassLayoutSettings {
-        nodesep,
-        ranksep,
-        wrap_mode_node,
-        wrap_mode_label,
-        wrap_mode_note,
-        class_padding,
-        namespace_padding,
-        hide_empty_members_box,
-        text_style,
-        html_calc_text_style,
-        wrap_probe_font_size,
-        title_margin_top,
-        title_margin_bottom,
-    } = ClassConfigView::new(effective_config).layout_settings();
+    let wrap_mode_node = settings.wrap_mode_node;
+    let wrap_mode_label = settings.wrap_mode_label;
+    let wrap_mode_note = settings.wrap_mode_note;
+    let class_padding = settings.class_padding;
+    let text_style = &settings.text_style;
+    let html_calc_text_style = &settings.html_calc_text_style;
+    let wrap_probe_font_size = settings.wrap_probe_font_size;
+    let hide_empty_members_box = settings.hide_empty_members_box;
     let contains_math = class_requires_math(model);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike) || contains_math;
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike) || contains_math;
@@ -2036,31 +2017,22 @@ fn layout_class_diagram_typed_inner(
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
     let namespace_ids = class_namespace_ids_in_decl_order(model);
 
-    let mut g = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
-        GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        },
-    ));
-    g.set_graph(GraphLabel {
-        rankdir: diagram_dir,
-        nodesep,
-        ranksep,
-        // Mermaid uses fixed graph margins in its Dagre wrapper for class diagrams, but our SVG
-        // renderer re-introduces that margin when computing the viewport. Keep layout coordinates
-        // margin-free here to avoid double counting.
-        marginx: 0.0,
-        marginy: 0.0,
-        ..Default::default()
-    });
+    let mut g = MeasuredGraph {
+        direction: normalize_dir(&model.direction),
+        nodesep: settings.nodesep,
+        ranksep: settings.ranksep,
+        nodes: IndexMap::new(),
+        parents: IndexMap::new(),
+        edges: IndexMap::new(),
+    };
+    let mut namespace_label_metrics_by_id = HashMap::new();
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
         mermaid_config,
         math_renderer,
-        text_style: &text_style,
-        html_calc_text_style: &html_calc_text_style,
+        text_style,
+        html_calc_text_style,
         wrap_probe_font_size,
         wrap_mode: wrap_mode_node,
         padding: class_padding,
@@ -2069,7 +2041,7 @@ fn layout_class_diagram_typed_inner(
     };
 
     let insert_class_node =
-        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        |g: &mut MeasuredGraph,
          c: &ClassNode,
          class_label_plans_by_id: &mut FxHashMap<String, Arc<ClassNodeLabelPlan>>| {
             let (w, h, label_plan) = class_box_dimensions(c, &class_box_measure_ctx);
@@ -2078,7 +2050,7 @@ fn layout_class_diagram_typed_inner(
             }
             g.set_node(
                 c.id.clone(),
-                NodeLabel {
+                MeasuredNode {
                     width: w,
                     height: h,
                     ..Default::default()
@@ -2087,13 +2059,13 @@ fn layout_class_diagram_typed_inner(
         };
 
     let insert_note_node =
-        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        |g: &mut MeasuredGraph,
          n: &ClassNote,
          node_label_metrics_by_id: &mut HashMap<String, (f64, f64)>| {
             let (w, h, metrics) = note_dimensions(
                 &n.text,
                 measurer,
-                &text_style,
+                text_style,
                 wrap_mode_note,
                 class_padding,
                 note_html_config,
@@ -2107,7 +2079,7 @@ fn layout_class_diagram_typed_inner(
             }
             g.set_node(
                 n.id.clone(),
-                NodeLabel {
+                MeasuredNode {
                     width: w.max(1.0),
                     height: h.max(1.0),
                     ..Default::default()
@@ -2118,7 +2090,24 @@ fn layout_class_diagram_typed_inner(
     for &id in &namespace_ids {
         // Mermaid's v3 `ClassDB.getData()` emits namespace groups before classes, notes, and
         // interfaces. Graphlib preserves that insertion order for Dagre's `initOrder`.
-        g.set_node(id.to_string(), NodeLabel::default());
+        g.set_node(
+            id.to_string(),
+            MeasuredNode {
+                is_namespace: true,
+                ..Default::default()
+            },
+        );
+        namespace_label_metrics_by_id.insert(
+            id.to_string(),
+            label_metrics(
+                class_namespace_label(model, id),
+                measurer,
+                text_style,
+                wrap_mode_label,
+                mermaid_config,
+                math_renderer,
+            ),
+        );
 
         if let Some(parent) = model
             .namespaces
@@ -2164,7 +2153,7 @@ fn layout_class_diagram_typed_inner(
         let (tw, th) = label_metrics(
             &label,
             measurer,
-            &text_style,
+            text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2174,7 +2163,7 @@ fn layout_class_diagram_typed_inner(
         }
         g.set_node(
             iface.id.clone(),
-            NodeLabel {
+            MeasuredNode {
                 width: tw.max(1.0),
                 height: th.max(1.0),
                 ..Default::default()
@@ -2201,20 +2190,15 @@ fn layout_class_diagram_typed_inner(
         if !model.classes.contains_key(class_id) {
             continue;
         }
-        let el = EdgeLabel {
-            width: 0.0,
-            height: 0.0,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        g.set_edge_named(
+        g.set_edge(
             note.id.clone(),
             class_id.clone(),
-            Some(format!("edgeNote{i}")),
-            Some(el),
+            format!("edgeNote{i}"),
+            MeasuredEdge {
+                width: 0.0,
+                height: 0.0,
+                terminals: None,
+            },
         );
     }
 
@@ -2222,7 +2206,7 @@ fn layout_class_diagram_typed_inner(
         let (lw, lh) = edge_title_metrics(
             &rel.title,
             measurer,
-            &text_style,
+            text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2233,7 +2217,7 @@ fn layout_class_diagram_typed_inner(
         let (srw, srh) = label_metrics(
             &start_text,
             measurer,
-            &text_style,
+            text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2241,7 +2225,7 @@ fn layout_class_diagram_typed_inner(
         let (elw, elh) = label_metrics(
             &end_text,
             measurer,
-            &text_style,
+            text_style,
             wrap_mode_label,
             mermaid_config,
             math_renderer,
@@ -2262,69 +2246,50 @@ fn layout_class_diagram_typed_inner(
             10.0
         };
 
-        let mut el = EdgeLabel {
-            width: lw,
-            height: lh,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        if srw > 0.0 && srh > 0.0 {
-            set_extras_label_metrics(&mut el.extras, "startRight", srw, srh);
-        }
-        if elw > 0.0 && elh > 0.0 {
-            set_extras_label_metrics(&mut el.extras, "endLeft", elw, elh);
-        }
-        el.extras
-            .insert("startMarker".to_string(), Value::from(start_marker));
-        el.extras
-            .insert("endMarker".to_string(), Value::from(end_marker));
-
-        g.set_edge_named(
+        g.set_edge(
             rel.id1.clone(),
             rel.id2.clone(),
-            Some(rel.id.clone()),
-            Some(el),
+            rel.id.clone(),
+            MeasuredEdge {
+                width: lw,
+                height: lh,
+                terminals: Some(EdgeTerminalMetrics {
+                    start_left: None,
+                    start_right: (srw > 0.0 && srh > 0.0).then_some((srw, srh)),
+                    end_left: (elw > 0.0 && elh > 0.0).then_some((elw, elh)),
+                    end_right: None,
+                    start_marker,
+                    end_marker,
+                }),
+            },
         );
     }
 
-    if engine == ClassLayoutEngine::CaptureDagreInput {
-        return Ok(ClassLayoutResult::DagreInput(g));
-    }
+    Ok(MeasuredClassDiagram {
+        graph: g,
+        class_label_plans_by_id,
+        node_label_metrics_by_id,
+        namespace_label_metrics_by_id,
+    })
+}
 
-    #[cfg(feature = "layout-elk")]
-    if let ClassLayoutEngine::Elk(operation_seed) = engine {
-        let work_control = work_control.ok_or_else(|| Error::InvalidModel {
-            message: "Class ELK layout requires an operation work control".to_string(),
-        })?;
-        return layout_class_diagram_elk_from_graph(
-            model,
-            *g,
-            namespace_ids,
-            class_label_plans_by_id,
-            ClassElkLayoutSettings {
-                namespace_padding,
-                title_margin_top,
-                title_margin_bottom,
-                effective_config,
-                text_style: &text_style,
-                wrap_mode_label,
-                mermaid_config,
-                math_renderer,
-                operation_seed,
-            },
-            measurer,
-            work_control,
-        )
-        .map(ClassLayoutResult::Layout);
-    }
-
-    let _ = engine;
-    let work_control = work_control.ok_or_else(|| Error::InvalidModel {
-        message: "Class Dagre layout requires an operation work control".to_string(),
-    })?;
+fn layout_class_diagram_dagre(
+    model: &ClassDiagramModel,
+    measured: MeasuredClassDiagram,
+    settings: &ClassLayoutSettings,
+    work_control: &mut OperationLayoutWorkControl,
+) -> Result<ClassDiagramLayout> {
+    let namespace_ids = class_namespace_ids_in_decl_order(model);
+    let namespace_padding = settings.namespace_padding;
+    let title_margin_top = settings.title_margin_top;
+    let title_margin_bottom = settings.title_margin_bottom;
+    let MeasuredClassDiagram {
+        graph,
+        class_label_plans_by_id,
+        node_label_metrics_by_id,
+        namespace_label_metrics_by_id,
+    } = measured;
+    let g = Box::new(graph.to_dagre());
     let mut prepared = prepare_graph(g)?;
     let mut render_roots = Vec::new();
     let (mut fragments, _bounds) = layout_prepared(
@@ -2416,14 +2381,7 @@ fn layout_class_diagram_typed_inner(
         let base_h = ns_node.height.max(1.0);
 
         let title = class_namespace_label(model, id).to_string();
-        let (tw, th) = label_metrics(
-            &title,
-            measurer,
-            &text_style,
-            wrap_mode_label,
-            mermaid_config,
-            math_renderer,
-        );
+        let (tw, th) = namespace_label_metrics_by_id[id];
         let min_title_w = (tw + namespace_padding).max(1.0);
         let width = if base_w <= min_title_w {
             min_title_w
@@ -2490,7 +2448,7 @@ fn layout_class_diagram_typed_inner(
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
 
-    Ok(ClassLayoutResult::Layout(ClassDiagramLayout {
+    Ok(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
@@ -2498,31 +2456,22 @@ fn layout_class_diagram_typed_inner(
         uses_elk_adapter_dom: false,
         class_label_plans_by_id,
         render_tree,
-    }))
+    })
 }
 
 /// Debug-only helper: builds the production Class Dagre graph and returns it before layout runs.
 ///
-/// The capture mode shares the complete production graph-construction path, including measured
-/// node and edge-label dimensions, declaration order, named multiedges, and namespace parents.
+/// Shares measurement and the Dagre projection with production, including source order,
+/// named multiedges, terminal-label metrics, and namespace parents.
 #[doc(hidden)]
 pub fn debug_build_class_diagram_dagre_graph(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
-    match layout_class_diagram_typed_inner(
-        model,
-        effective_config.as_value(),
-        effective_config,
-        measurer,
-        None,
-        ClassLayoutEngine::CaptureDagreInput,
-        None,
-    )? {
-        ClassLayoutResult::DagreInput(graph) => Ok(*graph),
-        ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
-    }
+    let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
+    let measured = measure_class_diagram(model, effective_config, measurer, None, &settings)?;
+    Ok(measured.graph.to_dagre())
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
@@ -2606,123 +2555,93 @@ struct ClassElkLayoutSettings<'a> {
     title_margin_top: f64,
     title_margin_bottom: f64,
     effective_config: &'a Value,
-    text_style: &'a TextStyle,
-    wrap_mode_label: WrapMode,
-    mermaid_config: &'a merman_core::MermaidConfig,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    operation_seed: Option<elk::ElkOperationSeed>,
 }
 
 #[cfg(feature = "layout-elk")]
-fn layout_class_diagram_elk_from_graph(
+fn layout_class_diagram_elk_from_measured(
     model: &ClassDiagramModel,
-    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    namespace_ids: Vec<&str>,
-    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    measured: MeasuredClassDiagram,
     settings: ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
+    operation_seed: elk::ElkOperationSeed,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    let elk_graph = class_graph_to_elk_graph(model, &graph, &namespace_ids, &settings, measurer);
-    let layout = match settings.operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
-            &elk_graph,
-            operation_seed,
-            work_control,
-        ),
-        None => elk::layout_with_work_control(&elk_graph, work_control),
-    }
-    .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
-    class_layout_from_elk(
-        model,
-        &graph,
-        &elk_graph,
-        layout,
-        namespace_ids,
-        class_label_plans_by_id,
-        settings,
-        measurer,
-    )
+    let elk_graph = class_measured_to_elk_graph(&measured, &settings);
+    let layout =
+        elk::layout_with_operation_seed_and_work_control(&elk_graph, operation_seed, work_control)
+            .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
+    class_layout_from_elk(model, measured, &elk_graph, layout, settings)
 }
 
 #[cfg(feature = "layout-elk")]
-fn class_graph_to_elk_graph(
-    model: &ClassDiagramModel,
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    namespace_ids: &[&str],
+fn class_measured_to_elk_graph(
+    measured: &MeasuredClassDiagram,
     settings: &ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
 ) -> elk::Graph {
-    let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
-    let direction = rank_dir_to_elk_direction(graph.graph().rankdir);
-    let mut nodes = Vec::with_capacity(graph.node_count());
-
-    for id in graph.node_ids() {
-        let label = graph.node(&id).cloned().unwrap_or_default();
-        let is_group = namespace_set.contains(id.as_str()) || !graph.children(&id).is_empty();
-        let namespace_label = is_group.then(|| {
-            let title = class_namespace_label(model, &id);
-            let (width, height) = label_metrics(
-                title,
-                measurer,
-                settings.text_style,
-                settings.wrap_mode_label,
-                settings.mermaid_config,
-                settings.math_renderer,
-            );
-            elk::Label {
-                width: width.max(1.0),
-                height: height.max(1.0),
+    let graph = &measured.graph;
+    let direction = match graph.direction.as_str() {
+        "LR" => elk::Direction::Right,
+        "RL" => elk::Direction::Left,
+        "BT" => elk::Direction::Up,
+        _ => elk::Direction::Down,
+    };
+    let parents = graph
+        .parents
+        .values()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let nodes = graph
+        .nodes
+        .iter()
+        .map(|(id, node)| {
+            let is_group = node.is_namespace || parents.contains(id.as_str());
+            let namespace_label =
+                measured
+                    .namespace_label_metrics_by_id
+                    .get(id)
+                    .map(|&(width, height)| elk::Label {
+                        width: width.max(1.0),
+                        height: height.max(1.0),
+                    });
+            elk::Node {
+                id: id.clone(),
+                kind: if is_group {
+                    elk::NodeKind::Group
+                } else {
+                    elk::NodeKind::Leaf
+                },
+                width: node.width.max(if is_group { 0.0 } else { 1.0 }),
+                height: node.height.max(if is_group { 0.0 } else { 1.0 }),
+                parent: graph.parents.get(id).cloned(),
+                direction: is_group.then_some(direction),
+                hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
+                layer_constraint: None,
+                label: namespace_label,
             }
-        });
-
-        nodes.push(elk::Node {
-            id: id.clone(),
-            kind: if is_group {
-                elk::NodeKind::Group
-            } else {
-                elk::NodeKind::Leaf
-            },
-            width: label.width.max(if is_group { 0.0 } else { 1.0 }),
-            height: label.height.max(if is_group { 0.0 } else { 1.0 }),
-            parent: graph.parent(&id).map(str::to_string),
-            direction: is_group.then_some(direction),
-            hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
-            layer_constraint: None,
-            label: namespace_label,
-        });
-    }
-
-    let edges = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|key| {
-            let label = graph.edge_by_key(&key)?;
-            Some(elk::Edge {
-                id: key
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("{}-{}", key.v, key.w)),
-                source: key.v,
-                target: key.w,
-                label: (label.width > 0.0 && label.height > 0.0).then_some(elk::Label {
-                    width: label.width,
-                    height: label.height,
-                }),
-                minlen: label.minlen.max(1),
-                inside_self_loops_yo: false,
-            })
         })
         .collect();
-
+    let edges = graph
+        .edges
+        .iter()
+        .map(|((source, target, id), edge)| elk::Edge {
+            id: id.clone(),
+            source: source.clone(),
+            target: target.clone(),
+            label: (edge.width > 0.0 && edge.height > 0.0).then_some(elk::Label {
+                width: edge.width,
+                height: edge.height,
+            }),
+            minlen: 1,
+            inside_self_loops_yo: false,
+        })
+        .collect();
     elk::Graph {
         id: "classDiagram".to_string(),
         direction,
         nodes,
         edges,
         spacing: elk::Spacing {
-            node_node: graph.graph().nodesep,
-            layer_layer: graph.graph().ranksep,
+            node_node: graph.nodesep,
+            layer_layer: graph.ranksep,
             group_padding_x: settings.namespace_padding,
             group_padding_y: settings.namespace_padding,
             ..Default::default()
@@ -2732,17 +2651,14 @@ fn class_graph_to_elk_graph(
 }
 
 #[cfg(feature = "layout-elk")]
-#[allow(clippy::too_many_arguments)]
 fn class_layout_from_elk(
     model: &ClassDiagramModel,
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    measured: MeasuredClassDiagram,
     elk_graph: &elk::Graph,
     layout: elk::LayoutResult,
-    namespace_ids: Vec<&str>,
-    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
     settings: ClassElkLayoutSettings<'_>,
-    measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramLayout> {
+    let namespace_ids = class_namespace_ids_in_decl_order(model);
     let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
     let source_node_by_id: HashMap<&str, &elk::Node> = elk_graph
         .nodes
@@ -2784,17 +2700,12 @@ fn class_layout_from_elk(
         );
     }
 
-    let edge_label_by_id: HashMap<String, EdgeLabel> = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|key| {
-            let id = key
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("{}-{}", key.v, key.w));
-            graph.edge_by_key(&key).cloned().map(|edge| (id, edge))
-        })
-        .collect();
+    let edge_terminals_by_id = measured
+        .graph
+        .edges
+        .iter()
+        .filter_map(|((_, _, id), edge)| edge.terminals.as_ref().map(|meta| (id.as_str(), meta)))
+        .collect::<HashMap<_, _>>();
 
     let mut edges = Vec::with_capacity(layout.edges.len());
     for edge in layout.edges {
@@ -2803,7 +2714,7 @@ fn class_layout_from_elk(
                 message: format!("ELK layout returned unknown class edge {}", edge.id),
             });
         };
-        let label_meta = edge_label_by_id.get(edge.id.as_str());
+        let terminal_meta = edge_terminals_by_id.get(edge.id.as_str());
         let points = edge
             .points
             .into_iter()
@@ -2823,7 +2734,6 @@ fn class_layout_from_elk(
                 })
                 .or_else(|| class_elk_edge_label_position(&points, source_label))
         });
-        let terminal_meta = label_meta.map(edge_terminal_metrics_from_extras);
         let terminal_points = if let (Some(from), Some(to)) = (
             node_rect_by_id.get(source.source.as_str()).copied(),
             node_rect_by_id.get(source.target.as_str()).copied(),
@@ -2856,7 +2766,7 @@ fn class_layout_from_elk(
             stroke_dasharray: None,
         };
         if let Some(meta) = terminal_meta {
-            apply_class_terminal_labels(&mut out_edge, &meta, &terminal_points);
+            apply_class_terminal_labels(&mut out_edge, meta, &terminal_points);
         }
         edges.push(out_edge);
     }
@@ -2870,14 +2780,7 @@ fn class_layout_from_elk(
             continue;
         };
         let title = class_namespace_label(model, id).to_string();
-        let (title_width, title_height) = label_metrics(
-            &title,
-            measurer,
-            settings.text_style,
-            settings.wrap_mode_label,
-            settings.mermaid_config,
-            settings.math_renderer,
-        );
+        let (title_width, title_height) = measured.namespace_label_metrics_by_id[id];
         let title_label = LayoutLabel {
             x: node.x,
             y: node.y - node.height / 2.0 + settings.title_margin_top + title_height / 2.0,
@@ -2953,7 +2856,7 @@ fn class_layout_from_elk(
         clusters,
         bounds,
         uses_elk_adapter_dom: true,
-        class_label_plans_by_id,
+        class_label_plans_by_id: measured.class_label_plans_by_id,
         render_tree,
     })
 }
@@ -3026,16 +2929,6 @@ fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
         .windows(2)
         .map(|pair| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y))
         .sum::<f64>()
-}
-
-#[cfg(feature = "layout-elk")]
-fn rank_dir_to_elk_direction(rank_dir: RankDir) -> elk::Direction {
-    match rank_dir {
-        RankDir::LR => elk::Direction::Right,
-        RankDir::RL => elk::Direction::Left,
-        RankDir::BT => elk::Direction::Up,
-        RankDir::TB => elk::Direction::Down,
-    }
 }
 
 fn compute_bounds(
@@ -3147,58 +3040,30 @@ mod tests {
     fn class_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
         use std::num::NonZeroU64;
 
-        let model: super::ClassDiagramModel = serde_json::from_value(serde_json::json!({
-            "type": "classDiagram",
-            "direction": "TB",
-            "classes": {},
-            "constants": {
-                "lineType": { "line": 0, "dottedLine": 1 },
-                "relationType": {
-                    "none": 0,
-                    "aggregation": 1,
-                    "extension": 2,
-                    "composition": 3,
-                    "dependency": 4,
-                    "lollipop": 5
-                }
-            }
-        }))
-        .expect("minimal Class diagram model");
-        let mut class_graph = Graph::new(GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        });
-        class_graph.set_graph(GraphLabel::default());
-        class_graph.set_node("A", NodeLabel::default());
-        class_graph.set_node("B", NodeLabel::default());
-        class_graph.set_edge_named(
-            "A",
-            "B",
-            Some("A-B".to_string()),
-            Some(EdgeLabel::default()),
-        );
-
-        let text_style = default_style();
-        let mermaid_config = merman_core::MermaidConfig::from_value(serde_json::Value::Null);
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("classDiagram\nA --> B", ParseOptions::default())
+            .expect("parse Class source")
+            .expect("detect Class source");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let config = &parsed.metadata().effective_config;
+        let layout_settings = super::ClassConfigView::new(config.as_value()).layout_settings();
+        let measured = super::measure_class_diagram(
+            model,
+            config,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &layout_settings,
+        )
+        .expect("measure Class diagram");
         let settings = super::ClassElkLayoutSettings {
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,
             effective_config: &serde_json::Value::Null,
-            text_style: &text_style,
-            wrap_mode_label: WrapMode::default(),
-            mermaid_config: &mermaid_config,
-            math_renderer: None,
-            operation_seed: None,
         };
-        let mut graph = super::class_graph_to_elk_graph(
-            &model,
-            &class_graph,
-            &[],
-            &settings,
-            &DeterministicTextMeasurer::default(),
-        );
+        let mut graph = super::class_measured_to_elk_graph(&measured, &settings);
         graph.options.layered.random_seed = 0;
 
         assert!(super::elk::layout(&graph).is_err());
