@@ -242,7 +242,7 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 
 ### Eclipse Layout Kernel
 
-The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, and Stress layout algorithms, including common and core layout utilities, under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0.
 
 - Version: `0.9.1`
 - Source: https://github.com/eclipse-elk/elk.git @ `62d5909f96fad541bc101ad52dabaece6b7eab7e`

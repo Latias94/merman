@@ -69,6 +69,31 @@ Tests in `src/algorithms/{force,stress}/tests.rs` compare with actual elkjs 0.9.
 including components, cycles, interactive inputs, labels, and clipped endpoints. Stress
 callers supply effective label options (its upstream default is inline placement).
 
+## Tree, packing, and overlap-removal kernels
+
+The same source boundary now contains the remaining Mermaid 12 algorithm kernels:
+
+- `algorithms::mrtree`: source DFS treeification, Walker placement, component packing,
+  and AvoidOverlap routing, including long edges and cycle channels in all four directions.
+- `algorithms::radial`: the default Eades radial placement, node-size wedges, radius extension,
+  and rectangle clipping. It retains the source's first-root and disconnected-node behavior;
+  reachable cycles fail explicitly instead of exhausting the call stack. Mermaid selects this
+  algorithm only for containers, not through a root `elk.radial` registration.
+- `algorithms::rectpacking`: greedy width approximation, block/stack compaction, repeated
+  compaction and equal whitespace expansion. It preserves the provider's explicit `trybox`
+  branch. Mermaid's `SCANLINE` option is not an ELK 0.9.1 enum value and resolves to GREEDY in
+  the selected elkjs 0.9.3 runtime. Container dimensions and content translations are returned.
+- `algorithms::spore_overlap`: scanline detection, source Bowyer-Watson triangulation,
+  minimum spanning tree growth and straight-edge clipping. Source hash-bucket traversal is
+  preserved for equal-cost edge choices. Duplicate centers use an explicitly supplied random
+  stream; the kernel never reads process randomness. Unrepresentable jitter is a typed error.
+
+These entry points consume measured geometry and work control. Source-specific sorting,
+optimization or compaction options that the Mermaid adapter does not emit are not advertised.
+Node micro layout, compound scheduling, label translation and renderer dispatch still belong
+at the adapter boundary. Tests compare actual elkjs 0.9.3 node coordinates, dimensions and
+routes, alongside scoped cancellation and numeric-boundary cases.
+
 ## Random seed authority
 
 Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This source port does not read time or process randomness for that branch. A graph must either retain a nonzero source seed or be imported with an `OperationSeed` before a configurator or pipeline entry point executes.
