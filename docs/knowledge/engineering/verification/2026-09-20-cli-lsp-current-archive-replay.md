@@ -31,3 +31,10 @@ legal tree together.
 
 This record proves only macOS ARM64 archive assembly and execution. Linux, Windows and Intel
 archive execution remain explicitly unverified; no hosted workflow or publication was performed.
+
+The same current-source preparation refresh passed 93 release/archive/catalog contract tests,
+`release_surface_contract.py --version 0.8.0-alpha.7`, the version projection check, the CLI
+installation contract, and the preparation changelog check. Legal refreshes passed for 13 Rust
+license reports, 382 release projections, 24 governed Cargo packages, and the third-party license
+contract; representative dependency closures also passed. These checks do not replace the
+date-bound immutable preflight or hosted target execution.
