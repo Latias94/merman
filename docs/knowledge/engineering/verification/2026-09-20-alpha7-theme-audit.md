@@ -129,6 +129,11 @@ The current source rerun passed `generate-rust-license-report.py --check` (13 re
 `sync-release-legal-materials.py --check` (382 files), `verify-third-party-licenses.py`, and
 `verify_crate_package_legal_materials.py` (24 governed Cargo packages).
 
+The current source also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
+`release-version.py check --version 0.8.0-alpha.7`, `cli_installation_contract.py`, and
+`verify_release_changelog.py --version 0.8.0-alpha.7`. These are preparation checks; the
+date-required immutable preflight remains intentionally unexecuted.
+
 The current Web package group was rebuilt from source `7f35c9080` after the profile-aware portable
 font smoke repair. Node 24.21.0 with npm 12.0.2 passed the owner smoke matrix, WASM input and
 package verification, and DOM safety smoke for all five packages. A fresh offline npm consumer
