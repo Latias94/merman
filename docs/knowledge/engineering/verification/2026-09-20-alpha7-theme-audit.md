@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa
+source_commits: 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -70,6 +70,22 @@ dependency-closure verification passes for 34 profiles. The generated Android le
 matches its source report. These checks cover manifests and generated legal material, not builds
 on every declared target.
 
+The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
+its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
+plan passed the repository's release artifact-bundle verifier for the `macos-15` native
+`aarch64-apple-darwin` route. A serial local build from source `0f5125e75` produced and verified
+both native archives with the real CLI and LSP smoke contracts:
+
+| Archive | Packed bytes | SHA-256 |
+| --- | ---: | --- |
+| `merman-cli-aarch64-apple-darwin.tar.xz` | 13,745,380 | `a5a132d375f8d04a785898bd75c6adcc960dd9e85afd3cbfdd079f0e00eb15bd` |
+| `merman-lsp-aarch64-apple-darwin.tar.xz` | 4,079,896 | `201313d1b706752bd62b2ec90197f2d2bb07d6a94e2efb97ae2d41328ef106ea` |
+
+The archive checks used `scripts/verify_cli_release_archive.py` and
+`scripts/verify_lsp_release_archive.py` with `--execute`, including the generated sidecar
+checksums. These are current-source macOS ARM64 results; they do not imply Linux, Windows or
+Intel archive execution.
+
 # Performance and footprint status
 
 The published alpha.6 versus old local candidate table in the impact audit remains a non-matched
@@ -96,8 +112,8 @@ no default budget or limit was changed.
 
 The following evidence is still required before C7a can be marked eligible:
 
-- Same-source CLI/LSP archive assembly and replay from the release owners. `cargo-dist` is not
-  installed in this environment, so the current audit did not create those archives.
+- Same-source CLI/LSP archive assembly and replay for every declared host. The macOS ARM64
+  archive route now passes locally; Linux, Windows and Intel archive execution remain open.
 - Installed Web, Typst, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys,
   including the six public customization/resource journeys and explicit resource failures.
 - Linux/Windows native and compiler-floor results; the current package evidence is macOS ARM64
