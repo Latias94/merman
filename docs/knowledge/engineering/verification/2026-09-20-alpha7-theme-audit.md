@@ -117,8 +117,18 @@ Brutalist and Spotless retain their earlier six native Flowchart/State/Sequence 
 now has six complete-scene Flowchart/Sequence/XY cells under the named native profile. The other
 seven public preset IDs have no current qualified cells. All ten presets have execution evidence
 on representative literal inputs, but that is a usability and identity observation rather than a
-portfolio-wide qualification. Earlier inspections still flag dark arrowheads and Cyberpunk
-Mindmap label contrast for follow-up.
+portfolio-wide qualification. Earlier browser or host-specific inspections still retain an
+arrowhead residual for follow-up; the bounded native Mindmap sample below did not reproduce the
+earlier suspected label-contrast issue.
+
+The [dense export review](2026-09-20-preset-usability-exports.md) now supplies a bounded current
+visual sample for all ten presets: a pinned Flowchart, Mindmap, dense Class, and four-series XY
+scene across SVG/PNG/PDF. 116/120 cells succeeded; four Cyberpunk PNG/PDF cells hit the unchanged
+default 128 SVG-conversion-filter budget at 132 primitives. PDFKit opened all 38 successful PDFs.
+The inspected sheets show readable dense Class and Mindmap labels and distinguishable XY bar/line
+series in this host/font sample. This improves usability guidance but remains unqualified visual
+evidence; controlled fonts, browser labels, accessibility, memory/throughput, and wider families
+remain open.
 
 The public catalog declares only `light` and `dark` appearances; it has no high-contrast preset or
 high-contrast target contract. High-contrast use therefore remains outside the qualified product
