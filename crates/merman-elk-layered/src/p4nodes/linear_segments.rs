@@ -183,7 +183,7 @@ mod tests {
             ],
         })
         .unwrap();
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         split_long_edges(&mut graph);
 
         let dummies = graph

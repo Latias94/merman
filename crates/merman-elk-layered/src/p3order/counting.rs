@@ -406,7 +406,7 @@ mod tests {
             edges,
         })
         .unwrap();
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         process_port_sides(&mut graph);
         sort_port_lists(&mut graph);
         graph

@@ -68,6 +68,8 @@ use crate::work::{
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
     #[error(transparent)]
+    NetworkSimplex(#[from] crate::common::networksimplex::NetworkSimplexError),
+    #[error(transparent)]
     RandomSeed(#[from] RandomSeedError),
     #[error("layered processor `{kind:?}` is not ported yet")]
     UnsupportedProcessor { kind: ProcessorKind },
@@ -1329,7 +1331,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::GreedyModelOrderCycleBreaker => break_cycles_greedy_model_order(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
         ProcessorKind::LabelDummyInserter => insert_label_dummies(graph),
-        ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
+        ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph)?,
         ProcessorKind::LongestPathLayerer => {
             layer_with_strategy(graph, LayeringStrategy::LongestPath, work_control)?
         }
@@ -1378,7 +1380,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::SimpleNodePlacer => place_nodes_simple(graph),
         ProcessorKind::LinearSegmentsNodePlacer => place_nodes_linear_segments(graph),
-        ProcessorKind::NetworkSimplexPlacer => place_nodes_network_simplex(graph),
+        ProcessorKind::NetworkSimplexPlacer => place_nodes_network_simplex(graph)?,
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
         }
@@ -5660,7 +5662,7 @@ mod tests {
         };
         let mut before_graph = import_graph(&input).unwrap();
 
-        layer_network_simplex(&mut before_graph);
+        layer_network_simplex(&mut before_graph).unwrap();
         process_port_sides(&mut before_graph);
         sort_port_lists(&mut before_graph);
         let top = before_graph

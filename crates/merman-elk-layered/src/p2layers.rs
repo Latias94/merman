@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::common::networksimplex::{NGraph, NetworkSimplex};
+use crate::common::networksimplex::{NGraph, NetworkSimplex, NetworkSimplexError};
 use crate::graph::{LGraph, LayeredEdge};
 
 mod coffman_graham;
@@ -138,7 +138,7 @@ pub(crate) fn layer_with_strategy(
 
 const ITER_LIMIT_FACTOR: usize = 4;
 
-pub fn layer_network_simplex(graph: &mut LGraph) {
+pub fn layer_network_simplex(graph: &mut LGraph) -> Result<(), NetworkSimplexError> {
     graph.clear_layers();
     let nodes = graph
         .layerless_nodes
@@ -147,7 +147,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
         .filter_map(|(index, node)| (!node.hidden).then_some(index))
         .collect::<Vec<_>>();
     if nodes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let connected_components = connected_components(graph, &nodes);
@@ -163,7 +163,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
             .with_iteration_limit(iter_limit)
             .with_previous_layering(previous_layering_node_counts.clone())
             .with_balancing(true)
-            .execute();
+            .execute()?;
 
         for n_node in ngraph.active_nodes().iter().copied() {
             let Some(l_node) = ngraph.nodes[n_node].origin else {
@@ -177,6 +177,7 @@ pub fn layer_network_simplex(graph: &mut LGraph) {
                 Some(graph.layers.iter().map(|layer| layer.nodes.len()).collect());
         }
     }
+    Ok(())
 }
 
 fn connected_components(graph: &LGraph, nodes: &[usize]) -> Vec<Vec<usize>> {
@@ -330,7 +331,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_eq!(graph.layers.len(), 3);
         assert_layer_order(&graph, "A", "B");
@@ -344,7 +345,7 @@ mod tests {
             vec![edge("A-A", "A", "A"), edge("A-B", "A", "B")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_layer_order(&graph, "A", "B");
     }
@@ -356,7 +357,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("C-D", "C", "D")],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         assert_layer_order(&graph, "A", "B");
         assert_layer_order(&graph, "C", "D");
@@ -375,7 +376,7 @@ mod tests {
         );
 
         break_cycles_greedy(&mut graph);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         for edge in &graph.edges {
             if edge.source.node == edge.target.node {

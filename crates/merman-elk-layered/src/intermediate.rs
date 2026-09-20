@@ -4466,7 +4466,7 @@ mod tests {
             ],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         split_long_edges(&mut graph);
 
         assert!(
@@ -4505,7 +4505,7 @@ mod tests {
         input_graph.options.merge_edges = true;
         let mut input = import_graph(&input_graph).unwrap();
 
-        layer_network_simplex(&mut input);
+        layer_network_simplex(&mut input).unwrap();
         split_long_edges(&mut input);
 
         let before = input
@@ -4553,7 +4553,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), long],
         );
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         let long_edge = graph
             .edges
             .iter()
@@ -4787,7 +4787,7 @@ mod tests {
             .unwrap();
 
         insert_label_dummies(&mut graph);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         split_long_edges(&mut graph);
         switch_label_dummies(&mut graph);
         select_label_sides(&mut graph);
@@ -4831,7 +4831,7 @@ mod tests {
         labelled.label = Some(head);
         let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         crate::p3order::process_port_sides(&mut graph);
         crate::p4nodes::calculate_label_and_node_sizes(&mut graph);
         crate::p4nodes::calculate_innermost_node_margins(&mut graph);
@@ -4868,7 +4868,7 @@ mod tests {
             .unwrap();
 
         insert_label_dummies(&mut graph);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         split_long_edges(&mut graph);
         switch_label_dummies(&mut graph);
         select_label_sides(&mut graph);
@@ -4914,7 +4914,7 @@ mod tests {
             ],
         );
         graph.options.unnecessary_bendpoints = true;
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         let long_edge = graph
             .edges
@@ -5071,7 +5071,7 @@ mod tests {
     #[test]
     fn long_edge_joiner_skips_global_index_when_no_dummy_exists() {
         let mut graph = graph(vec![node("A"), node("B")], vec![edge("A-B", "A", "B")]);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         let expected_layers = graph.layers.clone();
         let mut work = LongEdgeJoinWork::default();
 
@@ -5231,7 +5231,7 @@ mod tests {
             .unwrap();
 
         preprocess_layer_constraints(&mut graph).unwrap();
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         postprocess_layer_constraints(&mut graph).unwrap();
 
         let start = graph
@@ -5270,7 +5270,7 @@ mod tests {
         assert!(!graph.edge_source_attached(edge_index));
         assert!(graph.edge_target_attached(edge_index));
 
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         postprocess_layer_constraints(&mut graph).unwrap();
 
         let end = graph
@@ -5316,7 +5316,7 @@ mod tests {
         let mut first = node("start");
         first.layer_constraint = Some(LayerConstraint::First);
         let mut graph = graph(vec![node("A"), first], vec![edge("A-start", "A", "start")]);
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
 
         let err = postprocess_layer_constraints(&mut graph).unwrap_err();
         assert!(matches!(err, IntermediateError::FirstIncomingEdge { .. }));

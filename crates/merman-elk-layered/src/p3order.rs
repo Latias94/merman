@@ -1386,7 +1386,7 @@ mod tests {
                 edge("Bottom-Left", "Bottom", "Left"),
             ],
         );
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         process_port_sides(&mut graph);
         sort_port_lists(&mut graph);
 
@@ -1553,7 +1553,7 @@ mod tests {
                 edge("A-D", "A", "D"),
             ],
         );
-        layer_network_simplex(&mut graph);
+        layer_network_simplex(&mut graph).unwrap();
         split_long_edges(&mut graph);
 
         let a = graph
