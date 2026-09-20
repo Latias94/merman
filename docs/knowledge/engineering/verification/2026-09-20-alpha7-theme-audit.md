@@ -181,6 +181,10 @@ has an Unreleased projection and no publication was authorized.
 The current source release/preset/archive contract selection also passes
 `python3 -m unittest scripts.test_qualify_theme_presets scripts.test_verify_cli_release_archive
 scripts.test_release_surface_contract scripts.test_theme_preset_catalog_contract`: 74 tests passed.
+The current source `python3 scripts/verify_artifact_dependency_closures.py --representative-targets`
+also passed all 34 declared representative profiles, including C ABI, Apple, Android, Flutter,
+Python, Typst, Web, CLI, LSP and Rust export closures. These are dependency-boundary checks and
+do not turn the Linux-reference profiles into hosted Linux execution evidence.
 
 The declared local compiler floor is explicit and reproducible: `cargo +1.95.0 check --locked
 -p merman-theme-fixtures` passed, while the same package under `cargo +1.92.0` was rejected by
