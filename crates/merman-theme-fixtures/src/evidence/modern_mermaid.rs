@@ -229,7 +229,7 @@ fn semantic_matrix_sha256(themes: &BTreeMap<String, ModernThemeEvidence>) -> Str
             }
         }
     }
-    format!("{:x}", digest.finalize())
+    data_encoding::HEXLOWER.encode(&digest.finalize())
 }
 
 fn update_length_prefixed(digest: &mut Sha256, value: &[u8]) {

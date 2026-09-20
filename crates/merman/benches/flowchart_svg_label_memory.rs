@@ -216,7 +216,7 @@ fn sha256_file(path: &Path) -> Result<String, ProbeError> {
         }
         digest.update(&buffer[..bytes_read]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(data_encoding::HEXLOWER.encode(&digest.finalize()))
 }
 
 fn executable_sha256() -> Result<String, ProbeError> {
@@ -226,7 +226,7 @@ fn executable_sha256() -> Result<String, ProbeError> {
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
 }
 
 fn projected_node_labels(semantic: &SemanticArtifact) -> Result<(u32, bool), ProbeError> {

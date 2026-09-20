@@ -398,7 +398,7 @@ fn block_base_marker_definitions_preserve_historical_bytes() {
     assert_eq!(markers.len(), 12);
     let range = markers.first().unwrap().range().start..markers.last().unwrap().range().end;
     assert_eq!(
-        format!("{:x}", Sha256::digest(svg[range].as_bytes())),
+        data_encoding::HEXLOWER.encode(&Sha256::digest(svg[range].as_bytes())),
         "f1a0eb49e563cc64e92401557a6fe52b4a9ba12b56b2a3ca2089a2f5f63dfa62",
         "the original twelve definitions retain their exact bytes and order"
     );

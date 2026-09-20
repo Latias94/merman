@@ -41,7 +41,7 @@ impl Drop for TestRoot {
 }
 
 fn sha256(source: &str) -> String {
-    format!("{:x}", Sha256::digest(source.as_bytes()))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(source.as_bytes()))
 }
 
 fn manifest_entry(

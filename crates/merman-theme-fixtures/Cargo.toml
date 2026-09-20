@@ -10,6 +10,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+data-encoding.workspace = true
 cssparser.workspace = true
 json5.workspace = true
 lol_html.workspace = true

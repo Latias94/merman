@@ -2244,7 +2244,7 @@ mod tests {
         let mut bytes = serde_json::to_vec_pretty(value).expect("serialize fixture JSON");
         bytes.push(b'\n');
         fs::write(root.join(relative), &bytes).expect("write fixture JSON");
-        format!("{:x}", Sha256::digest(bytes))
+        data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
     }
 
     fn fixture_mut<'a>(manifest: &'a mut Value, id: &str) -> &'a mut Value {

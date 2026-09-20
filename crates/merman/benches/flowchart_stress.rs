@@ -209,7 +209,7 @@ struct SyntheticCase {
 }
 
 fn source_digest(source: &str) -> String {
-    format!("{:x}", Sha256::digest(source.as_bytes()))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(source.as_bytes()))
 }
 
 fn assert_cluster_edge_panel_roles(model: &serde_json::Value) {

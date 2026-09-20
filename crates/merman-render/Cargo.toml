@@ -44,6 +44,7 @@ math = [
 ]
 
 [dependencies]
+data-encoding.workspace = true
 base64.workspace = true
 brotli-decompressor = { workspace = true, optional = true }
 cssparser.workspace = true

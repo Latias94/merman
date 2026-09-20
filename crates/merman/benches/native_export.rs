@@ -115,9 +115,9 @@ fn bench_native_export(criterion: &mut Criterion) {
                     "[bench][preflight] {}",
                     json!({
                         "benchmark": format!("native_export/{name}"),
-                        "source_sha256": format!("{:x}", Sha256::digest(source.as_bytes())),
+                        "source_sha256": data_encoding::HEXLOWER.encode(&Sha256::digest(source.as_bytes())),
                         "output_bytes": bytes.len(),
-                        "output_sha256": format!("{:x}", Sha256::digest(bytes)),
+                        "output_sha256": data_encoding::HEXLOWER.encode(&Sha256::digest(bytes)),
                     })
                 );
                 if let Some(directory) = &artifact_directory {

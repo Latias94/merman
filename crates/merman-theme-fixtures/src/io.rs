@@ -188,7 +188,7 @@ pub(crate) fn validate_hashed_file(
             path: relative.to_string(),
         });
     }
-    let actual = format!("{:x}", Sha256::digest(&contents));
+    let actual = data_encoding::HEXLOWER.encode(&Sha256::digest(&contents));
     if actual == expected {
         Ok(VerifiedFile {
             path,

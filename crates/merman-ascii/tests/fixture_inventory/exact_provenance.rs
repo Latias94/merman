@@ -202,7 +202,7 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
         aggregate.update(&bytes);
 
         if let Some((expected_sha256, _)) = transforms.get(relative.as_str()) {
-            let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
+            let actual_sha256 = data_encoding::HEXLOWER.encode(&Sha256::digest(&bytes));
             assert_eq!(
                 &actual_sha256, expected_sha256,
                 "historically transformed fixture drifted: {relative}"
@@ -217,7 +217,7 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
         "every historical transform must name one tracked fixture"
     );
     assert_eq!(
-        format!("{:x}", aggregate.finalize()),
+        data_encoding::HEXLOWER.encode(&aggregate.finalize()),
         *metadata
             .get("tracked_aggregate_sha256")
             .expect("tracked aggregate digest must be recorded"),

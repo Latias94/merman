@@ -47,7 +47,10 @@ fn acquire_canonical_upstream_svg_lock(
         path: lock_root.display().to_string(),
         source,
     })?;
-    let lock_path = lock_root.join(format!("{:x}.lock", hasher.finalize()));
+    let lock_path = lock_root.join(format!(
+        "{}.lock",
+        data_encoding::HEXLOWER.encode_display(&hasher.finalize())
+    ));
     let file = fs::OpenOptions::new()
         .create(true)
         .read(true)

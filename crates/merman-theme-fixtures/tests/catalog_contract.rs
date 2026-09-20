@@ -57,12 +57,12 @@ fn write_json(root: &Path, relative: &str, value: &Value) -> String {
     let mut bytes = serde_json::to_vec_pretty(value).expect("serialize fixture JSON");
     bytes.push(b'\n');
     fs::write(root.join(relative), &bytes).expect("write fixture JSON");
-    format!("{:x}", Sha256::digest(bytes))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
 }
 
 fn write_text(root: &Path, relative: &str, value: &str) -> String {
     fs::write(root.join(relative), value).expect("write fixture text");
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(value.as_bytes()))
 }
 
 fn theme_mut<'a>(manifest: &'a mut Value, name: &str) -> &'a mut Value {
@@ -578,7 +578,7 @@ fn font_coverage_is_derived_from_the_parsed_visible_source_text() {
     source.push_str("    Mixed --> Missing[主]\n");
     fs::write(temp.path().join(relative), source.as_bytes()).expect("write fixture source");
     fixture_mut(&mut manifest, "fixture-mixed-script-typography")["sourceSha256"] =
-        json!(format!("{:x}", Sha256::digest(source.as_bytes())));
+        json!(data_encoding::HEXLOWER.encode(&Sha256::digest(source.as_bytes())));
 
     assert!(matches!(
         rejection_at(temp.path(), manifest),

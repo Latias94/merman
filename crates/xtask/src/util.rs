@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
 }
 
 pub(crate) fn is_canonical_sha256(value: &str) -> bool {

@@ -54,6 +54,7 @@ independent-packages = ["roughr-merman", "tree-sitter-mermaid"]
 atomic-write-file = { version = "0.3.0", default-features = false }
 base64 = "0.22.1"
 data-url = "0.3.2"
+data-encoding = "2.11.1"
 brotli = "8.0.3"
 brotli-decompressor = { version = "5.0.3", default-features = false }
 clap_mangen = "0.3.0"
@@ -87,7 +88,7 @@ serde_json_canonicalizer = "0.3.2"
 same-file = "1.0.6"
 rustix = { version = "1.1.4", default-features = false, features = ["fs", "std"] }
 rustybuzz = { version = "0.20.1", default-features = false, features = ["std"] }
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 similar = { version = "3.1.1", default-features = false, features = ["std", "text"] }
 tokio = { version = "1.52.3", default-features = false }
 granit-parser = { version = "=1.0.0", default-features = false, features = ["error_messages"] }

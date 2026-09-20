@@ -773,7 +773,7 @@ fn path_matches(actual: &[String], expected: &[&str]) -> bool {
 }
 
 fn sha256_hex(source: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(source))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(source))
 }
 
 fn validate_sha256(fixture: &str, value: &str) -> Result<(), CatalogError> {

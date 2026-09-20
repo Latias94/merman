@@ -30,8 +30,9 @@ impl PreparedMathOccurrenceId {
         update_len_prefixed(&mut hasher, key.as_bytes());
         let digest = hasher.finalize();
         Self(Arc::from(format!(
-            "{}/{role}/sha256:{digest:x}",
-            family_id.as_str()
+            "{}/{role}/sha256:{}",
+            family_id.as_str(),
+            data_encoding::HEXLOWER.encode_display(&digest)
         )))
     }
 

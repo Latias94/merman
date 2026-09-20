@@ -259,7 +259,7 @@ fn sha256_file(path: &Path) -> Result<String, ProbeError> {
         }
         digest.update(&buffer[..bytes_read]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(data_encoding::HEXLOWER.encode(&digest.finalize()))
 }
 
 fn executable_sha256() -> Result<String, ProbeError> {

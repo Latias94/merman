@@ -97,7 +97,7 @@ fn output_identity(output: &str) -> OutputIdentity {
     assert!(!output.is_empty(), "benchmark produced empty output");
     OutputIdentity {
         bytes: output.len(),
-        sha256: format!("{:x}", Sha256::digest(output.as_bytes())),
+        sha256: data_encoding::HEXLOWER.encode(&Sha256::digest(output.as_bytes())),
     }
 }
 

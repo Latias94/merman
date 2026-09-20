@@ -1069,7 +1069,7 @@ fn calibrate_fixture_corpus(
     Ok(FixtureCorpusReport {
         corpus_manifest: display_relative_path(&corpus.path, workspace_root),
         corpus_schema_version: corpus.schema_version,
-        fixture_members_sha256: format!("{:x}", member_hasher.finalize()),
+        fixture_members_sha256: data_encoding::HEXLOWER.encode(&member_hasher.finalize()),
         fixture_count: fixtures.len(),
         maximum_layout_work_fixture: maximum.name.clone(),
         maximum_layout_work_units: maximum.layout_work_units,
@@ -1275,7 +1275,8 @@ fn find_flowchart_cardinality_boundary(
         scanned_through_nodes: rejected_nodes,
         accepted_prefix_count,
         accepted_prefix_digest_encoding: "repeated u64-le(nodes) || u64-le(layout_work_units)",
-        accepted_prefix_observations_sha256: format!("{:x}", accepted_prefix_digest.finalize()),
+        accepted_prefix_observations_sha256: data_encoding::HEXLOWER
+            .encode(&accepted_prefix_digest.finalize()),
         accepted_prefix_work_units_non_decreasing,
         first_rejected_nodes: rejected_nodes,
         accepted,
@@ -1628,7 +1629,7 @@ fn display_relative_path(path: &Path, workspace_root: &Path) -> String {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
 }
 
 fn sha256_file(path: &Path) -> Result<String, Box<dyn Error>> {

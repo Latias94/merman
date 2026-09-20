@@ -441,9 +441,12 @@ fn runtime_catalog_digest_bytes() -> Result<&'static [u8], NativeFailure> {
     }
 
     let catalog = runtime_catalog_bytes()?;
-    let digest = format!("sha256:{:x}", Sha256::digest(catalog))
-        .into_bytes()
-        .into_boxed_slice();
+    let digest = format!(
+        "sha256:{}",
+        data_encoding::HEXLOWER.encode_display(&Sha256::digest(catalog))
+    )
+    .into_bytes()
+    .into_boxed_slice();
     let _ = RUNTIME_CATALOG_DIGEST.set(digest);
     Ok(RUNTIME_CATALOG_DIGEST
         .get()
@@ -4774,8 +4777,9 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
 
         let expected_digest = format!(
-            "sha256:{:x}",
-            Sha256::digest(serde_json::to_vec(&catalog).unwrap())
+            "sha256:{}",
+            data_encoding::HEXLOWER
+                .encode_display(&Sha256::digest(serde_json::to_vec(&catalog).unwrap()))
         );
         let reported_digest = unsafe {
             std::slice::from_raw_parts(

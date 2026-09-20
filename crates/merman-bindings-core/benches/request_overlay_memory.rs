@@ -177,7 +177,7 @@ fn sha256_file(path: &Path) -> Result<String, ProbeError> {
         }
         digest.update(&buffer[..bytes_read]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(data_encoding::HEXLOWER.encode(&digest.finalize()))
 }
 
 fn executable_sha256() -> Result<String, ProbeError> {
@@ -187,7 +187,7 @@ fn executable_sha256() -> Result<String, ProbeError> {
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))
 }
 
 fn result_sha256(result: &BindingOperationResult) -> String {
@@ -195,7 +195,7 @@ fn result_sha256(result: &BindingOperationResult) -> String {
     digest.update(result.data());
     digest.update([0]);
     digest.update(result.metadata_json());
-    format!("{:x}", digest.finalize())
+    data_encoding::HEXLOWER.encode(&digest.finalize())
 }
 
 fn validate_result(result: &BindingOperationResult) -> Result<(), ProbeError> {

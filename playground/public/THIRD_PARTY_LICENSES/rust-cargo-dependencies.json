@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "d2ed8f1b2ed6040b28a9006b89278257b82db6642f6d45ae622ca2990027b081",
+    "cargo_lock_sha256": "b5ffed4195632a60a41be06544d43103d6c33617dc4fc7f4642d9a3ea2cab8f0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -2818,16 +2818,6 @@
         {
           "name": "md-5",
           "version": "0.11.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "RustCrypto Developers"
-          ],
-          "repository": "https://github.com/RustCrypto/hashes"
-        },
-        {
-          "name": "sha2",
-          "version": "0.10.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

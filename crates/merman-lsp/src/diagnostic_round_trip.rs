@@ -344,7 +344,7 @@ fn unavailable_uri_digest(uri: &Uri) -> String {
     let mut hasher = Sha256::new();
     hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
     hasher.update(uri.as_str().as_bytes());
-    format!("{:x}", hasher.finalize())
+    data_encoding::HEXLOWER.encode(&hasher.finalize())
 }
 
 impl UnavailableDiagnosticSource {

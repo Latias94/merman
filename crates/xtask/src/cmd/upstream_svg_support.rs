@@ -503,7 +503,7 @@ pub(crate) fn upstream_svg_package_tree_sha256(root: &Path) -> Result<String, Xt
         hash.update([0]);
     }
     let digest = hash.finalize();
-    Ok(format!("{digest:x}"))
+    Ok(data_encoding::HEXLOWER.encode(&digest))
 }
 
 pub(crate) fn spawn_timeout_managed_child(command: &mut Command) -> std::io::Result<Child> {
@@ -760,7 +760,10 @@ pub(crate) fn ensure_content_addressed_file(
         source,
     })?;
     let digest = Sha256::digest(contents.as_bytes());
-    let file_path = dir.join(format!("{stem}-{digest:x}.{extension}"));
+    let file_path = dir.join(format!(
+        "{stem}-{}.{extension}",
+        data_encoding::HEXLOWER.encode_display(&digest)
+    ));
     match fs::read(&file_path) {
         Ok(existing) if existing == contents.as_bytes() => return Ok(file_path),
         Ok(_) => {
@@ -998,7 +1001,10 @@ mod tests {
         let config: serde_json::Value =
             serde_json::from_slice(&contents).expect("parse Puppeteer config");
         let digest = Sha256::digest(&contents);
-        let expected_name = format!("upstream-svg-puppeteer-config-{digest:x}.json");
+        let expected_name = format!(
+            "upstream-svg-puppeteer-config-{}.json",
+            data_encoding::HEXLOWER.encode_display(&digest)
+        );
 
         assert_eq!(
             config.get("detached").and_then(|value| value.as_bool()),
