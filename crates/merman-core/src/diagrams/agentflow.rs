@@ -730,13 +730,12 @@ impl<'a> Parser<'a> {
                     (None, None, Map::new())
                 } else {
                     match parse_declaration(rest.trim(), line_start, line, self.control) {
-                        Ok((id, title, mut metadata)) => {
-                            // Bracketed container titles are not vertex shape declarations.
-                            if title.is_some()
-                                && metadata.get("shape").and_then(Value::as_str) == Some("square")
-                            {
-                                metadata.remove("shape");
-                            }
+                        Ok(Declaration {
+                            id,
+                            label: title,
+                            metadata,
+                            ..
+                        }) => {
                             self.push_symbol(
                                 &id,
                                 EditorSemanticKind::Namespace,
@@ -760,24 +759,19 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("connector")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, label, metadata) =
-                    match parse_declaration(rest.trim(), line_start, &line, self.control) {
+                let declaration =
+                    match parse_declaration(rest.trim(), line_start, line, self.control) {
                         Ok(value) => value,
                         Err(error) => return Ok(Err(error)),
                     };
-                let node_index = self.upsert_node(
-                    id.clone(),
-                    label.clone(),
-                    metadata.clone(),
-                    line_start,
-                    &line,
-                    false,
-                );
+                let id = declaration.id.clone();
+                let label = declaration.label.clone();
+                let metadata = declaration.metadata.clone();
+                let node_index = self.upsert_node(declaration, line_start, line, false);
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
                 self.record_members(std::iter::once(id.clone()));
-                let index = self.upsert_connector(id.clone(), label, metadata);
-                self.push_symbol(&id, EditorSemanticKind::Object, line_start, &line, false);
-                self.connector_index.insert(id, index);
+                self.upsert_connector(id.clone(), label, metadata);
+                self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, false);
                 continue;
             }
             match self.parse_edge_statement(trimmed, line_start, &line) {
@@ -861,32 +855,28 @@ impl<'a> Parser<'a> {
         line: &str,
         reference: bool,
     ) -> std::result::Result<String, ParseFailure> {
-        let (id, label, metadata) = parse_declaration(statement, line_start, line, self.control)?;
-        if id.is_empty() {
-            return Err(self.failure(
-                "expected agentflow node identifier",
-                span_of(line_start, line, statement),
-            ));
-        }
-        if !metadata.is_empty()
+        let declaration = parse_declaration(statement, line_start, line, self.control)?;
+        let id = declaration.id.clone();
+        if declaration.metadata_span.is_some()
             && let Some(&index) = self.sub_graph_index.get(&id)
         {
-            self.sub_graphs[index].metadata.extend(metadata);
+            self.sub_graphs[index].metadata.extend(declaration.metadata);
             self.push_symbol(&id, EditorSemanticKind::Namespace, line_start, line, true);
-        } else if !metadata.is_empty()
+        } else if declaration.metadata_span.is_some()
             && let Some(&index) = self.connector_index.get(&id)
         {
-            self.connectors[index].metadata.extend(metadata);
+            self.connectors[index].metadata.extend(declaration.metadata);
             self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
         } else if let Some(edge) = self
             .edges
             .iter_mut()
             .find(|edge| edge.id.as_deref() == Some(&id))
         {
-            edge.metadata.extend(metadata);
+            edge.metadata.extend(declaration.metadata);
             self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
         } else {
-            self.upsert_node(id.clone(), label, metadata, line_start, line, reference);
+            declaration.validate_shape()?;
+            self.upsert_node(declaration, line_start, line, reference);
         }
         Ok(id)
     }
@@ -1015,13 +1005,18 @@ impl<'a> Parser<'a> {
 
     fn upsert_node(
         &mut self,
-        id: String,
-        label: Option<String>,
-        metadata: Map<String, Value>,
+        declaration: Declaration,
         line_start: usize,
         line: &str,
         reference: bool,
     ) -> usize {
+        let Declaration {
+            id,
+            label,
+            syntax_shape,
+            metadata,
+            ..
+        } = declaration;
         let label = metadata
             .get("label")
             .and_then(Value::as_str)
@@ -1030,7 +1025,9 @@ impl<'a> Parser<'a> {
         let shape = metadata
             .get("shape")
             .and_then(Value::as_str)
-            .map(resolve_shape);
+            .filter(|shape| !shape.is_empty())
+            .map(resolve_shape)
+            .or(syntax_shape);
         let kind = vertex_kind(shape.as_deref());
         let index = if let Some(index) = self.node_index.get(&id).copied() {
             let node = &mut self.nodes[index];
@@ -1505,12 +1502,53 @@ fn find_labeled_arrow(source: &str, from: usize) -> Option<Operator> {
         })
 }
 
+struct Declaration {
+    id: String,
+    label: Option<String>,
+    syntax_shape: Option<String>,
+    metadata: Map<String, Value>,
+    metadata_span: Option<SourceSpan>,
+    authored_shape: Option<Value>,
+}
+
+impl Declaration {
+    fn validate_shape(&self) -> std::result::Result<(), ParseFailure> {
+        let Some(value) = self.authored_shape.as_ref().filter(|value| match value {
+            Value::Null | Value::Bool(false) => false,
+            Value::Number(number) => number.as_f64() != Some(0.0),
+            Value::String(text) => !text.is_empty(),
+            _ => true,
+        }) else {
+            return Ok(());
+        };
+        let error = match value.as_str() {
+            None => Some(format!("No such shape: {value}.")),
+            Some(shape) if shape != shape.to_lowercase() || shape.contains('_') => Some(format!(
+                "No such shape: {shape}. Shape names should be lowercase."
+            )),
+            Some(shape) if !super::shapes::is_valid_pinned_shape(&resolve_shape(shape)) => {
+                Some(format!("No such shape: {}.", resolve_shape(shape)))
+            }
+            _ => None,
+        };
+        match error {
+            Some(message) => Err(ParseFailure::Syntax {
+                message,
+                span: self
+                    .metadata_span
+                    .expect("authored shape has a metadata span"),
+            }),
+            None => Ok(()),
+        }
+    }
+}
+
 fn parse_declaration(
     statement: &str,
     line_start: usize,
     line: &str,
     control: &OperationControl,
-) -> std::result::Result<(String, Option<String>, Map<String, Value>), ParseFailure> {
+) -> std::result::Result<Declaration, ParseFailure> {
     let statement = statement.trim().trim_end_matches(';').trim();
     if statement.is_empty() {
         return Err(ParseFailure::Syntax {
@@ -1519,7 +1557,8 @@ fn parse_declaration(
         });
     }
     let metadata_start = find_metadata_start(statement);
-    let (head, metadata) = if let Some(start) = metadata_start {
+    let mut metadata_span = None;
+    let (head, mut metadata) = if let Some(start) = metadata_start {
         let end = matching_brace(statement, start).ok_or_else(|| ParseFailure::Syntax {
             message: "unterminated agentflow metadata".to_string(),
             span: span_of(line_start, line, statement),
@@ -1530,6 +1569,7 @@ fn parse_declaration(
                 span: span_of(line_start, line, &statement[end..]),
             });
         }
+        metadata_span = Some(span_of(line_start, line, &statement[start..end]));
         (
             &statement[..start],
             parse_metadata(&statement[start + 2..end - 1], control)
@@ -1559,7 +1599,6 @@ fn parse_declaration(
         });
     }
     let remainder = head[id_end..].trim();
-    let mut metadata = metadata;
     let (label, shape) = parse_label(remainder);
     if head[..id_end].trim() != id || (!remainder.is_empty() && shape.is_none()) {
         return Err(ParseFailure::Syntax {
@@ -1567,12 +1606,18 @@ fn parse_declaration(
             span: span_of(line_start, line, statement),
         });
     }
-    if let Some(shape) = shape {
-        metadata
-            .entry("shape")
-            .or_insert_with(|| Value::String(shape.into()));
+    let authored_shape = metadata.get("shape").cloned();
+    if let Some(Value::String(shape)) = metadata.get_mut("shape") {
+        *shape = resolve_shape(shape);
     }
-    Ok((id, label, metadata))
+    Ok(Declaration {
+        id,
+        label,
+        syntax_shape: shape.map(resolve_shape),
+        metadata,
+        metadata_span,
+        authored_shape,
+    })
 }
 
 fn parse_label(remainder: &str) -> (Option<String>, Option<&'static str>) {
@@ -2102,7 +2147,7 @@ a --> b
     #[test]
     fn unsupported_shapes_keep_source_meaning_and_use_upstream_render_fallback() {
         let model = parse_agentflow_model_for_render_controlled(
-            "agentflow-beta\na((Circle))\nb@{ shape: unknown }\nc@{shape: roundedRect}\n",
+            "agentflow-beta\na((Circle))\nb@{ shape: cloud }\nc@{shape: task}\n",
             &meta(),
             &OperationControl::new(),
         )
@@ -2138,6 +2183,62 @@ a --> b
         );
         assert_eq!(flow.nodes[0].classes, ["af-kind-task"]);
     }
+    #[test]
+    fn metadata_shape_validation_rejects_unknown_names_at_the_authored_block() {
+        for shape in ["unknown", "roundedRect", "lean_right", "123", "true", "[]"] {
+            let source = format!("agentflow-beta\n甲@{{ shape: {shape} }}\n");
+            let failure = construct(&source, &meta(), &OperationControl::new())
+                .unwrap()
+                .err()
+                .unwrap();
+            let (error, _) = failure.into_parts();
+            assert!(
+                error.to_string().contains("No such shape:"),
+                "{shape}: {error}"
+            );
+        }
+        let source = "agentflow-beta\n甲@{ shape: unknown }\n";
+        let metadata = meta();
+        let control = OperationControl::new();
+        let mut parser = Parser::new(source, &metadata, &control);
+        let Err(ParseFailure::Syntax { span, .. }) = parser.parse().unwrap() else {
+            panic!("unknown shape must fail with a source span");
+        };
+        assert_eq!(&source[span.start..span.end], "@{ shape: unknown }");
+    }
+
+    #[test]
+    fn shape_aliases_are_validated_before_resolution_and_container_metadata_is_not_a_vertex() {
+        for (authored, resolved) in [
+            ("task", "roundedRect"),
+            ("tool", "subroutine"),
+            ("input", "lean-right"),
+            ("round", "rect"),
+        ] {
+            let source = format!("agentflow-beta\na@{{ shape: {authored} }}\n");
+            let model = parse_agentflow(&source, &meta()).unwrap();
+            assert_eq!(model["vertices"][0]["shape"], resolved);
+        }
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow f@{ shape: unknown }\n a[Task]\nend\nf@{ shape: 123 } --> b\n",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.sub_graphs[0].metadata["shape"], 123);
+        assert_eq!(model.vertices[0].shape.as_deref(), Some("square"));
+        for shape in ["null", "false", "0", "''"] {
+            assert!(
+                parse_agentflow(
+                    &format!("agentflow-beta\na@{{ shape: {shape} }}\n"),
+                    &meta()
+                )
+                .is_ok()
+            );
+        }
+    }
+
     #[test]
     fn containers_complete_inside_out_and_keep_preorder_colors() {
         let model = parse_agentflow_model_for_render_controlled(

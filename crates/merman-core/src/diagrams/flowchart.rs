@@ -87,6 +87,7 @@ pub(crate) use ast::{
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
+use super::shapes::{pinned_shape_names, public_pinned_shape_names};
 use accessibility::{
     FlowchartAccessibilityScan, FlowchartAccessibilityStatement, scan_flowchart_accessibility,
     scan_flowchart_accessibility_controlled,
@@ -95,10 +96,7 @@ use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
-use shape_data::{
-    apply_shape_data_value_to_node, pinned_shape_names, public_pinned_shape_names, value_to_bool,
-    value_to_string,
-};
+use shape_data::{apply_shape_data_value_to_node, value_to_bool, value_to_string};
 use subgraph::SubgraphBuilder;
 
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {

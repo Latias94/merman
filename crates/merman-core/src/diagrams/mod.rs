@@ -63,6 +63,7 @@ pub mod requirement;
 pub mod sankey;
 pub(crate) mod scan;
 pub mod sequence;
+pub(crate) mod shapes;
 pub mod state;
 pub mod timeline;
 pub mod tree_view;
