@@ -245,7 +245,7 @@ XCFramework builder then completed all three slices (macOS universal, iOS device
 and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
 diagnostic and remains outside the release publication set.
 
-The current worktree also reran the real Dart Native Assets entry point with
+The current source record also reran the real Dart Native Assets entry point with
 `dart run tool/theme_authoring_smoke.dart` from `platforms/flutter`. It passed the same two
 materializations, 22 support queries, five expected errors and three budgeted operations per
 consumer; the retained log is
@@ -324,7 +324,7 @@ retain their separate unverified boundaries.
 | Web browser packages | `bdb209e11` package group and installed Chromium build | Five capability projections, owner matrix/DOM safety and current-source package manifest; five size rows pass | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Current-source attempt at `bdb209e11`; last passing package is `f3a783c29` with Binaryen 131 | Current run blocked before packaging by host `wasm-opt 132` versus required 131 | Typst package, smoke and size rows must be rerun with Binaryen 131; constrained resource rejection remains separate |
 | C ABI | `bdb209e11` source-built journeys, 120 fresh processes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-crate delivery contract; packaged source-crate consumption and other hosts remain unverified |
-| Flutter/Dart | Pre-integration Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Current-source renewal pending; no pub.dev publication or Android device run |
+| Flutter/Dart | `bdb209e11` Native Assets smoke and `pub publish --dry-run` | ABI 3 contract, example, two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
 | Apple Swift | `bdb209e11` macOS XCFramework and SwiftPM smoke | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries, dense SVG and recipe imports | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
 
@@ -737,7 +737,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, current Web browser, current C ABI source consumer and current Apple Swift consumer; historical Typst and Flutter records | Current-source records cover Python, Node, Web, C ABI and Apple; Typst is toolchain-blocked, while Flutter records require renewal from bdb before serving as final-candidate identities |
+| Installed consumer journeys | Python, Node native/WASM, current Web browser, current C ABI source consumer, current Apple Swift and current Flutter consumers; historical Typst record | Current-source records cover Python, Node, Web, C ABI, Apple and Flutter; Typst is toolchain-blocked, while registry/device/other-host routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM, Web full/render and Apple records pass their exercised vectors at or after `bdb209e11`; Typst shared-vector/package evidence remains historical at `f3a783c29`; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
