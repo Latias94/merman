@@ -177,7 +177,8 @@ diagnostic and remains outside the release publication set.
 The current-source C ABI consumer smoke was rerun with `cargo nextest run --locked -p merman-ffi
 --test c_consumer_smoke`: both the alpha5 compatibility consumer and the current C consumer passed
 (2/2). This strengthens the native C ABI lane on macOS ARM64; it does not establish the missing
-UniFFI, mobile, or non-macOS host journeys.
+UniFFI, mobile, or non-macOS host journeys. The captured output is retained at
+`target/bench/experiments/c7a-c-abi-current-20260920/nextest.log`.
 
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
