@@ -44,13 +44,16 @@ three public Cyberpunk Flowchart, Sequence and XY Chart recipe round-trip tests 
 The current HEAD refresh reran the broader semantic and acceptance lanes with
 `cargo nextest run --locked -p merman-theme-fixtures -p merman-theme-acceptance`: 70 tests passed,
 two intentional skips remained, and the three public Cyberpunk round-trip cases passed again.
+Nextest also marked `enforcement_and_portable_expectation_invariants_fail_closed` as leaky;
+that process-cleanup observation has not been diagnosed and is not counted as a clean shutdown.
 
 The release-mode support discovery gate also passes
 `cargo nextest run --release --locked -p merman-render --lib --test theme_support_discovery_test`
 with the support-manifest selection: 58 tests passed and 2,520 unrelated tests were skipped.
 
 The current HEAD refresh reran that release gate without the historical selection summary:
-2,577 support-discovery tests passed and two intentional skips remained. The gate continues to
+2,577 tests across the renderer library and support-discovery integration binary passed and two
+intentional skips remained. The gate continues to
 keep target, family, capability, `Unsupported`, and `Unverified` decisions distinct.
 
 The current literal Modern Mermaid matrix remains useful input coverage: 510 rows across SVG,
@@ -282,13 +285,21 @@ capability.
 | Node Darwin ARM64, Node WASM | Refreshed pack/install smoke, content-capability correction and customized recipe exchange below | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
-| C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
+| C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 dylib, not installed SDK archive; broader journeys and hosts remain open |
 | Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
 | Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
 
 This matrix is intentionally conservative: it records real local execution without turning package
 shape or source-level tests into release publication evidence.
+
+The [C ABI consumer increment](2026-09-20-c-abi-theme-journeys.md) uses the exact
+`c-abi-native` profile at `25f811599`. A separately linked C executable passes 120 fresh-process
+cases, including 13 expected errors, with repeated-call stability. The caller-supplied Latin/CJK
+font cases produce PNG/PDF with embedded-font Portable receipts; removing the CJK slice yields
+explicit missing-glyph errors. PDFKit opens all six retained PDFs, and the mixed-script PNG/PDF
+pair visibly preserves both scripts. This adds scoped controlled-font and native-consumer evidence
+without claiming an installed archive, browser font parity or other host execution.
 
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
@@ -622,7 +633,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
 | Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |
-| Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level; the ARM64 Apple consumer now confirms Class omitted/Clear/transparent and source-owned facet precedence, with Aurora and resource residuals explicitly Unverified |
+| Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level; ARM64 Apple and external C consumers confirm Class Clear/transparent and source-owned facet precedence; C native exports also exercise supplied fonts and missing glyphs, while Aurora and unexecuted targets remain explicitly Unverified |
 | Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited but refreshed: the ten-preset dense Class/Mindmap/XY/Flowchart review covers current SVG/PNG/PDF behavior; high-contrast certification, controlled fonts, browser labels and wider-family qualification remain open |
 | WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
 | Cold start, first render and export throughput | Cold-parse Criterion, Node transport diagnostics, alpha.6 Class confirmation and 18 native SVG/PNG/PDF rows with 540 samples | Current native warm throughput measured with output identity and PDF reader checks; Apple dense SVG admission is verified, while historical export deltas, PNG/PDF on Apple and broader cold/first-render admission remain open |
