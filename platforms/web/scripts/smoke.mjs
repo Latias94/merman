@@ -570,64 +570,75 @@ if (hasCapability("svg")) {
       return true;
     });
   }
-  const strictFont = await readFile(path.join(repoRoot, "fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"));
   const portableSource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
-  const portableOptions = {
-    theme: { spec: {
-      canvas: { base: "#f7f3e8" },
-      assets: {
-        fonts: [{ id: "strict-smoke-font", format: "woff2", data_base64: strictFont.toString("base64") }],
-        available_sources: ["embedded"], embedding: "full-font",
-      },
-    } },
-    site_config: { htmlLabels: false, themeVariables: { fontFamily: "Excalifont" } },
-    environment: { theme_portability: "require-portable" },
-    svg: { pipeline: "resvg-safe" },
-  };
-  const portable = api.renderSvgResult(portableSource, portableOptions);
-  assert.equal(portable.metadata.theme_execution_evidence.theme_status, "verified");
-  assert.equal(portable.metadata.theme_execution_evidence.target_status, "portable");
-  assert.deepEqual(portable.metadata.theme_execution_evidence.target_reason_ids, []);
-  assert.ok(portable.svg.includes("@font-face"));
-  const unsupportedPortableRecipe = structuredClone(portableOptions);
-  unsupportedPortableRecipe.theme.spec.styles = [{
-    kind: "rule", family: "sequence", target: "lifeline", style: { radius: 6, stroke: { paint: "#2563eb" } },
-  }];
-  const partial = api.renderSvgResult(portableSource, {
-    ...unsupportedPortableRecipe, environment: { theme_portability: "best-effort" },
-  });
-  assert.ok(partial.metadata.theme_execution_evidence.target_reason_ids.includes("theme_evidence_incomplete"));
-  assert.ok(!partial.metadata.theme_execution_evidence.target_reason_ids.includes("svg_fonts_not_self_contained"),
-    "the unsupported-theme negative must retain its proven embedded fonts");
-  const radiusDiagnostic = partial.metadata.theme_execution_evidence.diagnostics.find(
-    (diagnostic) => diagnostic.target === "lifeline" && diagnostic.code === "unsupported-geometry",
-  );
-  assert.deepEqual(radiusDiagnostic, {
-    code: "unsupported-geometry", subject: "rule", target: "lifeline",
-    source_document: "complete_spec", source_paths: ["/styles/0"], generated: false,
-  });
-  assert.ok(partial.svg.includes("#2563eb"), "a residual rule may still apply its supported paint");
-  assert.deepEqual(portable.metadata.theme_execution_evidence.diagnostics, []);
-  const geometrySource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nloop Retry\nAlice->>Bob: Hello\nend";
-  assert.equal(api.renderSvgResult(geometrySource, portableOptions).metadata.theme_execution_evidence.target_status,
-    "portable", "the same scene and fonts must pass before unsupported geometry is added");
-  for (const target of ["lifeline", "message", "loop"]) {
-    const geometryOnlyOptions = structuredClone(portableOptions);
-    geometryOnlyOptions.theme.spec.styles = [6, 8].map((radius) => ({
-      kind: "rule", family: "sequence", target, style: { radius },
-    }));
-    const geometryOnly = api.renderSvgResult(geometrySource, {
-      ...geometryOnlyOptions, environment: { theme_portability: "best-effort" },
+  if (hasCapability("embedded-fonts")) {
+    const strictFont = await readFile(path.join(repoRoot, "fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"));
+    const portableOptions = {
+      theme: { spec: {
+        canvas: { base: "#f7f3e8" },
+        assets: {
+          fonts: [{ id: "strict-smoke-font", format: "woff2", data_base64: strictFont.toString("base64") }],
+          available_sources: ["embedded"], embedding: "full-font",
+        },
+      } },
+      site_config: { htmlLabels: false, themeVariables: { fontFamily: "Excalifont" } },
+      environment: { theme_portability: "require-portable" },
+      svg: { pipeline: "resvg-safe" },
+    };
+    const portable = api.renderSvgResult(portableSource, portableOptions);
+    assert.equal(portable.metadata.theme_execution_evidence.theme_status, "verified");
+    assert.equal(portable.metadata.theme_execution_evidence.target_status, "portable");
+    assert.deepEqual(portable.metadata.theme_execution_evidence.target_reason_ids, []);
+    assert.ok(portable.svg.includes("@font-face"));
+    const unsupportedPortableRecipe = structuredClone(portableOptions);
+    unsupportedPortableRecipe.theme.spec.styles = [{
+      kind: "rule", family: "sequence", target: "lifeline", style: { radius: 6, stroke: { paint: "#2563eb" } },
+    }];
+    const partial = api.renderSvgResult(portableSource, {
+      ...unsupportedPortableRecipe, environment: { theme_portability: "best-effort" },
     });
-    assert.deepEqual(geometryOnly.metadata.theme_execution_evidence.target_reason_ids,
-      ["theme_evidence_incomplete"], `${target}: pure geometry must be the only admission failure`);
-    assert.deepEqual(geometryOnly.metadata.theme_execution_evidence.diagnostics.filter(
-      (diagnostic) => diagnostic.subject === "rule"), [{
-        code: "unsupported-geometry", subject: "rule", target,
-        source_document: "complete_spec", source_paths: ["/styles/1"], generated: false,
-      }], `${target}: only the winning unsupported rule remains in diagnostics`);
-    assert.throws(() => api.renderSvgResult(geometrySource, geometryOnlyOptions),
-      (error) => error.code_name === "MERMAN_RENDER_ERROR");
+    assert.ok(partial.metadata.theme_execution_evidence.target_reason_ids.includes("theme_evidence_incomplete"));
+    assert.ok(!partial.metadata.theme_execution_evidence.target_reason_ids.includes("svg_fonts_not_self_contained"),
+      "the unsupported-theme negative must retain its proven embedded fonts");
+    const radiusDiagnostic = partial.metadata.theme_execution_evidence.diagnostics.find(
+      (diagnostic) => diagnostic.target === "lifeline" && diagnostic.code === "unsupported-geometry",
+    );
+    assert.deepEqual(radiusDiagnostic, {
+      code: "unsupported-geometry", subject: "rule", target: "lifeline",
+      source_document: "complete_spec", source_paths: ["/styles/0"], generated: false,
+    });
+    assert.ok(partial.svg.includes("#2563eb"), "a residual rule may still apply its supported paint");
+    assert.deepEqual(portable.metadata.theme_execution_evidence.diagnostics, []);
+    const geometrySource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nloop Retry\nAlice->>Bob: Hello\nend";
+    assert.equal(api.renderSvgResult(geometrySource, portableOptions).metadata.theme_execution_evidence.target_status,
+      "portable", "the same scene and fonts must pass before unsupported geometry is added");
+    for (const target of ["lifeline", "message", "loop"]) {
+      const geometryOnlyOptions = structuredClone(portableOptions);
+      geometryOnlyOptions.theme.spec.styles = [6, 8].map((radius) => ({
+        kind: "rule", family: "sequence", target, style: { radius },
+      }));
+      const geometryOnly = api.renderSvgResult(geometrySource, {
+        ...geometryOnlyOptions, environment: { theme_portability: "best-effort" },
+      });
+      assert.deepEqual(geometryOnly.metadata.theme_execution_evidence.target_reason_ids,
+        ["theme_evidence_incomplete"], `${target}: pure geometry must be the only admission failure`);
+      assert.deepEqual(geometryOnly.metadata.theme_execution_evidence.diagnostics.filter(
+        (diagnostic) => diagnostic.subject === "rule"), [{
+          code: "unsupported-geometry", subject: "rule", target,
+          source_document: "complete_spec", source_paths: ["/styles/1"], generated: false,
+        }], `${target}: only the winning unsupported rule remains in diagnostics`);
+      assert.throws(() => api.renderSvgResult(geometrySource, geometryOnlyOptions),
+        (error) => error.code_name === "MERMAN_RENDER_ERROR");
+    }
+  } else {
+    assert.throws(() => api.renderSvgResult(portableSource, {
+      theme: { spec: { canvas: { base: "#f7f3e8" } } },
+      environment: { theme_portability: "require-portable" },
+      svg: { pipeline: "resvg-safe" },
+    }), (error) => {
+      assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
+      return true;
+    }, "profiles without embedded-fonts must reject portable theme requests");
   }
   const diagnosticDefinition = {
     schema_version: 1, kind: "definition", definition: {
@@ -644,10 +655,6 @@ if (hasCapability("svg")) {
     diagnostic.target === "lifeline" && diagnostic.source_document === "definition"
       && JSON.stringify(diagnostic.source_paths) === '["/styles/1"]' && !diagnostic.generated),
   "authoring expansion must preserve the original mixed-entry index");
-  assert.throws(() => api.renderSvgResult(portableSource, unsupportedPortableRecipe), (error) => {
-    assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
-    return true;
-  });
   for (const invalidRecipe of [
     { ...restoredRecipe, schema_version: 2 },
     { ...restoredRecipe, preset: "editor-light" },
