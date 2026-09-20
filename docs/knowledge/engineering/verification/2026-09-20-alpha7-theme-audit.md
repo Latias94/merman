@@ -48,12 +48,11 @@ manifest records exact archives and hashes. The same-source Typst attempt stops 
 Binaryen gate because this host exposes `wasm-opt 132` while the owner requires Binaryen 131; the
 preceding `f3a783c29` Typst package record is therefore historical, not a current-source pass.
 
-The [current CLI/LSP archive record](2026-09-20-cli-lsp-reference-plan-replay.md) also binds
-`f3a783c29`. Both archives pass execute-mode verification. The CLI's fresh qualification and
+The [current CLI/LSP archive record](2026-09-20-cli-lsp-reference-plan-replay-single-pass.md)
+binds `bdb209e11`. Both archives pass execute-mode verification. The CLI's fresh qualification and
 reexecution match all 18 SVG/PNG observations for Brutalist, Spotless and Cyberpunk, and its
 archive companion retains 18 HostDependent cells while the shared catalog remains unqualified.
-Version/preparation checks and 110 archive/qualification contract tests pass. This closes the
-current macOS ARM64 archive witness, without extending it to hosted CI or other targets.
+This renews the macOS ARM64 archive witness without extending it to hosted CI or other targets.
 
 The current source acceptance replay also passes
 `cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
@@ -742,12 +741,12 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Installed consumer journeys | Python, Node native/WASM and current Web browser record; historical Typst package record; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; current-source Typst, C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render records pass their exercised vectors; the current Web record is `bdb209e11`, while Typst shared-vector/package evidence remains historical at `f3a783c29`; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
-| CLI/LSP archive replay | cargo-dist `f3a783c29` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
+| CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
 | Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |
 | Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level; ARM64 Apple and external C consumers confirm Class Clear/transparent and source-owned facet precedence; C native exports also exercise supplied fonts and missing glyphs, while Aurora and unexecuted targets remain explicitly Unverified |
 | Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited but refreshed: the ten-preset dense Class/Mindmap/XY/Flowchart review covers current SVG/PNG/PDF behavior; high-contrast certification, controlled fonts, browser labels and wider-family qualification remain open |
-| WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
+| WASM/Node/Python/Typst/CLI/native size | Current Web, Python/Node and CLI/LSP identities; historical Typst size record; legal digests | Measured current snapshots for renewed lanes; current-source Typst and matched alpha.6 attribution and cross-host deltas remain open |
 | Cold start, first render and export throughput | Cold-parse Criterion, Node transport diagnostics, alpha.6 Class confirmation and 18 native SVG/PNG/PDF rows with 540 samples | Current native warm throughput measured with output identity and PDF reader checks; Apple dense SVG admission is verified, while historical export deltas, PNG/PDF on Apple and broader cold/first-render admission remain open |
 | Large-diagram memory | 30 fresh-process pairs, six scales and 10,000 bootstrap resamples | Infrastructure smoke passed; owner contract excludes release admission |
 | Theme compile and discovery cost | Current two-feature-lane Criterion checkpoint: 26 rows, 780 samples and shared golden/fingerprint gates | Native warm-process baseline measured; matched historical deltas, allocation costs and transport overhead remain unverified |
@@ -757,8 +756,9 @@ own family-local semantic and export evidence; successful C7a literal renders do
 
 The following evidence is still required before C7a can be marked eligible:
 
-- Same-source CLI/LSP archive assembly and replay for every declared host. The macOS ARM64
-  archive route now passes locally; Linux, Windows and Intel archive execution remain open.
+- Same-source CLI/LSP archive assembly and replay for every declared host. The integrated
+  `bdb209e11` macOS ARM64 archive route now passes locally; Linux, Windows and Intel archive
+  execution remain open.
 - Installed Web, Typst, UniFFI and relevant mobile/Apple/Flutter consumer journeys, plus C ABI
   packaged-source consumption under its declared source-crate distribution contract,
   including the six public customization/resource journeys and explicit resource failures. Web
