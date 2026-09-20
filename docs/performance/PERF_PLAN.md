@@ -13,6 +13,15 @@ improves only 9.90 µs (0.84%) in two diagnostic pairs, below the registered joi
 All 245 pipeline tests and exact public SVG/receipt/preset identities pass; no production patch
 is integrated. The complete XML/reference finalization cost remains an attribution target.
 
+The [XML/reference single-pass candidate](xml_reference_single_pass_2026-09-20.md) is accepted
+on the clean macOS ARM64 confirmation lane. It fuses XML event and attribute traversal while
+retaining full validation, resource checks, cancellation and exact output contracts. Class medium
+improves 10.925% and 136.988 microseconds with simultaneous 95% bounds clearing both thresholds;
+Sequence medium also clears the improvement gate. Class tiny, XY Chart medium and Flowchart medium
+confirm non-regression. The candidate is integrated as `bdb209e11`. This is an adjacent-source
+improvement and does not close the alpha.6 release-range regression, cross-host cost matrix or
+C7a/U10.
+
 The [reference-plan checkpoint](reference_plan_2026-09-21.md) removes a repeated dependency-graph
 evaluation while retaining conservative effect amplification. Class medium drops 12 allocations,
 21,136 cumulative bytes and 5,184 bytes of peak growth per complete SVG render. Five controls

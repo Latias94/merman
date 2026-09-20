@@ -509,6 +509,16 @@ registered joint latency threshold. All 245 pipeline tests and exact SVG/receipt
 pass, but the candidate is rejected without production integration or a confirmed speedup claim.
 This leaves the current installed artifact identities and the unresolved U10 regression intact.
 
+The [XML/reference single-pass report](../../../performance/xml_reference_single_pass_2026-09-20.md)
+then confirms a bounded adjacent improvement after collecting reference facts during the sole
+validated XML traversal. Clean base `f3a783c29` and candidate `0d43621e2` use eight A/A pairs and
+eight balanced confirmation pairs. Class medium falls from 1,253.963 to 1,116.975 µs, a 10.925%
+and 136.988 µs improvement whose simultaneous bounds clear both gates; Sequence also clears the
+gate. Class tiny, XY Chart and Flowchart confirm non-regression. SVG bytes, public receipts and
+preset fingerprints match exactly, the 247-test pipeline and 35-family DOM comparison pass, and
+the implementation is integrated as `bdb209e11`. This is not recovery against published alpha.6:
+the remaining release-range regression, broader U10 footprint matrix and C7a gates remain open.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
