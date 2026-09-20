@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa
+source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa, 4e03b93e7
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -193,12 +193,42 @@ Criterion cold-parse run is retained at
 | class_medium | 78.824–79.940 µs | 11,083 |
 | flowchart_medium | 183.57–185.09 µs | 24,373 |
 
-The comparison field is explicitly `unverified` because `repo-ref/mermaid-rs-renderer` is absent.
-The native large-diagram memory run was not executed because its owner would clean the shared
-target and launch 60 subprocesses. Matched alpha.6 latency, cold start, memory, themed/native
-workloads, PNG/PDF throughput, compile/discovery cost and same-source archive size comparisons
-therefore remain unverified. The declared U10 rule still treats unavailable metrics as unverified;
-no default budget or limit was changed.
+The locked `mermaid-rs-renderer` reference is now isolated at `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
+and was measured against a clean Merman clone at `4e03b93e7` on eight byte-identical native
+fixtures. The pinned renderer predates the benchmark feature expected by the comparison harness,
+so its isolated `/tmp` checkout received a temporary empty `benchmark` feature; the shared source
+checkout was not changed. The diagnostic output is retained at
+`target/bench/experiments/theme-perf-current-20260920/mmdr-quick-clean.json` and `.md`:
+
+| Fixture | Merman | mermaid-rs-renderer | Merman / renderer |
+| --- | ---: | ---: | ---: |
+| flowchart_tiny | 161.78 µs | 21.44 µs | 7.55x |
+| flowchart_medium | 2,976.10 µs | 3,720.70 µs | 0.80x |
+| sequence_tiny | 262.52 µs | 11.33 µs | 23.17x |
+| sequence_medium | 494.92 µs | 123.45 µs | 4.01x |
+| state_tiny | 114.94 µs | 17.18 µs | 6.69x |
+| state_medium | 789.61 µs | 1,367.60 µs | 0.58x |
+| class_tiny | 203.49 µs | 14.59 µs | 13.95x |
+| class_medium | 1,446.90 µs | 1,712.30 µs | 0.85x |
+
+This runner reports `valid_diagnostic`, not a U10 baseline: it retains Criterion console
+midpoints rather than raw samples, compares different native transports and does not execute DOM
+or raster parity gates. The partial renderer is a context reference, not a release-equivalent
+semantic oracle.
+
+The isolated native memory owner run is now complete at
+`target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
+clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
+and 10,000 bootstrap resamples. The infrastructure-smoke contract passed all caps with slopes
+of 1.259 (allocation count), 1.394 (allocated bytes) and 1.467 (peak growth bytes); at scale 100
+the measured values were 1,660,450 allocations, 349,202,213 allocated bytes and 85,121,537 peak
+growth bytes. The owner contract deliberately sets `candidate_admission: false`, so this is
+reproducible memory evidence and a bounded risk signal, not release admission or a matched alpha.6
+comparison.
+
+Matched alpha.6 latency, cold start, themed/native workloads, PNG/PDF throughput, compile/discovery
+cost and same-source archive size comparisons remain unverified. The declared U10 rule still
+treats unavailable metrics as unverified; no default budget or limit was changed.
 
 # Open C7a gates
 
