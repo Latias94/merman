@@ -14,12 +14,13 @@ This record is a current-source audit, not a release approval. The completed evi
 to retain the complete Cyberpunk recipe and its bounded native qualification profile, but C7a
 remains open. No tag, publication, push or public catalog promotion was performed.
 
-The strongest current result is a clean-source native qualification replay plus installed Python,
-Node Darwin ARM64, Node WASM and Web package consumer exchange. The evidence is execution-local and host-bound:
-macOS ARM64, system fonts, selected SVG/PNG scenes and the installed consumer profiles described
-below. It does not establish the release matrix or the U10 cost gate. The accepted XML/reference
-single-pass implementation is now integrated at `bdb209e11`; package and archive witnesses bound
-to `f3a783c29` remain historical until they are rebuilt from this source.
+The strongest current result is the integrated-source installed Python, Node Darwin ARM64 and
+Node WASM consumer refresh. The evidence is execution-local and host-bound: macOS ARM64, system
+fonts, selected SVG/PNG scenes and the installed consumer profiles described below. It does not
+establish the release matrix or the U10 cost gate. The accepted XML/reference single-pass
+implementation is integrated at `bdb209e11`. Every source-bound Web, Typst, CLI/LSP, C ABI, Apple,
+Flutter and other artifact record in this audit predates that commit and is historical until rebuilt
+from the integrated source; their semantic results remain evidence of the earlier source only.
 
 # Completed evidence
 
