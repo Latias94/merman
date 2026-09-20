@@ -173,6 +173,14 @@ bytes are 3,691,349 (analysis), 5,218,980 (ascii), 3,802,570 (editor), 16,291,18
 13,694,329 (render). The complete Web contract suite now passes 147/147 after the closure
 expectation was aligned with the current `web-full` ownership of `merman-export`.
 
+The Web owner smoke was rerun from the current checkout after refreshing all five WASM profiles
+and package artifacts. Build transactions were `2124c76371ac` (full), `182394750950` (analysis),
+`562ca2bf9112` (render), `bc04461cb812` (editor) and `4491a5510907` (ascii). The full smoke then
+passed WASM input verification, package prepack checks, the 35-diagram package matrix and DOM
+safety for all five profiles. The captured log is
+`target/bench/experiments/web-consumer-current-20260920/smoke.log`, SHA-256
+`ab8b44bb8f41a4db62f9eee82ef757e859221a5ce1b984b909204f6d9464a6c2`.
+
 The current Typst WASM artifact was built with the required Binaryen 131 tool and passed the size
 budget: 18,321,200 raw bytes, 11,177,136 stripped bytes, 4,253,078 gzip bytes and 3,144,348
 brotli bytes. Binaryen 131 `typst-package-smoke` now passes the real package consumer: 22 positive
@@ -252,8 +260,8 @@ capability.
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
-| Python, Node Darwin ARM64, Node WASM | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source artifacts; no current registry installation or mobile runtime |
-| Web browser packages | Current Web owner smoke and Chromium package record | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
+| Python, Node Darwin ARM64, Node WASM | Installed-consumer record from clean `0c1b1047a`; current Node contracts 109/109 and package checks | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange; current Node contract and package shape | Installed artifacts remain historical; no current registry installation or mobile runtime |
+| Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
 | C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
 | Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
@@ -463,6 +471,15 @@ matched alpha.6/alpha.7 regression comparison or balanced confirmation run; they
 The full corpus still exposes six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. Those
 remain transport coverage findings, while the representative samples are retained as diagnostic
 evidence rather than release admission.
+
+The current Node package contracts were rerun with the repository-required npm 12 CLI
+(`12.0.2`): `npm test` passed 109/109 and `npm run check:packages` passed the candidate package
+contracts. The host's default npm 11 was intentionally not admitted because the footprint test
+requires npm 12's named `npm pack --json` result shape. The test log is
+`target/bench/experiments/node-consumer-current-20260920/tests.log`, SHA-256
+`b605de3d2bc04e9a769a72c1875c361d027a73e63890000f80f8af0b162cd6f3`. These checks validate the
+current JavaScript contract and package shape; they do not refresh the installed-consumer record
+or establish registry and mobile runtime evidence.
 
 # Classification and C7b deferral
 
