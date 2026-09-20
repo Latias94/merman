@@ -97,7 +97,38 @@ is retained in the experiment logs and supplies no validation evidence.
 
 Still unverified in this slice: Swift 5.9/Xcode 15.2, native Intel execution, iOS build/runtime,
 installed release archive provenance, visual/readability qualification, controlled or missing-font
-behavior, Clear/transparent/source-style interactions, dense Class and extended-series XY, and
+behavior, dense Class and extended-series XY, and
 PNG/PDF workflows in export-capable profiles. The default Apple package deliberately lacks native
 binary exports, embedded fonts and math. Existing missing-capability checks do not substitute for
 those separate workflows. The complete six-journey requirement and C7a remain open.
+
+# Paint and font boundary follow-up
+
+The final ARM64 SwiftPM smoke also executes `ThemeBoundaries.swift`. Across the one-shot and
+reusable entry points it exercises ten Class cases: omitted, explicitly cleared and transparent
+fills, each against source-owned fill/stroke styles and an independently overridden stroke. Source
+ownership remains per facet. A Clear fill masks the earlier paint without becoming transparent,
+retains a source-addressed unsupported-route diagnostic, and is rejected by strict portability;
+transparent and ordinary typed paints render and remain `target_status: unverified`.
+
+The same consumer renders a deliberately absent host font family through the one-shot API, a
+reusable engine and constructor options. The family name and fallback survive in the SVG without
+an embedded asset or `@font-face`; this proves the resource-free contract, not host font metrics.
+Two complete-spec wire shapes carrying a valid WOFF2 magic prefix but no body are rejected through
+all three entry points with the default artifact's `embedded-fonts` missing-capability error,
+including constructor admission before rendering. The runtime catalog also confirms that the
+default Apple artifact does not advertise that capability.
+
+The final command was:
+
+```console
+MERMAN_APPLE_THEME_SMOKE_OUTPUT=target/bench/experiments/apple-theme-boundaries-20260920/final-artifacts \
+  swift run --jobs 1 --package-path platforms/apple/examples/smoke MermanAppleSmoke
+```
+
+It passed the existing authoring and preset checks plus `Apple theme boundaries passed: 10 Class
+cases, 2 strict Clear rejections, 6 missing-family renders, 6 font capability rejections`.
+The final log SHA-256 is `93fa616c89b493db39e369aaa8c5cdb4dc70b471e260f47221bda6a9c3201232`.
+The run produced 57 retained local artifacts under the ignored experiment directory. This remains
+macOS ARM64 with Swift 6.3.2/Xcode 26.5; Swift 5.9, Intel, iOS, browser/PDF font metrics and
+visual qualification remain unverified.

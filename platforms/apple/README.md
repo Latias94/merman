@@ -88,6 +88,12 @@ The final command proves that the checked-in UniFFI Swift projection matches the
 
 The macOS smoke compares the shared theme catalog and authoring vectors, round-trips all ten preset recipes, and imports complete Cyberpunk and edited Class recipes in fresh processes. It also checks that unsupported Class node widths retain a source-addressed diagnostic and rejected admission. Set `MERMAN_APPLE_THEME_SMOKE_OUTPUT` to retain each run's recipe files, SVGs, and operation metadata under a chosen directory. These checks do not qualify visual output, iOS execution, or the Swift 5.9 compiler floor.
 
+The same smoke checks omitted, cleared, and transparent Class paints against source-owned styles.
+Clear masks the earlier paint but retains an unsupported-route diagnostic; strict portability rejects
+it. A deliberately absent font family remains a legal SVG reference with a fallback family. The
+default artifact rejects embedded font resources before decoding, including at engine construction.
+These checks do not prove that a browser or PDF renderer has the requested font or uses matching metrics.
+
 ## Documentation And Releases
 
 - [Apple binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
