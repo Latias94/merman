@@ -79,9 +79,10 @@ coverage follow-up. Four initial service-routing failures were retried successfu
 model reviewers; no external coding tool was used. Review artifacts are under
 `/tmp/compound-engineering-501/ce-code-review/xml-reference-czyp1lhv/`.
 
-Workspace strict Clippy remains an existing limitation: the all-targets/all-features `-D warnings`
-lane still escalates the repository's pre-existing renderer warnings. This candidate does not alter
-that warning gate. Broader installed artifacts and host-specific evidence remain bound to their
+Workspace strict Clippy remains an existing limitation: the scoped `merman-render` `-D warnings`
+run reports 170 existing renderer errors, including the unchanged `ReferenceNode.is_style` warning
+in this file; the all-targets/all-features lane has the same pre-existing warning gate. This
+candidate does not alter that gate. Broader installed artifacts and host-specific evidence remain bound to their
 recorded revisions and require renewal before being treated as final-candidate evidence.
 
 ## Evidence and limits
