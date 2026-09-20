@@ -2825,26 +2825,28 @@ fn split_markdown_word_to_width_px(
     if max_width_px <= 0.0 {
         return (word.to_string(), String::new());
     }
-    let chars = word.chars().collect::<Vec<_>>();
-    if chars.is_empty() {
-        return (String::new(), String::new());
-    }
+    use unicode_segmentation::UnicodeSegmentation;
 
-    let mut split_at = 1usize;
-    for idx in 1..=chars.len() {
-        let head = chars[..idx].iter().collect::<String>();
-        let width =
-            measure_markdown_word_line_width_px(measurer, &[(head.clone(), ty)], style, wrap_mode);
+    let Some(first) = word.graphemes(true).next() else {
+        return (String::new(), String::new());
+    };
+
+    // Mermaid's splitTextToChars uses Intl.Segmenter. An over-wide first grapheme must
+    // still make progress without separating its combining marks or emoji joiners.
+    let mut split_at = first.len();
+    for (index, grapheme) in word.grapheme_indices(true) {
+        let end = index + grapheme.len();
+        let head = word[..end].to_string();
+        let width = measure_markdown_word_line_width_px(measurer, &[(head, ty)], style, wrap_mode);
         if width.is_finite() && width <= max_width_px {
-            split_at = idx;
+            split_at = end;
         } else {
             break;
         }
     }
 
-    let head = chars[..split_at].iter().collect::<String>();
-    let tail = chars[split_at..].iter().collect::<String>();
-    (head, tail)
+    let (head, tail) = word.split_at(split_at);
+    (head.to_string(), tail.to_string())
 }
 
 fn wrap_markdown_word_lines(

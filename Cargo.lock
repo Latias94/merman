@@ -2315,6 +2315,7 @@ dependencies = [
  "merman-render",
  "png",
  "roxmltree 0.21.1",
+ "rustybuzz",
  "serde",
  "serde_json",
  "sha2 0.10.9",

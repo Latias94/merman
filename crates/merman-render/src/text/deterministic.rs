@@ -6,7 +6,16 @@ use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
+
+type TextWidthPxFn = Arc<dyn Fn(&str, &TextStyle) -> f64 + Send + Sync>;
+
+#[derive(Clone)]
+struct WidthCallbackTextMeasurer {
+    width_px: TextWidthPxFn,
+    line_height_factor: f64,
+}
 
 #[derive(Clone, Copy, Default)]
 struct LineWidthAccumulator {
@@ -14,48 +23,64 @@ struct LineWidthAccumulator {
     char_count: usize,
 }
 
-impl LineWidthAccumulator {
-    fn push_str(&mut self, text: &str, uses_heuristic_widths: bool) {
-        if uses_heuristic_widths {
-            append_text_width_em(&mut self.heuristic_em, text);
-        } else {
-            self.char_count = self.char_count.saturating_add(text.chars().count());
-        }
-    }
-
-    fn width_px(self, font_size: f64, uses_heuristic_widths: bool, char_width_factor: f64) -> f64 {
-        if uses_heuristic_widths {
-            self.heuristic_em * font_size
-        } else {
-            self.char_count as f64 * font_size * char_width_factor
-        }
-    }
+#[derive(Clone, Copy)]
+enum LineWidthSource<'a> {
+    Heuristic,
+    UniformAdvanceEm(f64),
+    Callback(&'a TextWidthPxFn),
 }
 
 #[derive(Clone, Copy)]
-struct LineWidthModel {
+struct LineWidthModel<'a> {
     font_size: f64,
-    uses_heuristic_widths: bool,
-    char_width_factor: f64,
+    source: LineWidthSource<'a>,
+    style: &'a TextStyle,
 }
 
-impl LineWidthModel {
+impl LineWidthModel<'_> {
     fn width_px(self, text: &str) -> f64 {
+        if let LineWidthSource::Callback(width_px) = self.source {
+            return width_px(text, self.style);
+        }
+
         let mut width = LineWidthAccumulator::default();
-        self.append(&mut width, text);
-        self.finish(width)
+        self.append_builtin(&mut width, text);
+        self.finish_builtin(width)
     }
 
-    fn append(self, width: &mut LineWidthAccumulator, text: &str) {
-        width.push_str(text, self.uses_heuristic_widths);
+    fn candidate_width_px(
+        self,
+        width: LineWidthAccumulator,
+        candidate: &str,
+        appended: &str,
+    ) -> (LineWidthAccumulator, f64) {
+        if let LineWidthSource::Callback(width_px) = self.source {
+            return (width, width_px(candidate, self.style));
+        }
+
+        let mut width = width;
+        self.append_builtin(&mut width, appended);
+        (width, self.finish_builtin(width))
     }
 
-    fn finish(self, width: LineWidthAccumulator) -> f64 {
-        width.width_px(
-            self.font_size,
-            self.uses_heuristic_widths,
-            self.char_width_factor,
-        )
+    fn append_builtin(self, width: &mut LineWidthAccumulator, text: &str) {
+        match self.source {
+            LineWidthSource::Heuristic => append_text_width_em(&mut width.heuristic_em, text),
+            LineWidthSource::UniformAdvanceEm(_) => {
+                width.char_count = width.char_count.saturating_add(text.chars().count());
+            }
+            LineWidthSource::Callback(_) => unreachable!("callback widths use complete strings"),
+        }
+    }
+
+    fn finish_builtin(self, width: LineWidthAccumulator) -> f64 {
+        match self.source {
+            LineWidthSource::Heuristic => width.heuristic_em * self.font_size,
+            LineWidthSource::UniformAdvanceEm(advance_em) => {
+                width.char_count as f64 * self.font_size * advance_em
+            }
+            LineWidthSource::Callback(_) => unreachable!("callback widths use complete strings"),
+        }
     }
 }
 
@@ -66,6 +91,24 @@ pub struct DeterministicTextMeasurer {
 }
 
 impl DeterministicTextMeasurer {
+    /// Uses caller-supplied widths with Merman's wrapping behavior.
+    ///
+    /// Uses `width_px` to measure complete candidate strings while Merman retains its wrapping and
+    /// line-height behavior. Vertical metrics and baseline offsets remain deterministic
+    /// approximations; the callback does not provide glyph bounds or font ascent/descent.
+    ///
+    /// The callback must return a finite, non-negative width in CSS pixels. Use
+    /// [`crate::environment::HostTextMeasurer`] when measurement can fail or vary by operation.
+    pub fn with_width_callback(
+        self,
+        width_px: impl Fn(&str, &TextStyle) -> f64 + Send + Sync + 'static,
+    ) -> Arc<dyn TextMeasurer + Send + Sync> {
+        Arc::new(WidthCallbackTextMeasurer {
+            width_px: Arc::new(width_px),
+            line_height_factor: self.line_height_factor,
+        })
+    }
+
     fn collapse_svg_text_whitespace(text: &str) -> String {
         let mut collapsed = String::with_capacity(text.len());
         let mut pending_space = false;
@@ -174,29 +217,31 @@ impl DeterministicTextMeasurer {
         !trim_html_collapsible_ascii_whitespace(text).is_empty()
     }
 
-    fn split_token_to_width(
-        token: &str,
+    fn split_token_to_width<'t>(
+        token: &'t str,
         max_width_px: f64,
-        width_model: LineWidthModel,
-    ) -> (&str, &str) {
+        width_model: LineWidthModel<'_>,
+    ) -> (&'t str, &'t str) {
         let mut split_at = 0;
         let mut width = LineWidthAccumulator::default();
+        let mut width_px = 0.0;
         let mut has_positive_advance = false;
 
         for (index, grapheme) in token.grapheme_indices(true) {
-            let grapheme_width_px = width_model.width_px(grapheme);
-            let mut candidate = width;
-            width_model.append(&mut candidate, grapheme);
+            let candidate_end = index + grapheme.len();
+            let (candidate, candidate_width_px) =
+                width_model.candidate_width_px(width, &token[..candidate_end], grapheme);
             if has_positive_advance
-                && grapheme_width_px > 0.0
-                && width_model.finish(candidate) > max_width_px
+                && candidate_width_px > width_px
+                && candidate_width_px > max_width_px
             {
                 break;
             }
 
-            split_at = index + grapheme.len();
+            split_at = candidate_end;
             width = candidate;
-            has_positive_advance |= grapheme_width_px > 0.0;
+            width_px = candidate_width_px;
+            has_positive_advance |= candidate_width_px > 0.0;
         }
 
         // A visible grapheme wider than the whole line must still make progress. Leading
@@ -213,7 +258,7 @@ impl DeterministicTextMeasurer {
         break_long_words: bool,
         wrap_mode: WrapMode,
         html_break_spaces_active: bool,
-        width_model: LineWidthModel,
+        width_model: LineWidthModel<'_>,
     ) -> Vec<String> {
         if !max_width_px.is_finite() || max_width_px <= 0.0 {
             return vec![line.to_string()];
@@ -236,13 +281,15 @@ impl DeterministicTextMeasurer {
                 continue;
             }
 
-            let mut candidate_width = cur_width;
-            width_model.append(&mut candidate_width, &tok);
-            if width_model.finish(candidate_width) <= max_width_px {
-                cur.push_str(&tok);
+            let previous_len = cur.len();
+            cur.push_str(&tok);
+            let (candidate_width, candidate_width_px) =
+                width_model.candidate_width_px(cur_width, &cur, &tok);
+            if candidate_width_px <= max_width_px {
                 cur_width = candidate_width;
                 continue;
             }
+            cur.truncate(previous_len);
 
             let current_line_has_content = if html_break_spaces_active {
                 !cur.is_empty()
@@ -358,6 +405,76 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 }
 
+impl TextMeasurer for WidthCallbackTextMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        DeterministicTextMeasurer::measure_wrapped_impl_with_width(
+            text,
+            style,
+            max_width,
+            wrap_mode,
+            LineWidthSource::Callback(&self.width_px),
+            self.line_height_factor,
+        )
+        .0
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
+        DeterministicTextMeasurer::measure_wrapped_impl_with_width(
+            text,
+            style,
+            max_width,
+            wrap_mode,
+            LineWidthSource::Callback(&self.width_px),
+            self.line_height_factor,
+        )
+    }
+
+    fn measure_mermaid_calculate_text_dimensions(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        let collapsed = DeterministicTextMeasurer::collapse_svg_text_whitespace(text);
+        TextMetrics {
+            width: self.measure_svg_simple_text_bbox_width_for_wrap_px(&collapsed, style),
+            height: self.measure_svg_simple_text_bbox_height_px(&collapsed, style),
+            line_count: 1,
+        }
+    }
+
+    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let text = trim_end_html_collapsible_ascii_whitespace(text);
+        if text.is_empty() {
+            return 0.0;
+        }
+        (style.font_size.max(1.0) * 1.1).max(0.0)
+    }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        if trim_end_html_collapsible_ascii_whitespace(text).is_empty() {
+            0.0
+        } else {
+            super::svg_wrapped_first_line_bbox_height_px(style)
+        }
+    }
+}
+
 impl DeterministicTextMeasurer {
     fn measure_wrapped_impl(
         &self,
@@ -366,30 +483,44 @@ impl DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> (TextMetrics, Option<f64>) {
-        let uses_heuristic_widths = self.char_width_factor == 0.0;
-        let char_width_factor = if uses_heuristic_widths {
-            match wrap_mode {
-                WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 0.6,
-                WrapMode::HtmlLike => 0.5,
-            }
+        let width_source = if self.char_width_factor == 0.0 {
+            LineWidthSource::Heuristic
         } else {
-            self.char_width_factor
+            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
         };
+        Self::measure_wrapped_impl_with_width(
+            text,
+            style,
+            max_width,
+            wrap_mode,
+            width_source,
+            self.line_height_factor,
+        )
+    }
+
+    fn measure_wrapped_impl_with_width(
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+        width_source: LineWidthSource<'_>,
+        configured_line_height_factor: f64,
+    ) -> (TextMetrics, Option<f64>) {
         let default_line_height_factor = match wrap_mode {
             WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
             WrapMode::HtmlLike => 1.5,
         };
-        let line_height_factor = if self.line_height_factor == 0.0 {
+        let line_height_factor = if configured_line_height_factor == 0.0 {
             default_line_height_factor
         } else {
-            self.line_height_factor
+            configured_line_height_factor
         };
 
         let font_size = style.font_size.max(1.0);
         let width_model = LineWidthModel {
             font_size,
-            uses_heuristic_widths,
-            char_width_factor,
+            source: width_source,
+            style,
         };
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
         let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
@@ -449,8 +580,10 @@ impl DeterministicTextMeasurer {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeterministicTextMeasurer, LineWidthModel};
+    use super::{DeterministicTextMeasurer, LineWidthModel, LineWidthSource};
     use crate::text::{TextMeasurer, TextStyle, WrapMode};
+    use std::sync::{Arc, Mutex};
+    use unicode_segmentation::UnicodeSegmentation;
 
     #[test]
     fn wrapping_uses_estimated_width_instead_of_character_count() {
@@ -476,8 +609,8 @@ mod tests {
             8.0,
             LineWidthModel {
                 font_size: 10.0,
-                uses_heuristic_widths: true,
-                char_width_factor: 0.6,
+                source: LineWidthSource::Heuristic,
+                style: &TextStyle::default(),
             },
         );
         assert_eq!(head, "W\u{0301}");
@@ -521,8 +654,8 @@ mod tests {
         };
         let width_model = LineWidthModel {
             font_size: 16.0,
-            uses_heuristic_widths: true,
-            char_width_factor: 0.6,
+            source: LineWidthSource::Heuristic,
+            style: &style,
         };
 
         for (text, first, second) in [
@@ -631,5 +764,73 @@ mod tests {
             assert_eq!(fitted.line_count, 1, "{mode:?}: {natural:?} -> {fitted:?}");
             assert_eq!(fitted.width.to_bits(), natural.width.to_bits());
         }
+    }
+
+    #[test]
+    fn non_additive_callback_fits_at_exact_natural_width() {
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+            let count = text.chars().count();
+            count as f64 * 10.0 - count.saturating_sub(1) as f64
+        });
+        let style = TextStyle::default();
+        let text = "A V";
+
+        for mode in [WrapMode::SvgLike, WrapMode::HtmlLike] {
+            let natural = measurer.measure_wrapped(text, &style, None, mode);
+            assert_eq!(natural.width, 28.0);
+            let fitted = measurer.measure_wrapped(text, &style, Some(natural.width), mode);
+            assert_eq!(fitted.line_count, 1, "{mode:?}: {natural:?} -> {fitted:?}");
+            assert_eq!(fitted.width.to_bits(), natural.width.to_bits());
+        }
+    }
+
+    #[test]
+    fn callback_preserves_html_fixed_width_and_long_word_overflow() {
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.graphemes(true).count() as f64 * 10.0);
+        let style = TextStyle::default();
+
+        let breakable =
+            measurer.measure_wrapped("alpha beta", &style, Some(60.0), WrapMode::HtmlLike);
+        assert_eq!(breakable.line_count, 2);
+        assert_eq!(breakable.width, 60.0);
+
+        let long_word =
+            measurer.measure_wrapped("abcdefgh", &style, Some(30.0), WrapMode::HtmlLike);
+        assert_eq!(long_word.line_count, 1);
+        assert_eq!(long_word.width, 80.0);
+    }
+
+    #[test]
+    fn callback_svg_wrapping_splits_only_at_grapheme_boundaries() {
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.graphemes(true).count() as f64 * 10.0);
+
+        let metrics =
+            measurer.measure_wrapped("👩‍🔬👨‍🔬", &TextStyle::default(), Some(10.0), WrapMode::SvgLike);
+
+        assert_eq!(metrics.line_count, 2);
+        assert_eq!(metrics.width, 10.0);
+    }
+
+    #[test]
+    fn callback_receives_complete_text_and_returns_pixel_width() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(move |text, style| {
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push((text.to_string(), style.font_size));
+                37.0
+            });
+        let style = TextStyle {
+            font_size: 99.0,
+            ..TextStyle::default()
+        };
+
+        assert_eq!(measurer.measure("ffi", &style).width, 37.0);
+        assert_eq!(&*calls.lock().unwrap(), &[("ffi".to_string(), 99.0)]);
     }
 }

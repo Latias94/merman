@@ -84,6 +84,7 @@ merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 png.workspace = true
 roxmltree.workspace = true
+rustybuzz.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -168,6 +169,10 @@ required-features = ["svg"]
 
 [[example]]
 name = "render_svg"
+required-features = ["svg"]
+
+[[example]]
+name = "render_svg_monospace"
 required-features = ["svg"]
 
 [[example]]

@@ -4088,6 +4088,67 @@ mod tests {
     }
 
     #[test]
+    fn dagre_wrapped_labels_fit_rectangle_and_diamond_nodes() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"%%{init: {"flowchart": {"wrappingWidth": 120}}}%%
+flowchart TD
+    A["Receive a new deployment request from the release pipeline"] --> B{"Did every required validation and security check pass successfully?"}
+    B -->|Yes| C["Publish the approved application version to the production environment"]
+    B -->|No| D["Return the detailed validation errors to the requesting developer"]
+"#,
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            measurer.as_ref(),
+            None,
+        )
+        .expect("layout ok");
+
+        for id in ["A", "C", "D"] {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap_or_else(|| panic!("node {id}"));
+            let label_width = node.label_width.expect("rectangle label width");
+            let label_height = node.label_height.expect("rectangle label height");
+            assert!(
+                label_height > 24.0,
+                "node {id} label did not wrap: {node:?}"
+            );
+            assert!(label_width < node.width, "node {id}: {node:?}");
+            assert!(label_height < node.height, "node {id}: {node:?}");
+        }
+
+        let diamond = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "B")
+            .expect("diamond node B");
+        let label_width = diamond.label_width.expect("diamond label width");
+        let label_height = diamond.label_height.expect("diamond label height");
+        assert!(
+            label_height > 24.0,
+            "diamond label did not wrap: {diamond:?}"
+        );
+        assert_eq!(diamond.width, diamond.height);
+        assert!(
+            label_width + label_height < diamond.width,
+            "diamond label does not fit inside its sloped sides: {diamond:?}"
+        );
+    }
+
+    #[test]
     fn dagre_preserves_operation_computed_length_precision() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
