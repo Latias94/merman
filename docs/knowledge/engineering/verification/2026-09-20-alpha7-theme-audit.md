@@ -696,12 +696,14 @@ missing-font visual behavior, exercise PNG/PDF in Node, or complete the six-jour
 
 ### Installed consumers after reference graph reuse
 
-The [installed refresh](2026-09-21-installed-theme-consumers.md) rebuilds Python, Darwin ARM64
-Node and explicit Node WASM from `f3a783c29`, including `b707f6e5b`, using the existing package
-owners and Node 24.21.0/npm 12.0.2. Fresh offline consumers pass the complete Python smoke and
-both expanded Node smokes. Node contracts pass 111/111; Python owner tests pass 9/9. These are
-historical witnesses after `bdb209e11`; the wheel's legal digest and all package identities must
-be renewed from the integrated source before C7a closure.
+The [current installed refresh](2026-09-20-installed-theme-consumers-single-pass.md) rebuilds
+Python, Darwin ARM64 Node and explicit Node WASM from integrated source `bdb209e11`. The fresh
+Python consumer passes its complete smoke. Both Node package groups pass assembly and ownership
+verification, and fresh installed consumers pass 30 SVG renders, 23 JSON operations, 44 support
+queries, six authoring diagnostics, two resource checks and eight expected content-capability
+rejections per target. Three fresh processes exchange complete recipes with 12 SVG/metadata
+comparisons per Node target. The four current package identities, source digest and raw exchange
+records are retained under `target/bench/experiments/installed-theme-consumers-bdb-20260920/`.
 
 All three packages export byte-identical complete Cyberpunk recipes and directly import each
 other's saved files. The 27 renders produce byte-identical Flowchart, Sequence and XY outputs
