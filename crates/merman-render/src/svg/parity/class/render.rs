@@ -142,8 +142,30 @@ fn render_class_diagram_svg_model_inner(
         font_weight: None,
         font_style: None,
     };
+    let mut missing_section_points = rustc_hash::FxHashMap::default();
+    if layout.uses_elk_adapter_dom {
+        let nodes_by_id: rustc_hash::FxHashMap<_, _> = layout
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        for edge in &layout.edges {
+            if edge.points.is_empty()
+                && let (Some(start), Some(end)) = (
+                    nodes_by_id.get(edge.from.as_str()),
+                    nodes_by_id.get(edge.to.as_str()),
+                )
+            {
+                missing_section_points.insert(
+                    edge.id.as_str(),
+                    crate::elk_geometry::missing_rect_section_points(start, end),
+                );
+            }
+        }
+    }
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &layout.edges,
+        missing_section_points: &missing_section_points,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
         diagram_marker_class: aria_roledescription,

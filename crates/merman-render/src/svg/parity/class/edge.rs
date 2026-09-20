@@ -32,6 +32,7 @@ pub(super) struct ClassEdgeGroupsRenderState<'a> {
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
+    pub missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub diagram_marker_class: &'a str,
@@ -191,15 +192,17 @@ pub(super) fn render_class_edge_groups(
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     for e in ordered_edges.iter().copied() {
         ctx.emit.checkpoint()?;
-        if e.points.len() < 2 {
+        let missing_section = ctx.missing_section_points.get(e.id.as_str());
+        let source_points = missing_section.map(Vec::as_slice).unwrap_or(&e.points);
+        if source_points.is_empty() || (missing_section.is_none() && source_points.len() < 2) {
             continue;
         }
 
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
 
         edge_raw_points.clear();
-        edge_raw_points.reserve(e.points.len());
-        for p in &e.points {
+        edge_raw_points.reserve(source_points.len());
+        for p in source_points {
             edge_raw_points.push(LayoutPoint {
                 x: p.x + ctx.content_tx,
                 y: p.y + ctx.content_ty,
@@ -218,7 +221,9 @@ pub(super) fn render_class_edge_groups(
             &mut edge_marker_points,
         );
         let edge_curve_source = edge_marker_points.as_slice();
-        let (d, d_pb) = if edge_curve_source.len() == 2 {
+        let (d, d_pb) = if missing_section.is_some() {
+            super::super::curve::curve_linear_path_d_and_bounds(edge_curve_source)
+        } else if edge_curve_source.len() == 2 {
             edge_curve_points.clear();
             let a = &edge_curve_source[0];
             let b = &edge_curve_source[1];
@@ -244,14 +249,23 @@ pub(super) fn render_class_edge_groups(
         if let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
                 e.id.as_str(),
-                class_edge_label_center(
-                    &edge_raw_points,
-                    render_d,
-                    e.from_cluster.is_some() || e.to_cluster.is_some(),
-                    lbl,
-                    ctx.content_tx,
-                    ctx.content_ty,
-                ),
+                if missing_section.is_some() {
+                    let first = &edge_raw_points[0];
+                    let last = &edge_raw_points[edge_raw_points.len() - 1];
+                    LayoutPoint {
+                        x: (first.x + last.x) / 2.0,
+                        y: (first.y + last.y) / 2.0,
+                    }
+                } else {
+                    class_edge_label_center(
+                        &edge_raw_points,
+                        render_d,
+                        e.from_cluster.is_some() || e.to_cluster.is_some(),
+                        lbl,
+                        ctx.content_tx,
+                        ctx.content_ty,
+                    )
+                },
             );
         }
         let path_bounds_start = ctx.timing.start();

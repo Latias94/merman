@@ -3258,6 +3258,68 @@ end
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn flowchart_elk_root_algorithms_execute_and_paint_edges() {
+    let mut geometries = Vec::new();
+    for algorithm in [
+        "elk",
+        "elk.stress",
+        "elk.force",
+        "elk.mrtree",
+        "elk.sporeOverlap",
+        "elk.box",
+        "elk.rectpacking",
+    ] {
+        let source = format!(
+            "---\nconfig:\n  layout: {algorithm}\n  htmlLabels: false\n---\nflowchart TB\nA[Alpha] first@-->|first label| B[Beta]\nA second@-->|second label| C[Gamma]\n"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(
+            plan.required_capabilities(),
+            &[merman_render::RenderCapability::LayoutElk]
+        );
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let layout: FlowchartLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+        )
+        .unwrap();
+        let geometry: Vec<_> = layout
+            .nodes
+            .iter()
+            .map(|node| (node.x, node.y, node.width, node.height))
+            .collect();
+        assert!(
+            !geometries.contains(&geometry),
+            "{algorithm} unexpectedly reuses a preceding provider's geometry"
+        );
+        geometries.push(geometry);
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let svg = rendered.svg();
+        for id in ["first", "second"] {
+            let points = flowchart_svg_edge_data_points(svg, id);
+            assert!(points.len() >= 2, "{algorithm}: {id}");
+            assert!(
+                points
+                    .iter()
+                    .all(|point| point.x.is_finite() && point.y.is_finite())
+            );
+            let (anchor, _, _) = flowchart_svg_edge_label_geometry(svg, id);
+            assert!(
+                anchor.iter().all(|value| value.is_finite()),
+                "{algorithm}: {id}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn flowchart_elk_unrouted_container_edges_are_clipped_and_labels_are_centered() {
     for algorithm in ["elk.box", "elk.rectpacking"] {
         let source = format!(

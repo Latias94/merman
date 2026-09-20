@@ -627,6 +627,150 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn class_elk_missing_section_with_short_cardinality_path_reports_source_error() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: elk.box\n---\nclassDiagram\nA \"1\" --> \"many\" B\n",
+            ParseOptions::default(),
+        )
+        .unwrap()
+        .unwrap();
+    let result = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    );
+    assert!(
+        matches!(result, Err(merman_render::Error::InvalidModel { message })
+        if message.contains("Could not find a suitable point for the given distance"))
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_and_er_elk_missing_sections_paint_clipped_linear_edges_and_centered_labels() {
+    use base64::Engine as _;
+    use merman_render::model::{LayoutEdge, LayoutNode, LayoutPoint};
+
+    for algorithm in ["elk.box", "elk.rectpacking"] {
+        for (diagram, projection) in [
+            (
+                "classDiagram\nclass A\nclass B\nclass C\nclass D\nclass E\nclass F\nclass G\nclass H\nA \"1\" --> \"many\" H : a deliberately wide relationship label\n",
+                "ClassDiagramV2",
+            ),
+            (
+                "erDiagram\nA ||--o{ WiderTarget : \"a deliberately wide relationship label\"\n",
+                "ErDiagram",
+            ),
+        ] {
+            let text = format!("---\nconfig:\n  layout: {algorithm}\n---\n{diagram}");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&text, ParseOptions::default())
+                .expect("parse diagram")
+                .expect("diagram detected");
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::default(), session).expect("layout");
+            let json = artifact.layout_json().expect("layout projection");
+            let layout = &json["layout"][projection];
+            let nodes: Vec<LayoutNode> = serde_json::from_value(layout["nodes"].clone()).unwrap();
+            let edges: Vec<LayoutEdge> = serde_json::from_value(layout["edges"].clone()).unwrap();
+            assert_eq!(edges.len(), 1);
+            let edge = &edges[0];
+            if projection == "ClassDiagramV2" {
+                assert!(
+                    edge.start_label_right.is_some(),
+                    "{algorithm}: start cardinality missing: {nodes:?}"
+                );
+                assert!(
+                    edge.end_label_left.is_some(),
+                    "end cardinality must survive missing sections"
+                );
+            }
+            assert!(
+                edge.points.is_empty(),
+                "{algorithm} must preserve absent provider sections"
+            );
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("SVG")
+                .svg()
+                .to_owned();
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            if projection == "ClassDiagramV2" {
+                let terminals: Vec<_> = document
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("edgeTerminals")
+                    })
+                    .collect();
+                assert_eq!(terminals.len(), 2, "both cardinalities must be painted");
+                for terminal in terminals {
+                    assert!(terminal.attribute("transform").is_some());
+                }
+            }
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .expect("visible edge");
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(points.len(), 2);
+            for (point, id) in points.iter().zip([&edge.from, &edge.to]) {
+                let node = nodes.iter().find(|node| &node.id == id).unwrap();
+                let dx = (point.x - node.x).abs();
+                let dy = (point.y - node.y).abs();
+                assert!(dx <= node.width / 2.0 + 1e-5 && dy <= node.height / 2.0 + 1e-5);
+                assert!(
+                    (dx - node.width / 2.0).abs() < 1e-5 || (dy - node.height / 2.0).abs() < 1e-5
+                );
+            }
+            let d = path.attribute("d").unwrap();
+            assert!(
+                d.contains('L') && !d.contains('C') && !d.contains('Q'),
+                "{d}"
+            );
+            let label = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("edgeLabel")
+                        && node.attribute("transform").is_some()
+                })
+                .expect("positioned label");
+            let transform = label.attribute("transform").unwrap();
+            let center: Vec<f64> = transform
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split(',')
+                .map(|part| part.trim().parse().unwrap())
+                .collect();
+            assert!((center[0] - (points[0].x + points[1].x) / 2.0).abs() < 1e-5);
+            assert!((center[1] - (points[0].y + points[1].y) / 2.0).abs() < 1e-5);
+            let viewbox: Vec<f64> = document
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_ascii_whitespace()
+                .map(|part| part.parse().unwrap())
+                .collect();
+            let measured_label = edge.label.as_ref().expect("measured label");
+            assert!(center[0] - measured_label.width / 2.0 >= viewbox[0] - 1e-5);
+            assert!(center[0] + measured_label.width / 2.0 <= viewbox[0] + viewbox[2] + 1e-5);
+            assert!(center[1] - measured_label.height / 2.0 >= viewbox[1] - 1e-5);
+            assert!(center[1] + measured_label.height / 2.0 <= viewbox[1] + viewbox[3] + 1e-5);
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
     let svg = render_class_svg_from_text_with_engine(
         Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({

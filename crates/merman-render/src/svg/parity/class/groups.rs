@@ -5,7 +5,7 @@ use super::edge::{
     ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
 };
 use crate::Result;
-use crate::model::{Bounds, LayoutEdge};
+use crate::model::{Bounds, LayoutEdge, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
 use rustc_hash::FxHashMap;
@@ -17,6 +17,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edges: &'a [LayoutEdge],
+    pub(super) missing_section_points: &'a FxHashMap<&'a str, Vec<LayoutPoint>>,
     pub(super) relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub(super) diagram_marker_class: &'a str,
@@ -62,6 +63,7 @@ pub(super) fn render_class_split_edge_groups(
         },
         &ClassEdgeGroupsRenderContext {
             edges: ctx.edges,
+            missing_section_points: ctx.missing_section_points,
             relations_by_id: ctx.relations_by_id,
             relation_index_by_id: ctx.relation_index_by_id,
             diagram_marker_class: ctx.diagram_marker_class,

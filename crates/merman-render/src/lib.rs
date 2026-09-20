@@ -17,6 +17,7 @@ pub mod class;
 mod config;
 pub mod cynefin;
 mod dagre;
+mod elk_geometry;
 #[cfg(feature = "layout-elk")]
 mod elk_options;
 mod entities;
@@ -1060,9 +1061,17 @@ id1(Start)-->id2(Stop)
 
     #[test]
     fn graph_layout_unregistered_loader_falls_back_to_dagre() {
-        let mut requests = vec!["unknown", "ELK"];
+        let mut requests = vec!["unknown", "ELK", "elk.layered", "elk.radial"];
         if !cfg!(feature = "layout-elk") {
-            requests.push("elk");
+            requests.extend([
+                "elk",
+                "elk.stress",
+                "elk.force",
+                "elk.mrtree",
+                "elk.sporeOverlap",
+                "elk.box",
+                "elk.rectpacking",
+            ]);
         }
         for body in [
             "flowchart TD\nA[Alpha] --> B[Beta]\nB --> C[Gamma]",
@@ -1156,24 +1165,34 @@ id1(Start)-->id2(Stop)
             "classDiagram\nAnimal <|-- Duck",
             "erDiagram\nCUSTOMER ||--o{ ORDER : places",
         ] {
-            let source = format!("---\nconfig:\n  layout: elk\n---\n{body}\n");
-            let parsed = Engine::new()
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                .unwrap()
-                .unwrap();
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .with_capability_policy(RenderCapabilityPolicy::deny_all())
-                .begin_session()
-                .unwrap();
-            let plan = crate::family::plan_render(&parsed, &session).unwrap();
-            assert_eq!(plan.missing_capabilities(), &[RenderCapability::LayoutElk]);
-            assert!(matches!(
-                crate::family::prepare(parsed, &LayoutOptions::default(), session),
-                Err(Error::MissingCapability {
-                    capability: RenderCapability::LayoutElk,
-                    ..
-                })
-            ));
+            for layout in [
+                "elk",
+                "elk.stress",
+                "elk.force",
+                "elk.mrtree",
+                "elk.sporeOverlap",
+                "elk.box",
+                "elk.rectpacking",
+            ] {
+                let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .with_capability_policy(RenderCapabilityPolicy::deny_all())
+                    .begin_session()
+                    .unwrap();
+                let plan = crate::family::plan_render(&parsed, &session).unwrap();
+                assert_eq!(plan.missing_capabilities(), &[RenderCapability::LayoutElk]);
+                assert!(matches!(
+                    crate::family::prepare(parsed, &LayoutOptions::default(), session),
+                    Err(Error::MissingCapability {
+                        capability: RenderCapability::LayoutElk,
+                        ..
+                    })
+                ));
+            }
         }
     }
 

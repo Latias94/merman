@@ -1113,8 +1113,10 @@ pub fn plan_render_with_policy(
         && meta.effective_config.get_str("layout") != Some("swimlane");
     let presentation_aspects = render_policy.resolve_aspects(
         flowchart_svg_applicable,
-        crate::layout_backend::resolve_graph_layout(meta.effective_config.as_value()).requested
-            == "elk",
+        crate::layout_backend::ElkRootAlgorithm::from_name(
+            crate::layout_backend::resolve_graph_layout(meta.effective_config.as_value()).requested,
+        )
+        .is_some(),
         capability_is_available(RenderCapability::LayoutElk, session),
     );
 

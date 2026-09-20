@@ -103,7 +103,14 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
         .unwrap_or(4);
 
     elk::LayoutOptions {
-        algorithm: elk::Algorithm::Layered,
+        algorithm: crate::layout_backend::ElkRootAlgorithm::from_name(
+            effective_config
+                .get("layout")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+        )
+        .unwrap_or(crate::layout_backend::ElkRootAlgorithm::Layered)
+        .algorithm(),
         container: elk::ContainerOptions {
             cycle_breaking,
             node_placement: explicit_node_placement
@@ -139,6 +146,24 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn registered_root_names_select_the_corresponding_provider() {
+        for (name, algorithm) in [
+            ("elk", elk::Algorithm::Layered),
+            ("elk.stress", elk::Algorithm::Stress),
+            ("elk.force", elk::Algorithm::Force),
+            ("elk.mrtree", elk::Algorithm::MrTree),
+            ("elk.sporeOverlap", elk::Algorithm::SporeOverlap),
+            ("elk.box", elk::Algorithm::Box),
+            ("elk.rectpacking", elk::Algorithm::Rectpacking),
+        ] {
+            assert_eq!(
+                layout_options(&json!({"layout": name})).algorithm,
+                algorithm
+            );
+        }
+    }
 
     #[test]
     fn elk_layout_options_resolve_presets_for_root_and_container() {

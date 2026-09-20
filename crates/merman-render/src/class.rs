@@ -2736,7 +2736,13 @@ fn class_layout_from_elk(
                 })
                 .or_else(|| class_elk_edge_label_position(&points, source_label))
         });
-        let terminal_points = if let (Some(from), Some(to)) = (
+        let terminal_points = if points.is_empty()
+            && let (Some(from), Some(to)) = (
+                node_by_id.get(source.source.as_str()),
+                node_by_id.get(source.target.as_str()),
+            ) {
+            crate::elk_geometry::missing_rect_section_points(from, to)
+        } else if let (Some(from), Some(to)) = (
             node_rect_by_id.get(source.source.as_str()).copied(),
             node_rect_by_id.get(source.target.as_str()).copied(),
         ) {
@@ -2769,6 +2775,21 @@ fn class_layout_from_elk(
         };
         if let Some(meta) = terminal_meta {
             apply_class_terminal_labels(&mut out_edge, meta, &terminal_points);
+            if out_edge.points.is_empty()
+                && ((meta.start_left.is_some() && out_edge.start_label_left.is_none())
+                    || (meta.start_right.is_some() && out_edge.start_label_right.is_none())
+                    || (meta.end_left.is_some() && out_edge.end_label_left.is_none())
+                    || (meta.end_right.is_some() && out_edge.end_label_right.is_none()))
+            {
+                // Mermaid's calculatePoint throws when the clipped fallback is too short
+                // for the terminal distance. Do not report a successful SVG missing labels.
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "ELK class edge {}: Could not find a suitable point for the given distance",
+                        out_edge.id
+                    ),
+                });
+            }
         }
         edges.push(out_edge);
     }

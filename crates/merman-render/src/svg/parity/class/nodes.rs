@@ -582,6 +582,7 @@ fn render_class_split_edges_for_namespace(
 ) -> Result<super::groups::ClassSplitEdgeGroups> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
+        missing_section_points: edge_ctx.missing_section_points,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
         diagram_marker_class: edge_ctx.diagram_marker_class,

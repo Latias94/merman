@@ -500,6 +500,31 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     edges.sort_by_key(er_edge_sort_key);
 
+    // Box and Rectpacking intentionally leave sections empty. Resolve their paint geometry
+    // before measuring bounds, while retaining provenance to select a linear curve below.
+    let mut missing_sections = rustc_hash::FxHashSet::default();
+    if is_elk_layout {
+        let nodes_by_id: rustc_hash::FxHashMap<_, _> =
+            nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+        for edge in &mut edges {
+            if edge.points.is_empty()
+                && let (Some(start), Some(end)) = (
+                    nodes_by_id.get(edge.from.as_str()),
+                    nodes_by_id.get(edge.to.as_str()),
+                )
+            {
+                edge.points = crate::elk_geometry::missing_rect_section_points(start, end);
+                if let Some(label) = &mut edge.label {
+                    let first = &edge.points[0];
+                    let last = &edge.points[edge.points.len() - 1];
+                    label.x = (first.x + last.x) / 2.0;
+                    label.y = (first.y + last.y) / 2.0;
+                }
+                missing_sections.insert(edge.id.clone());
+            }
+        }
+    }
+
     let include_md_parent = edges.iter().any(|e| {
         matches!(
             e.start_marker.as_deref(),
@@ -722,7 +747,8 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     if options.debug.include_edges {
         for e in &edges {
-            if e.points.len() < 2 {
+            let missing_section = missing_sections.contains(&e.id);
+            if e.points.is_empty() || (!missing_section && e.points.len() < 2) {
                 continue;
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
@@ -746,7 +772,7 @@ pub(crate) fn render_er_diagram_svg_model(
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
             let mut curve_points = shifted.clone();
-            if curve_points.len() == 2 {
+            if !missing_section && curve_points.len() == 2 {
                 let a = &curve_points[0];
                 let b = &curve_points[1];
                 curve_points.insert(
@@ -757,7 +783,11 @@ pub(crate) fn render_er_diagram_svg_model(
                     },
                 );
             }
-            let d = curve_basis_path_d(&curve_points);
+            let d = if missing_section {
+                super::super::curve::curve_linear_path_d(&curve_points)
+            } else {
+                curve_basis_path_d(&curve_points)
+            };
 
             let _ = write!(
                 &mut out,
@@ -822,7 +852,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 (0.0, 0.0, 0.0, 0.0)
             };
 
-            if has_label_text && w > 0.0 && h > 0.0 {
+            if has_label_text && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
                 // Mermaid positions edge labels using Dagre's `edge.x/edge.y` by default, but it
                 // recomputes the label position along the polyline when the edge path `d` doesn't
                 // contain the midpoint coordinates (see `edges.js:isLabelCoordinateInPath`).
