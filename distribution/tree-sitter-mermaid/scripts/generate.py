@@ -229,9 +229,14 @@ def resolve_wasi_clang(cli: list[str]) -> Path:
         text=True,
         timeout=30,
     ).stdout.splitlines()[0]
-    expected = f"clang version {WASI_CLANG_VERSION}"
-    if not version.startswith(expected):
-        raise SystemExit(f"expected {expected}, found {version}")
+    # Windows SDK builds omit the -wasi-sdk suffix in their Clang banner.
+    sdk_version = (clang.parent.parent / "VERSION").read_text(encoding="utf-8").splitlines()[0]
+    expected_sdk = PROVENANCE["toolchain"]["wasiSdk"]
+    if sdk_version != expected_sdk:
+        raise SystemExit(f"expected wasi-sdk {expected_sdk}, found {sdk_version}")
+    clang_version = version.split()[2]
+    if clang_version not in (WASI_CLANG_VERSION, WASI_CLANG_VERSION.removesuffix("-wasi-sdk")):
+        raise SystemExit(f"expected clang version {WASI_CLANG_VERSION}, found {version}")
     return clang
 
 

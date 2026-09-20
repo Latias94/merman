@@ -18,6 +18,13 @@ MIT-licensed projects. The corresponding license texts are included below
 - Use: accepted Mermaid syntax, source-backed grammar translation, and representative fixtures
 - License: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
+## Mermaid 12.0.0 (Agentflow and Usecase additions)
+
+- Source: https://github.com/mermaid-js/mermaid.git
+- Commit: `98a0945418c76238f15df2afaddbba4272656c3b`
+- Use: Agentflow and Usecase grammar translation and source-backed editor corpus cases; existing families retain the Mermaid 11.16.1 source identity above
+- License: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
+
 ## ZenUML Core 3.50.1
 
 - Source: https://github.com/mermaid-js/zenuml-core.git

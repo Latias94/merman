@@ -3,8 +3,9 @@
 [![crates.io](https://img.shields.io/crates/v/tree-sitter-mermaid.svg)](https://crates.io/crates/tree-sitter-mermaid) [![npm](https://img.shields.io/npm/v/%40mermanjs%2Ftree-sitter-mermaid.svg)](https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid) [![MIT license](https://img.shields.io/badge/license-MIT-59636e.svg)](#license-and-provenance)
 
 A tolerant, incremental [Tree-sitter] grammar for Mermaid source. It provides structured concrete
-syntax trees and editor queries for all 35 public diagram families in Mermaid 11.16.1, including
-the ZenUML integration backed by ZenUML Core 3.50.1.
+syntax trees and editor queries for 37 public diagram families: the original 35-family Mermaid
+11.16.1 syntax baseline, plus Agentflow and Usecase from Mermaid 12.0.0. The ZenUML integration
+follows ZenUML Core 3.50.1.
 
 Use this package for syntax highlighting, syntax-aware selection, folding, and other editor features
 that must keep working while a document is incomplete. Use [`@mermanjs/web`] or the Merman Rust
@@ -144,7 +145,8 @@ int main(void) {
 
 | Contract | Version |
 | --- | --- |
-| Mermaid syntax baseline | 11.16.1 |
+| Original 35-family Mermaid syntax baseline | 11.16.1 |
+| Agentflow and Usecase syntax | 12.0.0 |
 | ZenUML Core syntax baseline | 3.50.1 |
 | Tree-sitter language ABI | 15 |
 | Tested Rust and Web runtime | 0.26.12 |
@@ -205,7 +207,8 @@ publication details.
 
 The package is MIT licensed. Source-derived syntax and template attributions are recorded in
 `metadata/provenance.json`, `metadata/derivations.json`, `THIRD_PARTY_NOTICES.md`, and
-`THIRD_PARTY_LICENSES/`.
+`THIRD_PARTY_LICENSES/`. The added families have their own pinned source identity; adding them
+does not relabel the existing family translations as Mermaid 12.0.0.
 
 [Tree-sitter]: https://tree-sitter.github.io/tree-sitter/
 [`@mermanjs/web`]: https://www.npmjs.com/package/@mermanjs/web

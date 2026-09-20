@@ -174,6 +174,7 @@
         "pappasam-tree-sitter-mermaid",
         "singularity-tree-sitter-mermaid",
         "tree-sitter-generator",
+        "tree-sitter-mermaid-mermaid-12-new-families",
         "tree-sitter-mermaid-mermaid-baseline",
         "tree-sitter-mermaid-zenuml-baseline"
       ]
@@ -974,20 +975,71 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
+          "sha256": "68cc5d355c8ecab2e2991e05408ae0ee026adadacecb930315893d7a192f32d9"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
-          "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
+          "sha256": "e2ac0473b295417510f40f29cc4fabcf817ee98ae1b768e26481f4c5ba7074df"
         }
       ],
-      "notice": "The language package translates the exact Mermaid 11.16.1 syntax baseline and carries Merman-selected representative fixtures recorded against that baseline; this component intentionally does not move with the repository baseline."
+      "notice": "The language package retains the exact Mermaid 11.16.1 syntax baseline for its original 35 diagram families and their representative fixtures. Agentflow and Usecase additions are attributed separately to Mermaid 12.0.0; this component intentionally does not move with the repository baseline."
+    },
+    {
+      "id": "tree-sitter-mermaid-mermaid-12-new-families",
+      "name": "Mermaid (tree-sitter-mermaid Agentflow and Usecase additions)",
+      "version": "12.0.0",
+      "source": {
+        "repository": "https://github.com/mermaid-js/mermaid.git",
+        "ref": "mermaid@12.0.0",
+        "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+        "path": "packages/mermaid"
+      },
+      "relationships": [
+        "behavior-reference",
+        "fixtures",
+        "translated"
+      ],
+      "local_paths": [
+        "distribution/tree-sitter-mermaid/grammar/families/agentflow.js",
+        "distribution/tree-sitter-mermaid/grammar/families/usecase.js",
+        "distribution/tree-sitter-mermaid/test/corpus/families/agentflow.txt",
+        "distribution/tree-sitter-mermaid/test/corpus/families/usecase.txt",
+        "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json"
+      ],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+          "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/98a0945418c76238f15df2afaddbba4272656c3b/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
+          "sha256": "68cc5d355c8ecab2e2991e05408ae0ee026adadacecb930315893d7a192f32d9"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
+          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
+        },
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
+          "sha256": "e2ac0473b295417510f40f29cc4fabcf817ee98ae1b768e26481f4c5ba7074df"
+        }
+      ],
+      "notice": "The language package translates Agentflow and Usecase syntax from the pinned Mermaid 12.0.0 source and carries source-backed editor corpus cases. Existing diagram-family derivations retain their separately recorded Mermaid 11.16.1 source identity."
     },
     {
       "id": "tree-sitter-mermaid-zenuml-baseline",
@@ -1015,17 +1067,17 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
+          "sha256": "68cc5d355c8ecab2e2991e05408ae0ee026adadacecb930315893d7a192f32d9"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
-          "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
+          "sha256": "e2ac0473b295417510f40f29cc4fabcf817ee98ae1b768e26481f4c5ba7074df"
         }
       ],
       "notice": "The language package follows the exact ZenUML Core 3.50.1 companion baseline and carries its representative wrapper fixture; this component intentionally does not move with the repository baseline."
@@ -1084,7 +1136,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
+          "sha256": "4d03f6a9642d1980fabb9d4eb4a324899aa55dc498f3cb78e52929440a59c266"
         }
       ],
       "notice": "The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range."

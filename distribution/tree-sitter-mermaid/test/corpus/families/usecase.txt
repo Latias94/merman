@@ -1,0 +1,282 @@
+==================
+Usecase declarations preserve labels business metadata and stereotypes
+==================
+
+usecase-beta
+actor Admin("Main Administrator")@{ type: hollow, business: true } <<Human>>:::external
+Login(Sign in)@{ business: false } <<Primary>>:::critical
+direction LR
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_actor_statement
+        (usecase_statement_keyword)
+        (usecase_actor
+          (usecase_identifier)
+          (usecase_actor_label (usecase_label (usecase_string)))
+          (usecase_metadata
+            (usecase_metadata_property (usecase_identifier) (usecase_identifier))
+            (usecase_metadata_property (usecase_identifier) (usecase_identifier)))
+          (usecase_stereotype (usecase_stereotype_text))
+          (usecase_class_suffix (usecase_identifier))))
+      (usecase_node_statement
+        (usecase_node
+          (usecase_identifier)
+          (usecase_node_label
+            (usecase_label (usecase_identifier) (usecase_identifier)))
+          (usecase_metadata
+            (usecase_metadata_property (usecase_identifier) (usecase_identifier)))
+          (usecase_stereotype (usecase_stereotype_text))
+          (usecase_class_suffix (usecase_identifier))))
+      (usecase_direction_statement (usecase_statement_keyword) (direction)))))
+
+==================
+Usecase semantic and labelled relations preserve their targets and edge ids
+==================
+
+usecase-beta
+actor User --> Login
+Login dependency@..> : include Verify
+Search ..> : EXTEND Browse
+Admin --|> User
+Login -- requires --> Verify
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_edge_statement
+        (usecase_statement_keyword)
+        (usecase_actor (usecase_identifier))
+        (usecase_operator)
+        (usecase_node (usecase_identifier)))
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_identifier)
+        (usecase_operator (usecase_relation_kind))
+        (usecase_node (usecase_identifier)))
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_operator (usecase_relation_kind))
+        (usecase_node (usecase_identifier)))
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_operator)
+        (usecase_node (usecase_identifier)))
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_operator
+          (usecase_edge_label (usecase_label (usecase_identifier))))
+        (usecase_node (usecase_identifier))))))
+
+==================
+Usecase boundaries contain actor and node declarations
+==================
+
+usecase-beta
+systemBoundary service[Payment service]@{ type: package }:::system
+  actor User, Admin("Administrator")
+  Pay(Complete payment)
+end
+note for Pay "Requires a session"
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_boundary_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_node_label (usecase_label (usecase_identifier) (usecase_identifier)))
+        (usecase_metadata
+          (usecase_metadata_property (usecase_identifier) (usecase_identifier)))
+        (usecase_class_suffix (usecase_identifier))
+        (usecase_boundary_body
+          (usecase_actor_statement
+            (usecase_statement_keyword)
+            (usecase_actor (usecase_identifier))
+            (usecase_actor
+              (usecase_identifier)
+              (usecase_actor_label (usecase_label (usecase_string)))))
+          (usecase_node_statement
+            (usecase_node
+              (usecase_identifier)
+              (usecase_node_label (usecase_label (usecase_identifier) (usecase_identifier))))))
+        (usecase_end_statement (usecase_statement_keyword)))
+      (usecase_note_statement
+        (usecase_statement_keyword)
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_label (usecase_string))))))
+
+==================
+Usecase JSON presentation and accessibility stay structured
+==================
+
+usecase-beta
+json Payload@{"nested":{"ok":true},"list":[1,"two",null]}:::data
+classDef external,critical fill:#fff,stroke-width:3px
+class User,Admin external,critical
+style Login fill:#eee,stroke-width:2px
+accTitle: Authentication
+accDescr {Sign in flow}
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_json_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_json_object
+          (usecase_json_property
+            (usecase_json_string)
+            (usecase_json_object
+              (usecase_json_property (usecase_json_string) (usecase_json_literal))))
+          (usecase_json_property
+            (usecase_json_string)
+            (usecase_json_array (usecase_json_number) (usecase_json_string) (usecase_json_literal))))
+        (usecase_class_suffix (usecase_identifier)))
+      (usecase_class_definition_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_identifier)
+        (usecase_styles
+          (usecase_style_property (usecase_style_name) (usecase_style_value))
+          (usecase_style_property (usecase_style_name) (usecase_style_value))))
+      (usecase_class_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_identifier)
+        (usecase_identifier)
+        (usecase_identifier))
+      (usecase_style_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_styles
+          (usecase_style_property (usecase_style_name) (usecase_style_value))
+          (usecase_style_property (usecase_style_name) (usecase_style_value))))
+      (usecase_accessibility_title_statement
+        (usecase_statement_keyword)
+        (usecase_accessibility_text))
+      (usecase_accessibility_description_statement
+        (usecase_statement_keyword)
+        (usecase_accessibility_text)))))
+
+==================
+Usecase CRLF metadata and local missing delimiter recovery
+==================
+
+usecase-beta
+actor 1mg, User
+Login("`**Sign in**`")@{
+ business: true
+, type: useCase,
+}
+Broken(Unclosed
+Healthy(OK)
+A ..> : include B
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_actor_statement
+        (usecase_statement_keyword)
+        (usecase_actor (usecase_identifier))
+        (usecase_actor (usecase_identifier)))
+      (usecase_node_statement
+        (usecase_node
+          (usecase_identifier)
+          (usecase_node_label (usecase_label (usecase_string)))
+          (usecase_metadata
+            (usecase_metadata_property (usecase_identifier) (usecase_identifier))
+            (usecase_metadata_property (usecase_identifier) (usecase_identifier)))))
+      (usecase_node_statement
+        (usecase_node
+          (usecase_identifier)
+          (usecase_node_label
+            (usecase_label (usecase_identifier))
+            (MISSING ")"))))
+      (usecase_node_statement
+        (usecase_node
+          (usecase_identifier)
+          (usecase_node_label (usecase_label (usecase_identifier)))))
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_operator (usecase_relation_kind))
+        (usecase_node (usecase_identifier))))))
+
+==================
+Usecase keyword prefixes remain complete identifiers
+==================
+
+usecase-beta
+actorUser --> Login
+noteLogin
+styleGuide
+classDefRole
+className
+systemBoundaryService
+directionMode
+jsonPayload
+accTitleText
+accDescrText
+endUser
+forEach
+includeLogin
+extendSession
+actor User
+note for Login "Help"
+style Login fill:red
+direction LR
+
+---
+
+(source_file
+  (usecase_diagram
+    (usecase_header (diagram_keyword))
+    (usecase_body
+      (usecase_edge_statement
+        (usecase_node (usecase_identifier))
+        (usecase_operator)
+        (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_node_statement (usecase_node (usecase_identifier)))
+      (usecase_actor_statement
+        (usecase_statement_keyword)
+        (usecase_actor (usecase_identifier)))
+      (usecase_note_statement
+        (usecase_statement_keyword)
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_label (usecase_string)))
+      (usecase_style_statement
+        (usecase_statement_keyword)
+        (usecase_identifier)
+        (usecase_styles
+          (usecase_style_property (usecase_style_name) (usecase_style_value))))
+      (usecase_direction_statement (usecase_statement_keyword) (direction)))))

@@ -1,0 +1,421 @@
+==================
+nested flows global scope connectors and anonymous containers
+==================
+
+agentflow-beta TB
+global
+  connector api["API"]@{ shape: tool }
+end
+flow outer["Outer"]@{ view: collapsed }
+  direction LR
+  flow inner
+    A["`Ask`"]@{ shape: input } --> B@{ shape: task }
+  end
+end
+flow
+  C
+end
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_global_statement
+            (agentflow_statement_keyword)
+            (agentflow_line_item
+              (agentflow_statement
+                (agentflow_connector_statement
+                  (agentflow_statement_keyword)
+                  (agentflow_node_id)
+                  (agentflow_square_label
+                    (agentflow_shape_delimiter)
+                    (agentflow_quoted_label)
+                    (agentflow_shape_delimiter))
+                  (agentflow_shape_data
+                    (agentflow_metadata_yaml
+                      (agentflow_metadata_content))))))
+            (agentflow_end_statement
+              (agentflow_statement_keyword)))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_flow_statement
+            (agentflow_statement_keyword)
+            (agentflow_node_id)
+            (agentflow_square_label
+              (agentflow_shape_delimiter)
+              (agentflow_quoted_label)
+              (agentflow_shape_delimiter))
+            (agentflow_shape_data
+              (agentflow_metadata_yaml
+                (agentflow_metadata_content)))
+            (agentflow_line_item
+              (agentflow_statement
+                (agentflow_direction_statement
+                  (agentflow_statement_keyword)
+                  (agentflow_direction))))
+            (agentflow_line_item
+              (agentflow_statement
+                (agentflow_flow_statement
+                  (agentflow_statement_keyword)
+                  (agentflow_node_id)
+                  (agentflow_line_item
+                    (agentflow_statement
+                      (agentflow_edge_statement
+                        (agentflow_node
+                          (agentflow_vertex
+                            (agentflow_node_id)
+                            (agentflow_shape
+                              (agentflow_square_label
+                                (agentflow_shape_delimiter)
+                                (agentflow_markdown_label)
+                                (agentflow_shape_delimiter)))
+                            (agentflow_shape_data
+                              (agentflow_metadata_yaml
+                                (agentflow_metadata_content)))))
+                        (agentflow_edge
+                          (agentflow_arrow))
+                        (agentflow_node
+                          (agentflow_vertex
+                            (agentflow_node_id)
+                            (agentflow_shape_data
+                              (agentflow_metadata_yaml
+                                (agentflow_metadata_content))))))))
+                  (agentflow_end_statement
+                    (agentflow_statement_keyword)))))
+            (agentflow_end_statement
+              (agentflow_statement_keyword)))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_flow_statement
+            (agentflow_statement_keyword)
+            (agentflow_line_item
+              (agentflow_statement
+                (agentflow_node_statement
+                  (agentflow_node
+                    (agentflow_vertex
+                      (agentflow_node_id))))))
+            (agentflow_end_statement
+              (agentflow_statement_keyword))))))))
+
+==================
+named semantic edges groups and presentation commands
+==================
+
+agentflow-beta LR
+A & B route@-- approved --> C -->|finish| D
+C --x B
+B -.- D
+classDef active fill:#f96,stroke:#333
+class A,B active
+style C stroke-width:2px
+linkStyle 0 stroke:#0a0
+click A href "https://example.com" "Open" _blank
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_edge_id
+                (agentflow_edge_name))
+              (agentflow_arrow_start)
+              (agentflow_middle_edge_label
+                (agentflow_middle_edge_label_text
+                  (agentflow_middle_edge_label_fragment)))
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow)
+              (agentflow_edge_label
+                (agentflow_edge_label_text)))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_class_definition_statement
+            (agentflow_statement_keyword)
+            (agentflow_identifier_list
+              (agentflow_reference))
+            (agentflow_style_list
+              (agentflow_style_item
+                (agentflow_style_declaration
+                  (agentflow_style_property)
+                  (agentflow_style_value)))
+              (agentflow_style_item
+                (agentflow_style_declaration
+                  (agentflow_style_property)
+                  (agentflow_style_value)))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_class_assignment_statement
+            (agentflow_statement_keyword)
+            (agentflow_identifier_list
+              (agentflow_reference)
+              (agentflow_reference))
+            (agentflow_class_name))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_style_statement
+            (agentflow_statement_keyword)
+            (agentflow_node_id)
+            (agentflow_style_list
+              (agentflow_style_item
+                (agentflow_style_declaration
+                  (agentflow_style_property)
+                  (agentflow_style_value)))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_link_style_statement
+            (agentflow_statement_keyword)
+            (agentflow_number_list
+              (agentflow_edge_index))
+            (agentflow_style_list
+              (agentflow_style_item
+                (agentflow_style_declaration
+                  (agentflow_style_property)
+                  (agentflow_style_value)))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_click_statement
+            (agentflow_statement_keyword)
+            (agentflow_node_id)
+            (agentflow_href_action
+              (agentflow_statement_keyword)
+              (agentflow_quoted_label))
+            (agentflow_quoted_label)
+            (agentflow_link_target)))))))
+
+==================
+YAML metadata preserves indentation comments block scalars and quoted content
+==================
+
+agentflow-beta
+a[Don't stop]@{
+  shape: task,
+  instruction: "don't \"stop\"", # trailing comma
+  details:
+    retries: 3
+    enabled: true
+  lines: |
+    keep, commas,
+}
+a --> b
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_node_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)
+                (agentflow_shape
+                  (agentflow_square_label
+                    (agentflow_shape_delimiter)
+                    (agentflow_square_label_text)
+                    (agentflow_shape_delimiter)))
+                (agentflow_shape_data
+                  (agentflow_metadata_yaml
+                    (agentflow_metadata_content)
+                    (agentflow_metadata_string)
+                    (agentflow_metadata_content))))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))))))))
+
+==================
+incomplete edge recovery preserves following statements
+==================
+
+agentflow-beta LR
+A --> B
+B -->
+C --> D
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))))))
+      (agentflow_line_item
+        (agentflow_incomplete_edge_statement
+          (agentflow_node
+            (agentflow_vertex
+              (agentflow_node_id)))
+          (agentflow_edge
+            (agentflow_arrow))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))))))))
+
+==================
+container keyword prefixes remain node identifiers
+==================
+
+agentflow-beta LR
+flowNode --> connectorNode --> globalNode
+classDefX --> endNode
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id))))))
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_edge_statement
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))
+            (agentflow_edge
+              (agentflow_arrow))
+            (agentflow_node
+              (agentflow_vertex
+                (agentflow_node_id)))))))))
+
+==================
+agentflow header at eof
+==================
+
+agentflow-beta LR
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+CRLF statements and containers
+==================
+
+agentflow-beta LR
+flow work
+A --> B
+end
+
+---
+
+(source_file
+  (agentflow_diagram
+    (agentflow_header
+      (diagram_keyword)
+      (direction))
+    (agentflow_body
+      (agentflow_line_item
+        (agentflow_statement
+          (agentflow_flow_statement
+            (agentflow_statement_keyword)
+            (agentflow_node_id)
+            (agentflow_line_item
+              (agentflow_statement
+                (agentflow_edge_statement
+                  (agentflow_node
+                    (agentflow_vertex
+                      (agentflow_node_id)))
+                  (agentflow_edge
+                    (agentflow_arrow))
+                  (agentflow_node
+                    (agentflow_vertex
+                      (agentflow_node_id))))))
+            (agentflow_end_statement
+              (agentflow_statement_keyword))))))))

@@ -17,6 +17,7 @@ from scripts.generate import (
     exact_source_set_failures,
     generate_sources,
     run,
+    resolve_wasi_clang,
     validate_cli_version,
 )
 
@@ -82,6 +83,25 @@ class GenerationTests(unittest.TestCase):
             command = run_command.call_args.args[0]
             self.assertIn("--abi", command)
             self.assertEqual(command[command.index("--abi") + 1], "15")
+
+    def test_pinned_wasi_sdk_accepts_platform_clang_banners(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sdk = Path(directory)
+            clang = sdk / "bin" / "clang.exe"
+            (sdk / "VERSION").write_text("29.0\n", encoding="utf-8")
+            for banner in ["21.1.4-wasi-sdk", "21.1.4"]:
+                with patch("scripts.generate.find_wasi_clang", return_value=clang), patch(
+                    "scripts.generate.subprocess.run",
+                    return_value=subprocess.CompletedProcess([], 0, f"clang version {banner} (LLVM)"),
+                ):
+                    self.assertEqual(resolve_wasi_clang([]), clang)
+            (sdk / "VERSION").write_text("28.0\n", encoding="utf-8")
+            with patch("scripts.generate.find_wasi_clang", return_value=clang), patch(
+                "scripts.generate.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, "clang version 21.1.4"),
+            ):
+                with self.assertRaisesRegex(SystemExit, "expected wasi-sdk 29.0"):
+                    resolve_wasi_clang([])
 
     def test_external_tool_timeout_has_a_bounded_failure(self) -> None:
         timeout = subprocess.TimeoutExpired(["tree-sitter", "build"], 900)

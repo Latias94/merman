@@ -57,13 +57,13 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
 The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.
 
-Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
+Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
 
 ### `typst-publish`
 
@@ -554,9 +554,25 @@ The language package uses the pinned generator, copies its generated support hea
 - Legal files:
   - [`THIRD_PARTY_LICENSES/tree-sitter/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter/LICENSE) (license, SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78`)
 
+### Mermaid (tree-sitter-mermaid Agentflow and Usecase additions) (`tree-sitter-mermaid-mermaid-12-new-families`)
+
+The language package translates Agentflow and Usecase syntax from the pinned Mermaid 12.0.0 source and carries source-backed editor corpus cases. Existing diagram-family derivations retain their separately recorded Mermaid 11.16.1 source identity.
+
+- Version: `12.0.0`
+- Source: <https://github.com/mermaid-js/mermaid.git>
+- Source ref: `mermaid@12.0.0`
+- Source commit: `98a0945418c76238f15df2afaddbba4272656c3b`
+- Source path: `packages/mermaid`
+- Relationship: `behavior-reference`, `fixtures`, `translated`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid/grammar/families/agentflow.js`, `distribution/tree-sitter-mermaid/grammar/families/usecase.js`, `distribution/tree-sitter-mermaid/test/corpus/families/agentflow.txt`, `distribution/tree-sitter-mermaid/test/corpus/families/usecase.txt`, `distribution/tree-sitter-mermaid/test/fixtures/family-roots.json`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
+
 ### Mermaid (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-mermaid-baseline`)
 
-The language package translates the exact Mermaid 11.16.1 syntax baseline and carries Merman-selected representative fixtures recorded against that baseline; this component intentionally does not move with the repository baseline.
+The language package retains the exact Mermaid 11.16.1 syntax baseline for its original 35 diagram families and their representative fixtures. Agentflow and Usecase additions are attributed separately to Mermaid 12.0.0; this component intentionally does not move with the repository baseline.
 
 - Version: `11.16.1`
 - Source: <https://github.com/mermaid-js/mermaid.git>

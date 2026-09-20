@@ -118,6 +118,11 @@ const EXPECTED_NON_HEADER_CAPTURE_CLASSES: &[(&str, &str)] = &[
         "xychart",
         "keyword number punctuation.bracket punctuation.delimiter",
     ),
+    (
+        "agentflow",
+        "constant keyword operator punctuation.bracket string variable",
+    ),
+    ("usecase", "constant keyword operator string variable"),
     ("zenuml", "operator string variable"),
 ];
 
@@ -310,8 +315,8 @@ fn every_packaged_query_compiles() {
 #[test]
 fn canonical_highlights_define_non_header_capture_classes_for_every_family() {
     let fixtures = family_fixtures();
-    assert_eq!(fixtures.len(), 35);
-    assert_eq!(EXPECTED_NON_HEADER_CAPTURE_CLASSES.len(), 35);
+    assert_eq!(fixtures.len(), 37);
+    assert_eq!(EXPECTED_NON_HEADER_CAPTURE_CLASSES.len(), 37);
 
     let expected_by_family: BTreeMap<_, _> = EXPECTED_NON_HEADER_CAPTURE_CLASSES
         .iter()

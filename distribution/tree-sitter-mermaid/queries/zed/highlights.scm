@@ -959,3 +959,74 @@
 (zenuml_nil) @constant
 (zenuml_emoji) @string.special
 (zenuml_comment) @comment
+
+; Agentflow. The shared direction node is captured once in the Flowchart section.
+(agentflow_statement_keyword) @keyword
+
+[
+  (agentflow_node_id)
+  (agentflow_reference)
+] @variable
+
+(agentflow_edge_name) @property
+(agentflow_class_name) @type
+(agentflow_callback_name) @function
+
+[
+  (agentflow_quoted_label)
+  (agentflow_markdown_label)
+  (agentflow_label_text)
+  (agentflow_square_label_text)
+  (agentflow_round_label_text)
+  (agentflow_curly_label_text)
+  (agentflow_edge_label_text)
+  (agentflow_middle_edge_label_text)
+  (agentflow_style_value)
+  (agentflow_accessibility_text)
+  (agentflow_accessibility_block_text)
+] @string
+
+[
+  (agentflow_direction)
+  (agentflow_link_target)
+] @constant
+
+(agentflow_style_property) @property
+(agentflow_edge_index) @number
+
+[
+  (agentflow_arrow)
+  (agentflow_arrow_start)
+  (agentflow_continued_arrow)
+  (agentflow_continued_arrow_start)
+] @operator
+
+(agentflow_shape_delimiter) @punctuation.bracket
+
+(agentflow_edge_id delimiter: "@" @punctuation.delimiter)
+(agentflow_edge_label open: "|" @punctuation.delimiter)
+(agentflow_edge_label close: "|" @punctuation.delimiter)
+(agentflow_identifier_list delimiter: "," @punctuation.delimiter)
+(agentflow_number_list delimiter: "," @punctuation.delimiter)
+(agentflow_style_list delimiter: "," @punctuation.delimiter)
+(agentflow_style_declaration delimiter: ":" @punctuation.delimiter)
+
+(agentflow_metadata_string) @string
+(agentflow_container_title) @string
+
+; Usecase.
+(usecase_statement_keyword) @keyword
+(usecase_identifier) @variable
+(usecase_operator) @operator
+(usecase_relation_kind) @keyword
+(usecase_label_text) @string
+(usecase_string) @string
+(usecase_stereotype) @type
+(usecase_metadata_property key: (_) @property)
+(usecase_style_name) @property
+(usecase_style_value) @string
+(usecase_accessibility_text) @string
+(usecase_json_property key: (usecase_json_string) @property)
+(usecase_json_string) @string
+(usecase_json_number) @number
+(usecase_json_literal) @constant

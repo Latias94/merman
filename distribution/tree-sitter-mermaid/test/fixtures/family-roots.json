@@ -173,5 +173,15 @@
     "publicId": "zenuml",
     "root": "zenuml_diagram",
     "source": "zenuml\n  Alice->Bob: Hello\n  Bob-->Alice: Reply\n\n"
+  },
+  {
+    "publicId": "usecase",
+    "root": "usecase_diagram",
+    "source": "usecase-beta\ndirection LR\nactor Customer(\"Customer\")\nsystemBoundary \"Order system\"\n  Checkout(\"Place order\")\nend\nCustomer --> Checkout\n"
+  },
+  {
+    "publicId": "agentflow",
+    "root": "agentflow_diagram",
+    "source": "agentflow-beta TB\nflow support[\"Support\"]\n  input[\"Question\"]@{ shape: input }\n  task[\"Resolve\"]@{ shape: task }\n  input --> task\nend\n"
   }
 ]
