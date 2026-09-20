@@ -45,6 +45,8 @@ fn close(actual: f64, expected: f64) {
     );
 }
 // Real elkjs 0.9.3 output, with Mermaid 12 root options and normal node micro layout enabled.
+// addEdgesToElkGraph creates an inline CENTER label on every edge, including the second
+// edge's empty zero-size label. Force imports both labels as particles.
 // Values are centers at the adapter boundary; edge labels remain top-left based.
 #[test]
 fn root_provider_projection_matches_elkjs() {
@@ -72,40 +74,40 @@ fn root_provider_projection_matches_elkjs() {
         (
             Algorithm::Force,
             [
-                [151.47093870588708, 279.216981926131, 40.0, 20.0],
-                [80.00000000000001, 167.50598531365765, 60.0, 30.0],
-                [207.22597011872534, 75.0, 30.0, 50.0],
+                [193.42617779808174, 303.35578838279287, 40.0, 20.0],
+                [80.0, 210.49423738443934, 60.0, 30.0],
+                [170.51463253901534, 75.0, 30.0, 50.0],
             ],
             [
                 &[
-                    [145.07309598017758, 269.216981926131],
-                    [89.59676408856426, 182.50598531365765],
+                    [181.21163081080465, 293.35578838279287],
+                    [98.32182048091563, 225.49423738443934],
                 ][..],
                 &[
-                    [100.62990351716329, 152.50598531365765],
-                    [192.22597011872534, 85.90649792970717],
+                    [90.02049617972281, 195.49423738443934],
+                    [155.51463253901534, 97.45397792329919],
                 ][..],
             ],
-            [120.73546935294354, 212.36148361989433],
+            [131.71308889904088, 253.92501288361612],
         ),
         (
             Algorithm::Stress,
             [
-                [70.0, 265.115660991585, 40.0, 20.0],
-                [98.21365661832216, 169.1637616742679, 60.0, 30.0],
-                [131.91773094564053, 75.0, 30.0, 50.0],
+                [84.83167066281209, 274.9065694325644, 40.0, 20.0],
+                [80.0, 175.00946228651006, 60.0, 30.0],
+                [80.94114129254214, 75.0, 30.0, 50.0],
             ],
             [
                 &[
-                    [72.94039584615395, 255.115660991585],
-                    [93.80306284909123, 184.1637616742679],
+                    [84.34800594009414, 264.9065694325644],
+                    [80.72549708407692, 190.00946228651006],
                 ][..],
                 &[
-                    [103.5826128486246, 154.1637616742679],
-                    [122.9694705618031, 100.0],
+                    [80.14115783712234, 160.00946228651006],
+                    [80.70587823067157, 100.0],
                 ][..],
             ],
-            [89.10682830916109, 222.13971133292648],
+            [77.41583533140604, 221.95801585953723],
         ),
         (
             Algorithm::MrTree,
@@ -255,4 +257,18 @@ fn source_failure_does_not_fall_back_to_layered() {
         super::super::layout(&graph),
         Err(Error::Radial(radial::Error::MissingRoot))
     ));
+}
+
+#[test]
+fn mrtree_node_ids_do_not_become_synthetic_root_labels() {
+    let original = graph(Algorithm::MrTree);
+    let expected = super::super::layout(&original).unwrap();
+    let mut renamed = original;
+    renamed.nodes[0].id = "SUPER_ROOT".into();
+    renamed.edges[0].source = "SUPER_ROOT".into();
+    let actual = super::super::layout(&renamed).unwrap();
+    assert_eq!(actual.edges, expected.edges);
+    for (a, e) in actual.nodes.iter().zip(expected.nodes) {
+        assert_eq!((a.x, a.y, a.width, a.height), (e.x, e.y, e.width, e.height));
+    }
 }

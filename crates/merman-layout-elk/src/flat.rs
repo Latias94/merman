@@ -130,18 +130,18 @@ pub(super) fn layout(
                 .zip(&endpoints)
                 .map(|(edge, &(source, target))| {
                     let mut projected = force::Edge::new(source, target);
-                    projected.labels = edge
-                        .label
-                        .into_iter()
-                        .map(|label| force::Label {
-                            width: label.width,
-                            height: label.height,
-                            // Both providers import FLabel, whose refreshPosition reads ForceOptions'
-                            // false default when the label itself has no explicit inline property.
-                            inline: false,
-                            ..Default::default()
-                        })
-                        .collect();
+                    // Mermaid creates one inline ELK label even for an unlabeled edge. Force
+                    // imports that zero-size label as a particle, so omitting it changes layout.
+                    let label = edge.label.unwrap_or(Label {
+                        width: 0.0,
+                        height: 0.0,
+                    });
+                    projected.labels = vec![force::Label {
+                        width: label.width,
+                        height: label.height,
+                        inline: true,
+                        ..Default::default()
+                    }];
                     projected
                 })
                 .collect();
@@ -211,7 +211,9 @@ pub(super) fn layout(
                 .map(|node| mrtree::Node {
                     width: node.width,
                     height: node.height,
-                    label: node.id.clone(),
+                    // Mermaid leaf nodes have no ELK node-label array. MrTree derives identity
+                    // from its local ordinal when the first label text is absent.
+                    label: String::new(),
                     ..Default::default()
                 })
                 .collect();
