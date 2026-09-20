@@ -315,6 +315,20 @@ dependency changed and no end-to-end speedup is admitted. Distinct resource and 
 contracts remain required. A separate per-tag-copy proposal was rejected because default Class
 has no prepared-text ledger and never enters that branch.
 
+The subsequent [SHA-256 upgrade](../../../performance/sha2_upgrade_2026-09-20.md) passes its
+registered native admission gate. Clean measurement snapshots with identical benchmark source
+use eight A/A pairs per executable and eight balanced confirmation pairs. Class medium falls
+from 1,461.74 to 1,248.73 µs (14.58%, 213.01 µs); Sequence medium falls from 495.30 to 402.54 µs
+and also clears both thresholds. All five rows confirm non-regression. SVG bytes, full public
+receipts, all ten preset fingerprints and fifteen paired heap observations remain identical.
+The same-harness benchmark executable decreases by 68,368 bytes; this is not a packaged-size
+result. The candidate passes 4,740 tests (three skipped), full SVG structure, compile/feature,
+dependency/legal and platform-binding checks. Android target checks and local Flutter ABI,
+Native Assets and theme-authoring smokes pass; Android device execution remains unverified.
+Earlier installed-package and archive receipts still belong to their recorded revisions and
+must be regenerated for the final candidate. This adjacent optimization does not establish
+recovery against alpha.6 or close C7a/U10.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
@@ -393,7 +407,7 @@ The candidate evidence is classified as follows:
 | Completed | Typed theme tokens, source-backed fixture matrix, default/Clear/Transparent semantics, light/dark exchange, CSS boundary, Web and Typst consumer contracts, macOS ARM64 CLI/LSP replay, legal projections and local Rust 1.95 floor contract. |
 | Limited support | Host-dependent native Cyberpunk scenes, selected Brutalist/Spotless cells, portable-font gaps, browser/PDF/HTML resource boundaries, and diagnostic mmdr/memory measurements. These retain explicit host or evidence-class receipts. |
 | Explicitly unsupported or unverified | Aurora browser `backdrop-filter` cells, Typst Cyberpunk under the constrained resource policy, 343 discovery `Unsupported` responses, 99 discovery `Unverified` responses, and every unexecuted hosted archive or consumer route. Empty catalog qualification cells remain intentional. |
-| Performance and size change | Current artifact sizes, two matched Class regressions and native compile/discovery plus SVG/PNG/PDF diagnostic baselines are measured; alpha.6 attribution, cold start, first render, matched export/compile/discovery deltas and cross-host size deltas remain unverified. No budget was relaxed. |
+| Performance and size change | Current artifact sizes, two matched Class regressions, the adjacent ARM64 SHA upgrade and native compile/discovery plus SVG/PNG/PDF diagnostic baselines are measured; alpha.6 recovery, cold start, first render, matched export/compile/discovery deltas and cross-host size deltas remain unverified. No budget was relaxed. |
 | Preset conclusion | All ten preset IDs have representative literal execution, but only named Brutalist/Spotless/Cyberpunk cells have qualification evidence. This is insufficient for portfolio-wide catalog promotion. |
 
 C7b is explicitly deferred. Its known scope includes Class's four Text routes, Block's 32 legacy

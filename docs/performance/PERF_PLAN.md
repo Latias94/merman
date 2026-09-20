@@ -7,12 +7,13 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
-The [ARM64 SHA-256 attribution](sha2_arm64_attribution_2026-09-20.md) identifies the current
-sha2 0.10.9 software backend as a concrete candidate cost. For the same 74,203-byte buffer,
-an isolated probe measures 119.0 µs with 0.10.9 and 26.1 µs with default 0.11.0; forcing 0.11.0
-to software returns it to 110.3 µs. This is backend attribution, not a public-render speedup.
-Evaluate the dependency upgrade with unchanged digest contracts, full feature/legal projections
-and calibrated public-operation controls before retaining it.
+The [SHA-256 upgrade](sha2_upgrade_2026-09-20.md) admits sha2 0.11.0 on the measured macOS ARM64
+lane. After eight A/A pairs per executable and eight balanced confirmation pairs, Class medium
+falls from 1,461.74 to 1,248.73 µs (14.58%, 213.01 µs); Sequence medium also clears the existing
+joint improvement gate. All five fixtures confirm non-regression and preserve exact SVGs,
+public receipts, preset fingerprints and measured heap behavior. Feature, platform, legal and
+dependency checks pass. This follows the [backend attribution](sha2_arm64_attribution_2026-09-20.md);
+it does not close the alpha.6 release-range regression or establish cross-host/package results.
 
 The [SVG attribute-validation checkpoint](svg_attribute_validation_2026-09-20.md) removes repeated
 second-pass duplicate-name storage after full XML validation. Class medium drops 492 allocations
@@ -334,11 +335,12 @@ its registered workload. Ordinary finalization also computes the resource finger
 Keep the remaining XML/reference work and reserved-spelling search distinct from prepared-font
 token rewriting when forming the next hypothesis.
 
-The same current-source sample and a forced-software control now identify SHA backend selection
-as the next measurable candidate. Preserve both the framed resource fingerprint and raw public
-artifact digest; they are distinct contracts. The isolated 0.11.0 comparison is retained in the
-[ARM64 attribution checkpoint](sha2_arm64_attribution_2026-09-20.md), with explicit migration and
-confirmation gates. Workspace dependencies remain unchanged at this checkpoint.
+The SHA backend candidate is now [accepted](sha2_upgrade_2026-09-20.md): the workspace upgrade
+to 0.11.0 preserves both the framed resource fingerprint and raw public artifact digest while
+confirming a 14.58% Class-medium latency reduction against an adjacent old-SHA baseline with
+identical benchmark source. All five controls pass. Continue attributing the remaining Class
+cost and renew matched alpha.6 and final-candidate artifact evidence; the isolated native win
+does not close this release-range regression.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific
