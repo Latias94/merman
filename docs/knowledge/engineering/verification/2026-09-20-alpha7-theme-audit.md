@@ -213,8 +213,9 @@ checkout was not changed. The diagnostic output is retained at
 
 This runner reports `valid_diagnostic`, not a U10 baseline: it retains Criterion console
 midpoints rather than raw samples, compares different native transports and does not execute DOM
-or raster parity gates. The partial renderer is a context reference, not a release-equivalent
-semantic oracle.
+or raster parity gates. It also used Merman Rust 1.95 and the renderer's declared Rust 1.98
+toolchain, so the partial renderer is a context reference, not a release-equivalent semantic
+oracle.
 
 An adjacent published-alpha comparison was also run from the exact `v0.8.0-alpha.6` tag
 (`d529f858e`) to a clean current-source clone at `4e03b93e7`, with the same Rust 1.95 toolchain,
