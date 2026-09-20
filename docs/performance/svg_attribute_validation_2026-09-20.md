@@ -103,6 +103,36 @@ objective, so the patch was removed and further timing was cancelled. The result
 with compiler elimination of the presumed prefix allocation; no assembly-level claim is made.
 Do not revive that optimization solely because the generic source contains a `Vec`.
 
+### Follow-up attribution at `2db16c6b7`
+
+A second follow-up candidate attempted to remove each token-bearing tag's temporary String by
+copying retained spans directly into the public SVG buffer. It was rejected before candidate
+measurement because it cannot meet the preregistered Class-medium allocation objective:
+
+- `BuiltinFamilyArtifact::prepared_text_label_ledger` has explicit Flowchart, Swimlane, State and
+  Sequence owners; Class takes the empty-ledger branch.
+- With an empty ledger and no reserved prepared-text spelling, `strip_prepared_text_label_ids`
+  returns after the bounded-checkpoint substring search. It does not enter tag stripping.
+- The fixed Class input/output has no reserved spelling. A profile entry for
+  `partition_prepared_text_label_ids` therefore does not imply that per-tag copying occurs.
+- Ordinary standalone finalization computes one resource fingerprint over the native projection
+  and font context. No repeated fingerprint calculation was found on that Class path.
+
+The attempted new test incorrectly assumed a default system-font session had a prepared-text
+layout; it failed during setup with `None`. The stopped suite reported 175 passing tests, one
+failing new test and 69 unexecuted tests. No successful candidate correctness or performance claim
+is made. Source review had already disproved applicability, so the workload and test setup were
+not changed to rescue the candidate. The entire owned patch was removed after checking the saved
+original against HEAD. No production change from this experiment remains.
+
+The rejected patch, test output, five baseline-only diagnostic rows and follow-up CPU sample are
+retained in `target/bench/experiments/prepared-text-direct-copy-20260920/`. The frozen pipeline
+executable is the source-equivalent `2db16c6b7` build already bound by the attribute-validation
+ledger. Sampling attaches during the Class-medium benchmark loop for 10 seconds at 1 ms; this
+profile's wall-clock results are explicitly excluded from latency evidence. Any future per-tag
+copy optimization needs an independently registered workload that actually owns prepared text;
+it must not be presented as recovery of the default Class regression.
+
 ## Evidence and remaining work
 
 The ignored directories `target/bench/experiments/svg-byte-search-20260920/` and

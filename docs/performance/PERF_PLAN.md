@@ -7,6 +7,13 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+The [ARM64 SHA-256 attribution](sha2_arm64_attribution_2026-09-20.md) identifies the current
+sha2 0.10.9 software backend as a concrete candidate cost. For the same 74,203-byte buffer,
+an isolated probe measures 119.0 µs with 0.10.9 and 26.1 µs with default 0.11.0; forcing 0.11.0
+to software returns it to 110.3 µs. This is backend attribution, not a public-render speedup.
+Evaluate the dependency upgrade with unchanged digest contracts, full feature/legal projections
+and calibrated public-operation controls before retaining it.
+
 The [SVG attribute-validation checkpoint](svg_attribute_validation_2026-09-20.md) removes repeated
 second-pass duplicate-name storage after full XML validation. Class medium drops 492 allocations
 and 41,088 cumulative bytes per complete SVG render; five controls preserve exact output and peak
@@ -319,6 +326,19 @@ owner's attribute-name uniqueness result in private second passes. Full XML vali
 resource/error/cancellation semantics remain unchanged. Its measured allocation reduction does
 not close this latency gate; continue profiling finalization and prepared-text work rather than
 assuming source-level temporary allocations survive optimization.
+
+Follow-up source tracing at `2db16c6b7` excludes per-tag prepared-text copying from the default
+Class cause: Class owns an empty prepared-text ledger, so these fixtures only execute the reserved
+spelling search. A direct-copy candidate was rejected before measurement rather than switching
+its registered workload. Ordinary finalization also computes the resource fingerprint only once.
+Keep the remaining XML/reference work and reserved-spelling search distinct from prepared-font
+token rewriting when forming the next hypothesis.
+
+The same current-source sample and a forced-software control now identify SHA backend selection
+as the next measurable candidate. Preserve both the framed resource fingerprint and raw public
+artifact digest; they are distinct contracts. The isolated 0.11.0 comparison is retained in the
+[ARM64 attribution checkpoint](sha2_arm64_attribution_2026-09-20.md), with explicit migration and
+confirmation gates. Workspace dependencies remain unchanged at this checkpoint.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

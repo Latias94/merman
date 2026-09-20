@@ -307,6 +307,14 @@ pass, and two diagnostic timing pairs show no material control slowdown. This ad
 allocation reduction, not a confirmed latency recovery, lower peak memory or C7a closure. A prior
 single-byte-search candidate was rejected because runtime allocation did not change.
 
+The [ARM64 SHA-256 attribution](../../../performance/sha2_arm64_attribution_2026-09-20.md) then
+identifies a dependency-backend candidate at `2db16c6b7`: the selected sha2 0.10.9 features use
+software compression. A 74,203-byte isolated hash averages 119.0 µs there versus 26.1 µs with
+default 0.11.0; forcing the latter to software gives 110.3 µs. Digest checks pass, but no workspace
+dependency changed and no end-to-end speedup is admitted. Distinct resource and output digest
+contracts remain required. A separate per-tag-copy proposal was rejected because default Class
+has no prepared-text ledger and never enters that branch.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
