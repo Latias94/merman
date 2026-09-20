@@ -293,7 +293,7 @@ first-render gate therefore remains open until candidates are rebuilt from this 
 lockfile.
 
 The candidates were then rebuilt from this source and lockfile: both receipts carry the
-`sha256:b3c42d2379...` lock digest and commit `9ccb4527f`. The benchmark harness's public-API error
+`sha256:b3c42d2379...` lock digest and commit `5781b1c45`. The benchmark harness's public-API error
 probe was corrected and its contract tests pass 15/15 under npm 12; the representative rerun now
 reaches the cross-candidate catalog gate. It is rejected because the two targets intentionally
 advertise different SVG backend depth hard caps: the WebAssembly catalog reports `64`, while the
