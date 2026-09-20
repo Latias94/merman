@@ -180,6 +180,15 @@ XCFramework builder then completed all three slices (macOS universal, iOS device
 and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
 diagnostic and remains outside the release publication set.
 
+The current worktree also reran the real Dart Native Assets entry point with
+`dart run tool/theme_authoring_smoke.dart` from `platforms/flutter`. It passed the same two
+materializations, 22 support queries, five expected errors and three budgeted operations per
+consumer; the retained log is
+`target/bench/experiments/flutter-theme-consumer-20260920.log` (SHA-256
+`e0037683bd51c2777cf23e5669cf36db6d08f88e39aa5957b4ad6670e24cd9a1`). No generated binding,
+lockfile or source file changed. This is a local macOS consumer run, not an installed pub archive,
+Android device execution or hosted release matrix.
+
 The current-source C ABI consumer smoke passed with both empty defaults and an explicit SVG
 feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
 --test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
@@ -433,7 +442,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Apple ARM64 now covers authoring, preset exchange, Class paint/font boundaries and explicit missing embedded-font errors; C ABI, mobile and remaining six-journey routes remain limited |
+| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI archive installation, mobile and remaining six-journey routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; rebuilt local Apple consumer passes authoring/support/errors, complete preset exchange, scoped Class paint edits and fresh-process output/metadata comparisons; remaining journeys and final installed transport parity stay open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
