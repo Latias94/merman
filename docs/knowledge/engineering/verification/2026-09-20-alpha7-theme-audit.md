@@ -42,6 +42,61 @@ PNG and PDF, with 480 successful outputs and 30 input-specific parse failures. T
 classified as upstream-invalid or parser-specific before theme evaluation. The matrix measures
 execution against literal inputs; it does not qualify every theme facet or every output family.
 
+# Stage 2: modern Mermaid coverage and semantic impact
+
+The authoritative Stage 2 input is the hash-bound `gotoailab/modern_mermaid` snapshot at
+`a021cbce37fc0b07a9f4791c28e983101ea06f2d`. The shared checkout is outside this worktree at
+`../../repo-ref/modern_mermaid`; its `src/utils/themes.ts`, `src/components/Preview.tsx`,
+`src/fonts.css` and `MERMAID_EXAMPLES.md` hashes match the corpus records. The checkout has one
+untracked `pnpm-workspace.yaml`, which was not read or modified. The repository's aggregate pinned
+checkout test currently stops at the Modern Mermaid license record: the upstream `LICENSE` has one
+additional trailing blank line, so its byte hash is
+`4e7ef9d2fd6e8b957ede09ca1bffe1844740721ea273d226b79bca2a9b9f3198`, while the normalized copied
+notice is `45195cf54a3816f4774dc762360b9d9a311fd66c7146d262ebe12ae55e420264`. A temporary exact
+source notice copy allowed the test to advance through Modern Mermaid and Mermaid, where it then
+stopped at the separately shared Excalidraw checkout revision
+`e160ff7ba0641fba729c528482de5277ffb19c58` instead of the manifest's
+`e4ab626739f5f163c5eca56190f615643218b61c`. We left both shared checkouts and the normalized
+notice untouched; therefore the three-source aggregate gate remains open, while the snapshot,
+source-file and semantic-matrix hashes remain independently verified.
+
+The closed source matrix contains 24 themes, 18 mechanisms and 21 value facets. Seventeen
+mechanisms translate to typed capabilities; `backdrop-filter` remains one explicit residual. The
+manifest contains 25 fixtures, 20 of them directly backed by the Modern Mermaid source, with 19
+typed-capability witnesses and six source-compatibility witnesses (the overlap is intentional).
+The fixture families are Flowchart 12, State 5, Class 3, Sequence 2 and ER 2. Every theme is
+projected to five output contracts—Browser SVG, standalone SVG, PNG, JPEG and PDF—so the sparse
+policy expands to 120 target cells: 115 intended Portable cells for 23 themes and five explicit
+Unverified cells for Aurora's browser `backdrop-filter` residual. This is a semantic expectation
+matrix, not a claim that all 115 cells have been rendered by every backend.
+
+The typed inputs cover the required mechanism groups directly:
+
+| Concern | Evidence and boundary |
+| --- | --- |
+| Tokens and typography | `fixture-token-baseline` reads background, surface, primary and text tokens; font stack, letter spacing, text transform, border, dash, radius and shadow are typed getters. The mixed-script fixture proves the two licensed font slices against parsed visible text. |
+| Families and semantic rules | Flowchart, State, Class, Sequence and ER fixtures retain parsed family models; `has-descendant`, `not-class`, ordinal palette and family-specific precedence are source-backed. Sequence is represented as a fixture consumer, while the corpus does not pretend that arbitrary CSS selectors are public input. |
+| Canvas and blending | Solid, tiled/repeating and non-repeating linear gradients, radial gradients, layer count and `screen` blending are separate typed fields. Pattern and layering are derived independently; Aurora retains its named backdrop residual. |
+| Default, Clear and Transparent | The fixture corpus records typed values and target policy. Runtime owner tests separately prove default/source/config precedence, Clear restoring the effective baseline or suppressing a binding, and Transparent emitting explicit zero-alpha paint. Clear is not silently reinterpreted as Transparent. |
+| Light/dark and preset exchange | Installed Python, Node native and Node WASM consumers pass the shared light/dark isolation, materialization, rule-edit, resource-error and preset-export vectors. These are consumer contract checks; they do not promote the ten public preset catalog cells. |
+| CSS and exports | Six source-compatibility fixtures retain Mermaid CSS/preference evidence, while typed fixtures reject source-owned CSS as capability proof. The five output contracts are closed in Rust; the separate literal matrix supplies 480 successful SVG/PNG/PDF executions. |
+| `Unsupported` and `Unverified` | `ThemeSupportStateV1` distinguishes Unconditional, Conditional, NotApplicable, Unsupported and Unverified. Static discovery is an upper bound; terminal observation owns actual application and admission. Aurora's five target cells are intentionally Unverified, and the current discovery inventory remains 188 Conditional, 343 Unsupported, 99 Unverified and 4,023 NotApplicable SVG responses. |
+
+The fixture contract is currently green: `cargo nextest run --locked -p merman-theme-fixtures`
+passed 67/67 tests with two intentional skips. The semantic-matrix mutation, source-line, canvas
+layering, typed-vs-CSS, five-output and sparse-policy tests all pass. This closes the Stage 2
+corpus integrity question. It does not close preset usability: the current native evidence still
+qualifies only the named Brutalist/Spotless/Cyberpunk cells, while broader family visual review,
+portable-font variants and the matched U10 performance/footprint comparison remain open.
+
+The architecture consequence is bounded: modern Mermaid remains a design reference decomposed
+into Merman-owned typed tokens, family rules, canvas layers and resource metadata. No TypeScript
+evaluator, partial CSS parser, bundled Inter font or second export pipeline is justified. Delivery
+must keep the existing public materialization/export seam, target-local admission, explicit
+Unsupported/Unverified receipts and host/resource residuals. The current Web/Typst size and
+consumer results below are reproducible candidate baselines; they are not evidence that the
+historical alpha.6 deltas are theme-only costs.
+
 # Preset and capability boundaries
 
 Brutalist and Spotless retain their earlier six native Flowchart/State/Sequence cells. Cyberpunk
