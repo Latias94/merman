@@ -103,6 +103,7 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
         .unwrap_or(4);
 
     elk::LayoutOptions {
+        algorithm: elk::Algorithm::Layered,
         container: elk::ContainerOptions {
             cycle_breaking,
             node_placement: explicit_node_placement

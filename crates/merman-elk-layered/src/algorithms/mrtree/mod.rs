@@ -198,7 +198,7 @@ pub fn layout(
     nodes: &[Node],
     edges: &[Edge],
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<Layout, Error> {
     validate(nodes, edges, options, work)?;
     if nodes.is_empty() {
@@ -260,7 +260,7 @@ fn validate(
     nodes: &[Node],
     edges: &[Edge],
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     work.charge(checked_add(nodes.len(), edges.len())?)?;
     for (index, node) in nodes.iter().enumerate() {
@@ -304,7 +304,7 @@ fn components(
     nodes: &[Node],
     edges: &[Edge],
     separate: bool,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<Vec<Component>, Error> {
     work.charge(checked_add(
         checked_mul(nodes.len(), 3)?,
@@ -430,7 +430,7 @@ fn components(
 fn move_component(
     component: &mut Component,
     offset: Point,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     work.charge(component.nodes.len())?;
     for node in &mut component.nodes {
@@ -451,7 +451,7 @@ fn pack(
     components: &mut [Component],
     inputs: &[Node],
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     if components.len() > 1 {
         work.charge(checked_n_log_n(components.len())?)?;

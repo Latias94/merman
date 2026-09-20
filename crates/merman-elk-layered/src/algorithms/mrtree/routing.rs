@@ -8,7 +8,7 @@ const END_TEXTURE: f64 = 7.0;
 pub(super) fn route(
     c: &mut Component,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     start_points(c, options, work)?;
     special_edges(c, options, work)?;
@@ -26,7 +26,7 @@ fn node_edges(
     c: &Component,
     n: usize,
     incoming: bool,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, Error> {
     work.charge(checked_add(
         c.edge_order.len(),
@@ -84,7 +84,7 @@ fn last_point(c: &Component, edge: usize) -> Point {
 fn start_points(
     c: &mut Component,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let d = options.direction;
     let spacing = options.edge_node_spacing;
@@ -134,7 +134,7 @@ struct Gap {
 fn special_edges(
     c: &mut Component,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let d = options.direction;
     let mut sides = [0usize; 2];
@@ -294,7 +294,7 @@ fn cycle(
     sides: &mut [usize; 2],
     incoming: usize,
     outgoing: usize,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     work.charge(checked_add(c.nodes.len(), 6)?)?;
     let d = options.direction;
@@ -391,7 +391,7 @@ fn cycle(
 fn end_points(
     c: &mut Component,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let d = options.direction;
     let spacing = options.edge_node_spacing;

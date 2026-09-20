@@ -53,8 +53,24 @@ impl Default for Spacing {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LayoutOptions {
+    pub algorithm: Algorithm,
     pub layered: LayeredOptions,
     pub container: ContainerOptions,
+}
+
+/// Resolved ELK provider identity. Root loader names and container metadata have distinct
+/// allowlists in Mermaid; callers must resolve those before constructing the graph.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Algorithm {
+    #[default]
+    Layered,
+    Box,
+    Rectpacking,
+    Force,
+    Stress,
+    MrTree,
+    Radial,
+    SporeOverlap,
 }
 
 /// Mermaid resolves container placement independently from root placement in named presets.
@@ -249,6 +265,7 @@ pub struct LayoutResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeLayout {
     pub id: String,
+    /// Node center in the containing result coordinate system.
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -258,6 +275,8 @@ pub struct NodeLayout {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeLayout {
     pub id: String,
+    /// Provider route. Empty means no section was emitted; the renderer must apply Mermaid's
+    /// missing-section handling after final node placement and shape intersection are known.
     pub points: Vec<Point>,
     pub labels: Vec<EdgeLabelLayout>,
 }

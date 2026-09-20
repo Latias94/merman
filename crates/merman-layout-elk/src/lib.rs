@@ -4,20 +4,22 @@
 //!
 //! Source-port policy:
 //! - Mermaid's adapter layer is
-//!   https://github.com/mermaid-js/mermaid/blob/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/packages/mermaid-layout-elk/src/render.ts.
+//!   https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
 //! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
 //! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
-//! The crate exposes one Mermaid adapter and one source-backed layered implementation. New layout
-//! behavior must carry a pinned Mermaid or Eclipse ELK source reference.
+//! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
+//! currently accept flat measured graphs; mixed hierarchy dispatch is still being integrated.
+//! New layout behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::num::NonZeroU64;
 
+mod flat;
 mod model;
 use merman_elk_layered as source_port;
 pub use model::*;
@@ -91,6 +93,9 @@ impl SourcePhaseDiagnostics {
         graph: &Graph,
         operation_seed: Option<ElkOperationSeed>,
     ) -> Result<Self> {
+        if graph.options.algorithm != Algorithm::Layered {
+            return Err(Error::LayeredDiagnosticsRequired);
+        }
         let input = graph_to_source_input(graph);
         let lgraph = match operation_seed {
             Some(operation_seed) => source_port::import_graph_with_operation_seed(
@@ -162,6 +167,26 @@ impl SourcePhaseDiagnostics {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("phase diagnostics require the Layered algorithm")]
+    LayeredDiagnosticsRequired,
+    #[error("non-layered hierarchy dispatch is not yet available")]
+    NonLayeredHierarchy,
+    #[error(transparent)]
+    Box(#[from] source_port::algorithms::box_layout::Error),
+    #[error(transparent)]
+    Rectpacking(#[from] source_port::algorithms::rectpacking::Error),
+    #[error(transparent)]
+    Force(#[from] source_port::algorithms::force::Error),
+    #[error(transparent)]
+    Stress(#[from] source_port::algorithms::stress::Error),
+    #[error(transparent)]
+    MrTree(#[from] source_port::algorithms::mrtree::Error),
+    #[error(transparent)]
+    Radial(#[from] source_port::algorithms::radial::Error),
+    #[error(transparent)]
+    SporeOverlap(#[from] source_port::algorithms::spore_overlap::Error),
+    #[error(transparent)]
+    RandomSeed(#[from] source_port::RandomSeedError),
     #[error(transparent)]
     SourceImport(#[from] merman_elk_layered::ImportError),
     #[error(transparent)]
@@ -173,6 +198,21 @@ pub enum Error {
 impl Error {
     pub const fn work_error(&self) -> Option<WorkError> {
         match self {
+            Self::Box(source_port::algorithms::box_layout::Error::Work(error))
+            | Self::Rectpacking(source_port::algorithms::rectpacking::Error::Work(error))
+            | Self::Rectpacking(source_port::algorithms::rectpacking::Error::Box(
+                source_port::algorithms::box_layout::Error::Work(error),
+            ))
+            | Self::Force(source_port::algorithms::force::Error::Work(error))
+            | Self::Stress(source_port::algorithms::stress::Error::Work(error))
+            | Self::Stress(source_port::algorithms::stress::Error::Force(
+                source_port::algorithms::force::Error::Work(error),
+            ))
+            | Self::MrTree(source_port::algorithms::mrtree::Error::Work(error))
+            | Self::Radial(source_port::algorithms::radial::Error::Work(error))
+            | Self::SporeOverlap(source_port::algorithms::spore_overlap::Error::Work(error)) => {
+                Some(*error)
+            }
             Self::Work(error) => Some(*error),
             Self::SourceImport(source_port::ImportError::Work(error))
             | Self::SourcePipeline(source_port::PipelineError::Work(error)) => Some(*error),
@@ -183,7 +223,8 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
+/// Executes the selected source-backed ELK provider. Non-layered hierarchy currently returns a
+/// typed error instead of flattening the graph or substituting the Layered provider.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
     let mut work_control = NoopWorkControl;
     layout_with_work_control(graph, &mut work_control)
@@ -406,6 +447,12 @@ fn layout_scopes(
     work_control: &mut dyn WorkControl,
 ) -> Result<LayoutResult> {
     let index = HierarchyIndex::build(graph, work_control)?;
+    if graph.options.algorithm != Algorithm::Layered {
+        if graph.nodes.iter().any(|node| node.parent.is_some()) {
+            return Err(Error::NonLayeredHierarchy);
+        }
+        return flat::layout(graph, operation_seed, work_control);
+    }
     work_control.check(index.scopes.len())?;
     work_control.charge(index.scopes.len())?;
     let mut arena = std::iter::repeat_with(|| None)

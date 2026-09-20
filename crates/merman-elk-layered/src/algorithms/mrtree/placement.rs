@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn place(
     component: &mut Component,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let count = component.nodes.len();
     work.charge(checked_add(
@@ -104,7 +104,7 @@ fn set_levels_and_neighbors(
     c: &mut Component,
     root: usize,
     d: Direction,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let mut level = vec![root];
     let mut depth = 0;
@@ -157,7 +157,7 @@ fn first_walk(
     c: &mut Component,
     root: usize,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let mut stack = vec![(root, false)];
     while let Some((n, after)) = stack.pop() {
@@ -198,7 +198,7 @@ fn leftmost_at_depth(
     c: &Component,
     node: usize,
     depth: usize,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<Option<usize>, Error> {
     let mut stack = vec![(node, 0)];
     while let Some((n, d)) = stack.pop() {
@@ -217,7 +217,7 @@ fn apportion(
     c: &mut Component,
     node: usize,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let mut leftmost = c.nodes[node].children.first().copied();
     let mut depth = 1;
@@ -289,7 +289,7 @@ fn second_walk(
     c: &mut Component,
     root: usize,
     options: &Options,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     let mut stack = vec![(root, -c.nodes[root].level_height / 2.0, 0.0)];
     while let Some((n, previous_y, modifier)) = stack.pop() {
@@ -320,7 +320,7 @@ fn second_walk(
 fn level_coordinates_and_bounds(
     c: &mut Component,
     d: Direction,
-    work: &mut impl WorkControl,
+    work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
     work.charge(checked_mul(c.nodes.len(), 2)?)?;
     let mut levels = vec![(f64::MAX, -f64::MAX); c.nodes.len()];
