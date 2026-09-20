@@ -178,6 +178,10 @@ Static release preparation also passes `release_surface_contract.py --version 0.
 check. The immutable date-required preflight was intentionally not run because this branch still
 has an Unreleased projection and no publication was authorized.
 
+The current source release/preset/archive contract selection also passes
+`python3 -m unittest scripts.test_qualify_theme_presets scripts.test_verify_cli_release_archive
+scripts.test_release_surface_contract scripts.test_theme_preset_catalog_contract`: 74 tests passed.
+
 The declared local compiler floor is explicit and reproducible: `cargo +1.95.0 check --locked
 -p merman-theme-fixtures` passed, while the same package under `cargo +1.92.0` was rejected by
 Cargo because `merman-core` and `merman-theme-fixtures` require Rust 1.95. This proves the local
