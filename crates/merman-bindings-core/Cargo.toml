@@ -62,3 +62,8 @@ required-features = ["analysis", "ascii", "svg"]
 name = "request_overlay_memory"
 harness = false
 required-features = ["analysis", "ascii", "svg"]
+
+[[bench]]
+name = "theme_operations"
+harness = false
+required-features = ["svg"]
