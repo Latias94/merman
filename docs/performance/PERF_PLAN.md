@@ -13,6 +13,14 @@ existing limits. It does not claim a latency improvement. Larger default-profile
 limited by conservative SVG reference-expansion accounting and conversion budgets, and native PDF
 cumulative allocation remains a U10 profiling target.
 
+The [native export checkpoint](native_export_2026-09-20.md) adds current public-renderer throughput
+for three complete default/Cyberpunk scenes across SVG, PNG and PDF. All 18 rows pass output-byte
+replay at default limits; six PDFs also pass independent PDFKit reader/raster smoke. Cyberpunk
+PDF costs 378.6–730.6 ms per output on the measured macOS ARM64 host, versus 42.6–59.0 ms for PNG.
+These are different output workloads, not a revision regression. Keep localized PDF filter-image
+work and cumulative allocation as profiling targets; matched output and calibrated evidence are
+still required before changing implementation, quality or budgets.
+
 The September 16 [theme capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
 adds confirmed alpha.6-to-alpha.7 default-SVG regressions and matched CPU samples. These are
 active work below; the earlier headless optimization decisions remain historical and unchanged.

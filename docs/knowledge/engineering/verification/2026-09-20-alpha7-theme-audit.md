@@ -320,10 +320,20 @@ cache or resource budget changed. These warm-process samples do not establish co
 allocation, cross-transport or packaged-artifact costs. Alpha.6's presentation catalog is a
 different contract, so the checkpoint makes no historical delta claim.
 
-Matched alpha.6 latency outside the two Class rows, cold start, themed/native workloads, PNG/PDF
-throughput, matched compile/discovery deltas and same-source archive size comparisons remain unverified. The
-declared U10 rule still treats unavailable metrics as unverified; no default budget or limit was
-changed.
+The [native export checkpoint](../../../performance/native_export_2026-09-20.md) adds 18 current
+source-to-SVG/PNG/PDF rows and 540 raw samples at `671ad8972`, using the unchanged complete
+Flowchart/Sequence/XY scenes under default and Cyberpunk themes. All outputs succeed at default
+limits, all pre/postflight bytes match, and the 18 retained files match their hash receipts.
+PDFKit independently opens and rasterizes all six PDFs; the three Cyberpunk previews retain
+visible labels, glow and complete scenes. Cyberpunk PNG costs 42.6–59.0 ms (17.0–23.5 outputs/s),
+PDF 378.6–730.6 ms (1.37–2.64 outputs/s), and SVG 1.94–2.40 ms. The advanced native Cargo lane uses
+system fonts and warm processes; it does not qualify PDF pixels or close an installed-package,
+allocation, concurrent-throughput or historical regression gate. Default and Cyberpunk have
+different geometry and effects, so their timing difference is not an equal-output regression.
+
+Matched alpha.6 latency outside the two Class rows, cold start, matched themed/native export and
+compile/discovery deltas, and same-source archive size comparisons remain unverified. The declared
+U10 rule still treats unavailable metrics as unverified; no default budget or limit was changed.
 
 The current Node transport first-render probe was attempted with the checked-in benchmark harness
 and the existing macOS ARM64 N-API/WASM artifacts, but the harness rejected both candidates before
@@ -366,7 +376,7 @@ The candidate evidence is classified as follows:
 | Completed | Typed theme tokens, source-backed fixture matrix, default/Clear/Transparent semantics, light/dark exchange, CSS boundary, Web and Typst consumer contracts, macOS ARM64 CLI/LSP replay, legal projections and local Rust 1.95 floor contract. |
 | Limited support | Host-dependent native Cyberpunk scenes, selected Brutalist/Spotless cells, portable-font gaps, browser/PDF/HTML resource boundaries, and diagnostic mmdr/memory measurements. These retain explicit host or evidence-class receipts. |
 | Explicitly unsupported or unverified | Aurora browser `backdrop-filter` cells, Typst Cyberpunk under the constrained resource policy, 343 discovery `Unsupported` responses, 99 discovery `Unverified` responses, and every unexecuted hosted archive or consumer route. Empty catalog qualification cells remain intentional. |
-| Performance and size change | Current artifact sizes, the two matched Class regressions and native compile/discovery diagnostic baselines are measured; alpha.6 attribution, cold start, first render, PNG/PDF throughput, matched compile/discovery deltas and cross-host size deltas remain unverified. No budget was relaxed. |
+| Performance and size change | Current artifact sizes, two matched Class regressions and native compile/discovery plus SVG/PNG/PDF diagnostic baselines are measured; alpha.6 attribution, cold start, first render, matched export/compile/discovery deltas and cross-host size deltas remain unverified. No budget was relaxed. |
 | Preset conclusion | All ten preset IDs have representative literal execution, but only named Brutalist/Spotless/Cyberpunk cells have qualification evidence. This is insufficient for portfolio-wide catalog promotion. |
 
 C7b is explicitly deferred. Its known scope includes Class's four Text routes, Block's 32 legacy
@@ -388,7 +398,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level, with Aurora and resource residuals explicitly Unverified |
 | Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited; portfolio-wide default/dark/high-contrast/document/brand/export review remains open |
 | WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
-| Cold start, first render and export throughput | Current cold-parse Criterion run, mmdr diagnostic and alpha.6 Class confirmation | Partial; cold start/first render and PNG/PDF throughput are not decision-grade |
+| Cold start, first render and export throughput | Cold-parse Criterion, Node transport diagnostics, alpha.6 Class confirmation and 18 native SVG/PNG/PDF rows with 540 samples | Current native warm throughput measured with output identity and PDF reader checks; historical export deltas and broader cold/first-render admission remain open |
 | Large-diagram memory | 30 fresh-process pairs, six scales and 10,000 bootstrap resamples | Infrastructure smoke passed; owner contract excludes release admission |
 | Theme compile and discovery cost | Current two-feature-lane Criterion checkpoint: 26 rows, 780 samples and shared golden/fingerprint gates | Native warm-process baseline measured; matched historical deltas, allocation costs and transport overhead remain unverified |
 | Architecture and delivery impact | Typed capability boundary, dependency observations, no Inter/new proof engine and C7b scope | Complete as a bounded impact audit; follow-up work is explicitly deferred |
