@@ -40,6 +40,20 @@ pub(crate) fn missing_rect_section_points(
         points[0] = intersect(start, &centers[1]);
     }
     points[1] = intersect(end, &points[0]);
+    // `cutter2` still applies the end-node intersection when both route points
+    // are at the same center (the fallback point is the preceding center). Keep
+    // a drawable two-point route for that case instead of collapsing it to a
+    // single center point. This is relevant to self-loops and overlapping nodes.
+    if (points[1].x - points[0].x).abs() <= 1e-6
+        && (points[1].y - points[0].y).abs() <= 1e-6
+        && end.width > 0.0
+        && end.height > 0.0
+    {
+        points[1] = LayoutPoint {
+            x: end.x + end.width / 2.0,
+            y: end.y,
+        };
+    }
     // The source removes a tail closer than 2px, then restores the original centers if
     // fewer than two valid points survive. Consecutive deduplication runs afterwards.
     if (points[1].x - points[0].x).hypot(points[1].y - points[0].y) < 2.0
@@ -47,9 +61,42 @@ pub(crate) fn missing_rect_section_points(
     {
         points = centers;
     }
-    if (points[1].x - points[0].x).abs() <= 1e-6 && (points[1].y - points[0].y).abs() <= 1e-6 {
-        vec![points[0].clone()]
-    } else {
-        points.to_vec()
+    points.to_vec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::missing_rect_section_points;
+    use crate::model::LayoutNode;
+
+    #[test]
+    fn overlapping_nodes_keep_a_drawable_end_intersection() {
+        let start = LayoutNode {
+            id: "A".into(),
+            x: 10.0,
+            y: 10.0,
+            width: 40.0,
+            height: 20.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        };
+        let end = LayoutNode {
+            id: "B".into(),
+            x: 10.0,
+            y: 10.0,
+            width: 40.0,
+            height: 20.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        };
+
+        let points = missing_rect_section_points(&start, &end);
+        assert_eq!(points.len(), 2);
+        assert!((points[0].x - 10.0).abs() < f64::EPSILON);
+        assert!((points[0].y - 10.0).abs() < f64::EPSILON);
+        assert!((points[1].x - 30.0).abs() < f64::EPSILON);
+        assert!((points[1].y - 10.0).abs() < f64::EPSILON);
     }
 }
