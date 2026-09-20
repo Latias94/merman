@@ -499,8 +499,15 @@ and 53 public render/security tests, full 35-family structure/parity-root compar
 memory boundary smoke pass; two diagnostic timing pairs trigger no material
 slowdown. This is a bounded allocation improvement, not confirmed latency recovery. Full strict
 verification is blocked by the existing workspace Clippy warning gate; the dated checkpoint
-records the exact verification scope. C7a/U10 and final-source installed artifact renewal remain
-open.
+records the exact verification scope. C7a/U10 remain open; the post-repair installed Python,
+Node, Web and Typst snapshots and ARM64 CLI/LSP archive witnesses are recorded above.
+
+The [attribute-value latency experiment](../../../performance/reference_attribute_values_2026-09-20.md)
+then tests a narrower second-pass read set in an isolated checkout. Class medium changes from
+1,184.95 to 1,175.05 µs in two diagnostic pairs, a 9.90 µs (0.84%) reduction that fails the
+registered joint latency threshold. All 245 pipeline tests and exact SVG/receipt/preset identities
+pass, but the candidate is rejected without production integration or a confirmed speedup claim.
+This leaves the current installed artifact identities and the unresolved U10 regression intact.
 
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a

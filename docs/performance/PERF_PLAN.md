@@ -7,6 +7,12 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+The [reference attribute-value experiment](reference_attribute_values_2026-09-20.md) rejects
+skipping repeated normalization of values the reference collector does not read. Class medium
+improves only 9.90 µs (0.84%) in two diagnostic pairs, below the registered joint latency gate.
+All 245 pipeline tests and exact public SVG/receipt/preset identities pass; no production patch
+is integrated. The complete XML/reference finalization cost remains an attribution target.
+
 The [reference-plan checkpoint](reference_plan_2026-09-21.md) removes a repeated dependency-graph
 evaluation while retaining conservative effect amplification. Class medium drops 12 allocations,
 21,136 cumulative bytes and 5,184 bytes of peak growth per complete SVG render. Five controls
@@ -144,13 +150,17 @@ Before implementation:
 
 ## Priorities
 
-The current Web artifact-size gate is open independently of the latency table below.
-At `eda8c3846`, all five final Web profiles exceed raw, stripped, Gzip and Brotli limits,
-although production smoke and a real installed Chromium consumer pass. The explicit Binaryen
-`-Oz` candidate was rejected because compressed sizes grew. Preserve the budgets and capabilities;
-continue source/ownership attribution from the [current artifact checkpoint](theme_web_artifact_gate_2026-09-13.md).
-The clean revision-86 baseline at `4e4f3acc3` confirms all twenty failures. Its five-sort canonical
-encoding/font-catalog candidate is also rejected: render shrinks only 2552 bytes while gzip grows
+The [current Web/Typst artifact snapshot](../knowledge/engineering/verification/2026-09-21-web-typst-consumers.md)
+at `f3a783c29` passes all 24 existing size-budget metrics across six profiles, with installed Web
+and Typst owner checks. The refresh changes no size limits. Matched release-range footprint and
+runtime comparisons remain separate open work.
+
+The [historical artifact checkpoint](theme_web_artifact_gate_2026-09-13.md) at `eda8c3846` records
+all five then-current Web profiles exceeding raw, stripped, Gzip and Brotli limits despite passing
+production smoke and an installed Chromium consumer. The explicit Binaryen `-Oz` candidate was
+rejected because compressed sizes grew. The clean revision-86 baseline at `4e4f3acc3` confirms
+those twenty historical failures. Its five-sort canonical encoding/font-catalog candidate is also
+rejected: render shrinks only 2552 bytes while gzip grows
 683 bytes and Brotli grows 2034 bytes. Keep that rejected result closed and require a distinct
 causal hypothesis for further size work; raw stable-sort symbol totals are not admission evidence.
 
@@ -159,12 +169,14 @@ removes the quadratic ordered-key deduplication step by using the ledger's exist
 index. Native route order and compatibility ownership are preserved, with no added retained index.
 The clean private Release owner suite passed 3,273 tests, SVG structure and real Typst package
 checks passed, and all four Typst size controls decreased slightly. This is a structural work-bound
-repair, not a measured latency or peak-memory improvement; the release size gates remain open.
+repair, not a measured latency or peak-memory improvement; it did not close the size gates at
+that checkpoint.
 
 The [typography winner guard](theme_typography_recomputation_2026-09-13.md) removes repeated font-stack
 copying for paint-only rules. Its bounded public SVG probe reduces cumulative allocated bytes by
 90.719% with unchanged peak heap growth; the Web render artifact has a small measured size cost.
-This allocation repair does not close the artifact-size gate or change family support.
+That allocation repair did not close the artifact-size gate or change family support at its
+checkpoint.
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
