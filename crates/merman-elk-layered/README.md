@@ -49,6 +49,26 @@ It packs measured rectangles, supports the target container expansion behavior, 
 content translations separately. It does not route edges or consume randomness. Grouped
 packing modes are outside Mermaid 12's exposed configuration and are not advertised.
 
+## Force and Stress kernels
+
+`algorithms::force` translates the Fruchterman-Reingold and Eades models from the pinned
+`org.eclipse.elk.alg.force` sources. `algorithms::stress` translates Stress majorization,
+including the source's Force initialization, fixed nodes, dimension selection, and desired
+edge lengths. Both share source import, component ordering/packing, label placement and
+rectangle endpoint clipping. The measured flat-graph entry points do not yet enable Mermaid
+root or container dispatch; that integration remains separate.
+
+The kernels consume the caller's work control and resolved Java seed. Stress admits its
+quadratic distance/weight storage before allocation. Force rejects coincident coordinates
+when floating-point precision prevents the source jitter from making progress, and charges
+repeated edge/label work as well as particle pairs. Numerical and interruption errors leave
+caller inputs unchanged. Self loops are omitted as in the source importer. Force bend
+particles are not exposed by Mermaid 12 and are outside these entry points.
+
+Tests in `src/algorithms/{force,stress}/tests.rs` compare with actual elkjs 0.9.3 outputs,
+including components, cycles, interactive inputs, labels, and clipped endpoints. Stress
+callers supply effective label options (its upstream default is inline placement).
+
 ## Random seed authority
 
 Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This source port does not read time or process randomness for that branch. A graph must either retain a nonzero source seed or be imported with an `OperationSeed` before a configurator or pipeline entry point executes.

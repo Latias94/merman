@@ -448,7 +448,7 @@
           "evidence": "Source references in crates/merman-elk-layered and the v0.9.1 Git tag"
         }
       ],
-      "notice": "The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered and Box layout algorithms, including common and core layout utilities, under EPL-2.0."
+      "notice": "The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, and Stress layout algorithms, including common and core layout utilities, under EPL-2.0."
     },
     {
       "id": "elkjs",
