@@ -3,7 +3,7 @@ type: Audit Report
 title: Alpha.7 presentation theme audit and C7a boundary
 timestamp: 2026-09-20
 git_branch: refactor/presentation-theme-model
-source_commits: 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa
+source_commits: b2c1d805c, 7f35c9080, 0f5125e75, 0c1b1047a7453b5668e371da38019b20b9c66815, ff9b9991bb91327b1630f326bc389ccc3bdb89fa
 related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.md
 tags: theme,audit,c7a,alpha7
 ---
@@ -81,16 +81,16 @@ expected ASCII output. The installed capabilities matched each package recipe, i
 
 The Web WASM size matrix passed the checked-in budgets for all five profiles. Current stripped
 bytes are 3,691,349 (analysis), 5,218,980 (ascii), 3,802,570 (editor), 16,291,188 (full) and
-13,694,329 (render). The Web test suite is not fully green: one closure assertion reports that
-`web-full` currently owns `merman-export`, while the checked-in expected list omits it. This is
-recorded as a source/test contract drift and is not counted as a pass.
+13,694,329 (render). The complete Web contract suite now passes 147/147 after the closure
+expectation was aligned with the current `web-full` ownership of `merman-export`.
 
 The current Typst WASM artifact was built with the required Binaryen 131 tool and passed the size
 budget: 18,321,200 raw bytes, 11,177,136 stripped bytes, 4,253,078 gzip bytes and 3,144,348
-brotli bytes. The real Typst package consumer remains blocked: `typst-package-smoke` rejects the
-plugin because its returned theme catalog differs from the shared
-`preset-catalog.json`. The generated artifact is retained for diagnosis, but no Typst consumer
-pass is claimed.
+brotli bytes. Binaryen 131 `typst-package-smoke` now passes the real package consumer: 22 positive
+fixtures, 9 expected compile failures, 22 support vectors, 2 materializations and 3 structured
+errors. The shared catalog remains the metadata source, while the constrained Typst policy projects
+Cyberpunk as unavailable with `theme-preset.resource-policy-rejected`; this is an explicit resource
+result rather than a qualification cell.
 
 The current platform binding owner rebuilt the macOS ARM64 Flutter native asset and passed the
 Android ARM64 Rust clippy checks, Flutter analysis, the theme-authoring consumer (2 materializations,
@@ -151,9 +151,10 @@ The following evidence is still required before C7a can be marked eligible:
 
 - Same-source CLI/LSP archive assembly and replay for every declared host. The macOS ARM64
   archive route now passes locally; Linux, Windows and Intel archive execution remain open.
-- Installed Web, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys, including
-  the six public customization/resource journeys and explicit resource failures. Web now passes
-  on macOS ARM64; Typst remains blocked by the catalog mismatch recorded above.
+- Installed Web, Typst, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys,
+  including the six public customization/resource journeys and explicit resource failures. Web
+  and Typst now pass on macOS ARM64; the remaining C/UniFFI and mobile evidence is still bounded
+  to the owner checks described above.
 - Linux/Windows native and compiler-floor results; the current package evidence is macOS ARM64
   only.
 - Portable-font, missing-font and controlled-font coverage beyond the named host-dependent cells;
