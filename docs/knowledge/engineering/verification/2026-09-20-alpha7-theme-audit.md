@@ -254,6 +254,12 @@ also passed all 34 declared representative profiles, including C ABI, Apple, And
 Python, Typst, Web, CLI, LSP and Rust export closures. These are dependency-boundary checks and
 do not turn the Linux-reference profiles into hosted Linux execution evidence.
 
+The current preparation pass additionally succeeded for `generate-rust-license-report.py --check`
+(13 reports), `sync-release-legal-materials.py --check` (382 projections),
+`verify-third-party-licenses.py`, and `verify_crate_package_legal_materials.py` (24 governed Cargo
+packages). These are preparation checks; the immutable date-required workflow and publication
+steps remain intentionally deferred.
+
 The declared local compiler floor is explicit and reproducible: `cargo +1.95.0 check --locked
 -p merman-theme-fixtures` passed, while the same package under `cargo +1.92.0` was rejected by
 Cargo because `merman-core` and `merman-theme-fixtures` require Rust 1.95. This proves the local
