@@ -459,6 +459,18 @@ work after family emission that the alpha.6 default path did not perform. These 
 samples support owner-level investigation, not a removable-cost estimate or a theme-only cause.
 The full latency gap and the unmatched layout timing remain open.
 
+The [reference-plan allocation repair](../../../performance/reference_plan_2026-09-21.md) then
+removes one graph evaluation while preserving the same conservative effect multiplier, complete
+expanded counts/depth and per-source occurrences. Class medium decreases by 12 allocations,
+21,136 cumulative bytes and 5,184 peak-growth bytes. All five controls preserve SVG bytes,
+complete public receipts and ten preset fingerprints, with zero retained growth. The 245 pipeline
+and 53 public render/security tests, full 35-family structure/parity-root comparisons and native
+memory boundary smoke pass; two diagnostic timing pairs trigger no material
+slowdown. This is a bounded allocation improvement, not confirmed latency recovery. Full strict
+verification is blocked by the existing workspace Clippy warning gate; the dated checkpoint
+records the exact verification scope. C7a/U10 and final-source installed artifact renewal remain
+open.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,

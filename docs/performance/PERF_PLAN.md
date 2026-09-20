@@ -7,6 +7,13 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+The [reference-plan checkpoint](reference_plan_2026-09-21.md) removes a repeated dependency-graph
+evaluation while retaining conservative effect amplification. Class medium drops 12 allocations,
+21,136 cumulative bytes and 5,184 bytes of peak growth per complete SVG render. Five controls
+preserve exact SVGs, complete public receipts and preset fingerprints. Two diagnostic timing
+pairs show no material slowdown; they do not establish a latency improvement. The earlier
+no-effect-only reuse candidate was rejected because default Class contains filter definitions.
+
 The [SHA-256 upgrade](sha2_upgrade_2026-09-20.md) admits sha2 0.11.0 on the measured macOS ARM64
 lane. After eight A/A pairs per executable and eight balanced confirmation pairs, Class medium
 falls from 1,461.74 to 1,248.73 µs (14.58%, 213.01 µs); Sequence medium also clears the existing
@@ -354,6 +361,12 @@ main-thread end-to-end samples, including 2,327 in XML/reference resource-budget
 These overlapping samples identify the next owner to investigate, not removable time. Preserve
 the new artifact/resource/admission contract and do not infer a finalizer-only cause by subtracting
 independent stage measurements.
+
+The subsequent [single-evaluation candidate](reference_plan_2026-09-21.md) measures a bounded
+allocation reduction without weakening effect accounting; full strict verification remains
+blocked by existing workspace Clippy errors. It does not materially resolve the measured
+alpha.6 latency gap. Continue source-backed attribution before choosing another candidate;
+do not infer a speedup from reduced temporary storage.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

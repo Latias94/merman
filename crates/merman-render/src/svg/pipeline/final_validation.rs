@@ -1389,23 +1389,9 @@ fn plan_svg_reference_expansion_with_checkpoints<E>(
         ));
     };
 
-    let mut dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
+    let dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
         .map_err(ReferencePlanningError::Checkpoint)?;
-    let baseline_plan =
-        plan_svg_reference_dependencies_with_checkpoints(&dependencies, checkpoint)?;
-    let application_upper_bound = baseline_plan.expanded_elements();
-    for (index, node) in nodes.iter().enumerate() {
-        checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
-        if node.may_repeat_per_element {
-            // Filter, mask, and clip-path definitions may be selected from inline attributes or
-            // CSS and are evaluated in a caller-specific context. Charge each definition once per
-            // `<use>`-expanded source element to bound nested image decoding without
-            // reimplementing CSS selector matching or usvg's private effect cache policy.
-            dependencies.dependencies[0].push((index, application_upper_bound));
-        }
-    }
-
-    plan_svg_reference_dependencies_with_checkpoints(&dependencies, checkpoint)
+    plan_svg_reference_dependencies_with_effects(&dependencies, nodes, checkpoint)
 }
 
 #[cfg(test)]
@@ -1576,6 +1562,14 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferencePlan, E> {
+    plan_svg_reference_dependencies_with_effects(graph, &[], checkpoint)
+}
+
+fn plan_svg_reference_dependencies_with_effects<E>(
+    graph: &ReferenceDependencyGraph,
+    svg_nodes: &[ReferenceNode],
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> ReferencePlanningResult<SvgReferencePlan, E> {
     // User element budgets can exceed a native backend's ceiling. Count independently of that
     // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
     let dependencies = &graph.dependencies;
@@ -1652,6 +1646,22 @@ pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
 
     let mut raw_element_occurrences = vec![0_usize; nodes_len];
     raw_element_occurrences[0] = 1;
+    let application_upper_bound = expanded_elements[0];
+    for (index, node) in svg_nodes.iter().enumerate() {
+        checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+        if node.may_repeat_per_element {
+            // The XML owner includes every real node under the SVG root. After cycle checking,
+            // an extra root edge to an effect cannot change non-root costs or topological order.
+            debug_assert!(index != 0 && states[index] == 2);
+            // Charge each filter/mask/clip-path once per baseline expanded element, preserving
+            // the conservative CSS-independent bound without evaluating the graph a second time.
+            expanded_elements[0] = expanded_elements[0]
+                .saturating_add(expanded_elements[index].saturating_mul(application_upper_bound));
+            expanded_depths[0] = expanded_depths[0].max(expanded_depths[index].saturating_add(1));
+            raw_element_occurrences[index] =
+                raw_element_occurrences[index].saturating_add(application_upper_bound);
+        }
+    }
     let mut occurrence_dependency_iteration = 0usize;
     for (iteration, index) in postorder.into_iter().rev().enumerate() {
         checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
@@ -2250,6 +2260,51 @@ mod tests {
     }
 
     #[test]
+    fn effect_budget_check_preserves_cancellation_at_every_checkpoint() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="filter"><feGaussianBlur stdDeviation="1"/></filter><mask id="mask"><rect width="10" height="10"/></mask><clipPath id="clip"><rect width="10" height="10"/></clipPath><g id="source"><rect filter="url(#filter)" mask="url(#mask)" clip-path="url(#clip)"/></g></defs><use href="#source"/><use href="#source"/></svg>"##;
+        let mut total_checkpoints = 0;
+        check_svg_resource_budget_with_controls(
+            svg,
+            &mut || {
+                total_checkpoints += 1;
+                Ok(())
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+        assert!(total_checkpoints > 0);
+
+        // Exercise every observed cancellation boundary without fixing the traversal's schedule.
+        for cancel_at in 1..=total_checkpoints {
+            let mut checkpoints = 0;
+            let error = check_svg_resource_budget_with_controls(
+                svg,
+                &mut || {
+                    checkpoints += 1;
+                    if checkpoints == cancel_at {
+                        Err(Error::Cancelled(merman_core::OperationCancelled {
+                            phase: merman_core::OperationPhase::Postprocess,
+                            reason: merman_core::CancelReason::Requested,
+                        }))
+                    } else {
+                        Ok(())
+                    }
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                Error::Cancelled(merman_core::OperationCancelled {
+                    phase: merman_core::OperationPhase::Postprocess,
+                    reason: merman_core::CancelReason::Requested,
+                })
+            ));
+            assert_eq!(checkpoints, cancel_at);
+        }
+    }
+
+    #[test]
     fn ordinary_budget_check_preserves_cancellation() {
         let mut checkpoints = 0;
         let error = check_svg_resource_budget_with_controls(
@@ -2488,6 +2543,79 @@ mod tests {
                 .iter()
                 .all(|&occurrences| occurrences == 1)
         );
+    }
+
+    #[test]
+    fn effect_plan_matches_two_pass_reference_for_shared_nested_and_saturated_graphs() {
+        let node = || ReferenceNode {
+            children: Vec::new(),
+            is_style: false,
+            is_marker: false,
+            may_repeat_per_element: false,
+            use_id: None,
+            parsed_id: None,
+            references: Vec::new(),
+        };
+        let reference = |target: &str, multiplicity, target_kind| ElementReference {
+            target: target.to_owned(),
+            multiplicity,
+            target_kind,
+        };
+        for effects in [&[][..], &[4], &[6], &[4, 6], &[4, 5, 6]] {
+            for multiplicity in [1, 3, usize::MAX] {
+                for cyclic in [false, true] {
+                    let mut nodes = (0..10).map(|_| node()).collect::<Vec<_>>();
+                    nodes[0].children = vec![1, 4, 6, 9];
+                    nodes[1].children = vec![2, 3];
+                    nodes[4].children = vec![5];
+                    nodes[6].children = vec![7, 8];
+                    nodes[2].parsed_id = Some("shared".to_owned());
+                    nodes[3].parsed_id = Some("shared".to_owned());
+                    nodes[3].is_marker = true;
+                    nodes[4].use_id = Some("effect".to_owned());
+                    nodes[5].references = vec![reference(
+                        "shared",
+                        multiplicity,
+                        ReferenceTargetKind::ParsedElement,
+                    )];
+                    nodes[7].references = vec![reference(
+                        "shared",
+                        multiplicity,
+                        ReferenceTargetKind::Marker,
+                    )];
+                    nodes[9].references = vec![reference(
+                        "effect",
+                        multiplicity,
+                        ReferenceTargetKind::UseElement,
+                    )];
+                    if cyclic {
+                        nodes[2].references =
+                            vec![reference("effect", 1, ReferenceTargetKind::UseElement)];
+                    }
+                    for &index in effects {
+                        nodes[index].may_repeat_per_element = true;
+                    }
+
+                    // Keep the original two evaluations as the differential oracle, including
+                    // its frozen baseline multiplier and virtual duplicate-ID candidate groups.
+                    let mut graph = build_svg_reference_dependencies(&nodes);
+                    let expected = plan_svg_reference_dependencies(&graph).and_then(|baseline| {
+                        for &index in effects {
+                            graph.dependencies[0].push((index, baseline.expanded_elements()));
+                        }
+                        plan_svg_reference_dependencies(&graph)
+                    });
+                    let actual = plan_svg_reference_expansion_with_checkpoints(&nodes, &mut || {
+                        Ok::<(), std::convert::Infallible>(())
+                    })
+                    .map_err(|error| match error {
+                        ReferencePlanningError::Invalid(message) => message,
+                        ReferencePlanningError::Checkpoint(error) => match error {},
+                    });
+                    assert_eq!(actual, expected, "{effects:?}, {multiplicity}, {cyclic}");
+                }
+            }
+        }
     }
 
     #[test]
