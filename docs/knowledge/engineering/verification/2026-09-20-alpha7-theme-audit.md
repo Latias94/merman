@@ -292,6 +292,14 @@ sampling because their build receipts still bind the old `crates/merman-node/Car
 first-render gate therefore remains open until candidates are rebuilt from this exact source and
 lockfile.
 
+The candidates were then rebuilt from this source and lockfile: both receipts now carry the
+`sha256:b3c42d2379...` lock digest and commit `59f7758a4`. The benchmark still did not produce an
+admissible timing report. With npm 12, the full corpus exposed six `MERMAN_INVALID_TRANSPORT`
+results in KaTeX/math inputs, and an eight-fixture representative corpus was rejected because the
+Node-targeted WASM candidate did not preserve the typed unknown-operation error. These are transport
+contract failures, not performance samples; no cold, first-render, warm, or concurrency numbers
+from either attempt are used as U10 evidence.
+
 # Classification and C7b deferral
 
 The candidate evidence is classified as follows:
