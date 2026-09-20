@@ -306,7 +306,7 @@
     "ticketBaseUrl": "",
     "useMaxWidth": true
   },
-  "layout": "dagre",
+  "layout": "elk",
   "legacyMathML": false,
   "logLevel": 5,
   "look": "classic",

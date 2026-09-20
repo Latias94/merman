@@ -12,9 +12,9 @@ pub(crate) fn resolve_appearance(
 ) {
     let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
     for key in ["theme", "look", "layout"] {
-        // The selected 11.x runtime still supplies this family default in its renderer.
-        // Keep it below all user layers during the transition; remove this bridge when U2/U15
-        // promotes the generated 12.x config containing swimlane.layout.
+        // Swimlane keeps its family-specific default below user layers. Mermaid 12's generated
+        // global default is ELK, while the family still selects its own graph layout when the
+        // caller leaves layout unspecified.
         let legacy_family_default = (section == "swimlane"
             && key == "layout"
             && defaults.as_value().pointer("/swimlane/layout").is_none())

@@ -768,7 +768,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     if meta.config.as_value().get("layout").is_none()
         && let Some(obj) = config.as_object_mut()
     {
-        obj.insert("layout".to_string(), Value::String("dagre".to_string()));
+        obj.insert("layout".to_string(), Value::String("elk".to_string()));
     }
     control.checkpoint()?;
 
