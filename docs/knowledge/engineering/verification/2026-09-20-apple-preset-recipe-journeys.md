@@ -135,6 +135,13 @@ The run produced 57 retained local artifacts under the ignored experiment direct
 macOS ARM64 with Swift 6.3.2/Xcode 26.5; Swift 5.9, Intel, iOS, browser/PDF font metrics and
 visual qualification remain unverified.
 
+An exploratory iOS device compile did not change that status. The macOS-only smoke package rejects
+an iOS target because its executable declares macOS 12, and the root package's direct
+`swift build --sdk <iphoneos> --triple arm64-apple-ios14.0` path cannot import the UniFFI
+`MermanFFI` types under this command-line package invocation. This is a SwiftPM/Xcode integration
+boundary, not evidence that an iOS device or simulator consumer ran; an Xcode iOS consumer remains
+required before claiming that slice.
+
 The follow-up also renders a dense namespaced Class scene with six classes, five relations and two
 notes, plus an eight-point, four-series XY Chart through the public Cyberpunk preset. Both SVG roots
 and non-empty operation metadata pass in the ARM64 consumer. This verifies bounded SVG admission and
