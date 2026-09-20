@@ -15,6 +15,8 @@ Make Merman a source-backed, pure Rust headless implementation of Mermaid 12.0.0
 
 This plan follows the maintainer's September 20 discussion: investigate first, prepare the plan, then use a goal for implementation. Planning does not authorize publishing releases or weakening parity gates.
 
+Release target: `v0.8.0-alpha.7`. The published baseline is `v0.8.0-alpha.6`; the target includes both the unreleased changes already on `main` and this Mermaid 12.0.0 alignment. Version projections, changelog coverage, and final release comparison must use that full scope. Independently versioned support packages retain their own release decisions.
+
 ## Product Contract
 
 ### Summary
