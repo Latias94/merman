@@ -780,11 +780,9 @@ impl FeatureGraph {
                 cli.manifest_path.display()
             )));
         }
-        let mut expected_cli_defaults = published_features.clone();
-        expected_cli_defaults.remove("layout-elk");
-        if cli_defaults != expected_cli_defaults {
+        if cli_defaults != published_features {
             return Err(matrix_error(format!(
-                "{}: CLI default must equal the published cargo-dist recipe minus explicit `layout-elk`; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
+                "{}: CLI default must equal the published cargo-dist recipe; expected {published_features:?}, found {cli_defaults:?}",
                 cli.manifest_path.display()
             )));
         }
@@ -1260,6 +1258,7 @@ mod tests {
         "icons",
         "jpeg",
         "layout-cytoscape",
+        "layout-elk",
         "markdown",
         "math",
         "network-icons",
