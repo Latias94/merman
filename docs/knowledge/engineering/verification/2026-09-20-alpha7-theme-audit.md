@@ -311,12 +311,11 @@ host reference build for custom source embedders. Its source-built consumer rece
 the relevant host evidence; packaged source-crate consumption remains a separate unverified case.
 A generic C SDK archive is not a declared delivery artifact or an additional C7a gate.
 
-The [recorded C ABI refresh](2026-09-20-c-abi-theme-journeys.md#reference-plan-refresh--2026-09-21)
-rebuilds `c-abi-native` at `fee1c1371`, which predates integrated source `bdb209e11`. All 120
-fresh-process results and the 272-byte same-profile ARM64 artifact observation remain useful
-semantic evidence, but they are historical for the current candidate until rebuilt from bdb.
-Source-crate installation and other transport artifacts retain their separate unverified or
-historical-source boundaries.
+The [current C ABI record](2026-09-20-c-abi-theme-journeys-single-pass.md) rebuilds
+`c-abi-native` from integrated source `bdb209e11`. Its independently compiled consumer passes
+120 fresh processes, including the complete recipe, scoped edit, font, diagnostic and native
+export lanes. The source-crate delivery contract, hosted targets and other transport artifacts
+retain their separate unverified boundaries.
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
@@ -324,7 +323,7 @@ historical-source boundaries.
 | Node Darwin ARM64, Node WASM | `bdb209e11` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | `bdb209e11` package group and installed Chromium build | Five capability projections, owner matrix/DOM safety and current-source package manifest; five size rows pass | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Current-source attempt at `bdb209e11`; last passing package is `f3a783c29` with Binaryen 131 | Current run blocked before packaging by host `wasm-opt 132` versus required 131 | Typst package, smoke and size rows must be rerun with Binaryen 131; constrained resource rejection remains separate |
-| C ABI | Pre-integration source-built journeys at `fee1c1371`; current-source renewal pending | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Must rerun from `bdb209e11`; packaged source-crate consumption and other hosts remain unverified |
+| C ABI | `bdb209e11` source-built journeys, 120 fresh processes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-crate delivery contract; packaged source-crate consumption and other hosts remain unverified |
 | Flutter/Dart | Pre-integration Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Current-source renewal pending; no pub.dev publication or Android device run |
 | Apple Swift | Pre-integration ARM64 SwiftPM smoke and recipe records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | Current-source renewal pending; no iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
@@ -738,7 +737,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM and current Web browser record; historical Typst, C ABI, Apple and Flutter records | Current-source installed records cover Python, Node and Web; Typst is toolchain-blocked, while C ABI, Apple and Flutter records require renewal from bdb before serving as final-candidate identities |
+| Installed consumer journeys | Python, Node native/WASM, current Web browser and current C ABI source consumer; historical Typst, Apple and Flutter records | Current-source records cover Python, Node, Web and C ABI; Typst is toolchain-blocked, while Apple and Flutter records require renewal from bdb before serving as final-candidate identities |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render records pass their exercised vectors; the current Web record is `bdb209e11`, while Typst shared-vector/package evidence remains historical at `f3a783c29`; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
