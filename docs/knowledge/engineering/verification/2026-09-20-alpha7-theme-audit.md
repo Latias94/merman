@@ -174,11 +174,28 @@ XCFramework builder then completed all three slices (macOS universal, iOS device
 and regenerated the Swift UniFFI bindings successfully. The resulting local XCFramework is
 diagnostic and remains outside the release publication set.
 
-The current-source C ABI consumer smoke was rerun with `cargo nextest run --locked -p merman-ffi
---test c_consumer_smoke`: both the alpha5 compatibility consumer and the current C consumer passed
-(2/2). This strengthens the native C ABI lane on macOS ARM64; it does not establish the missing
-UniFFI, mobile, or non-macOS host journeys. The captured output is retained at
-`target/bench/experiments/c7a-c-abi-current-20260920/nextest.log`.
+The current-source C ABI consumer smoke passed with both empty defaults and an explicit SVG
+feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
+--test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
+including the feature-gated shared theme-authoring error vectors. The test loads a compiled C
+consumer and passes it the Rust API entrypoint; it is not an installed SDK archive replay and
+does not cover all six customization journeys. The captured SVG-enabled output is retained at
+`target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest.log`; `nextest.log` records the
+default-empty ABI check separately.
+
+The Apple Swift consumer now executes the shared theme goldens through both the one-shot API and
+a fresh reusable engine: 2 light/dark materializations, 22 support queries, and 5 expected error
+calls per consumer (58 calls total). Materialized specs and support responses are compared as
+complete JSON values; errors preserve the shared authoring and resource envelopes, with only
+nonempty diagnostic messages excluded from exact comparison. The existing SVG, ASCII, callback,
+icon, resource-limit, missing-capability and cancellation smoke also passes. The command is
+`swift run --jobs 1 --package-path platforms/apple/examples/smoke MermanAppleSmoke`, using local
+Swift 6.3.2 on macOS ARM64 and the earlier built XCFramework. The generated Swift files remain
+unchanged. The log is `target/bench/experiments/apple-theme-goldens-20260920.log`; fixture, consumer,
+executable and static-library hashes are recorded in
+`target/bench/experiments/c7a-c-abi-current-20260920/native-consumer-receipt.json`. This verifies the
+local package's generated UniFFI path, not registry installation, iOS execution, Swift 5.9, or the
+full preset-edit/export journey.
 
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
@@ -313,8 +330,11 @@ All eight selected fixtures completed on both candidates with matching SVG struc
 raw bytes. Diagnostic p50 values were cold `162.079 ms` (WASM) versus `47.688 ms` (N-API), warm
 `1.019 ms` versus `0.641 ms`, and four-request concurrency `3.268 ms` versus `0.801 ms`. Packed
 footprints were `7,036,598` versus `10,659,970` bytes; peak RSS was `463,355,904` versus
-`92,667,904` bytes. The report marks timing evidence excluded and its decision remains inconclusive
-because this host contributes only one target result; these samples therefore do not close U10.
+`92,667,904` bytes. The report's `evidence_excluded: true` means SVG evidence projection is
+excluded from the measured interval, not that the timing samples are invalid. Its transport
+decision remains inconclusive because this host contributes only one target result. These are
+current-source cross-transport observations with eight cold samples and three warm passes, not a
+matched alpha.6/alpha.7 regression comparison or balanced confirmation run; they do not close U10.
 The full corpus still exposes six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. Those
 remain transport coverage findings, while the representative samples are retained as diagnostic
 evidence rather than release admission.
@@ -341,8 +361,8 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, Web browser, Typst package and current C consumer records | Complete for those consumers; UniFFI and mobile journeys remain limited to owner smokes |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Complete for Python and Node native/WASM; broader transport parity remains open |
+| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; C ABI and mobile journeys remain limited to owner smokes |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; Apple now passes materialization/support/error goldens, with preset-edit/export and broader transport parity still open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
@@ -363,8 +383,8 @@ The following evidence is still required before C7a can be marked eligible:
   archive route now passes locally; Linux, Windows and Intel archive execution remain open.
 - Installed Web, Typst, Native C/UniFFI and relevant mobile/Apple/Flutter consumer journeys,
   including the six public customization/resource journeys and explicit resource failures. Web
-  and Typst now pass on macOS ARM64; the current C consumer smoke passes, while UniFFI and mobile
-  evidence is still bounded to the owner checks described above.
+  and Typst now pass on macOS ARM64; the SVG-enabled C consumer and Apple shared theme goldens pass,
+  while complete native customization journeys and mobile execution remain open.
 - Linux/Windows native and hosted compiler-floor results; the local Rust 1.95 floor check passes,
   but the current package evidence is macOS ARM64 only.
 - Portable-font, missing-font and controlled-font coverage beyond the named host-dependent cells;

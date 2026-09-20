@@ -180,8 +180,12 @@ contract.
 
 ## Verification
 
-The Apple smoke calls the generated public API against the built XCFramework. It intentionally
-checks only SVG output, immutable icon and text-measurement services, and deterministic close.
-Owner-local Rust tests carry exhaustive catalog, error, output, and lifecycle contracts. CI also
+The Apple smoke calls the generated public API against the built XCFramework. It checks SVG and
+ASCII output, immutable icon and text-measurement services, resource and cancellation errors, and
+deterministic close. Both one-shot and reusable consumers also execute the shared light/dark theme
+materialization, support-query, and structured error vectors from
+`crates/merman-theme-authoring-fixtures/fixtures/authoring-v1`. These fixtures are repository test
+inputs, not resources bundled into the Swift library.
+Owner-local Rust tests carry the broader catalog, output, and lifecycle contracts. CI also
 rebuilds the checked-in generated Swift binding, so API drift cannot pass by compiling an older
 hand-written facade.
