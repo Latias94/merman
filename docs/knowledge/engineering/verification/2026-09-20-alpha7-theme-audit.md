@@ -86,6 +86,11 @@ The archive checks used `scripts/verify_cli_release_archive.py` and
 checksums. These are current-source macOS ARM64 results; they do not imply Linux, Windows or
 Intel archive execution.
 
+Static release preparation also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
+`release-version.py check`, `cli_installation_contract.py` and the preparation-mode changelog
+check. The immutable date-required preflight was intentionally not run because this branch still
+has an Unreleased projection and no publication was authorized.
+
 # Performance and footprint status
 
 The published alpha.6 versus old local candidate table in the impact audit remains a non-matched
