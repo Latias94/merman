@@ -178,6 +178,11 @@ Static release preparation also passes `release_surface_contract.py --version 0.
 check. The immutable date-required preflight was intentionally not run because this branch still
 has an Unreleased projection and no publication was authorized.
 
+The declared local compiler floor is explicit and reproducible: `cargo +1.95.0 check --locked
+-p merman-theme-fixtures` passed, while the same package under `cargo +1.92.0` was rejected by
+Cargo because `merman-core` and `merman-theme-fixtures` require Rust 1.95. This proves the local
+floor contract only; hosted Linux/Windows compiler and native archive execution remain open.
+
 # Performance and footprint status
 
 The published alpha.6 versus old local candidate table in the impact audit remains a non-matched
@@ -264,8 +269,8 @@ The following evidence is still required before C7a can be marked eligible:
   including the six public customization/resource journeys and explicit resource failures. Web
   and Typst now pass on macOS ARM64; the remaining C/UniFFI and mobile evidence is still bounded
   to the owner checks described above.
-- Linux/Windows native and compiler-floor results; the current package evidence is macOS ARM64
-  only.
+- Linux/Windows native and hosted compiler-floor results; the local Rust 1.95 floor check passes,
+  but the current package evidence is macOS ARM64 only.
 - Portable-font, missing-font and controlled-font coverage beyond the named host-dependent cells;
   browser, PDF and HTML labels retain their documented host/resource boundaries.
 - Matched U10 performance and footprint evidence, including the large-memory workload and binary
