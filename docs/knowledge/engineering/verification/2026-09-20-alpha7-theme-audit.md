@@ -259,7 +259,7 @@ archive was reported at 8 MB compressed with 0 package warnings, and its legal/n
 listed. The dry run is package-shape evidence only; it does not prove pub.dev publication or
 consumer execution on every supported target.
 
-The current-source C ABI consumer smoke passed with both empty defaults and an explicit SVG
+The recorded pre-integration C ABI consumer smoke passed with both empty defaults and an explicit SVG
 feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
 --test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
 including the feature-gated shared theme-authoring error vectors. The test loads a compiled C
@@ -271,7 +271,7 @@ default-empty ABI check separately. A current rerun also passed both tests (2/2)
 `target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest-current.log` with SHA-256
 `55e0d12d0ee1cb243d5446ca83c3bcffb98cd67cea553180aaf0beea9c4b3ae7`.
 
-The Apple Swift consumer now executes the shared theme goldens through both the one-shot API and
+The recorded pre-integration Apple Swift consumer executes the shared theme goldens through both the one-shot API and
 a fresh reusable engine: 2 light/dark materializations, 22 support queries, and 5 expected error
 calls per consumer (58 calls total). Materialized specs and support responses are compared as
 complete JSON values; errors preserve the shared authoring and resource envelopes, with only
@@ -311,12 +311,12 @@ host reference build for custom source embedders. Its source-built consumer rece
 the relevant host evidence; packaged source-crate consumption remains a separate unverified case.
 A generic C SDK archive is not a declared delivery artifact or an additional C7a gate.
 
-The [September 21 C ABI refresh](2026-09-20-c-abi-theme-journeys.md#reference-plan-refresh--2026-09-21)
-rebuilds `c-abi-native` at `fee1c1371` with the reference-plan optimization. All 120 fresh-process
-results, including complete output and metadata files, match the preceding reference build.
-The same-profile ARM64 dynamic library changes from 36,225,200 to 36,224,928 bytes (272 bytes
-smaller). This renews the source-built C host record only; source-crate installation and other
-transport artifacts retain their separate unverified or historical-source boundaries.
+The [recorded C ABI refresh](2026-09-20-c-abi-theme-journeys.md#reference-plan-refresh--2026-09-21)
+rebuilds `c-abi-native` at `fee1c1371`, which predates integrated source `bdb209e11`. All 120
+fresh-process results and the 272-byte same-profile ARM64 artifact observation remain useful
+semantic evidence, but they are historical for the current candidate until rebuilt from bdb.
+Source-crate installation and other transport artifacts retain their separate unverified or
+historical-source boundaries.
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
@@ -324,9 +324,9 @@ transport artifacts retain their separate unverified or historical-source bounda
 | Node Darwin ARM64, Node WASM | `bdb209e11` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | `bdb209e11` package group and installed Chromium build | Five capability projections, owner matrix/DOM safety and current-source package manifest; five size rows pass | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Current-source attempt at `bdb209e11`; last passing package is `f3a783c29` with Binaryen 131 | Current run blocked before packaging by host `wasm-opt 132` versus required 131 | Typst package, smoke and size rows must be rerun with Binaryen 131; constrained resource rejection remains separate |
-| C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 host reference; packaged source-crate consumption, broader journeys and other hosts remain unverified |
-| Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
-| Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
+| C ABI | Pre-integration source-built journeys at `fee1c1371`; current-source renewal pending | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Must rerun from `bdb209e11`; packaged source-crate consumption and other hosts remain unverified |
+| Flutter/Dart | Pre-integration Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Current-source renewal pending; no pub.dev publication or Android device run |
+| Apple Swift | Pre-integration ARM64 SwiftPM smoke and recipe records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | Current-source renewal pending; no iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
 
 This matrix is intentionally conservative: it records real local execution without turning package
@@ -738,7 +738,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM and current Web browser record; historical Typst package record; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; current-source Typst, C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
+| Installed consumer journeys | Python, Node native/WASM and current Web browser record; historical Typst, C ABI, Apple and Flutter records | Current-source installed records cover Python, Node and Web; Typst is toolchain-blocked, while C ABI, Apple and Flutter records require renewal from bdb before serving as final-candidate identities |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render records pass their exercised vectors; the current Web record is `bdb209e11`, while Typst shared-vector/package evidence remains historical at `f3a783c29`; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
