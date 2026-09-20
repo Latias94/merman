@@ -97,7 +97,7 @@ is retained in the experiment logs and supplies no validation evidence.
 
 Still unverified in this slice: Swift 5.9/Xcode 15.2, native Intel execution, iOS build/runtime,
 installed release archive provenance, visual/readability qualification, controlled or missing-font
-behavior, dense Class and extended-series XY, and
+behavior, and
 PNG/PDF workflows in export-capable profiles. The default Apple package deliberately lacks native
 binary exports, embedded fonts and math. Existing missing-capability checks do not substitute for
 those separate workflows. The complete six-journey requirement and C7a remain open.
@@ -129,6 +129,14 @@ MERMAN_APPLE_THEME_SMOKE_OUTPUT=target/bench/experiments/apple-theme-boundaries-
 It passed the existing authoring and preset checks plus `Apple theme boundaries passed: 10 Class
 cases, 2 strict Clear rejections, 6 missing-family renders, 6 font capability rejections`.
 The final log SHA-256 is `93fa616c89b493db39e369aaa8c5cdb4dc70b471e260f47221bda6a9c3201232`.
+The dense follow-up also passed `Apple dense scenes passed: Class namespace/relations/notes and
+extended XY series`.
 The run produced 57 retained local artifacts under the ignored experiment directory. This remains
 macOS ARM64 with Swift 6.3.2/Xcode 26.5; Swift 5.9, Intel, iOS, browser/PDF font metrics and
 visual qualification remain unverified.
+
+The follow-up also renders a dense namespaced Class scene with six classes, five relations and two
+notes, plus an eight-point, four-series XY Chart through the public Cyberpunk preset. Both SVG roots
+and non-empty operation metadata pass in the ARM64 consumer. This verifies bounded SVG admission and
+transport behavior for denser inputs; it does not qualify readability, browser/PDF raster output or
+the missing PNG/PDF capabilities of the default Apple artifact.

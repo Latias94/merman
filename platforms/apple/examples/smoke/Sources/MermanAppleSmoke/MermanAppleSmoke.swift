@@ -174,6 +174,7 @@ struct MermanAppleSmoke {
         try verifyThemeAuthoringGoldens(client: client)
         try verifyThemePresetRecipes(client: client)
         try verifyThemePaintAndFontBoundaries(client: client)
+        try verifyDenseThemeScenes(client: client)
         try engine.close()
         print("merman Apple UniFFI smoke passed")
     }
