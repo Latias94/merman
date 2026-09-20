@@ -522,15 +522,16 @@ preset fingerprints match exactly, the 247-test pipeline and 35-family DOM compa
 the implementation is integrated as `bdb209e11`. This is not recovery against published alpha.6:
 the remaining release-range regression, broader U10 footprint matrix and C7a gates remain open.
 
-The isolated native memory owner run is now complete at
-`target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
-clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,
-and 10,000 bootstrap resamples. The infrastructure-smoke contract passed all caps with slopes
-of 1.259 (allocation count), 1.394 (allocated bytes) and 1.467 (peak growth bytes); at scale 100
-the measured values were 1,660,450 allocations, 349,202,213 allocated bytes and 85,121,537 peak
-growth bytes. The owner contract deliberately sets `candidate_admission: false`, so this is
-reproducible memory evidence and a bounded risk signal, not release admission or a matched alpha.6
-comparison.
+The historical native memory owner run at
+`target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json` used an
+earlier clean source. The integrated candidate was rerun from clean `0d43621e2` at
+`target/bench/experiments/xml-reference-single-pass-20260920/native-memory-candidate.json`:
+30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale and 10,000 bootstrap
+resamples. The infrastructure-smoke contract passes with slopes of 1.264 (allocation count),
+1.399 (allocated bytes) and 1.467 (peak growth bytes); at scale 100 the measured values are
+1,655,556 allocations, 348,533,002 allocated bytes and 85,121,537 peak growth bytes. The owner
+contract deliberately sets `candidate_admission: false`, so this is current-source reproducible
+memory evidence and a bounded risk signal, not release admission or a matched alpha.6 comparison.
 
 The [theme-operation checkpoint](../../../performance/theme_operations_2026-09-20.md) adds a
 current native baseline at `bb411e505`: 13 operations in each of SVG-only and advanced Cargo feature

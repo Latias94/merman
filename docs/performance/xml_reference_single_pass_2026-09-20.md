@@ -90,7 +90,15 @@ recorded revisions and require renewal before being treated as final-candidate e
 The complete machine-readable confirmation, raw pair schedule, frozen executable identities,
 output hashes and ledger are under
 `target/bench/experiments/xml-reference-single-pass-20260920/clean-confirmation.json` and the
-same directory's companion files. Allocation probes show a small reduction on the measured
+same directory's companion files. The current-source native memory owner lane also passes from clean candidate `0d43621e2`:
+30 fresh-process operation/zero pairs cover scales 1, 2, 4, 10, 32 and 100 with five repeats
+and 10,000 bootstrap resamples. At 100x it records 1,655,556 allocations, 348,533,002 allocated
+bytes and 85,121,537 peak-growth bytes; the allocation, byte and peak-growth slopes are 1.264,
+1.399 and 1.467 against the owner cap of 2.0. The owner contract is infrastructure smoke with
+`candidate_admission: false`, so these values are bounded current-source evidence rather than a
+memory optimization or release gate.
+
+Allocation probes show a small reduction on the measured
 fixtures, but allocation is not the admission metric for this experiment. The accepted latency
 improvement is adjacent-source evidence; the published alpha.6-to-current regression, cross-host
 performance, cold start, first render, native export, package size and large-memory admission
