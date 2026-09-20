@@ -41,6 +41,10 @@ The current source acceptance replay also passes
 `cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
 three public Cyberpunk Flowchart, Sequence and XY Chart recipe round-trip tests passed.
 
+The current HEAD refresh reran the broader semantic and acceptance lanes with
+`cargo nextest run --locked -p merman-theme-fixtures -p merman-theme-acceptance`: 70 tests passed,
+two intentional skips remained, and the three public Cyberpunk round-trip cases passed again.
+
 The release-mode support discovery gate also passes
 `cargo nextest run --release --locked -p merman-render --lib --test theme_support_discovery_test`
 with the support-manifest selection: 58 tests passed and 2,520 unrelated tests were skipped.
