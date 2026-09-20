@@ -120,6 +120,12 @@ on representative literal inputs, but that is a usability and identity observati
 portfolio-wide qualification. Earlier inspections still flag dark arrowheads and Cyberpunk
 Mindmap label contrast for follow-up.
 
+The public catalog declares only `light` and `dark` appearances; it has no high-contrast preset or
+high-contrast target contract. High-contrast use therefore remains outside the qualified product
+surface rather than inheriting a claim from the dark palettes. Documentation and presentation use
+are design recommendations in the portfolio record, while brand-color edits remain scoped rule
+experiments with target admission observed separately.
+
 The public catalog keeps qualification cells empty. Discovery responses remain a coarse capability
 surface: the earlier inventory recorded 188 Conditional, 343 Unsupported, 99 Unverified and 4,023
 NotApplicable SVG responses, with binary-output visual queries generally Unverified. These counts
