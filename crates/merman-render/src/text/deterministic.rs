@@ -94,7 +94,8 @@ impl DeterministicTextMeasurer {
     /// Uses caller-supplied widths with Merman's wrapping behavior.
     ///
     /// Uses `width_px` to measure complete candidate strings while Merman retains its wrapping and
-    /// line-height behavior.
+    /// line-height behavior. Vertical metrics and baseline offsets remain deterministic
+    /// approximations; the callback does not provide glyph bounds or font ascent/descent.
     ///
     /// The callback must return a finite, non-negative width in CSS pixels. Use
     /// [`crate::environment::HostTextMeasurer`] when measurement can fail or vary by operation.
