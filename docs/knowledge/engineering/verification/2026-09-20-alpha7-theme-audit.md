@@ -259,6 +259,23 @@ throughput, compile/discovery cost and same-source archive size comparisons rema
 declared U10 rule still treats unavailable metrics as unverified; no default budget or limit was
 changed.
 
+# Classification and C7b deferral
+
+The candidate evidence is classified as follows:
+
+| Class | Current conclusion |
+| --- | --- |
+| Completed | Typed theme tokens, source-backed fixture matrix, default/Clear/Transparent semantics, light/dark exchange, CSS boundary, Web and Typst consumer contracts, macOS ARM64 CLI/LSP replay, legal projections and local Rust 1.95 floor contract. |
+| Limited support | Host-dependent native Cyberpunk scenes, selected Brutalist/Spotless cells, portable-font gaps, browser/PDF/HTML resource boundaries, and diagnostic mmdr/memory measurements. These retain explicit host or evidence-class receipts. |
+| Explicitly unsupported or unverified | Aurora browser `backdrop-filter` cells, Typst Cyberpunk under the constrained resource policy, 343 discovery `Unsupported` responses, 99 discovery `Unverified` responses, and every unexecuted hosted archive or consumer route. Empty catalog qualification cells remain intentional. |
+| Performance and size change | Current artifact sizes and the two matched Class regressions are measured; alpha.6 attribution, cold start, first render, PNG/PDF throughput, compile/discovery cost and cross-host size deltas remain unverified. No budget was relaxed. |
+| Preset conclusion | All ten preset IDs have representative literal execution, but only named Brutalist/Spotless/Cyberpunk cells have qualification evidence. This is insufficient for portfolio-wide catalog promotion. |
+
+C7b is explicitly deferred. Its known scope includes Class's four Text routes, Block's 32 legacy
+routes, additional mechanism breadth, broader preset/application review, portable and controlled
+font variants, and the unresolved brand-edit/resource-failure journeys. These items require their
+own family-local semantic and export evidence; successful C7a literal renders do not promote them.
+
 # Open C7a gates
 
 The following evidence is still required before C7a can be marked eligible:
