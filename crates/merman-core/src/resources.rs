@@ -525,6 +525,7 @@ impl ModelComplexity {
             RenderSemanticModel::EventModeling(model) => Self::from_serializable(model),
             RenderSemanticModel::Venn(model) => Self::from_serializable(model),
             RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
+            RenderSemanticModel::Usecase(model) => Self::from_serializable(model),
         }
     }
 

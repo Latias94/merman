@@ -157,6 +157,9 @@ impl EditorRenamePolicy {
             Self::RailroadAbnfRule => {
                 crate::diagrams::railroad::is_valid_editor_abnf_rule_identifier(candidate)
             }
+            Self::UsecaseIdentifier => {
+                crate::diagrams::usecase::is_valid_editor_identifier(candidate)
+            }
         }
     }
 }

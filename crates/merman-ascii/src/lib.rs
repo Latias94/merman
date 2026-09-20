@@ -405,7 +405,8 @@ fn render_model_with_execution(
         | RenderSemanticModel::Ishikawa(_)
         | RenderSemanticModel::EventModeling(_)
         | RenderSemanticModel::Venn(_)
-        | RenderSemanticModel::Wardley(_) => Err(AsciiError::UnsupportedDiagram {
+        | RenderSemanticModel::Wardley(_)
+        | RenderSemanticModel::Usecase(_) => Err(AsciiError::UnsupportedDiagram {
             diagram_type: model.kind().to_string(),
         }),
     }?;

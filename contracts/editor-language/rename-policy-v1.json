@@ -72,6 +72,12 @@
       "rust_variant": "RailroadAbnfRule",
       "description": "An ABNF rule identifier.",
       "default": false
+    },
+    {
+      "id": "usecase_identifier",
+      "rust_variant": "UsecaseIdentifier",
+      "description": "A Usecase ASCII identifier, including digit prefixes and excluding reserved tokens.",
+      "default": false
     }
   ]
 }

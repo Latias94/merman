@@ -258,6 +258,12 @@ pub(crate) fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool
     txt.trim_start().starts_with("gitGraph")
 }
 
+pub(crate) fn detector_usecase(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start()
+        .strip_prefix("usecase-beta")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
 pub(crate) fn detector_state_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("stateDiagram")
 }

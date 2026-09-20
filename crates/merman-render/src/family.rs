@@ -1613,6 +1613,11 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        RenderSemanticModel::Usecase(_) => {
+            return Err(Error::UnsupportedDiagram {
+                diagram_type: diagram_type.to_owned(),
+            });
+        }
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }

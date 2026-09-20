@@ -773,6 +773,11 @@ render_parser_controlled!(
     crate::diagrams::wardley::parse_wardley_model_for_render_controlled,
     RenderSemanticModel::Wardley
 );
+render_parser_controlled!(
+    render_usecase,
+    crate::diagrams::usecase::parse_usecase_model_for_render_controlled,
+    RenderSemanticModel::Usecase
+);
 
 #[derive(Clone, Copy)]
 struct Ordered<T> {
@@ -1047,6 +1052,8 @@ const WARDLEY_HEADERS: &[HeaderDefinition] = &[header(42, "wardley-beta", "wardl
 const CYNEFIN_HEADERS: &[HeaderDefinition] = &[header(43, "cynefin-beta", "cynefin header")];
 const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
     &[header(44, "flowchart-elk TD", "elk flowchart header")];
+const USECASE_HEADERS: &[HeaderDefinition] =
+    &[header(45, "usecase-beta", "usecase diagram header")];
 
 const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "error",
@@ -1589,6 +1596,20 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     config_alias_order: None,
 }];
 
+const USECASE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "usecase",
+    catalog_order: 42,
+    detector: Some(ordered(42, crate::detect::detector_usecase)),
+    semantic: Some(ordered(42, crate::diagrams::usecase::parse_usecase)),
+    combined: Some(ordered(42, crate::diagrams::usecase::parse_usecase_json_and_editor_facts)),
+    typed: Some(ordered(42, render_usecase)),
+    render_kind: Some("usecase"),
+    // Renderer admission follows the native parser; do not advertise SVG support yet.
+    metadata: None,
+    headers: USECASE_HEADERS,
+    config_alias_order: None,
+}];
+
 const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     DiagramFamilyDefinition {
         logical_kind: "error",
@@ -1880,6 +1901,15 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
             frontmatter_order: 4,
         }),
         variants: CYNEFIN_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "usecase",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
+        config: Some(FamilyConfigDefinition {
+            namespace: "usecase",
+            frontmatter_order: 35,
+        }),
+        variants: USECASE_VARIANTS,
     },
 ];
 

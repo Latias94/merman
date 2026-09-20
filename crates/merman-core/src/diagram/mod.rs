@@ -455,6 +455,7 @@ pub enum RenderSemanticModel {
     EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
     Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
+    Usecase(crate::diagrams::usecase::UsecaseDiagramRenderModel),
 }
 
 /// Parser-owned data needed only while rendering a typed semantic model.
@@ -721,6 +722,10 @@ impl_builtin_render_semantic_controlled!(
     crate::diagrams::wardley::render_model_to_compat_json,
     crate::diagrams::wardley::render_model_to_compat_json_controlled
 );
+impl_builtin_render_semantic!(
+    crate::diagrams::usecase::UsecaseDiagramRenderModel,
+    crate::diagrams::usecase::render_model_to_compat_json
+);
 
 impl RenderSemanticModel {
     /// Applies Mermaid common DB sanitization to family-owned typed fields.
@@ -761,6 +766,7 @@ impl RenderSemanticModel {
             Self::EventModeling(v) => v.sanitize_common_db_fields(config),
             Self::Venn(v) => v.sanitize_common_db_fields(config),
             Self::Wardley(v) => v.sanitize_common_db_fields(config),
+            Self::Usecase(v) => v.sanitize_common_db_fields(config),
         }
     }
 
@@ -841,6 +847,7 @@ impl RenderSemanticModel {
             Self::EventModeling(_) => "eventmodeling",
             Self::Venn(_) => "venn",
             Self::Wardley(_) => "wardley",
+            Self::Usecase(_) => "usecase",
         }
     }
 
@@ -899,6 +906,7 @@ impl RenderSemanticModel {
             Self::EventModeling(model) => model.compatibility_json_controlled(meta, &control),
             Self::Venn(model) => model.compatibility_json_controlled(meta, &control),
             Self::Wardley(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Usecase(model) => model.compatibility_json_controlled(meta, &control),
         }?;
         control.checkpoint()?;
         Ok(projected)

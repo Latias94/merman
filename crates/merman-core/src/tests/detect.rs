@@ -15,6 +15,31 @@ fn canonical_catalog_detects_mindmap() {
 }
 
 #[test]
+fn usecase_header_requires_whitespace_or_end() {
+    let registry = crate::detect::DetectorRegistry::pinned_mermaid_baseline();
+    for source in [
+        "usecase-beta",
+        "  usecase-beta\nactor A",
+        "usecase-beta\tLR",
+    ] {
+        let detected = registry.detect_type(source, &mut MermaidConfig::empty_object());
+        assert_eq!(detected.expect("Usecase header"), "usecase");
+    }
+    for source in [
+        "usecase-betaExtra",
+        "usecase-beta;",
+        "usecase-beta_LR",
+        "Usecase-beta",
+    ] {
+        assert!(
+            registry
+                .detect_type(source, &mut MermaidConfig::empty_object())
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();

@@ -14,6 +14,7 @@ export const EDITOR_RENAME_POLICIES = [
   "railroad_ebnf_rule",
   "railroad_peg_rule",
   "railroad_abnf_rule",
+  "usecase_identifier",
 ] as const;
 
 export type EditorRenamePolicy =
