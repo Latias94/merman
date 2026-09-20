@@ -1702,6 +1702,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: NodeLabelPlacement::Fixed,
             node_flexibility: crate::options::NodeFlexibility::None,

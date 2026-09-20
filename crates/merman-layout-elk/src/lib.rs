@@ -313,6 +313,7 @@ fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
                 hierarchy_handling: (node.kind == NodeKind::Group)
                     .then(|| hierarchy_handling_to_source(index.resolved_handling[node_index])),
                 layer_constraint: node.layer_constraint.map(layer_constraint_to_source),
+                port_alignment: node.port_alignment.map(port_alignment_to_source),
                 port_constraints: None,
                 node_label_placement: match node.kind {
                     NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
@@ -1059,6 +1060,7 @@ impl<'a> HierarchyIndex<'a> {
                     hierarchy_handling: (source.kind == NodeKind::Group)
                         .then(|| hierarchy_handling_to_source(self.resolved_handling[*node_index])),
                     layer_constraint: source.layer_constraint.map(layer_constraint_to_source),
+                    port_alignment: source.port_alignment.map(port_alignment_to_source),
                     port_constraints: None,
                     node_label_placement: match source.kind {
                         NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
@@ -2102,6 +2104,16 @@ fn node_placement_alignment_to_source(
     }
 }
 
+fn port_alignment_to_source(alignment: PortAlignment) -> source_port::PortAlignment {
+    match alignment {
+        PortAlignment::Distributed => source_port::PortAlignment::Distributed,
+        PortAlignment::Justified => source_port::PortAlignment::Justified,
+        PortAlignment::Begin => source_port::PortAlignment::Begin,
+        PortAlignment::Center => source_port::PortAlignment::Center,
+        PortAlignment::End => source_port::PortAlignment::End,
+    }
+}
+
 fn layer_constraint_to_source(layer_constraint: LayerConstraint) -> source_port::LayerConstraint {
     match layer_constraint {
         LayerConstraint::First => source_port::LayerConstraint::First,
@@ -2630,6 +2642,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: None,
         }
     }
@@ -2652,6 +2665,57 @@ mod tests {
             nodes,
             edges,
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn node_port_alignment_matches_elkjs_in_flat_and_separate_scopes() {
+        // elkjs 0.9.3, three implicit ports on a 40px side with Mermaid's 12px
+        // surrounding margins and spacing.baseValue=40. CENTER expands 5px gaps to 10px.
+        for nested in [false, true] {
+            let expected = if nested {
+                // buildSubgraphLayoutOptions uses spacing.baseValue=24.
+                [[15.4, 20.0, 24.6], [10.8, 20.0, 29.2]]
+            } else {
+                [[15.0, 20.0, 25.0], [10.0, 20.0, 30.0]]
+            };
+            for (alignment, expected) in [None, Some(PortAlignment::Center)]
+                .into_iter()
+                .zip(expected)
+            {
+                let mut nodes = vec![leaf("A"), leaf("B"), leaf("C"), leaf("T")];
+                nodes[3].port_alignment = alignment;
+                if nested {
+                    for node in &mut nodes {
+                        node.parent = Some("frame".into());
+                    }
+                    nodes.push(group("frame", None, HierarchyHandling::SeparateChildren));
+                }
+                let mut graph = flat_graph(
+                    nodes,
+                    vec![
+                        edge("AT", "A", "T"),
+                        edge("BT", "B", "T"),
+                        edge("CT", "C", "T"),
+                    ],
+                );
+                graph.direction = Direction::Right;
+                let result = layout(&graph).unwrap();
+                let target = result.nodes.iter().find(|node| node.id == "T").unwrap();
+                let mut offsets: Vec<_> = result
+                    .edges
+                    .iter()
+                    .map(|edge| edge.points.last().unwrap().y - (target.y - target.height / 2.0))
+                    .collect();
+                offsets.sort_by(f64::total_cmp);
+                assert_eq!(offsets.len(), expected.len());
+                for (actual, expected) in offsets.iter().zip(expected) {
+                    assert!(
+                        (actual - expected).abs() < 1e-9,
+                        "nested={nested}, alignment={alignment:?}, offsets={offsets:?}"
+                    );
+                }
+            }
         }
     }
 
@@ -2729,6 +2793,7 @@ mod tests {
             direction: None,
             hierarchy_handling: Some(handling),
             layer_constraint: None,
+            port_alignment: None,
             label: Some(Label {
                 width: 24.0,
                 height: 18.0,
@@ -3483,6 +3548,7 @@ mod tests {
             direction: None,
             hierarchy_handling: Some(HierarchyHandling::IncludeChildren),
             layer_constraint: None,
+            port_alignment: None,
             label: Some(label),
         };
         let child = |id: &str, parent: &str, width: f64| Node {
@@ -3588,6 +3654,7 @@ mod tests {
                     direction: None,
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: Some(Label {
                         width: 26.046875,
                         height: 22.0,
@@ -3673,6 +3740,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: Some(Label {
                 width: 9.0625,
                 height: 22.0,
@@ -4165,6 +4233,7 @@ mod tests {
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -4211,6 +4280,7 @@ mod tests {
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -4258,6 +4328,7 @@ mod tests {
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     label: None,
                 },
                 child,
@@ -4302,6 +4373,7 @@ mod tests {
                     direction: Some(Direction::Right),
                     hierarchy_handling: Some(HierarchyHandling::SeparateChildren),
                     layer_constraint: None,
+                    port_alignment: None,
                     label: Some(Label {
                         width: 42.0,
                         height: 18.0,

@@ -257,7 +257,18 @@ pub struct Node {
     pub direction: Option<Direction>,
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
+    /// Alignment of this node's implicit ports, overriding the provider default.
+    pub port_alignment: Option<PortAlignment>,
     pub label: Option<Label>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortAlignment {
+    Distributed,
+    Justified,
+    Begin,
+    Center,
+    End,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

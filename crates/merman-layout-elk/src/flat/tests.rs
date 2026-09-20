@@ -17,6 +17,7 @@ fn graph(algorithm: Algorithm) -> Graph {
                 direction: None,
                 hierarchy_handling: None,
                 layer_constraint: None,
+                port_alignment: None,
                 label: None,
             })
             .collect(),

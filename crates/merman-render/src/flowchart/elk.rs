@@ -1771,6 +1771,7 @@ fn flow_node_to_elk_node(
         direction: None,
         hierarchy_handling: None,
         layer_constraint: None,
+        port_alignment: None,
         label: Some(label),
     }
 }
@@ -1798,6 +1799,7 @@ fn subgraph_to_elk_node(
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label,
         };
     }
@@ -1833,6 +1835,7 @@ fn subgraph_to_elk_node(
             None
         },
         layer_constraint: None,
+        port_alignment: None,
         label: subgraph_label(declaration_ordinal, sg, ctx),
     }
 }

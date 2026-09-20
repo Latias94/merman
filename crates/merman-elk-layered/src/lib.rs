@@ -55,7 +55,7 @@ pub use options::{
     EdgeLabelSideSelection, EdgeRouting, ElkDirection, ElkPadding, FixedAlignment,
     GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions, LayeringStrategy,
     LongEdgeOrderingStrategy, NodeFlexibility, NodeLabelPlacement, NodePlacementStrategy,
-    NodeSizeError, OrderingStrategy, PortConstraints, PortSortingStrategy,
+    NodeSizeError, OrderingStrategy, PortAlignment, PortConstraints, PortSortingStrategy,
     SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, SpacingMargin, SpacingOptions,
 };
 pub use p2layers::LayeringError;

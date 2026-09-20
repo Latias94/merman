@@ -45,6 +45,7 @@ pub struct ElkInputNode {
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
     pub port_constraints: Option<PortConstraints>,
+    pub port_alignment: Option<crate::options::PortAlignment>,
     pub node_label_placement: NodeLabelPlacement,
     pub node_flexibility: crate::options::NodeFlexibility,
     pub ports_surrounding: Option<crate::options::SpacingMargin>,
@@ -1530,6 +1531,7 @@ fn inside_node_label_cell(placement: NodeLabelPlacement) -> Option<(usize, usize
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
     let mut lnode = LNode::new(node.id.clone(), node.width, node.height, model_order);
     lnode.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
+    lnode.port_alignment = node.port_alignment;
     if let Some(layer_constraint) = node.layer_constraint {
         lnode.layer_constraint = layer_constraint;
         lnode.layer_constraint_explicit = true;
@@ -2525,6 +2527,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: NodeLabelPlacement::Fixed,
             node_flexibility: crate::options::NodeFlexibility::None,

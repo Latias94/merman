@@ -1728,6 +1728,7 @@ fn er_elk_graph(
             direction: subgraph.dir.as_deref().and_then(er_elk_direction),
             hierarchy_handling: Some(elk::HierarchyHandling::IncludeChildren),
             layer_constraint: None,
+            port_alignment: None,
             label: has_children.then_some(elk::Label {
                 width: metrics.width.max(0.0),
                 height: metrics.height.max(0.0),
@@ -1768,6 +1769,7 @@ fn er_elk_graph(
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: None,
         }
     }));

@@ -185,6 +185,7 @@ mod tests {
                 direction: (id == "g").then_some(Direction::Up),
                 hierarchy_handling: None,
                 layer_constraint: None,
+                port_alignment: None,
                 label: (id == "g").then_some(Label {
                     width: 30.0,
                     height: 10.0,

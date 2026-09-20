@@ -2617,6 +2617,7 @@ fn class_measured_to_elk_graph(
                 direction: is_group.then_some(direction),
                 hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
                 layer_constraint: None,
+                port_alignment: None,
                 label: namespace_label,
             }
         })

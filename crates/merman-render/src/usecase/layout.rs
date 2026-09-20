@@ -207,6 +207,7 @@ fn elk_layout(
                     .is_boundary
                     .then_some(elk::HierarchyHandling::IncludeChildren),
                 layer_constraint: None,
+                port_alignment: plan.ellipse.then_some(elk::PortAlignment::Center),
                 label: plan.is_boundary.then_some(elk::Label {
                     width: plan.label.metrics.width,
                     height: plan.label.metrics.height,

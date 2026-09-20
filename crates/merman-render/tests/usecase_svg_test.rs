@@ -123,6 +123,39 @@ fn usecase_elk_preserves_raw_missing_sections_and_draws_relationships() {
     assert!(!path.contains("NaN") && !path.contains("inf"));
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn usecase_elk_spreads_implicit_ports_on_ellipses() {
+    let (projection, _) = render_config(
+        "usecase-beta\ndirection LR\nA --> Target\nB --> Target\nC --> Target",
+        json!({"layout":"elk", "htmlLabels":false, "usecase":{"usecaseFontSize":40}}),
+    );
+    let graph = &projection["layout"]["UsecaseDiagram"];
+    let target = graph["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "Target")
+        .unwrap();
+    let center = target["y"].as_f64().unwrap();
+    let mut offsets: Vec<_> = graph["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|edge| {
+            edge["points"].as_array().unwrap().last().unwrap()["y"]
+                .as_f64()
+                .unwrap()
+                - center
+        })
+        .collect();
+    offsets.sort_by(f64::total_cmp);
+    assert_eq!(offsets.len(), 3);
+    for (actual, expected) in offsets.iter().zip([-20.0, 0.0, 20.0]) {
+        assert!((actual - expected).abs() < 1e-9, "{offsets:?}");
+    }
+}
+
 #[test]
 fn usecase_sanitizes_before_stereotype_folding_and_keeps_endpoint_labels_unfolded() {
     let source = r#"usecase-beta
