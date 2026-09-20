@@ -284,6 +284,14 @@ throughput, compile/discovery cost and same-source archive size comparisons rema
 declared U10 rule still treats unavailable metrics as unverified; no default budget or limit was
 changed.
 
+The current Node transport first-render probe was attempted with the checked-in benchmark harness
+and the existing macOS ARM64 N-API/WASM artifacts, but the harness rejected both candidates before
+sampling because their build receipts still bind the old `crates/merman-node/Cargo.lock` digest
+`sha256:4b7ab318...`, while the current source digest is
+`sha256:b3c42d2379...`. No stale-artifact timings were admitted as evidence, and the cold-start /
+first-render gate therefore remains open until candidates are rebuilt from this exact source and
+lockfile.
+
 # Classification and C7b deferral
 
 The candidate evidence is classified as follows:
