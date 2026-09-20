@@ -62,16 +62,53 @@ pub(super) fn layout(
             )
         })
         .collect();
+    let micro_layout = graph
+        .nodes
+        .iter()
+        .zip(node_contexts)
+        .map(|(node, context)| {
+            source_port::inside_top_center_micro_layout(
+                source_port::LSize {
+                    width: node.width,
+                    height: node.height,
+                },
+                context
+                    .size_constraints_active
+                    .then(|| context.mode.minimum(node))
+                    .flatten(),
+                (node.kind == NodeKind::Group)
+                    .then_some(node.label)
+                    .flatten()
+                    .map(|label| source_port::LSize {
+                        width: label.width,
+                        height: label.height,
+                    }),
+            )
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let uses_micro_layout = !matches!(
+        graph.options.algorithm,
+        Algorithm::Box | Algorithm::SporeOverlap
+    );
     let mut result = LayoutResult {
         nodes: graph
             .nodes
             .iter()
-            .map(|node| NodeLayout {
+            .zip(&micro_layout)
+            .map(|(node, (size, _))| NodeLayout {
                 id: node.id.clone(),
                 x: 0.0,
                 y: 0.0,
-                width: node.width,
-                height: node.height,
+                width: if uses_micro_layout {
+                    size.width
+                } else {
+                    node.width
+                },
+                height: if uses_micro_layout {
+                    size.height
+                } else {
+                    node.height
+                },
             })
             .collect(),
         // Empty point chains mean that the provider emitted no section. Do not replace them
@@ -117,9 +154,10 @@ pub(super) fn layout(
                 .nodes
                 .iter()
                 .zip(node_contexts)
-                .map(|(node, context)| box_layout::Rectangle {
-                    width: node.width,
-                    height: node.height,
+                .zip(&result.nodes)
+                .map(|((node, context), measured)| box_layout::Rectangle {
+                    width: measured.width,
+                    height: measured.height,
                     horizontal_content_alignment: if matches!(
                         context.mode,
                         ContainerMode::Explicit(_)
@@ -130,7 +168,15 @@ pub(super) fn layout(
                     },
                     minimum_size: context
                         .size_constraints_active
-                        .then(|| effective_minimum(context.mode.minimum(node))),
+                        .then(|| context.mode.minimum(node))
+                        .flatten()
+                        .map(|minimum| effective_minimum(Some(minimum))),
+                    micro_layout_size: (context.size_constraints_active
+                        && context.mode.minimum(node).is_some())
+                    .then_some(source_port::LSize {
+                        width: measured.width,
+                        height: measured.height,
+                    }),
                     ..Default::default()
                 })
                 .collect();
@@ -196,7 +242,7 @@ pub(super) fn layout(
             }
         }
         Algorithm::Force | Algorithm::Stress => {
-            let nodes: Vec<_> = graph
+            let nodes: Vec<_> = result
                 .nodes
                 .iter()
                 .map(|node| force::Node {
@@ -301,9 +347,10 @@ pub(super) fn layout(
                 .nodes
                 .iter()
                 .zip(node_contexts)
-                .map(|(node, context)| mrtree::Node {
-                    width: node.width,
-                    height: node.height,
+                .zip(&result.nodes)
+                .map(|((node, context), measured)| mrtree::Node {
+                    width: measured.width,
+                    height: measured.height,
                     // Mermaid leaf nodes have no ELK node-label array. MrTree derives identity
                     // from its local ordinal when the first label text is absent.
                     label: if node.kind == NodeKind::Group {
@@ -365,12 +412,19 @@ pub(super) fn layout(
             }
         }
         Algorithm::Radial => {
-            let nodes: Vec<_> = graph
+            let nodes: Vec<_> = result
                 .nodes
                 .iter()
-                .map(|node| radial::Node {
+                .zip(&micro_layout)
+                .map(|(node, (_, margin))| radial::Node {
                     width: node.width,
                     height: node.height,
+                    margins: radial::Margins {
+                        top: margin.top,
+                        right: margin.right,
+                        bottom: margin.bottom,
+                        left: margin.left,
+                    },
                     ..Default::default()
                 })
                 .collect();

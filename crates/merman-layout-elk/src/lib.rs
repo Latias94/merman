@@ -1014,9 +1014,9 @@ impl<'a> HierarchyIndex<'a> {
             .iter()
             .map(|node_index| {
                 let source = &self.graph.nodes[*node_index];
-                let child_size = self.child_scope_by_anchor[*node_index]
-                    .and_then(|child| arena[child].as_ref())
-                    .map(|layout| layout.size);
+                let child_layout =
+                    self.child_scope_by_anchor[*node_index].and_then(|child| arena[child].as_ref());
+                let child_size = child_layout.map(|layout| layout.size);
                 // Mermaid removes a non-empty group's explicit size before ELK layout. A parent
                 // scope must therefore consume the completed child extent, not the input size.
                 let width = child_size.map(|size| size.width).unwrap_or_else(|| {
@@ -1033,10 +1033,23 @@ impl<'a> HierarchyIndex<'a> {
                         0.0
                     }
                 });
-                ElkInputNode {
+                let size = if child_layout.is_some_and(|layout| layout.size_constraints_active) {
+                    source_port::inside_top_center_micro_layout(
+                        source_port::LSize { width, height },
+                        self.container_modes[*node_index].minimum(source),
+                        source.label.map(|label| source_port::LSize {
+                            width: label.width,
+                            height: label.height,
+                        }),
+                    )?
+                    .0
+                } else {
+                    source_port::LSize { width, height }
+                };
+                Ok::<_, Error>(ElkInputNode {
                     id: source.id.clone(),
-                    width,
-                    height,
+                    width: size.width,
+                    height: size.height,
                     parent: self.parent[*node_index]
                         .filter(|parent| self.node_scope[*parent] == scope_index)
                         .map(|parent| self.graph.nodes[parent].id.clone()),
@@ -1084,9 +1097,9 @@ impl<'a> HierarchyIndex<'a> {
                     } else {
                         None
                     },
-                }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         let mut edges = Vec::new();
         let mut segments = Vec::new();

@@ -46,6 +46,143 @@ fn close(actual: f64, expected: f64) {
         "actual={actual}, expected={expected}"
     );
 }
+
+#[test]
+fn container_sizing_lifecycle_matches_elkjs_across_parent_providers() {
+    // Actual elkjs 0.9.3, same explicit-container input as the dedicated provider test.
+    // Radial retains MINIMUM_SIZE/NODE_LABELS; Stress fixes its size during Force export.
+    // Parent micro layout must shrink only Radial and retain fixed Stress title overhang.
+    for parent in [
+        Algorithm::Layered,
+        Algorithm::Box,
+        Algorithm::Rectpacking,
+        Algorithm::Force,
+        Algorithm::Stress,
+        Algorithm::MrTree,
+        Algorithm::Radial,
+        Algorithm::SporeOverlap,
+    ] {
+        for child in [Algorithm::Radial, Algorithm::Stress] {
+            let mut input = graph(parent);
+            input.id = "root".into();
+            input.nodes.truncate(2);
+            for (node, id) in input.nodes.iter_mut().zip(["a", "b"]) {
+                node.id = id.into();
+                node.parent = Some("g".into());
+            }
+            let mut group = input.nodes[0].clone();
+            group.id = "g".into();
+            group.kind = NodeKind::Group;
+            group.parent = None;
+            group.label_text = Some("Group".into());
+            group.label = Some(Label {
+                width: 300.0,
+                height: 10.0,
+            });
+            group.container = ContainerNodeOptions {
+                algorithm: Some(child),
+                padding: 15.0,
+            };
+            input.nodes.insert(0, group);
+            input.edges.truncate(1);
+            input.edges[0].id = "inside".into();
+            input.edges[0].source = "a".into();
+            input.edges[0].target = "b".into();
+            input.edges[0].label = None;
+            let output = super::super::layout(&input).unwrap();
+            let g = &output.nodes[0];
+            let origin = (g.x - g.width / 2.0, g.y - g.height / 2.0);
+            let radial = child == Algorithm::Radial;
+            let expected_size = if radial {
+                if parent == Algorithm::SporeOverlap {
+                    (147.08203932499367, 70.0)
+                } else {
+                    (330.0, 40.0)
+                }
+            } else {
+                (179.74360154767774, 72.15639226832202)
+            };
+            close(g.width, expected_size.0);
+            close(g.height, expected_size.1);
+            let expected_origin = match parent {
+                Algorithm::Box | Algorithm::Rectpacking => (15.0, 15.0),
+                Algorithm::Force | Algorithm::Stress => (50.0, 50.0),
+                Algorithm::MrTree => (30.0, 40.0),
+                Algorithm::SporeOverlap => (8.0, 8.0),
+                Algorithm::Layered | Algorithm::Radial if !radial => (72.12819922616113, 12.0),
+                _ => (12.0, 12.0),
+            };
+            close(origin.0, expected_origin.0);
+            close(origin.1, expected_origin.1);
+            let a = &output.nodes[1];
+            close(
+                a.x - a.width / 2.0 - origin.0,
+                if radial {
+                    92.08203932499369
+                } else {
+                    124.74360154767774
+                },
+            );
+            close(
+                a.y - a.height / 2.0 - origin.1,
+                if radial { 30.0 } else { 25.0 },
+            );
+        }
+    }
+}
+
+#[test]
+fn rectpacking_final_micro_layout_preserves_expansion_translation() {
+    // Actual elkjs 0.9.3 with Mermaid's root Rectpacking preset: whitespace expansion
+    // translates nested children before the second micro layout resets active dimensions.
+    for child in [Algorithm::Radial, Algorithm::Stress] {
+        let mut input = graph(Algorithm::Rectpacking);
+        input.id = "root".into();
+        for (node, id) in input.nodes[..2].iter_mut().zip(["a", "b"]) {
+            node.id = id.into();
+            node.parent = Some("g".into());
+        }
+        input.nodes[2].id = "c".into();
+        input.nodes[2].width = 400.0;
+        input.nodes[2].height = 100.0;
+        let mut group = input.nodes[0].clone();
+        group.id = "g".into();
+        group.kind = NodeKind::Group;
+        group.parent = None;
+        group.label_text = Some("Group".into());
+        group.label = Some(Label {
+            width: 300.0,
+            height: 10.0,
+        });
+        group.container = ContainerNodeOptions {
+            algorithm: Some(child),
+            padding: 15.0,
+        };
+        input.nodes.insert(0, group);
+        input.edges.truncate(1);
+        input.edges[0].id = "inside".into();
+        input.edges[0].source = "a".into();
+        input.edges[0].target = "b".into();
+        input.edges[0].label = None;
+        let output = super::super::layout(&input).unwrap();
+        let g = output.nodes.iter().find(|node| node.id == "g").unwrap();
+        let origin = (g.x - g.width / 2.0, g.y - g.height / 2.0);
+        let radial = child == Algorithm::Radial;
+        close(g.width, if radial { 330.0 } else { 400.0 });
+        close(g.height, if radial { 40.0 } else { 72.15639226832202 });
+        close(origin.0, 15.0);
+        close(origin.1, if radial { 30.0 } else { 15.0 });
+        let a = output.nodes.iter().find(|node| node.id == "a").unwrap();
+        close(
+            a.x - a.width / 2.0 - origin.0,
+            if radial {
+                127.08203932499369
+            } else {
+                234.87180077383886
+            },
+        );
+    }
+}
 // Real elkjs 0.9.3 output, with Mermaid 12 root options and normal node micro layout enabled.
 // addEdgesToElkGraph creates an inline CENTER label on every edge, including the second
 // edge's empty zero-size label. Force imports both labels as particles.

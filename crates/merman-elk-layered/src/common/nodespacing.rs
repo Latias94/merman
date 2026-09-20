@@ -8,6 +8,101 @@
 use crate::graph::{LGraph, LMargin, LPort, PortSide};
 use crate::options::{NodeLabelPlacement, PortAlignment, PortConstraints};
 
+/// The reachable `NodeMicroLayout` operation for one inside-top-center container title.
+/// A missing minimum denotes fixed constraints: the title is placed and may overhang,
+/// but must not resurrect constraints cleared by a previous provider's `resizeNode`.
+/// `NodeSizeCalculator` replaces active dimensions; it does not translate child contents.
+pub fn inside_top_center_micro_layout(
+    current: crate::LSize,
+    minimum: Option<crate::LSize>,
+    label: Option<crate::LSize>,
+) -> Result<(crate::LSize, crate::LMargin), crate::NodeSizeError> {
+    let mut size = current;
+    if let Some(minimum) = minimum {
+        let mut options = crate::LayeredOptions {
+            node_size_minimum: Some(minimum),
+            node_size_include_labels: true,
+            ..Default::default()
+        };
+        options.validate_node_size_minimum()?;
+        if let Some(label) = label {
+            options.include_inside_top_center_label_minimum(label)?;
+        }
+        size = options.effective_node_size_minimum().unwrap_or_default();
+    }
+    if !size.width.is_finite()
+        || !size.height.is_finite()
+        || size.width < 0.0
+        || size.height < 0.0
+        || label.is_some_and(|label| {
+            !label.width.is_finite()
+                || !label.height.is_finite()
+                || label.width < 0.0
+                || label.height < 0.0
+        })
+    {
+        return Err(crate::NodeSizeError);
+    }
+    let mut margin = crate::LMargin::default();
+    if let Some(label) = label {
+        // NodeLabelCellCreator's default label padding is five on each side. For a
+        // fixed narrow node the centered label protrudes equally on the left and right.
+        margin.left = ((label.width - size.width) / 2.0).max(0.0);
+        margin.right = margin.left;
+        margin.bottom = (5.0 + label.height - size.height).max(0.0);
+    }
+    Ok((size, margin))
+}
+
+#[cfg(test)]
+mod micro_layout_tests {
+    use super::*;
+
+    #[test]
+    fn active_title_uses_symmetric_grid_but_fixed_title_only_overhangs() {
+        // elkjs 0.9.3: an explicit Radial group with a 30x30 title and minimum60x60
+        // becomes60x70 under NodeMicroLayout, while Box's resizeNode alone yields60x60.
+        let (size, _) = inside_top_center_micro_layout(
+            crate::LSize {
+                width: 147.0,
+                height: 90.0,
+            },
+            Some(crate::LSize {
+                width: 60.0,
+                height: 60.0,
+            }),
+            Some(crate::LSize {
+                width: 30.0,
+                height: 30.0,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            size,
+            crate::LSize {
+                width: 60.0,
+                height: 70.0
+            }
+        );
+        let current = crate::LSize {
+            width: 180.0,
+            height: 72.0,
+        };
+        let (size, margins) = inside_top_center_micro_layout(
+            current,
+            None,
+            Some(crate::LSize {
+                width: 300.0,
+                height: 10.0,
+            }),
+        )
+        .unwrap();
+        assert_eq!(size, current);
+        assert_eq!(margins.left, 60.0);
+        assert_eq!(margins.right, 60.0);
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Rect {
     x: f64,

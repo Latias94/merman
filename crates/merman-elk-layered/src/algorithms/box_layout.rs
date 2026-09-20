@@ -31,6 +31,9 @@ pub struct Rectangle {
     /// Active child sizing constraints, after resolving their effective minimum. `None`
     /// means the child provider has already fixed its size through `ElkUtil.resizeNode`.
     pub minimum_size: Option<crate::LSize>,
+    /// Size to restore during Rectpacking's second micro layout. The Box branch clears
+    /// constraints instead, so Box itself ignores this value.
+    pub micro_layout_size: Option<crate::LSize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

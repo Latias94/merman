@@ -101,6 +101,16 @@ pub fn layout(
                 return Err(Error::InvalidRectangle { index, field });
             }
         }
+        if let Some(size) = rectangle.micro_layout_size {
+            for (field, value) in [
+                ("micro_layout_size.width", size.width),
+                ("micro_layout_size.height", size.height),
+            ] {
+                if !value.is_finite() || value < 0.0 {
+                    return Err(Error::InvalidRectangle { index, field });
+                }
+            }
+        }
     }
     // The recursive ELK engine bypasses providers for leaves.
     if rectangles.is_empty() {
@@ -214,6 +224,13 @@ pub fn layout(
             node.height - rectangle.height,
             rectangle.vertical_content_alignment,
         );
+        // BlockRow.expand translates contents and writes dimensions directly, without
+        // fixing constraints. The provider's final NodeMicroLayout restores active sizes
+        // while retaining that translation. Its early Box branch has already returned.
+        if let Some(size) = rectangle.micro_layout_size {
+            node.width = size.width;
+            node.height = size.height;
+        }
     }
     let result = Layout {
         rectangles: original.nodes,
