@@ -276,6 +276,25 @@ routes, additional mechanism breadth, broader preset/application review, portabl
 font variants, and the unresolved brand-edit/resource-failure journeys. These items require their
 own family-local semantic and export evidence; successful C7a literal renders do not promote them.
 
+# Requirement closure matrix
+
+| Requirement | Evidence anchor | Status at this source |
+| --- | --- | --- |
+| Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
+| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records | Complete for those consumers; C/UniFFI and mobile journeys remain limited to owner smokes |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Complete for Python and Node native/WASM; broader transport parity remains open |
+| Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
+| CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
+| Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
+| Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells | Semantic matrix complete; aggregate three-source checkout gate remains open |
+| Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level, with Aurora and resource residuals explicitly Unverified |
+| Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited; portfolio-wide default/dark/high-contrast/document/brand/export review remains open |
+| WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
+| Cold start, first render and export throughput | Current cold-parse Criterion run, mmdr diagnostic and alpha.6 Class confirmation | Partial; cold start/first render and PNG/PDF throughput are not decision-grade |
+| Large-diagram memory | 30 fresh-process pairs, six scales and 10,000 bootstrap resamples | Infrastructure smoke passed; owner contract excludes release admission |
+| Theme compile and discovery cost | Discovery receipts and current fixture/support inventory | Structural discovery evidence exists; matched compile/discovery cost remains unverified |
+| Architecture and delivery impact | Typed capability boundary, dependency observations, no Inter/new proof engine and C7b scope | Complete as a bounded impact audit; follow-up work is explicitly deferred |
+
 # Open C7a gates
 
 The following evidence is still required before C7a can be marked eligible:
