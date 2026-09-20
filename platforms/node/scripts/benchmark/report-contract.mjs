@@ -188,11 +188,16 @@ export function validateComparisonReport(
   if (capabilityRecipeDigests.size !== 1) {
     throw new Error("candidate build receipts must share one capability-recipe digest.");
   }
-  const runtimeCatalogDigests = new Set(
-    report.candidates.map((candidate) => candidate.build_receipt.runtime_catalog_digest),
+  const candidateTargets = new Set(
+    report.candidates.map((candidate) => candidate.build_receipt.target ?? "wasm32-unknown-unknown"),
   );
-  if (runtimeCatalogDigests.size !== 1) {
-    throw new Error("candidate build receipts must share one runtime-catalog digest.");
+  if (candidateTargets.size === 1) {
+    const runtimeCatalogDigests = new Set(
+      report.candidates.map((candidate) => candidate.build_receipt.runtime_catalog_digest),
+    );
+    if (runtimeCatalogDigests.size !== 1) {
+      throw new Error("same-target candidate build receipts must share one runtime-catalog digest.");
+    }
   }
   validateDecision(report.decision, report.candidates);
   return report;
