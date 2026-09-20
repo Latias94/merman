@@ -62,3 +62,36 @@ The ignored experiment directory is `target/bench/experiments/c-abi-journeys-202
 | PDFKit receipt | `9e55c3600de5ebbebd76aa90626dd952e123274ac519cb10d9de9c5e9ea9526b` |
 
 The receipt binds the lockfile, profile descriptor, public header, font inputs, C/driver source, runtime library and every returned payload. Size is an uncompressed local artifact observation, not a package delta, latency measurement or budget adjustment. No production API, renderer, font assets or capability declarations changed.
+
+# Reference-plan refresh — 2026-09-21
+
+The same descriptor-owned build and unchanged C/Python sources were rerun at
+`fee1c1371db8822f1538c07b9634fea5b7c638b7`, which includes the reference-plan allocation change
+`b707f6e5b`. The original receipt's source `25f811599` and the optimization's baseline
+`7596b61ad` have identical crates, Cargo manifests/lockfile and capability descriptors. This
+is therefore an adjacent native-profile renewal, not another alpha.6 comparison.
+
+All 120 fresh-process rows pass again: 107 successes, six invalid-argument results, one resource
+error and six missing-glyph render errors. Every row and its complete data, metadata and media
+files match the original run byte-for-byte, including the native PNG/PDF and supplied-font cases.
+No error-message normalization was used in this cross-build comparison. The source-built
+consumer's linked library path resolves to the rebuilt `target/native-sdk/deps/libmerman_ffi.dylib`;
+that library, the top-level output and the frozen candidate copy share the recorded digest.
+Dynamic-library override environment variables were removed for the consumer run.
+
+| Artifact | Refreshed identity |
+| --- | --- |
+| Dynamic library | 36,224,928 bytes; SHA-256 `a1c3371fd1810b3f2a15f2d8a69ee7d4168c52a4ad25556f146c0f1bc9e16859` |
+| C executable | `5e3499056a18ab5a9b88d09fd3b378db1ebf6b55ade1612725c3a18a11d1e09a` |
+| Result receipt | `06a595443d625ef3faa6513ba8cf91178ee7f349fedffb15ffd302f519bcea27` |
+
+The dynamic library decreases by 272 bytes from the original 36,225,200-byte artifact under the
+same profile and host. This is a measured uncompressed artifact delta, not a package-size or
+latency improvement claim. Both libraries are frozen under
+`target/bench/experiments/c-abi-reference-plan-20260921/`, alongside the build log, consumer,
+unchanged driver, returned files, `receipt.json` and `renewal.json`. The original C and driver
+source hashes remain those in the preceding table.
+
+This refresh did not rerun PDFKit or visual qualification; the returned PDF bytes match those
+previously inspected. Packaged source-crate consumption, other hosts and other transport artifacts
+still require their own evidence. The complete C7a/U10 matrix remains open.

@@ -293,6 +293,13 @@ host reference build for custom source embedders. Its source-built consumer rece
 the relevant host evidence; packaged source-crate consumption remains a separate unverified case.
 A generic C SDK archive is not a declared delivery artifact or an additional C7a gate.
 
+The [September 21 C ABI refresh](2026-09-20-c-abi-theme-journeys.md#reference-plan-refresh--2026-09-21)
+rebuilds `c-abi-native` at `fee1c1371` with the reference-plan optimization. All 120 fresh-process
+results, including complete output and metadata files, match the preceding reference build.
+The same-profile ARM64 dynamic library changes from 36,225,200 to 36,224,928 bytes (272 bytes
+smaller). This renews the source-built C host record only; source-crate installation and other
+transport artifacts retain their separate unverified or historical-source boundaries.
+
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
 | Python | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source wheel; no current registry installation or other host evidence |
