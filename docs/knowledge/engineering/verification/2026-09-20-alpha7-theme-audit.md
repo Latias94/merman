@@ -293,18 +293,25 @@ first-render gate therefore remains open until candidates are rebuilt from this 
 lockfile.
 
 The candidates were then rebuilt from this source and lockfile: both receipts carry the
-`sha256:b3c42d2379...` lock digest and commit `5781b1c45`. The benchmark harness's public-API error
-probe was corrected and its contract tests pass 15/15 under npm 12; the representative rerun now
-reaches the cross-candidate catalog gate. It is rejected because the two targets intentionally
-advertise different SVG backend depth hard caps: the WebAssembly catalog reports `64`, while the
-native catalog reports `256` for `svg_backend_tree_depth` in all four resource profiles. The source
-authority is `crates/merman-render/src/resources.rs`, where the values are selected by
-`target_arch = "wasm32"`, and the binding projection preserves that target-specific value. This is
-an expected target contract difference, but the checked-in Node comparison harness currently
-requires identical full catalog digests and therefore emits no admissible timing report. The full
-corpus also exposed six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. These are transport
-or harness-gate findings, not performance samples; no cold, first-render, warm, or concurrency
-numbers from these attempts are used as U10 evidence.
+`sha256:b3c42d2379...` lock digest. The benchmark harness's public-API error probe was corrected,
+its contract tests pass 15/15 under npm 12, and commit `8477e7a0b` now scopes the cross-candidate
+catalog equality check to same-target comparisons. This preserves the intentional target contract
+difference: the WebAssembly catalog reports `64`, while native reports `256` for
+`svg_backend_tree_depth` in all four resource profiles. The source authority is
+`crates/merman-render/src/resources.rs`, where the values are selected by
+`target_arch = "wasm32"`, and the binding projection preserves that value.
+
+The resulting representative report is retained at
+`target/bench/experiments/node-current-theme-20260920/representative-target-catalog-8477e7a0b.json`.
+All eight selected fixtures completed on both candidates with matching SVG structure, geometry and
+raw bytes. Diagnostic p50 values were cold `162.079 ms` (WASM) versus `47.688 ms` (N-API), warm
+`1.019 ms` versus `0.641 ms`, and four-request concurrency `3.268 ms` versus `0.801 ms`. Packed
+footprints were `7,036,598` versus `10,659,970` bytes; peak RSS was `463,355,904` versus
+`92,667,904` bytes. The report marks timing evidence excluded and its decision remains inconclusive
+because this host contributes only one target result; these samples therefore do not close U10.
+The full corpus still exposes six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. Those
+remain transport coverage findings, while the representative samples are retained as diagnostic
+evidence rather than release admission.
 
 # Classification and C7b deferral
 
