@@ -3,6 +3,7 @@ use cssparser::{Delimiter, Parser, ParserInput};
 use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
 use std::convert::Infallible;
+use svgtypes::{SimplePathSegment, SimplifyingPathParser};
 
 use super::css_sanitize::sanitize_css_value_with_checkpoints;
 use super::presentation_fallback::is_mermaid_missing_amount_hsl;
@@ -124,11 +125,14 @@ fn sanitize_tag_attributes<'a, E>(
     }
 
     let element_name = start_tag_name(tag).map(local_name).unwrap_or_default();
+    let suppress_degenerate_fill = element_name.eq_ignore_ascii_case("path")
+        && attr_value(tag, "d").is_some_and(|path| axis_aligned_line_path(&path));
     let mut changed = false;
     let mut out = String::new();
     let mut copied_until = 0usize;
     let mut cursor = 0usize;
     let mut attr_index = 0usize;
+    let mut style_seen = false;
 
     while let Some(attr) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
         checkpoint_loop(attr_index, checkpoint)?;
@@ -136,7 +140,15 @@ fn sanitize_tag_attributes<'a, E>(
         let name = &tag[attr.name_start..attr.name_end];
         let value = &tag[attr.value_start..attr.value_end];
 
-        let replacement = sanitized_attr_replacement(element_name, name, value, checkpoint)?;
+        let is_style = local_name(name).eq_ignore_ascii_case("style");
+        style_seen |= is_style;
+        let replacement = if suppress_degenerate_fill && is_style {
+            let sanitized = sanitize_style_attribute(value, checkpoint)?;
+            let sanitized = style_with_fill_none(&sanitized);
+            AttrReplacement::Replace(format!(r#" {name}="{}""#, escape_xml_attr(&sanitized)))
+        } else {
+            sanitized_attr_replacement(element_name, name, value, checkpoint)?
+        };
         if let AttrReplacement::Unchanged = replacement {
             cursor = attr.full_end;
             continue;
@@ -154,6 +166,18 @@ fn sanitize_tag_attributes<'a, E>(
         }
         copied_until = attr.full_end;
         cursor = attr.full_end;
+    }
+
+    if suppress_degenerate_fill && !style_seen {
+        let insert_at = tag.rfind('>').unwrap_or(tag.len());
+        let insert_at = insert_at.saturating_sub(usize::from(tag[..insert_at].ends_with('/')));
+        if !changed {
+            out = String::with_capacity(tag.len() + r#" style="fill:none""#.len());
+            changed = true;
+        }
+        out.push_str(&tag[copied_until..insert_at]);
+        out.push_str(r#" style="fill:none""#);
+        copied_until = insert_at;
     }
 
     if changed {
@@ -572,6 +596,52 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
     None
 }
 
+fn style_with_fill_none(style: &str) -> String {
+    let style = style.trim().trim_end_matches(';');
+    if style.is_empty() {
+        "fill:none!important".to_string()
+    } else {
+        format!("{style};fill:none!important")
+    }
+}
+
+fn axis_aligned_line_path(path: &str) -> bool {
+    let mut bounds = None::<(f64, f64, f64, f64)>;
+    let mut has_line = false;
+
+    for segment in SimplifyingPathParser::from(path) {
+        let point = match segment {
+            Ok(SimplePathSegment::MoveTo { x, y }) => (x, y),
+            Ok(SimplePathSegment::LineTo { x, y }) => {
+                has_line = true;
+                (x, y)
+            }
+            Ok(SimplePathSegment::ClosePath) => {
+                has_line = true;
+                continue;
+            }
+            _ => return false,
+        };
+        if !point.0.is_finite() || !point.1.is_finite() {
+            return false;
+        }
+        bounds = Some(match bounds {
+            Some((min_x, min_y, max_x, max_y)) => (
+                min_x.min(point.0),
+                min_y.min(point.1),
+                max_x.max(point.0),
+                max_y.max(point.1),
+            ),
+            None => (point.0, point.1, point.0, point.1),
+        });
+    }
+
+    let Some((min_x, min_y, max_x, max_y)) = bounds else {
+        return false;
+    };
+    has_line && (max_x - min_x <= f64::EPSILON || max_y - min_y <= f64::EPSILON)
+}
+
 fn is_missing_or_invalid_rect_dimension(value: Option<&str>) -> bool {
     let Some(value) = value.map(str::trim) else {
         return true;
@@ -795,6 +865,22 @@ mod tests {
 
         assert!(!out.contains("undefined"), "got: {out}");
         assert!(out.contains(r#"style="stroke:#333""#), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_disables_fill_for_axis_aligned_line_paths() {
+        let svg = r#"<svg><path d="M21,0 L21,18"/><path d="m0,4 h12" style="stroke:#333;fill:red"/><path d="M0,0 L4,4"/></svg>"#;
+        let out = sanitize_element_attributes(svg);
+
+        assert!(
+            out.contains(r#"<path d="M21,0 L21,18" style="fill:none"/>"#),
+            "got: {out}"
+        );
+        assert!(
+            out.contains(r#"style="stroke:#333;fill:red;fill:none!important""#),
+            "got: {out}"
+        );
+        assert!(out.contains(r#"<path d="M0,0 L4,4"/>"#), "got: {out}");
     }
 
     #[test]
