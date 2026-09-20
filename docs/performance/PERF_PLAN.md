@@ -7,6 +7,13 @@ host; they are not rolling sources of truth.
 
 ## Current evidence
 
+The [SVG attribute-validation checkpoint](svg_attribute_validation_2026-09-20.md) removes repeated
+second-pass duplicate-name storage after full XML validation. Class medium drops 492 allocations
+and 41,088 cumulative bytes per complete SVG render; five controls preserve exact output and peak
+growth. Two diagnostic timing pairs show no material slowdown, but do not establish a confirmed
+speedup or close the alpha.7 regression. The earlier single-byte-search candidate was rejected
+because measured allocation did not change.
+
 The [identity-shadow-offset checkpoint](zero_offset_shadow_2026-09-18.md) reduces actual filter
 work from 140 to 112 primitives for the fixed Cyberpunk XY scene, preserving PNG/PDF bytes and
 existing limits. It does not claim a latency improvement. Larger default-profile charts remain
@@ -306,6 +313,12 @@ justification beyond typed configuration. Investigate repeated scanning/allocati
 already validated artifact facts. Preserve output bytes, terminal evidence, malformed-token and
 XML errors, resource limits and cancellation. Do not revive the rejected July raw-string API or
 skip admission because the caller did not explicitly select a theme.
+
+The September 20 [allocation repair](svg_attribute_validation_2026-09-20.md) now reuses the XML
+owner's attribute-name uniqueness result in private second passes. Full XML validation and
+resource/error/cancellation semantics remain unchanged. Its measured allocation reduction does
+not close this latency gate; continue profiling finalization and prepared-text work rather than
+assuming source-level temporary allocations survive optimization.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

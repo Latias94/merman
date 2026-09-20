@@ -298,6 +298,15 @@ resamples, 10% relative and 50 µs absolute thresholds. This is a release-range 
 theme-only attribution: the current report does not assign the cost to the presentation-theme
 change, and the U10 recovery gate remains open.
 
+The subsequent [SVG attribute-validation repair](../../../performance/svg_attribute_validation_2026-09-20.md)
+removes repeated duplicate-name bookkeeping in private passes after complete XML validation.
+Against a production-equivalent current baseline, Class medium decreases from 14,182 to 13,690
+allocations and from 2,357,112 to 2,316,024 cumulative bytes. Five fixtures preserve exact SVG bytes,
+peak growth and retained heap, with three allocation observations each. The 243 pipeline tests
+pass, and two diagnostic timing pairs show no material control slowdown. This admits a bounded
+allocation reduction, not a confirmed latency recovery, lower peak memory or C7a closure. A prior
+single-byte-search candidate was rejected because runtime allocation did not change.
+
 The isolated native memory owner run is now complete at
 `target/bench/experiments/theme-perf-current-20260920/native-memory-full-10000.json`. It used a
 clean Merman clone, 30 fresh-process pairs over scales 1/2/4/10/32/100, five repeats per scale,

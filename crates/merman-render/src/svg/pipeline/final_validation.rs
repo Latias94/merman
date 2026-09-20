@@ -537,7 +537,7 @@ fn check_svg_resource_budget_with_controls(
         match event {
             Event::Start(element) | Event::Empty(element) => {
                 let references =
-                    collect_reference_element(&element, reader.resolver(), checkpoint)?;
+                    collect_reference_element_after_xml(&element, reader.resolver(), checkpoint)?;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -597,7 +597,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 }
                 let is_root = depth == 0;
                 reject_additional_root(is_root, root_seen, root_closed)?;
-                let validated = validate_element(
+                let validated = validate_element_after_xml(
                     &element,
                     reader.resolver(),
                     is_root,
@@ -646,7 +646,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 }
                 let is_root = depth == 0;
                 reject_additional_root(is_root, root_seen, root_closed)?;
-                let validated = validate_element(
+                let validated = validate_element_after_xml(
                     &element,
                     reader.resolver(),
                     is_root,
@@ -927,7 +927,7 @@ fn append_reference_node(
     });
 }
 
-fn validate_element(
+fn validate_element_after_xml(
     element: &BytesStart<'_>,
     resolver: &NamespaceResolver,
     is_root: bool,
@@ -958,7 +958,9 @@ fn validate_element(
     let mut style_has_non_marker_attribute = false;
     let mut root_width_seen = false;
     let mut root_height_seen = false;
-    for attribute in element.attributes() {
+    // The caller already validated this exact immutable SVG, including lexical and expanded
+    // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
+    for attribute in element.attributes().with_checks(false) {
         checkpoint()?;
         let attribute = attribute
             .map_err(|error| validation_error(format!("invalid XML attribute: {error}")))?;
@@ -1247,7 +1249,7 @@ impl<'a> ReferenceAttributes<'a> {
     }
 }
 
-fn collect_reference_element(
+fn collect_reference_element_after_xml(
     element: &BytesStart<'_>,
     resolver: &NamespaceResolver,
     checkpoint: &mut impl FnMut() -> Result<()>,
@@ -1259,7 +1261,9 @@ fn collect_reference_element(
     if !references.is_svg_element {
         return Ok(references.finish());
     }
-    for attribute in element.attributes() {
+    // The caller already validated this exact immutable SVG, including lexical and expanded
+    // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
+    for attribute in element.attributes().with_checks(false) {
         checkpoint()?;
         let attribute = attribute
             .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
@@ -2163,6 +2167,31 @@ mod tests {
             let error = check_budget(svg, expected - 1).unwrap_err();
             assert!(error.to_string().contains("max_svg_elements"), "{error}");
         }
+    }
+
+    #[test]
+    fn second_passes_preserve_xml_duplicate_attribute_rejection() {
+        for svg in [
+            r#"<svg width="10" height="10" width="20"/>"#,
+            r#"<svg xmlns:a="urn:same" xmlns:b="urn:same" a:key="1" b:key="2"/>"#,
+            r#"<svg xmlns:a="urn:first" xmlns:a="urn:second"/>"#,
+            r#"<svg><g><rect id="a" id="b"/></g></svg>"#,
+            r#"<svg xmlns:h="http://www.w3.org/1999/xhtml"><foreignObject><h:div title="a" title="b"/></foreignObject></svg>"#,
+        ] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let xml_error =
+                validate_well_formed_svg_with_checkpoint(svg, policy, &mut || Ok(())).unwrap_err();
+            for error in [
+                check_budget(svg, 10_000).unwrap_err(),
+                validate(svg).unwrap_err(),
+            ] {
+                assert_eq!(format!("{error:?}"), format!("{xml_error:?}"), "{svg}");
+            }
+        }
+        // Equal local names in distinct namespaces are not duplicate expanded names.
+        let distinct = r#"<svg width="10" height="10" xmlns:a="urn:first" xmlns:b="urn:second" a:key="1" b:key="2"/>"#;
+        check_budget(distinct, 10_000).unwrap();
+        validate(distinct).unwrap();
     }
 
     #[test]
