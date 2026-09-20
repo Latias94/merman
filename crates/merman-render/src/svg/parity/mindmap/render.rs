@@ -945,8 +945,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     if backend == crate::mindmap::MindmapLayoutBackend::Elk {
                         use crate::elk_edge_geometry::{Outline, Shape, sanitize};
                         {
+                            let mut elk_points = Vec::with_capacity(points.len() + 2);
+                            elk_points.push(crate::model::LayoutPoint {
+                                x: start.x,
+                                y: start.y,
+                            });
+                            elk_points.extend(points.iter().cloned());
+                            elk_points.push(crate::model::LayoutPoint { x: end.x, y: end.y });
                             let clipped = sanitize(
-                                &points,
+                                &elk_points,
                                 Shape {
                                     node: start,
                                     outline: if is_circle(&e.start) {

@@ -298,13 +298,7 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if let Some(index) = out.iter().position(|p| start.outside(p)) {
         let intersection = out
             .get(index + 1)
-            .and_then(|next| {
-                if start.outline == Outline::Ellipse {
-                    None
-                } else {
-                    start.departure(&out[index], next)
-                }
-            })
+            .and_then(|next| start.departure(&out[index], next))
             .unwrap_or_else(|| start.compute_intersection(&out[index], start_center));
         replace_endpoint(&mut out, true, intersection);
     }
@@ -315,13 +309,7 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if let Some(index) = outside {
         let intersection = index
             .checked_sub(1)
-            .and_then(|next| {
-                if end.outline == Outline::Ellipse {
-                    None
-                } else {
-                    end.departure(&out[index], &out[next])
-                }
-            })
+            .and_then(|next| end.departure(&out[index], &out[next]))
             .unwrap_or_else(|| end.compute_intersection(&out[index], end_center));
         replace_endpoint(&mut out, false, intersection);
     }
