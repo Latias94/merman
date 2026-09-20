@@ -656,6 +656,26 @@ bounded explicit-role modification and fresh-file import cases for these two ins
 transports. It does not define global brand recoloring, certify the preset portfolio, prove
 missing-font visual behavior, exercise PNG/PDF in Node, or complete the six-journey host matrix.
 
+### Installed consumers after reference graph reuse
+
+The [September 21 installed refresh](2026-09-21-installed-theme-consumers.md) rebuilds Python,
+Darwin ARM64 Node and explicit Node WASM from `f3a783c29`, including `b707f6e5b`, using the
+existing package owners and Node 24.21.0/npm 12.0.2. Fresh offline consumers pass the complete
+Python smoke and both expanded Node smokes. Node contracts pass 111/111; Python owner tests
+pass 9/9. The wheel's embedded legal report binds the current root lockfile digest.
+
+All three packages export byte-identical complete Cyberpunk recipes and directly import each
+other's saved files. The 27 renders produce byte-identical Flowchart, Sequence and XY outputs
+across the installed transports. Both Node consumers additionally pass three fresh-process
+customized recipe exchanges with 12 SVG/metadata comparisons each. No source adapter replaces
+an installed runtime, and no output normalization is applied.
+
+The packed wheel is 9,047,190 bytes; Node loader, native and WASM tarballs are 113,984,
+10,552,336 and 7,029,534 bytes respectively. These supersede the preceding local package
+snapshots for the named source and host, without attributing size changes to one optimization.
+Registry installs, other hosts, mobile consumers, portable fonts and matched performance
+admission remain unverified. No catalog qualification or C7a eligibility is promoted.
+
 # Classification and C7b deferral
 
 The candidate evidence is classified as follows:
@@ -679,7 +699,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
 | Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; rebuilt local Apple consumer passes authoring/support/errors, complete preset exchange, scoped Class paint edits and fresh-process output/metadata comparisons; remaining journeys and final installed transport parity stay open |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM rebuilt from `f3a783c29` pass installed authoring/support and exact three-family file exchange; Apple retains its local authoring/support/errors, complete preset exchange and scoped Class paint evidence; remaining journeys and other transports stay open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |

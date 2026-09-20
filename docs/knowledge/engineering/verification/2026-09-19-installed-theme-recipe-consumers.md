@@ -8,6 +8,10 @@ related_plan: docs/plans/2026-09-16-1618-refactor-theme-product-boundaries-plan.
 
 # Scope
 
+The [2026-09-21 refresh](2026-09-21-installed-theme-consumers.md) supersedes the local Python
+and Node installed artifacts below with immutable source `f3a783c29`. This record preserves
+the earlier package identities and verification history.
+
 The Python UniFFI wheel, Node Darwin ARM64 packages and Node WASM package were built from clean
 source `0c1b1047a7453b5668e371da38019b20b9c66815`, using their existing package owners and exact
 artifact recipes. The checkout stayed clean through collection. Cargo builds ran sequentially
