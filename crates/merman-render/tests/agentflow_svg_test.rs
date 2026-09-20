@@ -96,3 +96,49 @@ fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
         assert!(svg.svg().contains(r#"data-color-id="color-7""#));
     }
 }
+
+#[test]
+fn agentflow_cyclic_container_references_preserve_visible_nodes() {
+    for backend in ["elk", "dagre"] {
+        for collapsed in [false, true] {
+            let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+                json!({"layout": backend}),
+            ));
+            let view = if collapsed {
+                "@{ view: collapsed }"
+            } else {
+                ""
+            };
+            let source = format!(
+                "agentflow-beta\nflow A{view}\n a --> B\nend\nflow B{view}\n b --> A\nend\n"
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let nodes = projection["layout"]["AgentflowDiagram"]["nodes"]
+                .as_array()
+                .unwrap();
+            assert!(!nodes.is_empty(), "{backend}, collapsed={collapsed}");
+            if collapsed {
+                assert_eq!(nodes.len(), 1, "{backend}");
+                assert_eq!(nodes[0]["id"], "A", "{backend}");
+            } else {
+                assert_eq!(
+                    projection["semantic"]["diagnostics"][0]["id"],
+                    "CONTAINMENT_VIOLATION"
+                );
+            }
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert!(
+                svg.svg().contains(r#"data-color-id="color-7""#),
+                "{backend}"
+            );
+        }
+    }
+}

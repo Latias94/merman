@@ -195,6 +195,7 @@ pub struct FlowchartRenderContext {
     styles: FlowchartRenderStyleSources,
     collapsed_subgraphs: FxHashSet<String>,
     collapsed_replacements: FxHashMap<String, String>,
+    subgraph_color_ordinals: FxHashMap<String, usize>,
 }
 
 impl FlowchartRenderContext {
@@ -210,7 +211,28 @@ impl FlowchartRenderContext {
             styles,
             collapsed_subgraphs,
             collapsed_replacements,
+            subgraph_color_ordinals: FxHashMap::default(),
         }
+    }
+
+    pub(crate) fn set_collapsed_replacements(
+        &mut self,
+        replacements: impl IntoIterator<Item = (String, String)>,
+    ) {
+        self.collapsed_replacements = replacements.into_iter().collect();
+    }
+
+    pub(crate) fn set_subgraph_color_ordinals(
+        &mut self,
+        ordinals: impl IntoIterator<Item = (String, usize)>,
+    ) {
+        self.subgraph_color_ordinals = ordinals.into_iter().collect();
+    }
+
+    /// Returns the container's palette ordinal, independent of model storage order.
+    #[doc(hidden)]
+    pub fn subgraph_color_ordinal(&self, id: &str) -> Option<usize> {
+        self.subgraph_color_ordinals.get(id).copied()
     }
 
     #[doc(hidden)]
@@ -279,6 +301,15 @@ impl FlowchartRenderContext {
                         .saturating_add(replacement.len())
                 },
             ))
+            .saturating_add(
+                self.subgraph_color_ordinals
+                    .keys()
+                    .fold(0usize, |total, id| {
+                        total
+                            .saturating_add(id.len())
+                            .saturating_add(std::mem::size_of::<usize>())
+                    }),
+            )
     }
 }
 

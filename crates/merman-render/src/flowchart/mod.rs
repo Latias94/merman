@@ -65,6 +65,10 @@ impl<'a> FlowchartRenderModelRef<'a> {
         self.render_context.collapsed_replacement(id)
     }
 
+    pub(crate) fn subgraph_color_ordinal(&self, id: &str) -> Option<usize> {
+        self.render_context.subgraph_color_ordinal(id)
+    }
+
     pub(crate) fn requires_math(&self) -> bool {
         self.nodes
             .iter()

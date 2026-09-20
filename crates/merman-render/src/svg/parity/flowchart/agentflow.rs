@@ -35,7 +35,7 @@ pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Op
         return None;
     }
     let colors = palette(ctx.config.as_value());
-    let ordinal = *ctx.subgraph_indices_by_id.get(id)?;
+    let ordinal = ctx.model.subgraph_color_ordinal(id)?;
     (!colors.is_empty()).then(|| container_slot(ordinal, colors.len()))
 }
 

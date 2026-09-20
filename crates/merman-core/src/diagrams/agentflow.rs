@@ -229,6 +229,7 @@ impl AgentflowDiagramRenderModel {
                 }
             })
             .collect();
+        let containment = self.containment();
         let subgraphs = self
             .sub_graphs
             .iter()
@@ -240,7 +241,16 @@ impl AgentflowDiagramRenderModel {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
-                nodes: graph.nodes.clone(),
+                nodes: graph
+                    .nodes
+                    .iter()
+                    .filter(|child| {
+                        !containment
+                            .refused
+                            .contains(&(graph.id.as_str(), child.as_str()))
+                    })
+                    .cloned()
+                    .collect(),
                 metadata: (!graph.metadata.is_empty())
                     .then(|| Value::Object(graph.metadata.clone())),
             })
@@ -265,12 +275,19 @@ impl AgentflowDiagramRenderModel {
             .filter(|graph| graph.metadata.get("view").and_then(Value::as_str) == Some("collapsed"))
             .map(|graph| graph.id.clone())
             .collect();
-        let context = FlowchartRenderContext::new(
+        let mut context = FlowchartRenderContext::new(
             Default::default(),
             Default::default(),
             collapsed,
             &model.subgraphs,
         );
+        context.set_collapsed_replacements(
+            containment
+                .collapsed_replacements
+                .iter()
+                .map(|(id, ancestor)| ((*id).to_string(), (*ancestor).to_string())),
+        );
+        context.set_subgraph_color_ordinals(containment.color_ordinals(&self.sub_graphs));
         model.edges.retain_mut(|edge| {
             let authored_self_loop = edge.from == edge.to;
             if let Some(replacement) = context.collapsed_replacement(&edge.from) {
@@ -283,6 +300,108 @@ impl AgentflowDiagramRenderModel {
             authored_self_loop || edge.from != edge.to
         });
         (model, context)
+    }
+
+    // Mirror agentflowDb.getData: resolve collapse first, then admit parents in reverse
+    // completion order. Keep the authored membership in the semantic model unchanged.
+    fn containment(&self) -> AgentflowContainment<'_> {
+        let by_id: HashMap<_, _> = self
+            .sub_graphs
+            .iter()
+            .map(|graph| (graph.id.as_str(), graph))
+            .collect();
+        let mut result = AgentflowContainment::default();
+        for graph in &self.sub_graphs {
+            if graph.metadata.get("view").and_then(Value::as_str) != Some("collapsed")
+                || result
+                    .collapsed_replacements
+                    .contains_key(graph.id.as_str())
+            {
+                continue;
+            }
+            let mut visited = HashSet::from([graph.id.as_str()]);
+            let mut pending: Vec<_> = graph.nodes.iter().rev().map(String::as_str).collect();
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                result.collapsed_replacements.insert(id, &graph.id);
+                if let Some(child_graph) = by_id.get(id) {
+                    pending.extend(child_graph.nodes.iter().rev().map(String::as_str));
+                }
+            }
+        }
+        for graph in self.sub_graphs.iter().rev() {
+            if result
+                .collapsed_replacements
+                .contains_key(graph.id.as_str())
+            {
+                continue;
+            }
+            for child in &graph.nodes {
+                let mut ancestor = Some(graph.id.as_str());
+                while let Some(id) = ancestor {
+                    if id == child {
+                        break;
+                    }
+                    ancestor = result.parents.get(id).copied();
+                }
+                if ancestor.is_some() {
+                    result.refused.insert((graph.id.as_str(), child.as_str()));
+                    result.diagnostics.push(AgentflowDiagnostic {
+                        id: "CONTAINMENT_VIOLATION".into(), severity: "warning".into(),
+                        message: format!("Container \"{}\" cannot contain \"{}\" because \"{}\" already contains it. The nesting that would close the loop is dropped.", graph.id, child, child),
+                        node_id: child.clone(),
+                    });
+                } else {
+                    result.parents.insert(child, &graph.id);
+                }
+            }
+        }
+        result
+    }
+}
+
+#[derive(Default)]
+struct AgentflowContainment<'a> {
+    collapsed_replacements: HashMap<&'a str, &'a str>,
+    parents: HashMap<&'a str, &'a str>,
+    refused: HashSet<(&'a str, &'a str)>,
+    diagnostics: Vec<AgentflowDiagnostic>,
+}
+
+impl AgentflowContainment<'_> {
+    fn color_ordinals(&self, graphs: &[AgentflowSubGraph]) -> Vec<(String, usize)> {
+        let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+        for graph in graphs {
+            if let Some(parent) = self.parents.get(graph.id.as_str()) {
+                children.entry(parent).or_default().push(&graph.id);
+            }
+        }
+        let mut order = Vec::with_capacity(graphs.len());
+        let mut seen = HashSet::new();
+        let mut pending: Vec<&str> = graphs
+            .iter()
+            .rev()
+            .filter(|graph| !self.parents.contains_key(graph.id.as_str()))
+            .map(|graph| graph.id.as_str())
+            .collect();
+        while let Some(id) = pending.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            order.push((id.to_string(), order.len()));
+            if let Some(children) = children.get(id) {
+                pending.extend(children.iter().rev().copied());
+            }
+        }
+        // getData emits containers in reverse completion order; unreachable ones follow.
+        for graph in graphs.iter().rev() {
+            if seen.insert(&graph.id) {
+                order.push((graph.id.clone(), order.len()));
+            }
+        }
+        order
     }
 }
 
@@ -325,9 +444,13 @@ struct Construction {
     editor_facts: EditorSemanticFacts,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct Context {
     id: Option<String>,
+    title: Option<String>,
+    metadata: Map<String, Value>,
+    nodes: Vec<String>,
+    direction: Option<String>,
     global: bool,
 }
 
@@ -454,6 +577,8 @@ struct Parser<'a> {
     connector_index: HashMap<String, usize>,
     contexts: Vec<Context>,
     global_nodes: HashSet<String>,
+    owned_nodes: HashSet<String>,
+    subgraph_count: usize,
     in_frontmatter: bool,
     acc_title: Option<String>,
     acc_descr: Option<String>,
@@ -478,6 +603,8 @@ impl<'a> Parser<'a> {
             connector_index: HashMap::new(),
             contexts: Vec::new(),
             global_nodes: HashSet::new(),
+            owned_nodes: HashSet::new(),
+            subgraph_count: 0,
             in_frontmatter: false,
             acc_title: None,
             acc_descr: None,
@@ -552,13 +679,8 @@ impl<'a> Parser<'a> {
                         )));
                     }
                 };
-                if let Some(index) = self.contexts.iter().rev().find_map(|context| {
-                    context
-                        .id
-                        .as_ref()
-                        .and_then(|id| self.sub_graph_index.get(id).copied())
-                }) {
-                    self.sub_graphs[index].direction = Some(direction);
+                if let Some(context) = self.contexts.last_mut() {
+                    context.direction = Some(direction);
                 } else {
                     self.direction = direction;
                 }
@@ -572,41 +694,67 @@ impl<'a> Parser<'a> {
                 self.acc_descr = Some(rest.trim().to_string());
                 continue;
             }
+            if let Some(rest) = trimmed.strip_prefix("accDescr")
+                && let Some(description) = rest.trim_start().strip_prefix('{')
+            {
+                let Some(description) = description.strip_suffix('}') else {
+                    return Ok(Err(self.failure(
+                        "unterminated accessibility description",
+                        span_of(line_start, line, trimmed),
+                    )));
+                };
+                self.acc_descr = Some(description.trim().to_string());
+                continue;
+            }
             if trimmed == "end" {
-                if self.contexts.pop().is_none() {
+                let Some(context) = self.contexts.pop() else {
                     return Ok(Err(self.failure(
                         "unexpected agentflow end",
-                        span_of(line_start, &line, trimmed),
+                        span_of(line_start, line, trimmed),
                     )));
-                }
+                };
+                self.close_context(context);
                 continue;
             }
             if trimmed == "global" {
                 self.contexts.push(Context {
-                    id: None,
                     global: true,
+                    ..Default::default()
                 });
                 continue;
             }
             if let Some(rest) = trimmed.strip_prefix("flow")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, label, metadata) = if rest.trim().is_empty() {
-                    (format!("flow-{}", self.sub_graphs.len()), None, Map::new())
+                let (id, title, metadata) = if rest.trim().is_empty() {
+                    (None, None, Map::new())
                 } else {
-                    match parse_declaration(rest.trim(), line_start, &line, self.control) {
-                        Ok(value) => value,
+                    match parse_declaration(rest.trim(), line_start, line, self.control) {
+                        Ok((id, title, mut metadata)) => {
+                            // Bracketed container titles are not vertex shape declarations.
+                            if title.is_some()
+                                && metadata.get("shape").and_then(Value::as_str) == Some("square")
+                            {
+                                metadata.remove("shape");
+                            }
+                            self.push_symbol(
+                                &id,
+                                EditorSemanticKind::Namespace,
+                                line_start,
+                                line,
+                                false,
+                            );
+                            (Some(id), title, metadata)
+                        }
                         Err(error) => return Ok(Err(error)),
                     }
                 };
-                let index = self.upsert_subgraph(id.clone(), label, metadata);
-                self.assign_subgraph_parent(&id);
                 self.contexts.push(Context {
-                    id: Some(id.clone()),
-                    global: false,
+                    id,
+                    title,
+                    metadata,
+                    ..Default::default()
                 });
-                self.push_symbol(&id, EditorSemanticKind::Namespace, line_start, &line, false);
-                self.sub_graph_index.insert(id, index);
                 continue;
             }
             if let Some(rest) = trimmed.strip_prefix("connector")
@@ -626,7 +774,7 @@ impl<'a> Parser<'a> {
                     false,
                 );
                 self.nodes[node_index].vertex_kind = AgentflowVertexKind::Connector;
-                self.assign_parent(&id, node_index);
+                self.record_members(std::iter::once(id.clone()));
                 let index = self.upsert_connector(id.clone(), label, metadata);
                 self.push_symbol(&id, EditorSemanticKind::Object, line_start, &line, false);
                 self.connector_index.insert(id, index);
@@ -647,7 +795,14 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(0, self.source.len()),
             )));
         }
-        Ok(Ok(AgentflowDiagramRenderModel {
+        for graph in &self.sub_graphs {
+            for child in &graph.nodes {
+                if let Some(&index) = self.node_index.get(child) {
+                    self.nodes[index].parent_id = Some(graph.id.clone());
+                }
+            }
+        }
+        let mut model = AgentflowDiagramRenderModel {
             direction: self.direction.clone(),
             diagnostics: self
                 .nodes
@@ -670,7 +825,9 @@ impl<'a> Parser<'a> {
             title: self.meta.title.clone(),
             acc_title: self.acc_title.clone(),
             acc_descr: self.acc_descr.clone(),
-        }))
+        };
+        model.diagnostics.extend(model.containment().diagnostics);
+        Ok(Ok(model))
     }
 
     fn parse_node_statement(
@@ -680,9 +837,14 @@ impl<'a> Parser<'a> {
         line: &str,
     ) -> std::result::Result<(), ParseFailure> {
         let start = line_start + line.find(statement).unwrap_or(0);
+        let mut ids = Vec::new();
         for (offset, node) in split_top_level(statement, b"&") {
-            self.parse_node(node, start + offset, node)?;
+            if ids.len() % 128 == 0 {
+                self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
+            }
+            ids.push(self.parse_node(node, start + offset, node, false)?);
         }
+        self.record_members(ids);
         if statement.trim_end().ends_with('&') {
             return Err(self.failure(
                 "expected node after &",
@@ -697,7 +859,8 @@ impl<'a> Parser<'a> {
         statement: &str,
         line_start: usize,
         line: &str,
-    ) -> std::result::Result<(), ParseFailure> {
+        reference: bool,
+    ) -> std::result::Result<String, ParseFailure> {
         let (id, label, metadata) = parse_declaration(statement, line_start, line, self.control)?;
         if id.is_empty() {
             return Err(self.failure(
@@ -705,34 +868,27 @@ impl<'a> Parser<'a> {
                 span_of(line_start, line, statement),
             ));
         }
-        if label.is_none()
-            && let Some(sub_graph_index) = self.sub_graph_index.get(&id).copied()
+        if !metadata.is_empty()
+            && let Some(&index) = self.sub_graph_index.get(&id)
         {
-            self.sub_graphs[sub_graph_index].metadata.extend(metadata);
+            self.sub_graphs[index].metadata.extend(metadata);
             self.push_symbol(&id, EditorSemanticKind::Namespace, line_start, line, true);
-            return Ok(());
-        }
-        if label.is_none()
-            && let Some(connector_index) = self.connector_index.get(&id).copied()
+        } else if !metadata.is_empty()
+            && let Some(&index) = self.connector_index.get(&id)
         {
-            self.connectors[connector_index].metadata.extend(metadata);
+            self.connectors[index].metadata.extend(metadata);
             self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
-            return Ok(());
-        }
-        if label.is_none()
-            && let Some(edge_id) = id.strip_suffix('@').or(Some(id.as_str()))
-            && let Some(edge) = self
-                .edges
-                .iter_mut()
-                .find(|edge| edge.id.as_deref() == Some(edge_id))
+        } else if let Some(edge) = self
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id.as_deref() == Some(&id))
         {
             edge.metadata.extend(metadata);
-            self.push_symbol(edge_id, EditorSemanticKind::Object, line_start, line, true);
-            return Ok(());
+            self.push_symbol(&id, EditorSemanticKind::Object, line_start, line, true);
+        } else {
+            self.upsert_node(id.clone(), label, metadata, line_start, line, reference);
         }
-        let index = self.upsert_node(id.clone(), label, metadata, line_start, line, false);
-        self.assign_parent(&id, index);
-        Ok(())
+        Ok(id)
     }
 
     fn parse_edge_statement(
@@ -747,6 +903,7 @@ impl<'a> Parser<'a> {
         let statement_start = line_start + line.find(statement).unwrap_or(0);
         let (source, mut edge_id) = split_edge_id(&statement[..operator.start]);
         let mut sources = self.parse_endpoint_group(source, statement_start)?;
+        let mut members = vec![sources.clone()];
         loop {
             let next = find_operator(statement, operator.end);
             let target_end = next
@@ -759,6 +916,7 @@ impl<'a> Parser<'a> {
                 (raw_targets, None)
             };
             let targets = self.parse_endpoint_group(target, statement_start + operator.end)?;
+            members.push(targets.clone());
             // Mermaid emits one link for every source/target pair, then uses the target group
             // as the source of the next link in a chain.
             for source in &sources {
@@ -780,6 +938,8 @@ impl<'a> Parser<'a> {
                 }
             }
             let Some(next) = next else {
+                // Grammar reductions prepend each target group to the statement's members.
+                self.record_members(members.into_iter().rev().flatten());
                 return Ok(true);
             };
             sources = targets;
@@ -799,10 +959,7 @@ impl<'a> Parser<'a> {
                 self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
             }
             let start = source_start + offset;
-            let (id, label, metadata) = parse_declaration(endpoint, start, endpoint, self.control)?;
-            let index = self.upsert_node(id.clone(), label, metadata, start, endpoint, true);
-            self.assign_parent(&id, index);
-            ids.push(id);
+            ids.push(self.parse_node(endpoint, start, endpoint, true)?);
         }
         if ids.is_empty() || group.trim_end().ends_with('&') {
             return Err(self.failure(
@@ -865,15 +1022,6 @@ impl<'a> Parser<'a> {
         line: &str,
         reference: bool,
     ) -> usize {
-        if self.contexts.last().is_some_and(|context| context.global) {
-            self.global_nodes.insert(id.clone());
-            for graph in &mut self.sub_graphs {
-                graph.nodes.retain(|child| child != &id);
-            }
-            if let Some(index) = self.node_index.get(&id).copied() {
-                self.nodes[index].parent_id = None;
-            }
-        }
         let label = metadata
             .get("label")
             .and_then(Value::as_str)
@@ -912,76 +1060,73 @@ impl<'a> Parser<'a> {
         index
     }
 
-    fn assign_parent(&mut self, id: &str, index: usize) {
-        if self.global_nodes.contains(id) {
-            return;
-        }
-        let Some(context) = self.contexts.iter().rev().find(|ctx| !ctx.global) else {
-            return;
-        };
-        if context.id.as_deref() == Some(id) {
-            return;
-        }
-        let belongs_here = self.nodes[index].parent_id.is_none();
-        if belongs_here {
-            self.nodes[index].parent_id = context.id.clone();
-        }
-        if belongs_here
-            && let Some(parent_id) = &context.id
-            && let Some(sub_index) = self.sub_graph_index.get(parent_id).copied()
-            && !self.sub_graphs[sub_index]
-                .nodes
-                .iter()
-                .any(|node| node == id)
-        {
-            self.sub_graphs[sub_index].nodes.push(id.to_string());
+    fn record_members(&mut self, ids: impl IntoIterator<Item = String>) {
+        if let Some(context) = self.contexts.last_mut() {
+            context.nodes.extend(ids);
         }
     }
 
-    fn assign_subgraph_parent(&mut self, id: &str) {
-        let Some(context) = self.contexts.iter().rev().find(|ctx| !ctx.global) else {
-            return;
-        };
-        let Some(parent_id) = &context.id else {
-            return;
-        };
-        let Some(parent_index) = self.sub_graph_index.get(parent_id).copied() else {
-            return;
-        };
-        if !self.sub_graphs[parent_index]
-            .nodes
-            .iter()
-            .any(|node| node == id)
-        {
-            self.sub_graphs[parent_index].nodes.push(id.to_string());
-        }
-    }
-
-    fn upsert_subgraph(
-        &mut self,
-        id: String,
-        title: Option<String>,
-        metadata: Map<String, Value>,
-    ) -> usize {
-        if let Some(index) = self.sub_graph_index.get(&id).copied() {
-            let graph = &mut self.sub_graphs[index];
-            if title.is_some() {
-                graph.title = title;
+    fn close_context(&mut self, context: Context) {
+        if context.global {
+            self.global_nodes.extend(context.nodes);
+            for graph in &mut self.sub_graphs {
+                graph
+                    .nodes
+                    .retain(|child| !self.global_nodes.contains(child));
             }
-            graph.metadata.extend(metadata);
-            return index;
+            self.owned_nodes
+                .retain(|id| !self.global_nodes.contains(id));
+            return;
         }
-        let index = self.sub_graphs.len();
-        self.sub_graphs.push(AgentflowSubGraph {
-            id: id.clone(),
-            title,
-            nodes: Vec::new(),
-            sub_graph_type: "flow".to_string(),
-            direction: None,
-            metadata,
+        let id = context
+            .id
+            .unwrap_or_else(|| format!("subGraph{}", self.subgraph_count));
+        self.subgraph_count += 1;
+        let mut seen = HashSet::new();
+        let nodes: Vec<_> = context
+            .nodes
+            .into_iter()
+            .filter(|child| {
+                child != &id
+                    && !self.global_nodes.contains(child)
+                    && !self.owned_nodes.contains(child)
+                    && seen.insert(child.clone())
+            })
+            .collect();
+        self.owned_nodes.extend(nodes.iter().cloned());
+        let direction = context.direction.or_else(|| {
+            self.meta
+                .effective_config
+                .as_value()
+                .pointer("/flowchart/inheritDir")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                .then(|| self.direction.clone())
         });
-        self.sub_graph_index.insert(id, index);
-        index
+        let title = context.title.unwrap_or_default();
+        if let Some(&index) = self.sub_graph_index.get(&id) {
+            let graph = &mut self.sub_graphs[index];
+            graph.nodes.extend(nodes);
+            if !title.is_empty() {
+                graph.title = Some(title);
+            }
+            if direction.is_some() {
+                graph.direction = direction;
+            }
+            graph.metadata.extend(context.metadata);
+        } else {
+            self.sub_graph_index
+                .insert(id.clone(), self.sub_graphs.len());
+            self.sub_graphs.push(AgentflowSubGraph {
+                id: id.clone(),
+                title: Some(title),
+                nodes,
+                sub_graph_type: "flow".into(),
+                direction,
+                metadata: context.metadata,
+            });
+        }
+        self.record_members(std::iter::once(id));
     }
 
     fn upsert_connector(
@@ -1190,6 +1335,16 @@ fn split_top_level<'a>(
             return None;
         }
         let start = cursor;
+        if separators == b";\n"
+            && let Some(rest) = source[start..].trim_start().strip_prefix("accDescr")
+            && let Some(body) = rest.trim_start().strip_prefix('{')
+        {
+            // The accessibility lexer treats everything up to the first } as plain text.
+            cursor = body
+                .find('}')
+                .map_or(source.len(), |end| source.len() - body.len() + end + 1);
+            return Some((start, &source[start..cursor]));
+        }
         let mut depth = 0usize;
         let mut quote = None;
         let mut escaped = false;
@@ -1369,6 +1524,12 @@ fn parse_declaration(
             message: "unterminated agentflow metadata".to_string(),
             span: span_of(line_start, line, statement),
         })?;
+        if !statement[end..].trim().is_empty() {
+            return Err(ParseFailure::Syntax {
+                message: "unexpected content after agentflow metadata".into(),
+                span: span_of(line_start, line, &statement[end..]),
+            });
+        }
         (
             &statement[..start],
             parse_metadata(&statement[start + 2..end - 1], control)
@@ -1725,8 +1886,8 @@ mod tests {
                 .unwrap();
         assert_eq!(model.vertices[0].id, "shared");
         assert_eq!(model.vertices[0].parent_id, None);
-        assert_eq!(model.sub_graphs[0].nodes, vec!["inner"]);
-        assert_eq!(model.sub_graphs[1].nodes, vec!["task"]);
+        assert_eq!(model.sub_graphs[0].nodes, vec!["task"]);
+        assert_eq!(model.sub_graphs[1].nodes, vec!["inner"]);
         assert_eq!(model.edges[0].label.as_deref(), Some("done"));
     }
 
@@ -1977,6 +2138,135 @@ a --> b
         );
         assert_eq!(flow.nodes[0].classes, ["af-kind-task"]);
     }
+    #[test]
+    fn containers_complete_inside_out_and_keep_preorder_colors() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta LR\nflow outer[Outer]\n a\n flow\n  a --> b\n end\n flow inner\n  c\n end\nend\nflow\n d\nend\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(
+            model
+                .sub_graphs
+                .iter()
+                .map(|graph| graph.id.as_str())
+                .collect::<Vec<_>>(),
+            ["subGraph0", "inner", "outer", "subGraph3"]
+        );
+        assert_eq!(model.sub_graphs[0].nodes, ["b", "a"]);
+        assert_eq!(model.sub_graphs[2].nodes, ["subGraph0", "inner"]);
+        assert_eq!(model.sub_graphs[0].title.as_deref(), Some(""));
+        assert_eq!(model.vertices[0].parent_id.as_deref(), Some("subGraph0"));
+        let (_, context) = model.to_flowchart_model();
+        for (ordinal, id) in ["outer", "subGraph0", "inner", "subGraph3"]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(context.subgraph_color_ordinal(id), Some(ordinal));
+        }
+    }
+
+    #[test]
+    fn duplicate_containers_merge_at_completion_and_increment_anonymous_ids() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow same[First]\n a\nend\nflow same\n direction LR\n b\nend\nflow\n c\nend\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(model.sub_graphs.len(), 2);
+        assert_eq!(model.sub_graphs[0].nodes, ["a", "b"]);
+        assert_eq!(model.sub_graphs[0].title.as_deref(), Some("First"));
+        assert_eq!(model.sub_graphs[0].direction.as_deref(), Some("LR"));
+        assert_eq!(model.sub_graphs[1].id, "subGraph2");
+    }
+
+    #[test]
+    fn global_blocks_exempt_direct_members_without_exempting_nested_children() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow outer\n global\n  flow inner\n   a\n  end\n  b\n end\n a --> b\nend\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(model.sub_graphs[0].id, "inner");
+        assert_eq!(model.sub_graphs[0].nodes, ["a"]);
+        assert!(model.sub_graphs[1].nodes.is_empty());
+        assert_eq!(model.vertices[0].parent_id.as_deref(), Some("inner"));
+        assert_eq!(model.vertices[1].parent_id, None);
+    }
+
+    #[test]
+    fn edge_chains_prepend_target_groups_to_container_membership() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow f\n a & b --> c & d --> e\nend\n",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.sub_graphs[0].nodes, ["e", "c", "d", "a", "b"]);
+    }
+
+    #[test]
+    fn endpoint_metadata_uses_the_same_dispatch_as_standalone_declarations() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow f\n a\nend\nconnector api[API]\nf@{ view: collapsed } --> api@{ instruction: call }\n",
+            &meta(), &OperationControl::new(),
+        ).unwrap().unwrap();
+        assert_eq!(model.sub_graphs[0].metadata["view"], "collapsed");
+        assert_eq!(model.connectors[0].metadata["instruction"], "call");
+        let (_, context) = model.to_flowchart_model();
+        assert!(context.is_subgraph_collapsed("f"));
+        for source in [
+            "agentflow-beta\na@{ instruction: first } b@{ instruction: second }\n",
+            "agentflow-beta\na@{ instruction: run } garbage\n",
+        ] {
+            assert!(parse_agentflow(source, &meta()).is_err());
+        }
+    }
+
+    #[test]
+    fn multiline_accessibility_description_does_not_create_a_vertex() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\naccDescr {\n This diagram describes a workflow: [draft; \"pending\n}\na --> b\n",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            model.acc_descr.as_deref(),
+            Some("This diagram describes a workflow: [draft; \"pending")
+        );
+        assert_eq!(model.vertices.len(), 2);
+    }
+
+    #[test]
+    fn containment_cycles_keep_semantics_and_drop_only_the_render_cycle() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\nflow A\n a --> B\nend\nflow B\n b --> A\nend\n",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.sub_graphs[0].nodes, ["B", "a"]);
+        assert_eq!(model.sub_graphs[1].nodes, ["A", "b"]);
+        assert_eq!(model.diagnostics.len(), 1);
+        assert_eq!(model.diagnostics[0].id, "CONTAINMENT_VIOLATION");
+        assert_eq!(model.diagnostics[0].node_id, "B");
+        let (flow, context) = model.to_flowchart_model();
+        assert_eq!(flow.subgraphs[0].nodes, ["a"]);
+        assert_eq!(flow.subgraphs[1].nodes, ["A", "b"]);
+        assert_eq!(context.subgraph_color_ordinal("B"), Some(0));
+        assert_eq!(context.subgraph_color_ordinal("A"), Some(1));
+        let mut collapsed = model;
+        for graph in &mut collapsed.sub_graphs {
+            graph.metadata.insert("view".into(), json!("collapsed"));
+        }
+        let (_, context) = collapsed.to_flowchart_model();
+        assert_eq!(context.collapsed_replacement("A"), None);
+        assert_eq!(context.collapsed_replacement("B"), Some("A"));
+        assert_eq!(context.collapsed_replacement("a"), Some("A"));
+        assert_eq!(context.collapsed_replacement("b"), Some("A"));
+    }
+
     #[test]
     fn invalid_edges_and_unterminated_labels_do_not_silently_drop_source() {
         for source in ["agentflow-beta\na ==> b\n", "agentflow-beta\na[missing\n"] {
