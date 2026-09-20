@@ -1,0 +1,198 @@
+{
+  "diagramType": "usecase",
+  "layout": {
+    "UsecaseDiagram": {
+      "nodes": [
+        {
+          "id": "User",
+          "x": 78.0,
+          "y": 80.0,
+          "width": 76.0,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Login",
+          "x": 303.0,
+          "y": 267.0,
+          "width": 160.0,
+          "height": 58.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Auth",
+          "x": 429.68,
+          "y": 232.0,
+          "width": 463.36,
+          "height": 384.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Verify",
+          "x": 556.36,
+          "y": 267.0,
+          "width": 160.0,
+          "height": 38.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-0",
+          "x": 78.0,
+          "y": 404.0,
+          "width": 140.0,
+          "height": 44.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Data",
+          "x": 78.0,
+          "y": 267.0,
+          "width": 138.0,
+          "height": 130.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "link",
+          "from": "User",
+          "to": "Login",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 116.0,
+              "y": 80.0
+            },
+            {
+              "x": 173.0,
+              "y": 80.0
+            },
+            {
+              "x": 198.0,
+              "y": 80.0
+            },
+            {
+              "x": 286.717,
+              "y": 238.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-0",
+          "from": "Login",
+          "to": "Verify",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 383.0,
+              "y": 267.0
+            },
+            {
+              "x": 429.68,
+              "y": 267.0
+            },
+            {
+              "x": 476.36,
+              "y": 267.0
+            }
+          ],
+          "label": {
+            "x": 429.68,
+            "y": 267.0,
+            "width": 43.36,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": "arrow_point",
+          "stroke_dasharray": "3,3"
+        },
+        {
+          "id": "edge-1",
+          "from": "Data",
+          "to": "Login",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 147.0,
+              "y": 267.0
+            },
+            {
+              "x": 173.0,
+              "y": 267.0
+            },
+            {
+              "x": 198.0,
+              "y": 267.0
+            },
+            {
+              "x": 223.0,
+              "y": 267.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "note-0-edge",
+          "from": "note-0",
+          "to": "Login",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 148.0,
+              "y": 404.0
+            },
+            {
+              "x": 173.0,
+              "y": 404.0
+            },
+            {
+              "x": 198.0,
+              "y": 404.0
+            },
+            {
+              "x": 280.774,
+              "y": 296.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": "3,3"
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 661.36,
+        "max_y": 426.0
+      }
+    }
+  }
+}

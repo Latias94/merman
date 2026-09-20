@@ -1384,7 +1384,10 @@ mod tests {
                 && capability.has_detector
                 && capability.has_header
         }));
-        for (diagram_type, metadata_id) in [("agentflow", Some("agentflow")), ("usecase", None)] {
+        for (diagram_type, metadata_id) in [
+            ("agentflow", Some("agentflow")),
+            ("usecase", Some("usecase")),
+        ] {
             assert!(capabilities.iter().any(|capability| {
                 capability.diagram_type == diagram_type
                     && capability.logical_family_kind == diagram_type

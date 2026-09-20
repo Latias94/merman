@@ -1611,8 +1611,7 @@ const USECASE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(42, crate::diagrams::usecase::parse_usecase_json_and_editor_facts)),
     typed: Some(ordered(42, render_usecase)),
     render_kind: Some("usecase"),
-    // Renderer admission follows the native parser; do not advertise SVG support yet.
-    metadata: None,
+    metadata: Some(metadata("usecase", Some(36))),
     headers: USECASE_HEADERS,
     config_alias_order: None,
 }];

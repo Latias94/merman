@@ -1542,7 +1542,10 @@ mod tests {
         assert!(flowchart_v2.has_detector);
         assert!(flowchart_v2.has_header);
 
-        for (diagram_type, metadata_id) in [("agentflow", Some("agentflow")), ("usecase", None)] {
+        for (diagram_type, metadata_id) in [
+            ("agentflow", Some("agentflow")),
+            ("usecase", Some("usecase")),
+        ] {
             let capability = capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == diagram_type)

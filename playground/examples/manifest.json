@@ -38,6 +38,41 @@
       }
     },
     {
+      "diagramType": "usecase",
+      "id": "usecase-basic",
+      "title": "Usecase Basic",
+      "category": "Flow",
+      "order": 3,
+      "aliases": [
+        "usecase-beta",
+        "actors",
+        "system boundary"
+      ],
+      "fixture": "fixtures/usecase/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical Usecase syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "usecase",
+      "id": "usecase-shapes-and-notes",
+      "title": "Usecase Shapes and Notes",
+      "category": "Flow",
+      "order": 4,
+      "aliases": [
+        "business use case",
+        "notes",
+        "JSON table"
+      ],
+      "fixture": "fixtures/usecase/shapes-and-notes.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates Usecase actors, business shapes, notes, and JSON tables."
+      }
+    },
+    {
       "diagramType": "architecture",
       "id": "architecture-services",
       "title": "Architecture Services",

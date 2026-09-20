@@ -1136,6 +1136,7 @@ const fixtureNames = {
 
 const repositoryFixturePaths = {
   agentflow: ["fixtures", "agentflow", "basic.mmd"],
+  usecase: ["fixtures", "usecase", "basic.mmd"],
   cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
   eventmodeling: ["fixtures", "eventmodeling", "upstream_docs_eventmodeling_minimum.mmd"],
   ishikawa: ["fixtures", "ishikawa", "upstream_docs_ishikawa_basic.mmd"],
@@ -1644,6 +1645,7 @@ async function runPureDistSmoke() {
     new Set(catalog.SUPPORTED_DIAGRAMS).size
   );
   assert.equal(catalog.isDiagramType("agentflow"), true);
+  assert.equal(catalog.isDiagramType("usecase"), true);
   assert.equal(catalog.isDiagramType("swimlane"), true);
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);

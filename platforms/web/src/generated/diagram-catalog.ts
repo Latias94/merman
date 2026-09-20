@@ -38,4 +38,5 @@ export const SUPPORTED_DIAGRAMS = [
   "xychart",
   "zenuml",
   "agentflow",
+  "usecase",
 ] as const;

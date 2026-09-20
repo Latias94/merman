@@ -21,6 +21,7 @@ test("non-UI corpus page returns exactly one cold and warm fixture envelope", as
   expect(ready.catalog.fixtures.map(({ id }) => id)).toContain(
     "agentflow-basic"
   );
+  expect(ready.catalog.fixtures.map(({ id }) => id)).toContain("usecase-basic");
   const discoveryRuntimeResources = await page.evaluate(() =>
     performance
       .getEntriesByType("resource")

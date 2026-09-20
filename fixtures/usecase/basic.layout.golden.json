@@ -1,0 +1,74 @@
+{
+  "diagramType": "usecase",
+  "layout": {
+    "UsecaseDiagram": {
+      "nodes": [
+        {
+          "id": "Customer",
+          "x": 46.0,
+          "y": 72.0,
+          "width": 76.0,
+          "height": 121.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Checkout",
+          "x": 239.0,
+          "y": 72.0,
+          "width": 160.0,
+          "height": 58.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Order_system",
+          "x": 239.0,
+          "y": 72.0,
+          "width": 210.0,
+          "height": 128.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-0",
+          "from": "Customer",
+          "to": "Checkout",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 84.0,
+              "y": 72.0
+            },
+            {
+              "x": 109.0,
+              "y": 72.0
+            },
+            {
+              "x": 134.0,
+              "y": 72.0
+            },
+            {
+              "x": 159.0,
+              "y": 72.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 344.0,
+        "max_y": 136.0
+      }
+    }
+  }
+}
