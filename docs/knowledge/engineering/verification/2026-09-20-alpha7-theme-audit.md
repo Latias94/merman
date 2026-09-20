@@ -331,7 +331,7 @@ retain their separate unverified boundaries.
 This matrix is intentionally conservative: it records real local execution without turning package
 shape or source-level tests into release publication evidence.
 
-The [C ABI consumer increment](2026-09-20-c-abi-theme-journeys.md) uses the exact
+The [current C ABI consumer record](2026-09-20-c-abi-theme-journeys-single-pass.md) uses the exact
 `c-abi-native` profile at `25f811599`. A separately linked C executable passes 120 fresh-process
 cases, including 13 expected errors, with repeated-call stability. The caller-supplied Latin/CJK
 font cases produce PNG/PDF with embedded-font Portable receipts; removing the CJK slice yields
