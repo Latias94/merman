@@ -31,13 +31,13 @@ CLI matches all 18 scoped SVG/PNG observations, and a detached clean checkout re
 the same qualification object byte-for-byte. The record binds source `a4a04ef1b`, the lockfile,
 qualification executable, CLI and scene record digests.
 
-The [current Python/Node record](2026-09-21-installed-theme-consumers.md) rebuilds the wheel,
-Darwin ARM64 package and Node WASM package from `f3a783c29`. Fresh installed consumers exchange
-complete versioned Cyberpunk files and render identical Flowchart, Sequence and XY SVG bytes
-in 27 comparisons. Node contracts pass 111/111 under Node 24.21.0/npm 12.0.2, the complete Python
-smoke passes, and focused Python owner tests pass 9/9. The
-[earlier record](2026-09-19-installed-theme-recipe-consumers.md) preserves the initial standalone
-Node lock and legal-projection repairs; its package identities are historical.
+The [current Python/Node record](2026-09-20-installed-theme-consumers-single-pass.md) rebuilds
+the wheel, Darwin ARM64 package and Node WASM package from integrated source `bdb209e11`. Fresh
+installed consumers pass the complete Python smoke and both expanded Node smokes. Each Node target
+passes 30 SVG renders, 23 JSON operations, 44 support queries, six authoring diagnostics, two
+resource checks and eight content-capability rejections; three fresh processes exchange complete
+recipes with 12 SVG/metadata comparisons per target. The preceding `f3a783c29` record remains
+historical.
 
 The [current Web/Typst record](2026-09-21-web-typst-consumers.md) also binds `f3a783c29`.
 All five Web packages pass the owner matrix and installed Chromium loading. Web full/render
@@ -179,12 +179,12 @@ must not be converted into a support percentage or a rendered-terminal claim.
 
 # Artifact and legal observations
 
-The Python/Node artifacts at `f3a783c29` are macOS ARM64 historical observations: wheel
-9,047,190 bytes, Node root package 113,984 bytes, native package 10,552,336 bytes and Node WASM
-package 7,029,534 bytes. Their embedded payloads and SHA-256 values remain recorded in the
-[installed record](2026-09-21-installed-theme-consumers.md), but the accepted `bdb209e11` source
-change invalidates them as final-candidate identities. Renewal from the integrated source is
-required; no package budget is changed by this classification.
+The preceding `f3a783c29` Python/Node artifacts remain historical: wheel 9,047,190 bytes,
+Node root package 113,984 bytes, native package 10,552,336 bytes and Node WASM package 7,029,534
+bytes. The integrated `bdb209e11` refresh records current local identities of 9,052,430 bytes
+(Python), 113,984 bytes (Node root), 10,550,040 bytes (Darwin native) and 7,025,160 bytes
+(Node WASM), all with source digest `sha256:f14658ed8d9a90f6acb6a843ff3757ddba9f11d268557d4a09a86c80c18039f2`.
+These are host-local snapshots, not matched alpha.6 deltas or a package budget change.
 
 The 13 Rust license reports pass generator `--check`; release legal projections pass for 382
 files; third-party and package legal checks pass for 24 governed packages; representative
@@ -321,8 +321,8 @@ transport artifacts retain their separate unverified or historical-source bounda
 
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
-| Python | Fresh installed wheel at `f3a783c29` | Complete UniFFI smoke, shared authoring/support/catalog vectors and exact recipe SVG exchange with Node/Web | Local macOS ARM64 wheel; registry installation and other hosts remain unverified |
-| Node Darwin ARM64, Node WASM | `f3a783c29` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
+| Python | Fresh installed wheel at `bdb209e11` | Complete UniFFI smoke, shared authoring/support/catalog vectors and exact recipe SVG exchange with Node/Web | Local macOS ARM64 wheel; registry installation and other hosts remain unverified |
+| Node Darwin ARM64, Node WASM | `bdb209e11` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | `f3a783c29` package group and installed Chromium record | Five capability projections, owner matrix/DOM safety and exact full/render recipe exchange with Python/Node | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
 | Typst WASM | `f3a783c29`, Binaryen 131 and Typst 0.15.1 package smoke | 22 positive fixtures, nine expected failures and shared theme vectors; four size metrics pass | CI Typst 0.15.0 remains unexecuted locally; constrained resource rejection does not promote qualification |
 | C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 host reference; packaged source-crate consumption, broader journeys and other hosts remain unverified |
