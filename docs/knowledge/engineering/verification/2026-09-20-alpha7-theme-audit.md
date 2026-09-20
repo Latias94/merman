@@ -238,6 +238,25 @@ library and Swift link input hashes match, and generated bindings remain unchang
 the local Apple export/scoped-edit gap, while installed archives, the remaining six-journey cases,
 Swift 5.9, Intel execution and iOS remain open.
 
+## Candidate consumer matrix
+
+The following matrix is the candidate delivery boundary. A passing local consumer proves the
+listed contract only; it does not inherit a different host, installed archive, device or export
+capability.
+
+| Transport/profile | Current evidence | Scope proved | Boundary retained |
+| --- | --- | --- | --- |
+| Python, Node Darwin ARM64, Node WASM | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source artifacts; no current registry installation or mobile runtime |
+| Web browser packages | Current Web owner smoke and Chromium package record | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
+| Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
+| C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
+| Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
+| Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
+| Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
+
+This matrix is intentionally conservative: it records real local execution without turning package
+shape or source-level tests into release publication evidence.
+
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
 plan passed the repository's release artifact-bundle verifier for the `macos-15` native
