@@ -2,16 +2,16 @@
 
 use super::*;
 
-pub(super) fn flowchart_compute_edge_path_geom(
+pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Option<FlowchartEdgePathGeom> {
+) -> Option<ClippedEdgeRoute> {
     let FlowchartEdgePathGeomRequest {
         ctx,
         edge,
         origin_x,
         origin_y,
-        trace_enabled,
+        trace_enabled: _,
     } = request;
 
     let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
@@ -28,17 +28,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
         });
     }
     let local_points = scratch.local_points.as_slice();
-
-    use super::{
-        FlowchartEdgeTraceInput, align_elk_endpoint_adapters_to_route,
-        apply_flowchart_elk_endpoint_cutter, boundary_for_cluster, boundary_for_node,
-        collapse_short_terminal_marker_stub, curve_path_d_and_bounds, cut_path_at_intersect_into,
-        dedup_consecutive_points_into, force_intersect_for_layout_shape,
-        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
-        line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_remove_redundant_cluster_run_point, record_flowchart_edge_trace,
-        rounded_line_with_marker_offsets_for_edge_type,
-    };
 
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
@@ -146,6 +135,40 @@ pub(super) fn flowchart_compute_edge_path_geom(
         }
     }
 
+    Some(ClippedEdgeRoute {
+        base_points: std::mem::take(&mut scratch.tmp_points_a),
+        points: std::mem::take(&mut scratch.tmp_points_b),
+        origin_x,
+        origin_y,
+        elk_endpoint_adapters,
+    })
+}
+
+pub(in crate::svg::parity::flowchart) fn finish_edge_route(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    route: ClippedEdgeRoute,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Option<FlowchartEdgePathGeom> {
+    let FlowchartEdgePathGeomRequest {
+        ctx,
+        edge,
+        origin_x,
+        origin_y,
+        trace_enabled,
+    } = request;
+    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let is_elk_layout = ctx.uses_elk_adapter_dom;
+    let ClippedEdgeRoute {
+        base_points,
+        points,
+        elk_endpoint_adapters,
+        ..
+    } = route;
+    scratch.tmp_points_a = base_points;
+    scratch.tmp_points_b = points;
+    let base_points = &scratch.tmp_points_a;
+    let points_after_intersect = &scratch.tmp_points_b;
+
     scratch.tmp_points_c.clear();
     if let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
@@ -226,7 +249,10 @@ pub(super) fn flowchart_compute_edge_path_geom(
     if points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
-        points_for_render.extend(scratch.local_points.iter().cloned());
+        points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
+            x: point.x + ctx.tx - origin_x,
+            y: point.y + ctx.ty - origin_y,
+        }));
     }
 
     // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.

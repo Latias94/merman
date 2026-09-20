@@ -21,7 +21,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         .filter(|c| (c.origin_x - origin_x).abs() <= 1e-9 && (c.origin_y - origin_y).abs() <= 1e-9)
         .map(|c| &c.geom);
 
-    // Trace collection recomputes the pre-line-hop geometry for diagnostics, but the emitted SVG
+    // Trace collection recomputes the geometry before graph-wide postprocessing for diagnostics, but the emitted SVG
     // must still consume the post-processed cache. Enabling diagnostics must not alter rendering.
     let owned_geom = if cached_geom.is_none() || trace_enabled {
         flowchart_compute_edge_path_geom(

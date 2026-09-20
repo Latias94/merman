@@ -681,4 +681,134 @@ mod tests {
         };
         assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
     }
+
+    #[test]
+    fn elk_terminal_straightening_reaches_svg_and_preserves_ports() {
+        use crate::model::{LayoutEdge, LayoutPoint};
+        use base64::Engine as _;
+
+        // Pinned Mermaid geometry.spec.ts terminal-jog case, with measured rectangles whose
+        // boundaries coincide with its ports. The layout is fixed to isolate SVG postprocessing.
+        let render = |enabled: bool, trace: bool| {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    &format!("---\nconfig:\n  elk:\n    straightenEdges: {enabled}\n---\nflowchart LR\nA --> B"),
+                    ParseOptions::strict(),
+                ).unwrap().unwrap();
+            let render_context = parsed.flowchart_render_context().unwrap().clone();
+            let (metadata, semantic) = parsed.into_parts();
+            let RenderSemanticModel::Flowchart(model) = semantic else {
+                panic!("Flowchart");
+            };
+            let edge_id = model.edges[0].id.clone();
+            let layout = FlowchartLayout {
+                nodes: [("A", 153.0, 116.25), ("B", 400.0, 320.0)]
+                    .into_iter()
+                    .map(|(id, x, y)| LayoutNode {
+                        id: id.into(),
+                        x,
+                        y,
+                        width: 80.0,
+                        height: 40.0,
+                        is_cluster: false,
+                        label_width: Some(10.0),
+                        label_height: Some(10.0),
+                    })
+                    .collect(),
+                edges: vec![LayoutEdge {
+                    id: edge_id.clone(),
+                    from: "A".into(),
+                    to: "B".into(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points: [
+                        (193.0, 116.25),
+                        (218.0, 116.25),
+                        (218.0, 119.5),
+                        (400.0, 119.5),
+                        (400.0, 300.0),
+                    ]
+                    .into_iter()
+                    .map(|(x, y)| LayoutPoint { x, y })
+                    .collect(),
+                    label: None,
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                }],
+                clusters: Vec::new(),
+                bounds: None,
+                dom_node_order_by_root: std::collections::HashMap::from([(
+                    String::new(),
+                    vec!["A".into(), "B".into()],
+                )]),
+                uses_elk_adapter_dom: true,
+            };
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let request = SvgRenderOptions {
+                diagram_id: Some("terminal-jog".into()),
+                ..SvgRenderOptions::default()
+            };
+            let debug = if trace {
+                SvgDebugOptions::default().with_flowchart_edge_trace(
+                    edge_id,
+                    crate::svg::FlowchartEdgeTraceCollector::default(),
+                )
+            } else {
+                SvgDebugOptions::default()
+            };
+            let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+            let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+            render_flowchart_svg_model(
+                FlowchartSvgModelRequest {
+                    layout: &layout,
+                    swimlane_layout: None,
+                    model: &model,
+                    render_context: &render_context,
+                    effective_config: &metadata.effective_config,
+                    diagram_type: metadata.diagram_type.as_str(),
+                    diagram_title: None,
+                    presentation_policy: None,
+                    svg_label_sidecar: &sidecar,
+                },
+                &execution,
+            )
+            .unwrap()
+            .to_string()
+        };
+        let route = |svg: &str| {
+            let doc = roxmltree::Document::parse(svg).unwrap();
+            let path = doc
+                .descendants()
+                .find(|n| n.attribute("data-points").is_some())
+                .unwrap();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(&bytes).unwrap();
+            (
+                path.attribute("d").unwrap().to_owned(),
+                points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+            )
+        };
+        let off = render(false, false);
+        let on = render(true, false);
+        let (old_path, old_points) = route(&off);
+        let (new_path, new_points) = route(&on);
+        assert_eq!(old_points.len(), 5);
+        assert_eq!(new_points.len(), 3);
+        assert_eq!(old_points.first(), new_points.first());
+        assert_eq!(old_points.last(), new_points.last());
+        assert_eq!(new_points[0].1, new_points[1].1);
+        assert_ne!(old_path, new_path);
+        assert_eq!(
+            on,
+            render(true, true),
+            "diagnostics must preserve processed geometry"
+        );
+    }
 }
