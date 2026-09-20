@@ -59,6 +59,7 @@ pub mod timeline;
 pub mod tree_view;
 pub mod treemap;
 mod trig_tables;
+pub mod usecase;
 pub mod venn;
 pub mod wardley;
 mod xml;

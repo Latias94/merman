@@ -4,9 +4,7 @@
 //! before feeding the polyline into D3's line generator. This helps avoid sharp right-angle
 //! corners when using curved interpolators.
 
-pub(in crate::svg::parity::flowchart) fn maybe_fix_corners(
-    points: &mut Vec<crate::model::LayoutPoint>,
-) {
+pub(in crate::svg::parity) fn maybe_fix_corners(points: &mut Vec<crate::model::LayoutPoint>) {
     if points.is_empty() {
         return;
     }

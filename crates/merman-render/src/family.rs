@@ -54,6 +54,7 @@ pub enum RenderFamilyKind {
     Ishikawa,
     EventModeling,
     Venn,
+    Usecase,
 }
 
 impl RenderFamilyKind {
@@ -92,6 +93,7 @@ impl RenderFamilyKind {
             Self::Ishikawa => "ishikawa",
             Self::EventModeling => "eventmodeling",
             Self::Venn => "venn",
+            Self::Usecase => "usecase",
         }
     }
 }
@@ -324,6 +326,14 @@ pub(crate) enum BuiltinFamilyArtifact {
         >,
     ),
     Venn(Box<FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>>),
+    Usecase(
+        Box<
+            FamilyPair<
+                diagrams::usecase::UsecaseDiagramRenderModel,
+                crate::usecase::UsecasePreparedArtifact,
+            >,
+        >,
+    ),
 }
 
 #[derive(serde::Serialize)]
@@ -337,6 +347,7 @@ enum LayoutProjection<'a> {
     RadarDiagram(&'a RadarDiagramLayout),
     TreemapDiagram(&'a TreemapDiagramLayout),
     VennDiagram(&'a VennDiagramLayout),
+    UsecaseDiagram(&'a crate::usecase::UsecaseDiagramLayout),
     XyChartDiagram(&'a XyChartDiagramLayout),
     QuadrantChartDiagram(&'a QuadrantChartDiagramLayout),
     #[serde(rename = "FlowchartV2")]
@@ -460,6 +471,7 @@ impl BuiltinFamilyArtifact {
             Self::Ishikawa(_) => RenderFamilyKind::Ishikawa,
             Self::EventModeling(_) => RenderFamilyKind::EventModeling,
             Self::Venn(_) => RenderFamilyKind::Venn,
+            Self::Usecase(_) => RenderFamilyKind::Usecase,
         }
     }
 
@@ -502,6 +514,7 @@ impl BuiltinFamilyArtifact {
             Self::Ishikawa(pair) => pair.compatibility_json(metadata),
             Self::EventModeling(pair) => pair.compatibility_json(metadata),
             Self::Venn(pair) => pair.compatibility_json(metadata),
+            Self::Usecase(pair) => pair.compatibility_json(metadata),
         }
     }
 
@@ -541,6 +554,7 @@ impl BuiltinFamilyArtifact {
             Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
             Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
             Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
+            Self::Usecase(pair) => LayoutProjection::UsecaseDiagram(pair.layout().layout()),
         }
     }
 }
@@ -1041,7 +1055,9 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
         {
             required.push(RenderCapability::LayoutCytoscape);
         }
-        RenderSemanticModel::Flowchart(_) | RenderSemanticModel::Class(_)
+        RenderSemanticModel::Flowchart(_)
+        | RenderSemanticModel::Class(_)
+        | RenderSemanticModel::Usecase(_)
             if crate::uses_elk_layout(effective_config) =>
         {
             required.push(RenderCapability::LayoutElk);
@@ -1613,10 +1629,17 @@ fn prepare_non_class_render(
                 )
             })?)
         }
-        RenderSemanticModel::Usecase(_) => {
-            return Err(Error::UnsupportedDiagram {
-                diagram_type: diagram_type.to_owned(),
-            });
+        RenderSemanticModel::Usecase(model) => {
+            BuiltinFamilyArtifact::Usecase(prepare_pair(model, |model| {
+                crate::usecase::prepare_usecase_diagram(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
+                )
+            })?)
         }
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")

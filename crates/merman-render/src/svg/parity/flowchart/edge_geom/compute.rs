@@ -234,6 +234,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         interpolate,
         "linear"
             | "natural"
+            | "bumpX"
             | "bumpY"
             | "catmullRom"
             | "step"

@@ -1,0 +1,355 @@
+use super::*;
+use merman_core::diagrams::usecase::UsecaseNode;
+
+pub(super) fn rect(
+    out: &mut String,
+    class: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    style: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<rect class="{}" x="{}" y="{}" width="{}" height="{}" style="{}"/>"#,
+        escape_attr(class),
+        fmt(x),
+        fmt(y),
+        fmt(width),
+        fmt(height),
+        escape_attr(style)
+    );
+}
+
+pub(super) fn write_node(
+    out: &mut String,
+    node: &LayoutNode,
+    plan: &UsecaseNodePlan,
+    source: Option<&UsecaseNode>,
+    note: bool,
+    style: &str,
+    config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
+    if let Some(actor) = source.filter(|node| node.kind == UsecaseNodeKind::Actor) {
+        rect(
+            out,
+            "usecase-actor-outline",
+            -node.width / 2.0,
+            -node.height / 2.0,
+            node.width,
+            node.height,
+            "opacity:0;",
+        );
+        let content_height = node.height - 20.0;
+        let glyph_y = -content_height / 2.0 + 36.0;
+        let variant = match actor.actor_type {
+            UsecaseActorType::Normal => "shape usecase-actor-normal",
+            UsecaseActorType::Hollow => "hollow",
+            UsecaseActorType::Awesome => "awesome",
+            UsecaseActorType::Icon => "icon",
+        };
+        let _ = write!(
+            out,
+            r#"<g class="usecase-actor-glyph usecase-actor-{variant}" transform="translate(0,{})" style="{}">"#,
+            fmt(glyph_y),
+            escape_attr(style)
+        );
+        match actor.actor_type {
+            UsecaseActorType::Normal => out.push_str(r#"<path class="usecase-actor-stick" d="M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28"/>"#),
+            UsecaseActorType::Hollow => out.push_str(r#"<circle class="usecase-actor-hollow-head" cx="0" cy="-23" r="9" fill="none"/><path class="usecase-actor-hollow-body" d="M -22 -10 H 22 V 0 H 6 L 22 17 L 13 28 L 0 13 L -13 28 L -22 17 L -6 0 H -22 Z" fill="none"/>"#),
+            UsecaseActorType::Awesome => out.push_str(r#"<path class="usecase-actor-awesome-silhouette" d="M 0 -34 C 7.18 -34 13 -28.18 13 -21 C 13 -13.82 7.18 -8 0 -8 C -7.18 -8 -13 -13.82 -13 -21 C -13 -28.18 -7.18 -34 0 -34 Z M -24 25 C -24 7 -14 -3 0 -3 C 14 -3 24 7 24 25 C 24 28 21 30 18 30 H -18 C -21 30 -24 28 -24 25 Z"/>"#),
+            UsecaseActorType::Icon => {
+                out.push_str(r#"<rect class="usecase-actor-icon-frame" x="-26" y="-28" width="52" height="52" rx="4" ry="4"/>"#);
+                let icon = if let Some(registry) = options.icon_registry() {
+                    let work = options.work_meter();
+                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(&["usecase-", diagram_id.semantic_str(), "-"], work)?;
+                    registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                        icon_name: actor.icon.as_deref().unwrap_or(""), width_px: 42.0, height_px: 42.0,
+                        fallback_prefix: Some("fa"), extra_class: None, id_scope: prefix.scope_parts(&[&actor.id], work)?, effective_config: config, work_meter: work,
+                    })?
+                } else { None };
+                let fallback = icon.is_none();
+                let icon = icon.unwrap_or_else(|| crate::svg::icon_registry::mermaid_unknown_icon_svg(42, 42));
+                let _ = write!(out, r#"<g class="usecase-actor-icon-symbol{}" aria-hidden="true" transform="translate(-21,-23)"><g>{icon}</g></g>"#, if fallback { " usecase-actor-icon-fallback" } else { "" });
+            }
+        }
+        if actor.business {
+            let (center_y, radius): (f64, f64) = match actor.actor_type {
+                UsecaseActorType::Hollow => (-23.0, 9.0),
+                UsecaseActorType::Awesome => (-21.0, 13.0),
+                _ => (-24.0, 12.0),
+            };
+            let angle = std::f64::consts::PI / 3.0;
+            let (dx, dy) = (angle.cos(), -angle.sin());
+            let offset = radius * 0.6;
+            let chord = radius * 0.8;
+            let (x, y) = (offset * -dy, center_y + offset * dx);
+            let path = if actor.actor_type == UsecaseActorType::Icon {
+                "M 12 -8 L 26 -26".into()
+            } else {
+                format!(
+                    "M {} {} L {} {}",
+                    fmt(x - chord * dx),
+                    fmt(y - chord * dy),
+                    fmt(x + chord * dx),
+                    fmt(y + chord * dy)
+                )
+            };
+            let _ = write!(
+                out,
+                r#"<path class="usecase-business-marker usecase-actor-business-marker" d="{path}" fill="none" style="stroke:inherit!important;stroke-width:inherit!important"/>"#
+            );
+        }
+        out.push_str("</g>");
+        let mut y = -content_height / 2.0 + 80.0;
+        if let Some(stereotype) = &plan.stereotype {
+            write_label(
+                out,
+                stereotype,
+                "usecase-stereotype",
+                0.0,
+                y + stereotype.metrics.height / 2.0,
+                config,
+                measurer,
+            );
+            y += stereotype.metrics.height + 2.0;
+        }
+        write_label(
+            out,
+            &plan.label,
+            "actor-label usecase-actor-label",
+            0.0,
+            y + plan.label.metrics.height / 2.0,
+            config,
+            measurer,
+        );
+    } else if let Some(table) = &plan.table {
+        rect(
+            out,
+            "label-container usecase-json-border",
+            -node.width / 2.0,
+            -node.height / 2.0,
+            node.width,
+            node.height,
+            style,
+        );
+        let inner_width = node.width - 2.0 * table.border_width;
+        let left = -inner_width / 2.0;
+        let top = -node.height / 2.0 + table.border_width;
+        out.push_str(r#"<g class="usecase-json-table-grid">"#);
+        rect(
+            out,
+            "usecase-json-cell usecase-json-title-cell",
+            left,
+            top,
+            inner_width,
+            table.title_height,
+            style,
+        );
+        write_label(
+            out,
+            &plan.label,
+            "usecase-json-title",
+            0.0,
+            top + table.title_height / 2.0,
+            config,
+            measurer,
+        );
+        let mut row_top = top + table.title_height;
+        for (index, row) in table.rows.iter().enumerate() {
+            options.checkpoint_emit()?;
+            let _ = write!(
+                out,
+                r#"<g class="usecase-json-row" data-row-index="{index}" transform="translate(0,{})">"#,
+                fmt(row_top)
+            );
+            rect(
+                out,
+                "usecase-json-cell usecase-json-key-cell",
+                left,
+                0.0,
+                table.key_width,
+                row.height,
+                style,
+            );
+            rect(
+                out,
+                "usecase-json-cell usecase-json-value-cell",
+                left + table.key_width,
+                0.0,
+                table.value_width,
+                row.height,
+                style,
+            );
+            write_label(
+                out,
+                &row.key,
+                "usecase-json-key",
+                left + table.key_width / 2.0,
+                row.height / 2.0,
+                config,
+                measurer,
+            );
+            write_label(
+                out,
+                &row.value,
+                "usecase-json-value",
+                left + table.key_width + table.value_width / 2.0,
+                row.height / 2.0,
+                config,
+                measurer,
+            );
+            out.push_str("</g>");
+            row_top += row.height;
+        }
+        out.push_str("</g>");
+    } else {
+        if plan.ellipse {
+            let business = source.is_some_and(|node| node.business);
+            let _ = write!(
+                out,
+                r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
+                if business {
+                    " usecase-business-ellipse"
+                } else {
+                    ""
+                },
+                fmt(node.width / 2.0),
+                fmt(node.height / 2.0),
+                escape_attr(style)
+            );
+            if business {
+                let (rx, ry) = (node.width / 2.0, node.height / 2.0);
+                let label_width = plan.label.metrics.width.max(
+                    plan.stereotype
+                        .as_ref()
+                        .map_or(0.0, |label| label.metrics.width),
+                );
+                let (x1, x2) = (label_width / 2.0 + 2.0, rx - 2.0);
+                let y1 = ry * (1.0 - (x1 / rx).powi(2)).max(0.0).sqrt();
+                let y2 = -ry * (1.0 - (x2 / rx).powi(2)).max(0.0).sqrt();
+                let _ = write!(
+                    out,
+                    r#"<path class="usecase-business-marker" d="M {} {} L {} {}" fill="none" style="{}"/>"#,
+                    fmt(x1),
+                    fmt(y1),
+                    fmt(x2),
+                    fmt(y2),
+                    escape_attr(style)
+                );
+            }
+        } else if note {
+            // note.ts uses a RoughJS rectangle even for classic/neo. At zero
+            // roughness its fill and outline still remain separate SVG paths.
+            let randomness = options.rough_randomness(
+                config_f64(config.as_value(), &["handDrawnSeed"]).unwrap_or(0.0),
+                "usecase-note",
+            );
+            let (fill, stroke) =
+                roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
+                    x: -node.width / 2.0,
+                    y: -node.height / 2.0,
+                    w: node.width,
+                    h: node.height,
+                    fill: "#000000",
+                    stroke: "#000000",
+                    stroke_width: 1.0,
+                    randomness: &randomness,
+                })
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "failed to construct Usecase note geometry".into(),
+                })?;
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" style="{}"/><path d="{stroke}" fill="none" style="{}"/></g>"#,
+                escape_attr(style),
+                escape_attr(style)
+            );
+        } else {
+            rect(
+                out,
+                "basic label-container",
+                -node.width / 2.0,
+                -node.height / 2.0,
+                node.width,
+                node.height,
+                style,
+            );
+        }
+        let stereo_height = plan
+            .stereotype
+            .as_ref()
+            .map_or(0.0, |label| label.metrics.height);
+        let gap = if plan.stereotype.is_some() && source.is_some_and(|node| node.business) {
+            2.0
+        } else {
+            0.0
+        };
+        let height = plan.label.metrics.height + stereo_height + gap;
+        if let Some(stereotype) = &plan.stereotype {
+            write_label(
+                out,
+                stereotype,
+                "usecase-stereotype",
+                0.0,
+                -height / 2.0 + stereo_height / 2.0,
+                config,
+                measurer,
+            );
+        }
+        let label_start = out.len();
+        write_label(
+            out,
+            &plan.label,
+            if note { "noteLabel" } else { "usecase-label" },
+            0.0,
+            height / 2.0 - plan.label.metrics.height / 2.0,
+            config,
+            measurer,
+        );
+        if plan.folded_stereotype {
+            annotate_folded_stereotype(out, label_start)?;
+        }
+    }
+    Ok(())
+}
+
+fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
+    // Match the first emitted label text node, as annotateUsecaseElements does.
+    // The fragment is our own complete label group, so byte ranges can be applied
+    // without reparsing the entire diagram or depending on literal label content.
+    let fragment = &out[start..];
+    let document = roxmltree::Document::parse(fragment).map_err(|error| Error::InvalidModel {
+        message: format!("invalid prepared Usecase stereotype label: {error}"),
+    })?;
+    if let Some(span) = document
+        .descendants()
+        .find(|node| node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel"))
+    {
+        let container = span
+            .children()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap_or(span);
+        if let Some(text) = container.first_child().filter(|node| node.is_text()) {
+            let range = text.range();
+            out.insert_str(start + range.end, "</span>");
+            out.insert_str(start + range.start, "<span class=\"usecase-stereotype\">");
+        }
+    } else if let Some(span) = document
+        .descendants()
+        .find(|node| node.has_tag_name("tspan") && node.children().any(|child| child.is_text()))
+    {
+        if let Some(attribute) = span
+            .attributes()
+            .find(|attribute| attribute.name() == "class")
+        {
+            let insertion = attribute.range_value().end;
+            out.insert_str(start + insertion, " usecase-stereotype");
+        }
+    }
+    Ok(())
+}

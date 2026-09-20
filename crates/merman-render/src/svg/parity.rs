@@ -31,6 +31,7 @@ mod css;
 mod curve;
 mod cynefin;
 mod edge_label_geometry;
+mod edge_path;
 mod emitted_bounds;
 mod er;
 mod error;
@@ -64,6 +65,7 @@ mod timeline;
 mod timing;
 mod tree_view;
 mod treemap;
+mod usecase;
 mod util;
 mod venn;
 mod wardley;
@@ -1017,6 +1019,14 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        BuiltinFamilyArtifact::Usecase(pair) => usecase::render_usecase_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)
         }

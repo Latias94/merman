@@ -10,7 +10,6 @@ mod compute;
 mod curve_path;
 mod degenerate_path;
 mod elk_points;
-mod fix_corners;
 mod intersect;
 mod line_with_offset;
 mod rect_clip;
@@ -19,6 +18,7 @@ mod trace;
 pub(super) use compute::{finish_edge_route, prepare_edge_route};
 pub(super) use terminal_jogs::straighten_edge_terminals;
 
+pub(super) use crate::svg::parity::edge_path::maybe_fix_corners;
 pub(super) use basis::maybe_remove_redundant_cluster_run_point;
 pub(super) use boundary::{BoundaryNode, boundary_for_cluster, boundary_for_node};
 pub(super) use curve_path::curve_path_d_and_bounds;
@@ -27,7 +27,6 @@ pub(super) use elk_points::{
     ElkEndpointAdapterCorners, align_elk_endpoint_adapters_to_route,
     apply_flowchart_elk_endpoint_cutter, missing_section_label_position, missing_section_points,
 };
-pub(super) use fix_corners::maybe_fix_corners;
 pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
 };
