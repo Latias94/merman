@@ -46,6 +46,8 @@ pub struct ElkInputNode {
     pub layer_constraint: Option<LayerConstraint>,
     pub port_constraints: Option<PortConstraints>,
     pub node_label_placement: NodeLabelPlacement,
+    pub node_flexibility: crate::options::NodeFlexibility,
+    pub ports_surrounding: Option<crate::options::SpacingMargin>,
     /// Resolved options for the graph inside this node. Absent values use ELK defaults.
     pub nested_options: Option<Box<LayeredOptions>>,
     pub label: Option<ElkInputLabel>,
@@ -1522,6 +1524,8 @@ fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<u
         lnode.labels.push(label_to_lgraph(label));
     }
     lnode.node_label_placement = node.node_label_placement;
+    lnode.node_flexibility = node.node_flexibility;
+    lnode.ports_surrounding = node.ports_surrounding;
     graph.layerless_nodes.push(lnode);
     graph.layerless_nodes.len() - 1
 }
@@ -2509,6 +2513,8 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: NodeLabelPlacement::Fixed,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
             nested_options: None,
             label: None,
         }

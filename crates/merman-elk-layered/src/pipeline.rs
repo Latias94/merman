@@ -1458,7 +1458,14 @@ fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, Wo
             )?
         }
         ProcessorKind::NetworkSimplexPlacer => {
-            let auxiliary_nodes = checked_sum([graph.layerless_nodes.len(), graph.edges.len(), 1])?;
+            // Flexible nodes have two corners and one auxiliary vertex per port.
+            let ports = checked_sum(graph.layerless_nodes.iter().map(|node| node.ports.len()))?;
+            let auxiliary_nodes = checked_sum([
+                checked_mul(graph.layerless_nodes.len(), 2)?,
+                ports,
+                graph.edges.len(),
+                1,
+            ])?;
             checked_mul(graph.options.thoroughness, auxiliary_nodes.max(1))?
         }
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter
@@ -3263,6 +3270,8 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
             nested_options: None,
             label: None,
         }
@@ -3664,6 +3673,18 @@ mod tests {
         let mut shared_target_graph = shared_target_long_edge_graph_with_span(32, 2);
         split_long_edges(&mut shared_target_graph);
         assert_processor_budget_boundaries(&shared_target_graph, ProcessorKind::LongEdgeJoiner);
+    }
+
+    #[test]
+    fn flexible_node_placement_rejects_insufficient_work_before_mutation() {
+        let mut graph = high_thoroughness_diagnostic_graph();
+        graph.options.node_placement_strategy = NodePlacementStrategy::NetworkSimplex;
+        execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap();
+        for node in &mut graph.layerless_nodes {
+            node.node_flexibility = crate::NodeFlexibility::PortPosition;
+            node.size.height = 160.0;
+        }
+        assert_processor_budget_boundaries(&graph, ProcessorKind::NetworkSimplexPlacer);
     }
 
     #[test]
@@ -5436,6 +5457,8 @@ mod tests {
                     layer_constraint: None,
                     port_constraints: None,
                     node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                    node_flexibility: crate::options::NodeFlexibility::None,
+                    ports_surrounding: None,
                     nested_options: None,
                     label: None,
                 },
@@ -5449,6 +5472,8 @@ mod tests {
                     layer_constraint: None,
                     port_constraints: None,
                     node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                    node_flexibility: crate::options::NodeFlexibility::None,
+                    ports_surrounding: None,
                     nested_options: None,
                     label: None,
                 },
@@ -5512,6 +5537,8 @@ mod tests {
                 layer_constraint: None,
                 port_constraints: None,
                 node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                node_flexibility: crate::options::NodeFlexibility::None,
+                ports_surrounding: None,
                 nested_options: None,
                 label: None,
             }],

@@ -86,6 +86,14 @@ pub enum NodePlacementStrategy {
     NetworkSimplex,
 }
 
+/// Node-placement flexibility reachable through Mermaid's container options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodeFlexibility {
+    #[default]
+    None,
+    PortPosition,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FixedAlignment {
     #[default]

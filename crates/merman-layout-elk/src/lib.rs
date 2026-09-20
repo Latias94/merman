@@ -269,6 +269,19 @@ fn graph_to_source_input_with_root_context(
                     NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                     NodeKind::Leaf => NodeLabelPlacement::Fixed,
                 },
+                node_flexibility: if node.kind == NodeKind::Group {
+                    source_port::NodeFlexibility::PortPosition
+                } else {
+                    source_port::NodeFlexibility::None
+                },
+                ports_surrounding: (node.kind == NodeKind::Group).then_some(
+                    source_port::SpacingMargin {
+                        top: 12.0,
+                        right: 12.0,
+                        bottom: 12.0,
+                        left: 12.0,
+                    },
+                ),
                 nested_options: (node.kind == NodeKind::Group).then(|| {
                     Box::new(container_options_to_source(
                         graph,
@@ -806,6 +819,19 @@ impl<'a> HierarchyIndex<'a> {
                         NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                         NodeKind::Leaf => NodeLabelPlacement::Fixed,
                     },
+                    node_flexibility: if source.kind == NodeKind::Group {
+                        source_port::NodeFlexibility::PortPosition
+                    } else {
+                        source_port::NodeFlexibility::None
+                    },
+                    ports_surrounding: (source.kind == NodeKind::Group).then_some(
+                        source_port::SpacingMargin {
+                            top: 12.0,
+                            right: 12.0,
+                            bottom: 12.0,
+                            left: 12.0,
+                        },
+                    ),
                     nested_options: (source.kind == NodeKind::Group).then(|| {
                         Box::new(container_options_to_source(
                             self.graph,
@@ -2356,6 +2382,32 @@ mod tests {
             edges,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn container_flexibility_belongs_to_the_container_node() {
+        let mut container = leaf("frame");
+        container.kind = NodeKind::Group;
+        let mut child = leaf("child");
+        child.parent = Some("frame".into());
+        let mut graph = flat_graph(vec![container, child], vec![]);
+        graph.options.layered.node_placement = NodePlacementStrategy::NetworkSimplex;
+        let source = graph_to_source_input(&graph);
+        let imported = source_port::import_graph(&source).unwrap();
+        let container = &imported.layerless_nodes[0];
+        assert_eq!(
+            container.node_flexibility,
+            source_port::NodeFlexibility::PortPosition
+        );
+        let nested = container.nested_graph.as_ref().unwrap();
+        assert_eq!(
+            nested.options.node_placement_strategy,
+            source_port::NodePlacementStrategy::BrandesKoepf
+        );
+        assert_eq!(
+            nested.layerless_nodes[0].node_flexibility,
+            source_port::NodeFlexibility::None
+        );
     }
 
     #[test]

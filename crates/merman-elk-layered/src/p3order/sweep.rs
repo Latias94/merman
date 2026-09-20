@@ -4066,6 +4066,8 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
             nested_options: None,
             label: None,
         }
@@ -4097,6 +4099,8 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
             nested_options: None,
             label: None,
         }
@@ -4113,6 +4117,8 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::InsideTopCenter,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
             nested_options: Some(Box::new(crate::LayeredOptions {
                 spacing: crate::SpacingOptions::layered_base_value(30.0),
                 ..Default::default()

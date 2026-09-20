@@ -28,6 +28,14 @@ Adaptive layering searches honor the caller's work control. Stretch-width reject
 zero and positive normal-node heights with a typed error because the upstream normalization
 can make its retry loop nonterminating. An interrupted assignment does not commit partial layers.
 
+## Node placement
+
+NetworkSimplex supports the node-level `PORT_POSITION` flexibility used for Mermaid 12
+containers. It preserves fixed or crowded ports, builds separate corner and port constraints
+for flexible nodes, and applies source path-straightening rules. This property belongs to
+the container node in its parent graph; it is not inherited by the container's children.
+The implementation and elkjs 0.9.3 geometry evidence live in `src/p4nodes/network_simplex.rs`.
+
 ## Random seed authority
 
 Eclipse ELK uses `randomSeed = 0` as an unseeded `new Random()` request. This source port does not read time or process randomness for that branch. A graph must either retain a nonzero source seed or be imported with an `OperationSeed` before a configurator or pipeline entry point executes.
