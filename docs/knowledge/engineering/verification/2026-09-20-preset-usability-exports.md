@@ -35,20 +35,19 @@ opened and rasterized all 38 successful PDF files as one-page documents with non
 
 # Visual observations
 
-The generated PNG and PDF contact sheets were inspected at enlarged resolution. Dense Class output
-keeps the namespace, six entities, members, relation labels, and notes visible in all ten presets;
-dark presets retain light text and light presets retain dark text. The Cyberpunk Class remains
-visually legible, but its neon treatment is visually dense and is better suited to presentation
-slides than document body copy.
-
-The Mindmap sample retains readable Chinese and Latin labels in all ten presets. Branch groups remain
-visually separated by color; the dark presets keep the central white label and do not reproduce the
-earlier suspected low-contrast failure. This observation is limited to this source, native text path,
-and host font environment.
+The PNG contact sheets and XY PDF contact sheet retain the expected scene structure. A subsequent
+review of the original-size Cyberpunk PNG files contradicts this record's initial blanket readability
+assessment: Class note labels use cyan text over a pale-yellow surface (`primary aggregate` and
+`external gateway`), and Mindmap's operations branch uses white text over bright green. Both need
+contrast repair or explicit usage restrictions. The dark Class cards themselves have readable cyan
+text; that does not establish readability for their notes. The earlier Mindmap contrast concern
+remains open. This supersedes the initial claim that all ten presets' labels were readable.
 
 The four-series XY output preserves two bar series and two line series in every successful preset.
-The bars and lines remain distinguishable in grayscale by geometry and placement, although this is not
-a WCAG or color-vision certification. PDF previews preserve the same axes, labels, bars, and lines.
+The grayscale contact sheet distinguishes bars from lines, but this does not reliably identify each
+individual series. Both bar series occupy the same category positions and the line series have no
+independent dash encoding in this sample. PDF previews preserve the axes, labels, bars and lines;
+neither export success nor grayscale conversion establishes a high-contrast or color-vision claim.
 
 The pinned Flowchart is readable across the nine successful export groups. Cyberpunk's SVG remains
 available for browser inspection, while its PNG/PDF rejection shows that its effect composition can
@@ -57,11 +56,11 @@ boundary, not evidence that the preset is malformed.
 
 # Product guidance and limits
 
-Editor Light/Dark, One Dark, Gruvbox Light/Dark, Ayu Light/Dark are reasonable broad base themes for
-documentation and interactive diagrams in this bounded sample. Brutalist is strongest for outlined
-documents and posters; Spotless is restrained for instruction material. Cyberpunk is suitable for
-selected presentation scenes and should retain an explicit fallback or budget-aware export path for
-dense PNG/PDF work.
+The seven editor palettes remain base-theme candidates for documentation and interactive diagrams;
+this limited inspection cannot certify every note, marker or series. Brutalist and Spotless retain
+their existing bounded qualification records. Cyberpunk presentation recommendations must stay
+within the previously inspected complete scenes: the Class-note and Mindmap contrast findings and
+dense Flowchart/XY PNG/PDF budget rejections prevent extending that recommendation to these samples.
 
 The review does not measure controlled-font variation, browser HTML-label rendering, memory, cold
 start, throughput, package deltas, accessibility conformance, or all diagram families. Those remain
