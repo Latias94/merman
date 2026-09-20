@@ -270,3 +270,118 @@ fn usecase_palette_separates_containers_and_participants_and_preserves_edge_clas
         .collect();
     assert!(css.contains("stroke:#405060;fill:#abcdef"), "{css}");
 }
+
+#[test]
+fn usecase_applies_compiled_text_styles_and_root_fonts_in_both_label_modes() {
+    let source = r#"usecase-beta
+actor A(Reader)
+B(Go)
+A link@-- action --> B
+classDef default color:#112233,font-size:18px
+classDef custom color:#445566,font-size:22px,fill:#abcdef
+class B custom
+style B color:#778899
+class link custom
+note for B "Help"
+"#;
+    for html in [false, true] {
+        let (_, svg) = render_config(
+            source,
+            json!({
+                "layout":"dagre", "htmlLabels":html,
+                "usecase": {"useMaxWidth":html, "actorFontFamily":"Arial", "actorFontSize":20,
+                    "actorFontWeight":"bold", "usecaseFontFamily":"Verdana", "usecaseFontSize":16,
+                    "usecaseFontWeight":"normal", "minNodeWidth":300},
+            }),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let root_style = document.root_element().attribute("style").unwrap();
+        assert!(root_style.contains("--mermaid-usecase-actor-font-family: Arial;"));
+        assert!(root_style.contains("--mermaid-usecase-actor-font-size: 20px;"));
+        assert!(root_style.contains("--mermaid-usecase-font-family: Verdana;"));
+        assert!(root_style.contains("--mermaid-usecase-font-size: 16px;"));
+        assert_eq!(root_style.contains("max-width:"), html);
+        for (id, color, size) in [
+            ("A", "#112233", 18),
+            ("B", "#778899", 22),
+            ("note-0", "#112233", 18),
+        ] {
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some(id))
+                .unwrap();
+            let label = node
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "span" } else { "text" }))
+                .unwrap();
+            let style = label.attribute("style").unwrap();
+            assert!(
+                style.contains(&format!(
+                    "{}:{color} !important",
+                    if html { "color" } else { "fill" }
+                )),
+                "{id}: {style}"
+            );
+            assert!(
+                style.contains(&format!("font-size:{size}px !important")),
+                "{id}: {style}"
+            );
+            assert!(!style.contains("#abcdef"), "shape fill leaked into text");
+        }
+        let edge_label = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name(if html { "span" } else { "text" })
+                    && node
+                        .descendants()
+                        .any(|text| text.is_text() && text.text() == Some("action"))
+            })
+            .unwrap();
+        assert!(
+            edge_label
+                .attribute("style")
+                .unwrap()
+                .contains("#445566 !important")
+        );
+        let shape = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("ellipse")
+                    && node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("#abcdef"))
+            })
+            .unwrap();
+        assert!(!shape.attribute("style").unwrap().contains("font-size"));
+    }
+}
+
+#[test]
+fn usecase_dagre_extracts_only_boundaries_without_external_connections() {
+    let source = "usecase-beta\ndirection LR\nsystemBoundary S\nA(A)\nB(B)\nend\nA --> B";
+    for (direction, tail, vertical) in [
+        ("LR", "", true),
+        ("TB", "", false),
+        ("BT", "", true),
+        ("RL", "", true),
+        ("LR", "\nactor C\nC --> A", false),
+        ("LR", "\nnote for A \"Help\"", false),
+    ] {
+        let input = format!(
+            "{}{tail}",
+            source.replace("direction LR", &format!("direction {direction}"))
+        );
+        let (projection, _) = render(&input, "dagre");
+        let nodes = projection["layout"]["UsecaseDiagram"]["nodes"]
+            .as_array()
+            .unwrap();
+        let a = nodes.iter().find(|node| node["id"] == "A").unwrap();
+        let b = nodes.iter().find(|node| node["id"] == "B").unwrap();
+        let axis = if vertical { "y" } else { "x" };
+        assert!(
+            b[axis].as_f64().unwrap() > a[axis].as_f64().unwrap(),
+            "{input}: {nodes:?}"
+        );
+        assert_eq!(nodes.iter().filter(|node| node["id"] == "S").count(), 1);
+    }
+}

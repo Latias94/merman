@@ -316,6 +316,7 @@ pub(super) struct RootChrome<'a> {
     pub(super) aria_describedby: Option<&'a str>,
     pub(super) after_roledescription_attrs: &'a [(&'a str, &'a str)],
     pub(super) tail_attrs: &'a [(&'a str, &'a str)],
+    pub(super) custom_properties: &'a [(&'a str, &'a str)],
     pub(super) dom: RootDomProfile,
 }
 
@@ -333,6 +334,7 @@ impl<'a> RootChrome<'a> {
             aria_describedby: None,
             after_roledescription_attrs: &[],
             tail_attrs: &[],
+            custom_properties: &[],
             dom: RootDomProfile::default(),
         }
     }
@@ -445,8 +447,16 @@ impl<'a> RootViewportContext<'a> {
         let fixed_style = if responsive {
             None
         } else {
-            root_style(None, spec.background)
+            with_custom_properties(root_style(None, spec.background), chrome.custom_properties)?
         };
+        let deferred_style_suffix = with_custom_properties(
+            Some(match spec.background {
+                RootBackground::None => "px;".into(),
+                RootBackground::White => "px; background-color: white;".into(),
+            }),
+            chrome.custom_properties,
+        )?
+        .unwrap_or_default();
         let style_placement = if responsive {
             chrome.dom.responsive_style_placement
         } else {
@@ -464,7 +474,11 @@ impl<'a> RootViewportContext<'a> {
                 },
                 height_attr: None,
                 style_attr: if responsive {
-                    Some(deferred_root_style(spec.background))
+                    Some(SvgRootAttributeValue::tracked(
+                        "max-width: ",
+                        MAX_WIDTH_PLACEHOLDER,
+                        &deferred_style_suffix,
+                    ))
                 } else {
                     fixed_style.as_deref().map(SvgRootAttributeValue::plain)
                 },
@@ -629,6 +643,7 @@ impl<'a> RootViewportContext<'a> {
             });
         }
         let viewbox_attr = plan.view_box.map(ViewBox::attr);
+        let style = with_custom_properties(plan.style.clone(), chrome.custom_properties)?;
         let width = match plan.width.as_deref() {
             None => SvgRootWidth::None,
             Some("100%") => SvgRootWidth::Percent100,
@@ -647,7 +662,7 @@ impl<'a> RootViewportContext<'a> {
                 class: chrome.class,
                 width,
                 height_attr: plan.height.as_deref(),
-                style_attr: plan.style.as_deref().map(SvgRootAttributeValue::plain),
+                style_attr: style.as_deref().map(SvgRootAttributeValue::plain),
                 viewbox_attr: viewbox_attr.as_deref().map(SvgRootAttributeValue::plain),
                 style_viewbox_order: chrome.dom.style_viewbox_order,
                 style_placement,
@@ -849,6 +864,28 @@ fn root_style(max_width: Option<&str>, background: RootBackground) -> Option<Str
     (!style.is_empty()).then_some(style)
 }
 
+fn with_custom_properties(
+    style: Option<String>,
+    properties: &[(&str, &str)],
+) -> Result<Option<String>> {
+    let mut style = style.unwrap_or_default();
+    for (key, value) in properties {
+        let declaration = format!("{key}:{value}");
+        if !key.starts_with("--")
+            || crate::mermaid_style::parse_safe_style_decl(&declaration).is_none()
+        {
+            return Err(Error::InvalidModel {
+                message: format!("invalid SVG root custom property {key}"),
+            });
+        }
+        if !style.is_empty() {
+            style.push(' ');
+        }
+        let _ = write!(style, "{key}: {value};");
+    }
+    Ok((!style.is_empty()).then_some(style))
+}
+
 fn format_css_max_width(value: f64) -> String {
     if !value.is_finite() || value.abs() < 0.0005 {
         return "0".to_string();
@@ -987,14 +1024,6 @@ impl<'a> SvgRootAttributeValue<'a> {
             }
         }
     }
-}
-
-fn deferred_root_style(background: RootBackground) -> SvgRootAttributeValue<'static> {
-    let suffix = match background {
-        RootBackground::None => "px;",
-        RootBackground::White => "px; background-color: white;",
-    };
-    SvgRootAttributeValue::tracked("max-width: ", MAX_WIDTH_PLACEHOLDER, suffix)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -1438,6 +1467,11 @@ mod tests {
         let diagram_id = format!("valid_{VIEW_BOX_PLACEHOLDER}_{MAX_WIDTH_PLACEHOLDER}_diagram");
         let context = RootViewportContext::new(RenderFamilyKind::State, diagram_id.as_str());
         let mut chrome = RootChrome::new(diagram_id.as_str(), "stateDiagram");
+        let properties = [
+            ("--font-family", "\"Arial\", sans-serif"),
+            ("--marker-text", MAX_WIDTH_PLACEHOLDER),
+        ];
+        chrome.custom_properties = &properties;
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
         let document = context
@@ -1460,7 +1494,9 @@ mod tests {
         assert_eq!(root.attribute("viewBox"), Some("1 2 30 40"));
         assert_eq!(
             root.attribute("style"),
-            Some("max-width: 30px; background-color: white;")
+            Some(
+                "max-width: 30px; background-color: white; --font-family: \"Arial\", sans-serif; --marker-text: __MERMAN_ROOT_MAX_WIDTH__;"
+            )
         );
     }
 

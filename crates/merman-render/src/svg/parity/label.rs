@@ -31,7 +31,7 @@ pub(in crate::svg::parity) fn write_svg_text_centered(
     write_svg_text_impl(
         out,
         text,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::DecodedModel,
@@ -46,7 +46,7 @@ pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
     write_svg_text_impl(
         out,
         text,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -102,15 +102,11 @@ fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool) {
             let _ = write!(
                 out,
                 r#"<text y="-10.1" style="{}" text-anchor="middle">"#,
-                escape_xml_display(style)
+                escape_attr(style)
             );
         }
         (Some(style), false) => {
-            let _ = write!(
-                out,
-                r#"<text y="-10.1" style="{}">"#,
-                escape_xml_display(style)
-            );
+            let _ = write!(out, r#"<text y="-10.1" style="{}">"#, escape_attr(style));
         }
         (None, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
         (None, false) => out.push_str(r#"<text y="-10.1">"#),
@@ -172,12 +168,12 @@ fn open_tspan(out: &mut String, index: usize, center_text: bool, include_row_cla
 fn write_svg_text_impl(
     out: &mut String,
     text: &str,
-    include_style: bool,
+    css: Option<&str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text);
+    open_svg_text(out, css, center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {
@@ -258,12 +254,12 @@ fn markdown_to_wrapped_svg_word_lines(
 fn write_svg_text_markdown_lines(
     out: &mut String,
     lines: &[Vec<(String, bool, bool)>],
-    include_style: bool,
+    css: Option<&str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text);
+    open_svg_text(out, css, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);
@@ -306,7 +302,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         false,
         true,
         SvgTextEntityMode::DecodedModel,
@@ -322,7 +318,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::DecodedModel,
@@ -338,7 +334,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -362,7 +358,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_crea
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -386,8 +382,47 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
     write_svg_text_markdown_lines(
         out,
         &lines,
-        include_style,
+        include_style.then_some(""),
         false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
+    out: &mut String,
+    text: &str,
+    css: &str,
+) {
+    write_svg_text_impl(
+        out,
+        text,
+        Some(css),
+        true,
+        true,
+        SvgTextEntityMode::DecodedModel,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_style(
+    out: &mut String,
+    markdown: &str,
+    css: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        style,
+        max_width_px,
+    );
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        Some(css),
+        true,
         true,
         SvgTextEntityMode::CreateTextSource,
     );

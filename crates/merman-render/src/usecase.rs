@@ -9,9 +9,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
+mod dagre;
 mod elk_edge_geometry;
 mod layout;
 mod measure;
+
+pub(crate) use measure::styles as compiled_styles;
+pub(crate) use measure::text_style;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsecaseDiagramLayout {
@@ -27,6 +31,7 @@ pub(crate) struct UsecaseLabelPlan {
     pub metrics: TextMetrics,
     pub style: TextStyle,
     pub max_width: Option<f64>,
+    pub styles: indexmap::IndexMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

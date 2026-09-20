@@ -5,7 +5,7 @@ use crate::text::{WrapMode, measure_wrapped_markdown_with_inline_styles};
 use merman_core::diagrams::usecase::{
     UsecaseArrowType, UsecaseJsonNode, UsecaseNodeKind, UsecaseRelationshipType,
 };
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     config
@@ -16,8 +16,8 @@ pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
         .unwrap_or(fallback)
 }
 
-fn text_style(config: &Value, actor: bool, participant: bool) -> TextStyle {
-    if !participant {
+pub(crate) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
+    let Some(actor) = actor else {
         return TextStyle {
             font_family: config
                 .pointer("/themeVariables/fontFamily")
@@ -34,7 +34,7 @@ fn text_style(config: &Value, actor: bool, participant: bool) -> TextStyle {
                 .unwrap_or(16.0),
             ..Default::default()
         };
-    }
+    };
     let prefix = if actor { "actor" } else { "usecase" };
     let string = |suffix: &str, fallback: &str| {
         config
@@ -56,12 +56,12 @@ fn text_style(config: &Value, actor: bool, participant: bool) -> TextStyle {
     }
 }
 
-fn styles(
+pub(crate) fn styles(
     model: &UsecaseDiagramRenderModel,
     classes: &[String],
     inline: &[String],
-) -> BTreeMap<String, String> {
-    let mut values = BTreeMap::new();
+) -> indexmap::IndexMap<String, String> {
+    let mut values = indexmap::IndexMap::new();
     for name in std::iter::once("default").chain(classes.iter().map(String::as_str)) {
         if let Some(definition) = model
             .class_defs
@@ -69,21 +69,21 @@ fn styles(
             .find(|definition| definition.id == name)
         {
             for item in &definition.styles {
-                if let Some((key, value)) = item.split_once(':') {
-                    values.insert(key.trim().to_owned(), value.trim().to_owned());
+                if let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(item) {
+                    values.insert(key.to_owned(), value.to_owned());
                 }
             }
         }
     }
     for item in inline {
-        if let Some((key, value)) = item.split_once(':') {
-            values.insert(key.trim().to_owned(), value.trim().to_owned());
+        if let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(item) {
+            values.insert(key.to_owned(), value.to_owned());
         }
     }
     values
 }
 
-fn styled(mut base: TextStyle, styles: &BTreeMap<String, String>) -> TextStyle {
+fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> TextStyle {
     for (key, value) in styles {
         let value = value.trim_end_matches("!important").trim();
         match key.as_str() {
@@ -111,6 +111,7 @@ fn label(
     min_width: f64,
     config: &Value,
     measurer: &dyn TextMeasurer,
+    styles: &indexmap::IndexMap<String, String>,
 ) -> UsecaseLabelPlan {
     let html = config
         .get("htmlLabels")
@@ -131,6 +132,7 @@ fn label(
             .replace('>', "&gt;");
         measurer.measure_wrapped(&escaped, style, max_width, mode)
     };
+    // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
         metrics.width = metrics.width.max(min_width);
     }
@@ -140,6 +142,11 @@ fn label(
         metrics,
         style: style.clone(),
         max_width,
+        styles: styles
+            .iter()
+            .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
     }
 }
 
@@ -242,10 +249,8 @@ pub(super) fn measure(
             .filter(|node| (node.kind == UsecaseNodeKind::Actor) == actor)
         {
             work.charge_adapter(1)?;
-            let style = styled(
-                text_style(config, actor, true),
-                &styles(model, &node.classes, &node.styles),
-            );
+            let css = styles(model, &node.classes, &node.styles);
+            let style = styled(text_style(config, Some(actor)), &css);
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = sanitize(&node.label);
             let source_stereotype = node.stereotype.as_deref().map(sanitize);
@@ -277,6 +282,7 @@ pub(super) fn measure(
                 if actor { 0.0 } else { min_width },
                 config,
                 measurer,
+                &css,
             );
             let stereotype = source_stereotype
                 .as_ref()
@@ -290,6 +296,7 @@ pub(super) fn measure(
                         0.0,
                         config,
                         measurer,
+                        &css,
                     )
                 });
             let stereo_width = stereotype.as_ref().map_or(0.0, |value| value.metrics.width);
@@ -336,17 +343,20 @@ pub(super) fn measure(
             });
         }
     }
-    let generic = text_style(config, false, false);
+    let generic = text_style(config, None);
     for note in &model.notes {
         work.charge_adapter(1)?;
+        let css = styles(model, &[], &[]);
+        let style = styled(generic.clone(), &css);
         let main = label(
             &sanitize(&note.label),
             note.label_type,
-            &generic,
+            &style,
             wrapping_width,
             min_width,
             config,
             measurer,
+            &css,
         );
         nodes.push(UsecaseNodePlan {
             id: note.id.clone(),
@@ -375,6 +385,7 @@ pub(super) fn measure(
             min_width,
             config,
             measurer,
+            &css,
         );
         let mut rows = Vec::new();
         let mut key_width: f64 = 16.0;
@@ -389,6 +400,7 @@ pub(super) fn measure(
                 0.0,
                 config,
                 measurer,
+                &css,
             );
             let value_label = label(
                 &sanitize(&value),
@@ -398,6 +410,7 @@ pub(super) fn measure(
                 0.0,
                 config,
                 measurer,
+                &css,
             );
             key_width = key_width.max(key_label.metrics.width + 16.0);
             value_width = value_width.max(value_label.metrics.width + 16.0);
@@ -441,10 +454,8 @@ pub(super) fn measure(
     }
     for boundary in &model.boundaries {
         work.charge_adapter(1)?;
-        let style = styled(
-            generic.clone(),
-            &styles(model, &boundary.classes, &boundary.styles),
-        );
+        let css = styles(model, &boundary.classes, &boundary.styles);
+        let style = styled(generic.clone(), &css);
         let main = label(
             &sanitize(&boundary.label),
             boundary.label_type,
@@ -453,6 +464,7 @@ pub(super) fn measure(
             0.0,
             config,
             measurer,
+            &css,
         );
         nodes.push(UsecaseNodePlan {
             id: boundary.id.clone(),
@@ -472,7 +484,8 @@ pub(super) fn measure(
     let mut edges = Vec::new();
     for edge in &model.relationships {
         work.charge_adapter(1)?;
-        let style = styled(generic.clone(), &styles(model, &edge.classes, &edge.styles));
+        let css = styles(model, &edge.classes, &edge.styles);
+        let style = styled(generic.clone(), &css);
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (
                 Some("include"),
@@ -523,6 +536,7 @@ pub(super) fn measure(
                     0.0,
                     config,
                     measurer,
+                    &css,
                 )
             }),
             minlen: edge.minlen,
@@ -585,6 +599,7 @@ mod tests {
     use crate::text::DeterministicTextMeasurer;
     use merman_core::diagrams::usecase::{UsecaseActorType, UsecaseNode};
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     fn model() -> UsecaseDiagramRenderModel {
         UsecaseDiagramRenderModel {

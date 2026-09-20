@@ -52,29 +52,15 @@ fn accessible_text(text: &str, kind: UsecaseLabelType) -> String {
 }
 
 fn styles(model: &UsecaseDiagramRenderModel, classes: &[String], inline: &[String]) -> String {
-    let mut values = indexmap::IndexMap::new();
-    for class in std::iter::once("default").chain(classes.iter().map(String::as_str)) {
-        if let Some(definition) = model
-            .class_defs
-            .iter()
-            .find(|definition| definition.id == class)
-        {
-            for declaration in &definition.styles {
-                if let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration)
-                {
-                    values.insert(key, value);
-                }
-            }
-        }
-    }
-    for declaration in inline {
-        if let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration) {
-            values.insert(key, value);
-        }
-    }
-    values
+    crate::usecase::compiled_styles(model, classes, inline)
         .into_iter()
-        .map(|(key, value)| format!("{key}:{value};"))
+        .filter(|(key, _)| !crate::mermaid_style::is_label_style_key(key))
+        .map(|(key, value)| {
+            format!(
+                "{key}:{} !important;",
+                value.trim_end_matches("!important").trim()
+            )
+        })
         .collect()
 }
 
@@ -90,6 +76,21 @@ fn write_label(
     let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
     let font_family = plan.style.font_family.as_deref().unwrap_or("sans-serif");
     let font_weight = plan.style.font_weight.as_deref().unwrap_or("normal");
+    let css: String = plan
+        .styles
+        .iter()
+        .map(|(key, value)| {
+            let key = if !html && key == "color" {
+                "fill"
+            } else {
+                key.as_str()
+            };
+            format!(
+                "{key}:{} !important;",
+                value.trim_end_matches("!important").trim()
+            )
+        })
+        .collect();
     let _ = write!(
         out,
         r#"<g class="label {}" transform="translate({},{})" style="font-family:{};font-size:{}px;font-weight:{}">"#,
@@ -110,21 +111,30 @@ fn write_label(
         };
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;white-space:normal;text-align:center;width:{}px"><span class="nodeLabel">{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display:inline-block;white-space:normal;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
             fmt(plan.metrics.width),
             fmt(plan.metrics.height),
+            escape_attr(&css),
             fmt(plan.metrics.width),
+            if class == "edgeLabel" {
+                "edgeLabel"
+            } else {
+                "nodeLabel"
+            },
+            escape_attr(&css),
             content
         );
     } else {
         // Usecase plain labels are literal text, including strings that resemble HTML.
         match plan.label_type {
-            UsecaseLabelType::Text => label::write_svg_text_centered(out, &plan.text, true),
+            UsecaseLabelType::Text => {
+                label::write_svg_text_centered_with_style(out, &plan.text, &css)
+            }
             UsecaseLabelType::Markdown => {
-                label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
+                label::write_svg_text_markdown_wrapped_centered_with_style(
                     out,
                     &plan.text,
-                    true,
+                    &css,
                     measurer,
                     &plan.style,
                     plan.max_width,
@@ -227,7 +237,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
             padding,
         ),
         config_bool(cfg, &["usecase", "useMaxWidth"]).unwrap_or(true),
-    );
+    )
+    .without_background();
     let acc_title_id = model
         .acc_title
         .as_ref()
@@ -239,6 +250,34 @@ pub(crate) fn render_usecase_diagram_svg_model(
     let mut chrome = root_svg::RootChrome::new(diagram_id, "usecaseDiagram");
     chrome.aria_labelledby = acc_title_id.as_deref();
     chrome.aria_describedby = acc_descr_id.as_deref();
+    let actor_font = crate::usecase::text_style(cfg, Some(true));
+    let usecase_font = crate::usecase::text_style(cfg, Some(false));
+    let actor_font_size = format!("{}px", fmt(actor_font.font_size));
+    let usecase_font_size = format!("{}px", fmt(usecase_font.font_size));
+    let font_properties = [
+        (
+            "--mermaid-usecase-actor-font-size",
+            actor_font_size.as_str(),
+        ),
+        (
+            "--mermaid-usecase-actor-font-family",
+            actor_font.font_family.as_deref().unwrap_or("sans-serif"),
+        ),
+        (
+            "--mermaid-usecase-actor-font-weight",
+            actor_font.font_weight.as_deref().unwrap_or("normal"),
+        ),
+        ("--mermaid-usecase-font-size", usecase_font_size.as_str()),
+        (
+            "--mermaid-usecase-font-family",
+            usecase_font.font_family.as_deref().unwrap_or("sans-serif"),
+        ),
+        (
+            "--mermaid-usecase-font-weight",
+            usecase_font.font_weight.as_deref().unwrap_or("normal"),
+        ),
+    ];
+    chrome.custom_properties = &font_properties;
     let mut out = String::new();
     let document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Usecase, diagram_id)
@@ -329,6 +368,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 tab_height / 2.0
             } else {
                 plan.label.metrics.height / 2.0
+                    + config_f64(cfg, &["flowchart", "subGraphTitleMargin", "top"]).unwrap_or(0.0)
             },
             config,
             measurer,

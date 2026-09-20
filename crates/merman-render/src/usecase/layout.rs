@@ -2,8 +2,6 @@ use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint};
-use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
 use std::collections::HashMap;
 
 pub(super) fn layout(
@@ -20,10 +18,10 @@ pub(super) fn layout(
     {
         return elk_layout(model, config, plans, edge_plans, work, operation_seed);
     }
-    dagre_layout(model, config, plans, edge_plans, work)
+    super::dagre::layout(model, config, plans, edge_plans, work)
 }
 
-fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> LayoutNode {
+pub(super) fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> LayoutNode {
     LayoutNode {
         id: plan.id.clone(),
         x,
@@ -36,7 +34,7 @@ fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> Layo
     }
 }
 
-fn edge(
+pub(super) fn edge(
     plan: &UsecaseEdgePlan,
     points: Vec<LayoutPoint>,
     label: Option<LayoutLabel>,
@@ -57,113 +55,6 @@ fn edge(
         end_marker: plan.end_marker.clone(),
         stroke_dasharray: plan.dotted.then(|| "3,3".to_owned()),
     }
-}
-
-fn dagre_layout(
-    model: &UsecaseDiagramRenderModel,
-    config: &Value,
-    plans: &[UsecaseNodePlan],
-    edge_plans: &[UsecaseEdgePlan],
-    work: &mut OperationLayoutWorkControl,
-) -> Result<UsecaseDiagramLayout> {
-    let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
-        directed: true,
-        multigraph: true,
-        compound: true,
-    });
-    graph.set_graph(GraphLabel {
-        rankdir: match model.direction.as_str() {
-            "LR" => RankDir::LR,
-            "RL" => RankDir::RL,
-            "BT" => RankDir::BT,
-            _ => RankDir::TB,
-        },
-        nodesep: measure::number(config, "nodeSpacing", 50.0),
-        ranksep: measure::number(config, "rankSpacing", 50.0),
-        marginx: 8.0,
-        marginy: 8.0,
-        ..Default::default()
-    });
-    for plan in plans {
-        graph.set_node(
-            plan.id.clone(),
-            NodeLabel {
-                width: plan.width,
-                height: plan.height,
-                ..Default::default()
-            },
-        );
-    }
-    for plan in plans {
-        if let Some(parent) = &plan.parent {
-            graph.set_parent_ref(&plan.id, parent);
-        }
-    }
-    for plan in edge_plans {
-        let (width, height) = plan.label.as_ref().map_or((0.0, 0.0), |label| {
-            (label.metrics.width, label.metrics.height)
-        });
-        graph.set_edge_named(
-            plan.source.clone(),
-            plan.target.clone(),
-            Some(plan.id.clone()),
-            Some(EdgeLabel {
-                width,
-                height,
-                minlen: plan.minlen,
-                weight: 1.0,
-                ..Default::default()
-            }),
-        );
-    }
-    dugong::layout_controlled(&mut graph, work).map_err(|error| work.map_dugong_error(error))?;
-    let mut nodes = Vec::with_capacity(plans.len());
-    for plan in plans {
-        let placed = graph.node(&plan.id).ok_or_else(|| Error::InvalidModel {
-            message: format!("Dagre omitted Usecase node {}", plan.id),
-        })?;
-        nodes.push(node(
-            plan,
-            placed.x.unwrap_or(0.0),
-            placed.y.unwrap_or(0.0),
-            placed.width.max(plan.width),
-            placed.height.max(plan.height),
-        ));
-    }
-    let by_id: HashMap<_, _> = edge_plans
-        .iter()
-        .map(|plan| (plan.id.as_str(), plan))
-        .collect();
-    let mut edges = Vec::with_capacity(edge_plans.len());
-    for key in graph.edge_keys() {
-        let Some(plan) = key.name.as_deref().and_then(|id| by_id.get(id)) else {
-            continue;
-        };
-        let Some(placed) = graph.edge_by_key(&key) else {
-            continue;
-        };
-        let label = plan.label.as_ref().and_then(|_| {
-            Some(LayoutLabel {
-                x: placed.x?,
-                y: placed.y?,
-                width: placed.width,
-                height: placed.height,
-            })
-        });
-        edges.push(edge(
-            plan,
-            placed
-                .points
-                .iter()
-                .map(|point| LayoutPoint {
-                    x: point.x,
-                    y: point.y,
-                })
-                .collect(),
-            label,
-        ));
-    }
-    finish(nodes, edges, plans, edge_plans, work)
 }
 
 #[cfg(feature = "layout-elk")]
@@ -308,6 +199,7 @@ fn intersect(node: &LayoutNode, ellipse: bool, target: &LayoutPoint) -> LayoutPo
     }
 }
 
+#[cfg(feature = "layout-elk")]
 fn finish(
     nodes: Vec<LayoutNode>,
     mut edges: Vec<LayoutEdge>,
@@ -380,6 +272,7 @@ fn finish(
     })
 }
 
+#[cfg(feature = "layout-elk")]
 fn route_midpoint(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     let first = points.first()?;
     let distance = |pair: &[LayoutPoint]| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y);
@@ -453,6 +346,9 @@ pub(super) fn prepare_edge_paths(
     use super::elk_edge_geometry::{self as geometry, Shape};
     let elk = crate::layout_backend::resolve_graph_layout(config).backend
         == crate::layout_backend::GraphLayoutBackend::Elk;
+    // Dagre's recursive paint measurement includes title labels which may extend beyond
+    // a rect boundary's frame. Retain that measured contribution when clipping edge paths.
+    let dagre_paint_bounds = (!elk).then(|| layout.bounds.clone()).flatten();
     let node_indexes: HashMap<_, _> = layout
         .nodes
         .iter()
@@ -599,5 +495,15 @@ pub(super) fn prepare_edge_paths(
                     }),
             ),
     );
+    if let Some(previous) = dagre_paint_bounds {
+        if let Some(bounds) = &mut layout.bounds {
+            bounds.min_x = bounds.min_x.min(previous.min_x);
+            bounds.min_y = bounds.min_y.min(previous.min_y);
+            bounds.max_x = bounds.max_x.max(previous.max_x);
+            bounds.max_y = bounds.max_y.max(previous.max_y);
+        } else {
+            layout.bounds = Some(previous);
+        }
+    }
     Ok(paths)
 }

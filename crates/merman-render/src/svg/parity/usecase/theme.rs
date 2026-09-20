@@ -107,6 +107,8 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
 #{id} .usecase-actor-glyph{{fill:{actor};stroke:{actor_border};stroke-width:2px}}
 #{id} .usecase-actor-stick{{fill:none}}
 #{id} .usecase-actor .nodeLabel,#{id} .actor-label{{color:{actor_text};fill:{actor_text}}}
+#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{font-family:var(--mermaid-usecase-actor-font-family);font-size:var(--mermaid-usecase-actor-font-size);font-weight:var(--mermaid-usecase-actor-font-weight)}}
+#{id} .usecase-element .nodeLabel,#{id} .usecase-label{{font-family:var(--mermaid-usecase-font-family);font-size:var(--mermaid-usecase-font-size);font-weight:var(--mermaid-usecase-font-weight)}}
 #{id} .system-boundary rect{{fill:{boundary};stroke:{boundary_border};stroke-width:1px}}
 #{id} .system-boundary-title text,#{id} .system-boundary-title span{{fill:{title};color:{title}}}
 #{id} .relationship{{fill:none;stroke:{line};stroke-width:1px}}
