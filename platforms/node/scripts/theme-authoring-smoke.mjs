@@ -117,6 +117,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     support_queries: 0,
     authoring_diagnostics: 0,
     resource_limit_checks: 0,
+    content_capability_rejections: 0,
     json_operations: 0,
     svg_renders: 0,
   };
@@ -256,6 +257,41 @@ export async function runThemeAuthoringSmoke(module, engine) {
         }
       }
     }
+
+    // SVG availability does not imply optional font decoding or math rendering.
+    assert.ok(!engine.runtimeCatalog.capabilities.capability_ids.includes("embedded-fonts"));
+    assert.ok(!engine.runtimeCatalog.capabilities.capability_ids.includes("math"));
+    const checkMissingCapability = (capabilityId) => (error) => {
+      assert.ok(error instanceof module.MermanOperationError);
+      assert.equal(error.kind, "missing-capability");
+      assert.equal(error.capabilityId, capabilityId);
+      assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
+      return true;
+    };
+    const fontSpec = { assets: { fonts: [{
+      id: "caller-font", format: "woff2", data_base64: "d09GMg==",
+    }] } };
+    for (const theme of [
+      { spec: fontSpec },
+      { schema_version: 1, kind: "complete_spec", complete_spec: fontSpec },
+    ]) {
+      const options = { optionsJson: JSON.stringify({ theme }) };
+      const check = checkMissingCapability("embedded-fonts");
+      await assert.rejects(engine.renderSvg(SOURCES.flowchart, options), check);
+      assert.throws(() => engine.renderSvgSync(SOURCES.flowchart, options), check);
+      await assert.rejects(module.createNodeEngine({ bindingOptions: { theme } }), check);
+      counts.content_capability_rejections += 3;
+    }
+    const mathSource = 'flowchart LR\nA["$$x^2$$"]';
+    const checkMath = checkMissingCapability("math");
+    await assert.rejects(engine.renderSvg(mathSource), checkMath);
+    assert.throws(() => engine.renderSvgSync(mathSource), checkMath);
+    counts.content_capability_rejections += 2;
+    const hostFontSvg = await renderTheme(engine, "flowchart", { spec: {
+      typography: { default: { font_stack: ["Merman Smoke Absent Font", "sans-serif"] } },
+    } });
+    assert.match(hostFontSvg, /Merman Smoke Absent Font/);
+    assert.doesNotMatch(hostFontSvg, /@font-face|data:font/);
 
     const supportVectors = JSON.parse(await readFile(new URL("support.json", FIXTURES), "utf8"));
     for (const vector of supportVectors) {

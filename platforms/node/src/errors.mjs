@@ -864,7 +864,7 @@ export function abortError() {
 export function decodeWireResponse(
   value,
   expectation,
-  { allowedCancellationReasons = [], requireUnavailable = false } = {},
+  { allowedCancellationReasons = [], requireUnavailable = false, availableCapabilityIds = [] } = {},
 ) {
   const cancellationReasons = validateAllowedCancellationReasons(allowedCancellationReasons);
   const envelope = parseTransportJsonText(
@@ -890,6 +890,7 @@ export function decodeWireResponse(
       expectation,
       requireUnavailable,
       cancellationReasons,
+      availableCapabilityIds,
     );
     throw new MermanOperationError(error);
   }
@@ -1032,6 +1033,7 @@ function validateErrorPayload(
   expectation = null,
   requireUnavailable = false,
   allowedCancellationReasons = new Set(),
+  availableCapabilityIds = [],
 ) {
   if (
     !isPlainJsonObject(error) ||
@@ -1096,7 +1098,10 @@ function validateErrorPayload(
     }
   } else if (
     expectation &&
-    (error.kind === "missing-capability" || error.kind === "unknown-operation")
+    (error.kind === "unknown-operation" ||
+      (error.kind === "missing-capability" &&
+        (error.capability_id === expectation.availability_capability_id ||
+          availableCapabilityIds.includes(error.capability_id))))
   ) {
     throw new MermanInvalidTransportError(
       "Merman transport contradicted its advertised operation catalog.",

@@ -1859,6 +1859,47 @@ test("capability-gated errors survive while advertised-operation contradictions 
   await engine.dispose();
 });
 
+test("advertised SVG preserves missing content capabilities in sync and async calls", async () => {
+  for (const capabilityId of ["embedded-fonts", "math", "future-content"]) {
+    const response = failure({ kind: "missing-capability", capabilityId });
+    const factory = transportFactory({
+      async execute() { return response; },
+      executeSync() { return response; },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      const check = (error) => {
+        assert.ok(error instanceof MermanOperationError);
+        assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
+        assert.equal(error.kind, "missing-capability");
+        assert.equal(error.capabilityId, capabilityId);
+        return true;
+      };
+      await assert.rejects(engine.renderSvg("flowchart TD\nA"), check);
+      assert.throws(() => engine.renderSvgSync("flowchart TD\nA"), check);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
+test("missing advertised capabilities still contradict the runtime catalog", async () => {
+  for (const capabilityId of ["svg", "layout-elk"]) {
+    const response = failure({ kind: "missing-capability", capabilityId });
+    const factory = transportFactory({
+      async execute() { return response; },
+      executeSync() { return response; },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      await assert.rejects(engine.renderSvg("flowchart TD\nA"), MermanInvalidTransportError);
+      assert.throws(() => engine.renderSvgSync("flowchart TD\nA"), MermanInvalidTransportError);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
 test("cancellation responses must match this invocation control", async () => {
   for (const {
     label,

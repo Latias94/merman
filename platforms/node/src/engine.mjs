@@ -282,6 +282,7 @@ export class MermanEngine {
         return decodeWireResponse(responseJson, encoded.expectation, {
           allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
           requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+          availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
         });
       },
       { signal },
@@ -300,6 +301,7 @@ export class MermanEngine {
     return decodeWireResponse(responseJson, encoded.expectation, {
       allowedCancellationReasons: invocationCancellationReasons(undefined, timeoutMs),
       requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+      availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
     });
   }
 
