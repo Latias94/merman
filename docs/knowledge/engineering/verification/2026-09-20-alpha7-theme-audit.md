@@ -49,6 +49,10 @@ The release-mode support discovery gate also passes
 `cargo nextest run --release --locked -p merman-render --lib --test theme_support_discovery_test`
 with the support-manifest selection: 58 tests passed and 2,520 unrelated tests were skipped.
 
+The current HEAD refresh reran that release gate without the historical selection summary:
+2,577 support-discovery tests passed and two intentional skips remained. The gate continues to
+keep target, family, capability, `Unsupported`, and `Unverified` decisions distinct.
+
 The current literal Modern Mermaid matrix remains useful input coverage: 510 rows across SVG,
 PNG and PDF, with 480 successful outputs and 30 input-specific parse failures. The failures are
 classified as upstream-invalid or parser-specific before theme evaluation. The matrix measures
