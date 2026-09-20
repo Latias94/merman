@@ -390,6 +390,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Installed recipe follow-up:** The [installed consumer record](../knowledge/engineering/verification/2026-09-19-installed-theme-recipe-consumers.md) rebuilds Python, Node Darwin ARM64 and Node WASM from clean `0c1b1047a`. Their installed entry points pass shared authoring/support/catalog goldens, direct full-recipe import and invalid-envelope checks. Separate processes exchange actual Cyberpunk files and produce byte-identical Flowchart/Sequence/XY SVGs. The tranche also repairs the stale standalone Node lock and generated legal projections. Other profiles/hosts, resource/customization journeys, final archive provenance and U10 comparisons remain open.
 
+**Apple local recipe follow-up (2026-09-20):** The [Swift consumer record](../knowledge/engineering/verification/2026-09-20-apple-preset-recipe-journeys.md) rebuilds the macOS XCFramework from native source `3433717b9`. Both entry points match all ten preset exports and the shared catalog. Three fresh processes import complete and Class-edited Cyberpunk files, preserving twelve SVGs and complete operation metadata; actual Class paints change without affecting other families. Unsupported node width retains its source-addressed residual and rejected admission. This closes the bounded local Apple export/edit gap, not installed-archive, Swift-floor, iOS, all-six-journey or visual qualification.
+
 ### U10. Close performance and footprint findings
 
 **Goal:** Decide whether the new boundaries are efficient enough to deliver.

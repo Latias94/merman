@@ -203,6 +203,19 @@ executable and static-library hashes are recorded in
 local package's generated UniFFI path, not registry installation, iOS execution, Swift 5.9, or the
 full preset-edit/export journey.
 
+The [Apple recipe follow-up](2026-09-20-apple-preset-recipe-journeys.md) now rebuilds the macOS
+XCFramework from native source `3433717b9` and executes its ARM64 SwiftPM consumer. Both entry
+points match the shared complete catalog, export all ten presets and compare their imported
+State SVGs. Cyberpunk additionally matches Class/Flowchart/Sequence/XY, and ten malformed recipe
+requests reject. Three fresh processes import actual original, Class-color-edited and
+unsupported-width recipe files; twelve SVGs and twelve complete operation metadata objects match
+the parent reusable engine. The Class color edit reaches actual shape paths without changing the
+other families. Node width remains explicitly Unsupported with a source-addressed residual and
+rejected target admission; ordinary cells retain Unverified target status. The universal static
+library and Swift link input hashes match, and generated bindings remain unchanged. This closes
+the local Apple export/scoped-edit gap, while installed archives, the remaining six-journey cases,
+Swift 5.9, Intel execution and iOS remain open.
+
 The pinned cargo-dist `0.32.0` macOS ARM64 binary was downloaded to `/tmp` and verified against
 its release checksum (`aa343b2ff78ec2981f17a65140250c5ad6062c74072163f68c5c2686d94763a7`). Its
 plan passed the repository's release artifact-bundle verifier for the `macos-15` native
@@ -421,7 +434,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
 | Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; C ABI and mobile journeys remain limited to owner smokes |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; Apple now passes materialization/support/error goldens, with preset-edit/export and broader transport parity still open |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python and Node native/WASM records retained; rebuilt local Apple consumer passes authoring/support/errors, complete preset exchange, scoped Class paint edits and fresh-process output/metadata comparisons; remaining journeys and final installed transport parity stay open |
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
