@@ -388,6 +388,8 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Clean recording follow-up:** Source `a4a04ef1b` passed qualification recording and full replay in a separate clean checkout, with all 18 outputs matched to the existing production CLI. The scene record binds source, lockfile, runner, CLI and record digests. This closes scoped native qualification replay; final same-source archive assembly and the broader U9/U10 requirements remain open.
 
+**Installed recipe follow-up:** The [installed consumer record](../knowledge/engineering/verification/2026-09-19-installed-theme-recipe-consumers.md) rebuilds Python, Node Darwin ARM64 and Node WASM from clean `0c1b1047a`. Their installed entry points pass shared authoring/support/catalog goldens, direct full-recipe import and invalid-envelope checks. Separate processes exchange actual Cyberpunk files and produce byte-identical Flowchart/Sequence/XY SVGs. The tranche also repairs the stale standalone Node lock and generated legal projections. Other profiles/hosts, resource/customization journeys, final archive provenance and U10 comparisons remain open.
+
 ### U10. Close performance and footprint findings
 
 **Goal:** Decide whether the new boundaries are efficient enough to deliver.

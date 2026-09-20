@@ -26,6 +26,13 @@ surface also does not establish full support for every facet.
 
 # Latest native follow-up
 
+The [September 19 installed-consumer record](2026-09-19-installed-theme-recipe-consumers.md)
+adds fresh Python, Node Darwin ARM64 and Node WASM artifacts from clean `0c1b1047a`. Their shared
+authoring/support/catalog checks pass, and direct file exchange preserves identical complete
+Cyberpunk SVGs across all three consumers. It records actual package sizes and fixes the stale
+Node lock/legal inputs, but does not turn those sizes into a matched alpha.6 comparison or close
+the remaining host, archive, resource and performance gates.
+
 On 2026-09-19, clean source `a4a04ef1b` recorded and replayed the new Cyberpunk complete-scene
 SVG/PNG profile for Flowchart, Sequence and XY Chart. The production CLI matched all 18 scoped
 native outputs across Cyberpunk, Brutalist and Spotless; the local catalog projection preserves
