@@ -194,6 +194,11 @@ consumer; the retained log is
 lockfile or source file changed. This is a local macOS consumer run, not an installed pub archive,
 Android device execution or hosted release matrix.
 
+`dart pub publish --dry-run` also validated the current Flutter package without uploading: the
+archive was reported at 8 MB compressed with 0 package warnings, and its legal/native entries were
+listed. The dry run is package-shape evidence only; it does not prove pub.dev publication or
+consumer execution on every supported target.
+
 The current-source C ABI consumer smoke passed with both empty defaults and an explicit SVG
 feature selection. `cargo nextest run --locked -p merman-ffi --no-default-features --features svg
 --test c_consumer_smoke` passed the alpha5 compatibility consumer and current C consumer (2/2),
