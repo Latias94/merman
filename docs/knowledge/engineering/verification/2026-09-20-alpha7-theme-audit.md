@@ -271,7 +271,7 @@ default-empty ABI check separately. A current rerun also passed both tests (2/2)
 `target/bench/experiments/c7a-c-abi-current-20260920/svg-nextest-current.log` with SHA-256
 `55e0d12d0ee1cb243d5446ca83c3bcffb98cd67cea553180aaf0beea9c4b3ae7`.
 
-The recorded pre-integration Apple Swift consumer executes the shared theme goldens through both the one-shot API and
+The current Apple Swift consumer record executes the shared theme goldens through both the one-shot API and
 a fresh reusable engine: 2 light/dark materializations, 22 support queries, and 5 expected error
 calls per consumer (58 calls total). Materialized specs and support responses are compared as
 complete JSON values; errors preserve the shared authoring and resource envelopes, with only
@@ -325,7 +325,7 @@ retain their separate unverified boundaries.
 | Typst WASM | Current-source attempt at `bdb209e11`; last passing package is `f3a783c29` with Binaryen 131 | Current run blocked before packaging by host `wasm-opt 132` versus required 131 | Typst package, smoke and size rows must be rerun with Binaryen 131; constrained resource rejection remains separate |
 | C ABI | `bdb209e11` source-built journeys, 120 fresh processes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-crate delivery contract; packaged source-crate consumption and other hosts remain unverified |
 | Flutter/Dart | Pre-integration Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Current-source renewal pending; no pub.dev publication or Android device run |
-| Apple Swift | Pre-integration ARM64 SwiftPM smoke and recipe records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | Current-source renewal pending; no iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
+| Apple Swift | `bdb209e11` macOS XCFramework and SwiftPM smoke | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries, dense SVG and recipe imports | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
 | Android Kotlin/JVM | `platforms/android/gradlew test --no-daemon --max-workers=1` | JVM transport contract tests | No `adb` device, instrumentation or runtime JNI evidence |
 
 This matrix is intentionally conservative: it records real local execution without turning package
@@ -737,8 +737,8 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, current Web browser and current C ABI source consumer; historical Typst, Apple and Flutter records | Current-source records cover Python, Node, Web and C ABI; Typst is toolchain-blocked, while Apple and Flutter records require renewal from bdb before serving as final-candidate identities |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render records pass their exercised vectors; the current Web record is `bdb209e11`, while Typst shared-vector/package evidence remains historical at `f3a783c29`; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
+| Installed consumer journeys | Python, Node native/WASM, current Web browser, current C ABI source consumer and current Apple Swift consumer; historical Typst and Flutter records | Current-source records cover Python, Node, Web, C ABI and Apple; Typst is toolchain-blocked, while Flutter records require renewal from bdb before serving as final-candidate identities |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM, Web full/render and Apple records pass their exercised vectors at or after `bdb209e11`; Typst shared-vector/package evidence remains historical at `f3a783c29`; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
