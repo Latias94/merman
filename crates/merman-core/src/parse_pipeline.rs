@@ -1103,7 +1103,8 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config, control)?;
+        let (mut effective_config, source_config) =
+            self.effective_config_before_detect(&pre.config, control)?;
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
@@ -1117,12 +1118,33 @@ impl<'a> ParsePipeline<'a> {
             },
         };
         control.checkpoint()?;
-        family::apply_diagram_type_config_effects(
+        crate::config::resolve_appearance(
             &diagram_type,
-            &pre.config,
+            &source_config,
+            &self.engine.site_config_delta,
+            &crate::generated::upstream_default_config(),
             &mut effective_config,
         );
-        if has_config_overrides {
+        // The explicit keyword is the only detector-level layout selection retained in
+        // Mermaid 12. Apply it after appearance resolution for known-type entrypoints too.
+        if diagram_type == "flowchart-elk" {
+            effective_config.set_value("layout", serde_json::Value::String("elk".to_owned()));
+        }
+        if effective_config.get_str("theme") == Some("null") {
+            // The sentinel disables theme selection. Upstream retains the initialized
+            // variables and merges source overrides without running another theme program.
+            let mut initialized = match self.engine.default_effective_config() {
+                Ok(config) => config,
+                Err(error) => return Ok(Err(error)),
+            };
+            initialized.deep_merge(source_config.as_value());
+            if let Some(variables) = initialized.as_value().get("themeVariables") {
+                effective_config.set_value(
+                    "themeVariables",
+                    crate::config::clone_value_nonrecursive(variables),
+                );
+            }
+        } else if has_config_overrides {
             if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
                 return Ok(Err(error.into()));
             }
@@ -1255,15 +1277,15 @@ impl<'a> ParsePipeline<'a> {
         &self,
         overrides: &MermaidConfig,
         control: &OperationControl,
-    ) -> OperationControlResult<MermaidConfig> {
+    ) -> OperationControlResult<(MermaidConfig, MermaidConfig)> {
         if overrides.is_empty_object() {
-            return Ok(self.engine.site_config.clone());
+            return Ok((self.engine.site_config.clone(), overrides.clone()));
         }
 
         let mut effective_config = self.engine.site_config.clone();
         let effective_overrides = effective_config.source_filtered_overrides(overrides, control)?;
         effective_config.deep_merge(effective_overrides.as_value());
-        Ok(effective_config)
+        Ok((effective_config, effective_overrides))
     }
 }
 

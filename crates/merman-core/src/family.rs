@@ -10,7 +10,7 @@ use crate::diagram::{
 };
 use crate::{
     DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result,
+    OperationControl, OperationControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -558,35 +558,6 @@ pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str
     find_variant(diagram_type).and_then(|(_, variant)| variant.render_model_kind)
 }
 
-pub(crate) fn apply_diagram_type_config_effects(
-    diagram_type: &str,
-    user_config: &MermaidConfig,
-    effective_config: &mut MermaidConfig,
-) {
-    let (effect, default_effect) = find_variant(diagram_type)
-        .map(|(_, variant)| (variant.known_type_effect, variant.default_effect))
-        .unwrap_or((KnownTypeEffect::None, DefaultEffect::None));
-    match effect {
-        KnownTypeEffect::None => {}
-        KnownTypeEffect::ForceElk => {
-            effective_config.set_value("layout", Value::String("elk".to_string()));
-        }
-        KnownTypeEffect::RendererSelectsElk(config_path) => {
-            if effective_config.get_str(config_path) == Some("elk") {
-                effective_config.set_value("layout", Value::String("elk".to_string()));
-            }
-        }
-    }
-
-    match default_effect {
-        DefaultEffect::None => {}
-        DefaultEffect::SwimlaneLayout if user_config.get_str("layout").is_none() => {
-            effective_config.set_value("layout", Value::String("swimlane".to_string()));
-        }
-        DefaultEffect::SwimlaneLayout => {}
-    }
-}
-
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
         fn $fn_name(
@@ -838,19 +809,6 @@ const fn header(order: u16, label: &'static str, detail: &'static str) -> Header
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum KnownTypeEffect {
-    None,
-    ForceElk,
-    RendererSelectsElk(&'static str),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DefaultEffect {
-    None,
-    SwimlaneLayout,
-}
-
 #[derive(Clone, Copy)]
 struct FamilyVariantDefinition {
     id: &'static str,
@@ -864,8 +822,6 @@ struct FamilyVariantDefinition {
     metadata: Option<MetadataDefinition>,
     headers: &'static [HeaderDefinition],
     frontmatter_alias_order: Option<u16>,
-    known_type_effect: KnownTypeEffect,
-    default_effect: DefaultEffect,
 }
 
 #[derive(Clone, Copy)]
@@ -915,9 +871,7 @@ macro_rules! variant {
         render_kind: $render_kind:expr,
         metadata: $metadata:expr,
         headers: $headers:expr,
-        config_alias_order: $config_alias_order:expr,
-        known_effect: $known_effect:expr,
-        default_effect: $default_effect:expr $(,)?
+        config_alias_order: $config_alias_order:expr $(,)?
     ) => {
         FamilyVariantDefinition {
             id: $id,
@@ -931,8 +885,6 @@ macro_rules! variant {
             metadata: $metadata,
             headers: $headers,
             frontmatter_alias_order: $config_alias_order,
-            known_type_effect: $known_effect,
-            default_effect: $default_effect,
         }
     };
     (@warning_semantic) => {
@@ -1107,8 +1059,6 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: None,
     headers: &[],
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
@@ -1124,8 +1074,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("flowchart", None)),
         headers: FLOWCHART_ELK_HEADERS,
         config_alias_order: Some(3),
-        known_effect: KnownTypeEffect::ForceElk,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "flowchart-v2",
@@ -1139,13 +1087,11 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("flowchart", Some(7))),
         headers: FLOWCHART_HEADERS,
         config_alias_order: Some(2),
-        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "flowchart",
         catalog_order: 18,
-        detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
+        detector: None,
         semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
         warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
@@ -1154,8 +1100,6 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("flowchart", None)),
         headers: &[],
         config_alias_order: None,
-        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
-        default_effect: DefaultEffect::None,
     },
 ];
 
@@ -1171,8 +1115,6 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("swimlane", Some(27))),
     headers: SWIMLANE_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::SwimlaneLayout,
 }];
 
 const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1186,8 +1128,6 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("mindmap", Some(14))),
     headers: MINDMAP_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1201,8 +1141,6 @@ const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("architecture", Some(0))),
     headers: ARCHITECTURE_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1216,8 +1154,6 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("zenuml", Some(34))),
     headers: ZENUML_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1231,8 +1167,6 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("sequence", Some(25))),
     headers: SEQUENCE_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1246,8 +1180,6 @@ const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("c4", Some(2))),
     headers: C4_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1261,8 +1193,6 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("kanban", Some(13))),
     headers: KANBAN_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
@@ -1277,13 +1207,11 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("class", Some(3))),
         headers: CLASS_HEADERS,
         config_alias_order: Some(0),
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "class",
         catalog_order: 9,
-        detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
+        detector: None,
         semantic: Some(ordered(17, crate::diagrams::class::parse_class)),
         combined: Some(ordered(21, crate::diagrams::class::parse_class_json_and_editor_facts)),
         typed: Some(ordered(9, render_class)),
@@ -1291,8 +1219,6 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("class", None)),
         headers: &[],
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
 ];
 
@@ -1308,8 +1234,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("er", Some(5))),
         headers: ER_HEADERS,
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "erDiagram",
@@ -1322,8 +1246,6 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("er", None)),
         headers: &[],
         config_alias_order: Some(1),
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
 ];
 
@@ -1338,8 +1260,6 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("gantt", Some(8))),
     headers: GANTT_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1353,8 +1273,6 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("info", Some(10))),
     headers: INFO_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1368,8 +1286,6 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("pie", Some(16))),
     headers: PIE_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1383,8 +1299,6 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("requirement", Some(23))),
     headers: REQUIREMENT_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1398,8 +1312,6 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("timeline", Some(28))),
     headers: TIMELINE_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1414,8 +1326,6 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("gitgraph", Some(9))),
     headers: GIT_GRAPH_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
@@ -1430,13 +1340,11 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("state", Some(26))),
         headers: STATE_HEADERS,
         config_alias_order: Some(4),
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "state",
         catalog_order: 22,
-        detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
+        detector: None,
         semantic: Some(ordered(21, crate::diagrams::state::parse_state)),
         combined: Some(ordered(27, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(2, render_state)),
@@ -1444,8 +1352,6 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("state", None)),
         headers: &[],
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
 ];
 
@@ -1460,8 +1366,6 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("journey", Some(12))),
     headers: JOURNEY_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1475,8 +1379,6 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("quadrantchart", Some(17))),
     headers: QUADRANT_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1490,8 +1392,6 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("sankey", Some(24))),
     headers: SANKEY_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1505,8 +1405,6 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("packet", Some(15))),
     headers: PACKET_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1520,8 +1418,6 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("xychart", Some(33))),
     headers: XYCHART_HEADERS,
     config_alias_order: Some(5),
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1536,8 +1432,6 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("block", Some(1))),
     headers: BLOCK_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1551,8 +1445,6 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("eventmodeling", Some(6))),
     headers: EVENTMODELING_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1566,8 +1458,6 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("treeView", Some(29))),
     headers: TREE_VIEW_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1581,8 +1471,6 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("radar", Some(18))),
     headers: RADAR_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1596,8 +1484,6 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("ishikawa", Some(11))),
     headers: ISHIKAWA_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1611,8 +1497,6 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("treemap", Some(30))),
     headers: TREEMAP_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
@@ -1627,8 +1511,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("railroad", Some(19))),
         headers: RAILROAD_HEADERS,
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "railroadEbnf",
@@ -1641,8 +1523,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("railroadEbnf", Some(21))),
         headers: RAILROAD_EBNF_HEADERS,
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "railroadAbnf",
@@ -1655,8 +1535,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("railroadAbnf", Some(20))),
         headers: RAILROAD_ABNF_HEADERS,
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
     variant! {
         id: "railroadPeg",
@@ -1669,8 +1547,6 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("railroadPeg", Some(22))),
         headers: RAILROAD_PEG_HEADERS,
         config_alias_order: None,
-        known_effect: KnownTypeEffect::None,
-        default_effect: DefaultEffect::None,
     },
 ];
 
@@ -1685,8 +1561,6 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("venn", Some(31))),
     headers: VENN_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1700,8 +1574,6 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("wardley", Some(32))),
     headers: WARDLEY_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
@@ -1715,8 +1587,6 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     metadata: Some(metadata("cynefin", Some(4))),
     headers: CYNEFIN_HEADERS,
     config_alias_order: None,
-    known_effect: KnownTypeEffect::None,
-    default_effect: DefaultEffect::None,
 }];
 
 const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
