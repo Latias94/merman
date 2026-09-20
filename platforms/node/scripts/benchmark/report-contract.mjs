@@ -1284,8 +1284,15 @@ function validateLifecycleSettlement(value, status, label, expectedError = null)
 }
 
 function validateErrorBehavior(value, label) {
-  if (value?.unknown_operation?.kind !== "unknown-operation") {
-    throw new Error(`${label} must preserve the typed unknown-operation error.`);
+  if (
+    value?.unknown_operation?.kind !== "public-api-rejected" ||
+    value.unknown_operation.error_name !== "RangeError" ||
+    typeof value.unknown_operation.message !== "string" ||
+    !/operation id `bitmap` is not callable through this SDK version/i.test(
+      value.unknown_operation.message,
+    )
+  ) {
+    throw new Error(`${label} must preserve the public API unknown-operation rejection.`);
   }
   if (
     value?.missing_capability?.kind !== "missing-capability" ||

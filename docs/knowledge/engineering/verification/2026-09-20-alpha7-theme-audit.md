@@ -292,13 +292,19 @@ sampling because their build receipts still bind the old `crates/merman-node/Car
 first-render gate therefore remains open until candidates are rebuilt from this exact source and
 lockfile.
 
-The candidates were then rebuilt from this source and lockfile: both receipts now carry the
-`sha256:b3c42d2379...` lock digest and commit `59f7758a4`. The benchmark still did not produce an
-admissible timing report. With npm 12, the full corpus exposed six `MERMAN_INVALID_TRANSPORT`
-results in KaTeX/math inputs, and an eight-fixture representative corpus was rejected because the
-Node-targeted WASM candidate did not preserve the typed unknown-operation error. These are transport
-contract failures, not performance samples; no cold, first-render, warm, or concurrency numbers
-from either attempt are used as U10 evidence.
+The candidates were then rebuilt from this source and lockfile: both receipts carry the
+`sha256:b3c42d2379...` lock digest and commit `9ccb4527f`. The benchmark harness's public-API error
+probe was corrected and its contract tests pass 15/15 under npm 12; the representative rerun now
+reaches the cross-candidate catalog gate. It is rejected because the two targets intentionally
+advertise different SVG backend depth hard caps: the WebAssembly catalog reports `64`, while the
+native catalog reports `256` for `svg_backend_tree_depth` in all four resource profiles. The source
+authority is `crates/merman-render/src/resources.rs`, where the values are selected by
+`target_arch = "wasm32"`, and the binding projection preserves that target-specific value. This is
+an expected target contract difference, but the checked-in Node comparison harness currently
+requires identical full catalog digests and therefore emits no admissible timing report. The full
+corpus also exposed six `MERMAN_INVALID_TRANSPORT` results in KaTeX/math inputs. These are transport
+or harness-gate findings, not performance samples; no cold, first-render, warm, or concurrency
+numbers from these attempts are used as U10 evidence.
 
 # Classification and C7b deferral
 

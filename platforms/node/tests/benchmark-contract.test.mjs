@@ -699,7 +699,13 @@ function candidate(id) {
       ],
     },
     error_behavior: {
-      unknown_operation: { kind: "unknown-operation", capability_id: null },
+      unknown_operation: {
+        kind: "public-api-rejected",
+        capability_id: null,
+        code_name: null,
+        error_name: "RangeError",
+        message: "operation id `bitmap` is not callable through this SDK version.",
+      },
       missing_capability: { kind: "missing-capability", capability_id: "png" },
       text_measurement_callback_rejected: true,
     },
