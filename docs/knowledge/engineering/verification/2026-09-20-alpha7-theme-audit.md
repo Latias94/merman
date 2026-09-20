@@ -136,9 +136,9 @@ The architecture consequence is bounded: modern Mermaid remains a design referen
 into Merman-owned typed tokens, family rules, canvas layers and resource metadata. No TypeScript
 evaluator, partial CSS parser, bundled Inter font or second export pipeline is justified. Delivery
 must keep the existing public materialization/export seam, target-local admission, explicit
-Unsupported/Unverified receipts and host/resource residuals. The current Web/Typst size and
-consumer results below are reproducible candidate baselines; they are not evidence that the
-historical alpha.6 deltas are theme-only costs.
+Unsupported/Unverified receipts and host/resource residuals. The current Web size and consumer results below, together with the historical Typst record, are
+reproducible candidate baselines; they are not evidence that the historical alpha.6 deltas are
+theme-only costs.
 
 The source-presentation trust boundary also differs from alpha.6: commit `81e008f66` replaces
 blanket font/theme-variable locks with validated CSS values for init and frontmatter, while the
