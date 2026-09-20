@@ -18,9 +18,10 @@ The strongest current result is the integrated-source installed Python, Node Dar
 Node WASM consumer refresh. The evidence is execution-local and host-bound: macOS ARM64, system
 fonts, selected SVG/PNG scenes and the installed consumer profiles described below. It does not
 establish the release matrix or the U10 cost gate. The accepted XML/reference single-pass
-implementation is integrated at `bdb209e11`. Every source-bound Web, Typst, CLI/LSP, C ABI, Apple,
-Flutter and other artifact record in this audit predates that commit and is historical until rebuilt
-from the integrated source; their semantic results remain evidence of the earlier source only.
+implementation is integrated at `bdb209e11`. The Web package/browser record has now been rebuilt
+from that source. Typst, CLI/LSP, C ABI, Apple, Flutter and other artifact records remain historical
+until rebuilt from the integrated source; their semantic results remain evidence of their recorded
+earlier sources only.
 
 # Completed evidence
 
@@ -40,14 +41,12 @@ resource checks and eight content-capability rejections; three fresh processes e
 recipes with 12 SVG/metadata comparisons per target. The preceding `f3a783c29` record remains
 historical.
 
-The [current Web/Typst record](2026-09-21-web-typst-consumers.md) also binds `f3a783c29`.
-All five Web packages pass the owner matrix and installed Chromium loading. Web full/render
-extend the exact saved-recipe SVG witness to two browser packages, with shared support,
-materialization and error vectors. The Typst publish package passes 22 positive fixtures,
-nine expected failures and shared theme vectors under the explicitly recorded local compiler.
-The six Web/Typst profiles also pass all 24 existing size-budget metrics without changing limits.
-Current post-link sizes are 3,691,445 (analysis), 5,219,068 (ASCII), 3,802,668 (editor), 16,314,028
-(full), 13,716,904 (render) and 11,198,698 bytes (Typst); exact archives and hashes are in the record.
+The [current Web record](2026-09-20-web-typst-consumers-single-pass.md) binds `bdb209e11`.
+All five Web packages pass the owner build, contract, 35-diagram smoke, DOM-safety and installed
+package verification. The five Web size rows pass without budget changes, and the current package
+manifest records exact archives and hashes. The same-source Typst attempt stops at the required
+Binaryen gate because this host exposes `wasm-opt 132` while the owner requires Binaryen 131; the
+preceding `f3a783c29` Typst package record is therefore historical, not a current-source pass.
 
 The [current CLI/LSP archive record](2026-09-20-cli-lsp-reference-plan-replay.md) also binds
 `f3a783c29`. Both archives pass execute-mode verification. The CLI's fresh qualification and
@@ -324,8 +323,8 @@ transport artifacts retain their separate unverified or historical-source bounda
 | --- | --- | --- | --- |
 | Python | Fresh installed wheel at `bdb209e11` | Complete UniFFI smoke, shared authoring/support/catalog vectors and exact recipe SVG exchange with Node/Web | Local macOS ARM64 wheel; registry installation and other hosts remain unverified |
 | Node Darwin ARM64, Node WASM | `bdb209e11` pack/install smoke and customized recipe exchange | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
-| Web browser packages | `f3a783c29` package group and installed Chromium record | Five capability projections, owner matrix/DOM safety and exact full/render recipe exchange with Python/Node | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
-| Typst WASM | `f3a783c29`, Binaryen 131 and Typst 0.15.1 package smoke | 22 positive fixtures, nine expected failures and shared theme vectors; four size metrics pass | CI Typst 0.15.0 remains unexecuted locally; constrained resource rejection does not promote qualification |
+| Web browser packages | `bdb209e11` package group and installed Chromium build | Five capability projections, owner matrix/DOM safety and current-source package manifest; five size rows pass | Other browsers/hosts, visual qualification and hosted archive provenance remain separate |
+| Typst WASM | Current-source attempt at `bdb209e11`; last passing package is `f3a783c29` with Binaryen 131 | Current run blocked before packaging by host `wasm-opt 132` versus required 131 | Typst package, smoke and size rows must be rerun with Binaryen 131; constrained resource rejection remains separate |
 | C ABI | [Current native C journeys](2026-09-20-c-abi-theme-journeys.md), 120 fresh processes plus checked-in examples/smokes | Ten preset recipes, scoped Class edits, shared support/errors, native exports and caller-supplied fonts | Source-built ARM64 host reference; packaged source-crate consumption, broader journeys and other hosts remain unverified |
 | Flutter/Dart | Current Native Assets smoke and `pub publish --dry-run` | Two materializations, 22 support queries, five errors, three budgeted operations; package shape | Local macOS arm64 package; no pub.dev publication or Android device run |
 | Apple Swift | Current ARM64 SwiftPM smoke, complete preset/fresh-process and boundary records | Catalog, ten preset exports, Class paint/Clear/transparent/font boundaries and dense SVG | No iOS/Intel/Swift 5.9 runtime, installed release archive or visual qualification |
@@ -740,8 +739,8 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Requirement | Evidence anchor | Status at this source |
 | --- | --- | --- |
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
-| Installed consumer journeys | Python, Node native/WASM, Web browser and Typst package records; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
-| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render at `f3a783c29` pass shared goldens and exact three-family recipe SVG exchange; Typst passes its shared vectors and package consumer; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
+| Installed consumer journeys | Python, Node native/WASM and current Web browser record; historical Typst package record; C ABI source consumer smoke | Installed records cover the named packages; Flutter's current Dart Native Assets consumer and Apple ARM64 now cover their local authoring/preset/error boundaries; current-source Typst, C ABI packaged-source consumption, mobile and remaining six-journey routes remain limited |
+| Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM and Web full/render records pass their exercised vectors; the current Web record is `bdb209e11`, while Typst shared-vector/package evidence remains historical at `f3a783c29`; Apple retains its local preset/scoped-paint evidence; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `f3a783c29` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
