@@ -16,6 +16,11 @@ These are the translated port's historical derivation points, not the workspace'
 
 The crate contains the production layered graph, option model, processor assembly, and layout phases used by `merman-layout-elk`. Corrections and new behavior must continue to follow the pinned Eclipse ELK sources rather than approximating fixture output.
 
+Additional ELK algorithm translations stay in this existing EPL-2.0 crate so they share its
+license and caller-owned work-control boundary. They do not introduce a second feature or
+budget system. A kernel entry point alone does not advertise Mermaid renderer support;
+adapter dispatch and compound integration are admitted separately.
+
 ## Layer assignment
 
 The layered pipeline supports `NETWORK_SIMPLEX`, `LONGEST_PATH`, `LONGEST_PATH_SOURCE`,
@@ -35,6 +40,14 @@ containers. It preserves fixed or crowded ports, builds separate corner and port
 for flexible nodes, and applies source path-straightening rules. This property belongs to
 the container node in its parent graph; it is not inherited by the container's children.
 The implementation and elkjs 0.9.3 geometry evidence live in `src/p4nodes/network_simplex.rs`.
+
+## Packing kernels
+
+`algorithms::box_layout` translates the SIMPLE mode of Eclipse ELK's
+[`BoxLayoutProvider`](https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/util/BoxLayoutProvider.java).
+It packs measured rectangles, supports the target container expansion behavior, and returns
+content translations separately. It does not route edges or consume randomness. Grouped
+packing modes are outside Mermaid 12's exposed configuration and are not advertised.
 
 ## Random seed authority
 

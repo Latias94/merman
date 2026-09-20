@@ -250,13 +250,13 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 
 ### Eclipse Layout Kernel (`eclipse-elk`)
 
-The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered and Box layout algorithms, including common and core layout utilities, under EPL-2.0.
 
 - Version: `0.9.1`
 - Source: <https://github.com/eclipse-elk/elk.git>
 - Source ref: `v0.9.1`
 - Source commit: `62d5909f96fad541bc101ad52dabaece6b7eab7e`
-- Source path: `plugins/org.eclipse.elk.alg.layered`
+- Source path: `plugins`
 - Relationship: `modified`, `translated`
 - License expression: `EPL-2.0`
 - Artifact scopes: `cli-release`, `elk-render`, `source-archive`, `typst-publish`, `web-full`, `web-render`

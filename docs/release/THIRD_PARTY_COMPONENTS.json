@@ -428,7 +428,7 @@
         "repository": "https://github.com/eclipse-elk/elk.git",
         "ref": "v0.9.1",
         "commit": "62d5909f96fad541bc101ad52dabaece6b7eab7e",
-        "path": "plugins/org.eclipse.elk.alg.layered"
+        "path": "plugins"
       },
       "relationships": ["modified", "translated"],
       "local_paths": ["crates/merman-elk-layered", "crates/merman-layout-elk"],
@@ -448,7 +448,7 @@
           "evidence": "Source references in crates/merman-elk-layered and the v0.9.1 Git tag"
         }
       ],
-      "notice": "The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0."
+      "notice": "The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered and Box layout algorithms, including common and core layout utilities, under EPL-2.0."
     },
     {
       "id": "elkjs",
