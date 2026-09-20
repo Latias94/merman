@@ -54,6 +54,25 @@ impl Default for Spacing {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LayoutOptions {
     pub layered: LayeredOptions,
+    pub container: ContainerOptions,
+}
+
+/// Mermaid resolves container placement independently from root placement in named presets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContainerOptions {
+    pub cycle_breaking: CycleBreakingStrategy,
+    pub node_placement: NodePlacementStrategy,
+    pub node_placement_alignment: NodePlacementAlignment,
+}
+
+impl Default for ContainerOptions {
+    fn default() -> Self {
+        Self {
+            cycle_breaking: CycleBreakingStrategy::DepthFirst,
+            node_placement: NodePlacementStrategy::BrandesKoepf,
+            node_placement_alignment: NodePlacementAlignment::Balanced,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,11 +104,11 @@ impl Default for LayeredOptions {
             random_seed: 1,
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
-            cycle_breaking: CycleBreakingStrategy::Greedy,
+            cycle_breaking: CycleBreakingStrategy::DepthFirst,
             layering: LayeringStrategy::NetworkSimplex,
             layering_layer_bound: 4,
             node_placement: NodePlacementStrategy::BrandesKoepf,
-            node_placement_alignment: NodePlacementAlignment::None,
+            node_placement_alignment: NodePlacementAlignment::Balanced,
             model_order: ModelOrderStrategy::NodesAndEdges,
             consider_model_order: true,
             force_node_model_order: false,

@@ -282,7 +282,14 @@ fn place_free_ports(graph: &mut LGraph, node: usize, side: PortSide) {
             }
         }
         PortSide::East | PortSide::West => {
-            let available = node_size.height - surrounding.top - surrounding.bottom;
+            // InsidePortLabelCellCreator reserves vertical label spacing even for
+            // empty north/south cells. CellSystemConfigurator deducts that space
+            // from the east/west surrounding margins before placing free ports.
+            let border_offset = graph.options.spacing.label_port_vertical.max(0.0)
+                + 2.0 * graph.options.spacing.label_label;
+            let top = (surrounding.top - border_offset).max(0.0);
+            let bottom = (surrounding.bottom - border_offset).max(0.0);
+            let available = node_size.height - top - bottom;
             let port_span = port_indices
                 .iter()
                 .map(|port| graph.layerless_nodes[node].ports[*port].size.height)
@@ -295,7 +302,7 @@ fn place_free_ports(graph: &mut LGraph, node: usize, side: PortSide) {
                 port_indices.len(),
                 alignment,
             );
-            y += surrounding.top;
+            y += top;
 
             for port in port_indices {
                 graph.layerless_nodes[node].ports[port].position.x =

@@ -269,10 +269,13 @@ fn graph_to_source_input_with_root_context(
                     NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                     NodeKind::Leaf => NodeLabelPlacement::Fixed,
                 },
-                nested_spacing_base: match node.kind {
-                    NodeKind::Group => Some(30.0),
-                    NodeKind::Leaf => None,
-                },
+                nested_options: (node.kind == NodeKind::Group).then(|| {
+                    Box::new(container_options_to_source(
+                        graph,
+                        graph.direction,
+                        graph.options.layered.hierarchy_handling,
+                    ))
+                }),
                 // Mermaid only exposes a subgraph label to ELK when `childrenById` contains the
                 // subgraph. Empty subgraphs retain their label data for SVG rendering, but their
                 // titles must not create ELK label margins.
@@ -755,11 +758,11 @@ impl<'a> HierarchyIndex<'a> {
         work_control.check(materialized)?;
         work_control.charge(materialized)?;
 
-        let mut options =
-            layered_options_to_source_for(self.graph, scope.direction, scope.handling);
-        if scope.anchor.is_some() {
-            options.spacing = source_port::SpacingOptions::layered_base_value(30.0);
-        }
+        let mut options = if scope.anchor.is_some() {
+            container_options_to_source(self.graph, scope.direction, scope.handling)
+        } else {
+            layered_options_to_source_for(self.graph, scope.direction, scope.handling)
+        };
         if let Some(label) = scope.anchor.and_then(|node| self.graph.nodes[node].label) {
             apply_root_inside_top_center_label_padding(&mut options, label);
         }
@@ -803,7 +806,13 @@ impl<'a> HierarchyIndex<'a> {
                         NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
                         NodeKind::Leaf => NodeLabelPlacement::Fixed,
                     },
-                    nested_spacing_base: (source.kind == NodeKind::Group).then_some(30.0),
+                    nested_options: (source.kind == NodeKind::Group).then(|| {
+                        Box::new(container_options_to_source(
+                            self.graph,
+                            scope.direction,
+                            scope.handling,
+                        ))
+                    }),
                     // Mermaid attaches an ELK label only when childrenById contains the group.
                     // Empty-group titles remain available to SVG rendering without layout margin.
                     label: if source.kind == NodeKind::Leaf
@@ -1687,6 +1696,42 @@ fn layered_options_to_source_for(
         self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
     options.self_loop_ordering =
         self_loop_ordering_to_source(graph.options.layered.self_loop_ordering);
+    set_mermaid_port_clearance(&mut options);
+    options
+}
+
+fn set_mermaid_port_clearance(options: &mut SourceLayeredOptions) {
+    options.spacing.ports_surrounding.top = 12.0;
+    options.spacing.ports_surrounding.right = 12.0;
+    options.spacing.ports_surrounding.bottom = 12.0;
+    options.spacing.ports_surrounding.left = 12.0;
+}
+
+fn container_options_to_source(
+    graph: &Graph,
+    direction: Direction,
+    handling: HierarchyHandling,
+) -> SourceLayeredOptions {
+    // Mermaid 12 buildSubgraphLayoutOptions. Containers get their own strategy resolution;
+    // root layering, layer bounds, model-order and edge-routing settings are not inherited.
+    let mut options = SourceLayeredOptions {
+        direction: direction_to_source(direction),
+        hierarchy_handling: hierarchy_handling_to_source(handling),
+        random_seed: graph.options.layered.random_seed,
+        merge_edges: graph.options.layered.merge_edges,
+        cycle_breaking_strategy: cycle_breaking_to_source(graph.options.container.cycle_breaking),
+        node_placement_strategy: node_placement_to_source(graph.options.container.node_placement),
+        node_placement_bk_fixed_alignment: node_placement_alignment_to_source(
+            graph.options.container.node_placement_alignment,
+        ),
+        padding: source_port::ElkPadding::uniform(24.0),
+        spacing: source_port::SpacingOptions::layered_base_value(24.0),
+        ..Default::default()
+    };
+    options.spacing.node_node = 50.0;
+    options.spacing.edge_node_between_layers = 30.0;
+    options.spacing.edge_edge = 20.0;
+    set_mermaid_port_clearance(&mut options);
     options
 }
 
@@ -3174,12 +3219,13 @@ mod tests {
             .and_then(|edge| edge.labels.first())
             .expect("sibling center label");
 
-        assert_eq!(alpha.width, 251.375);
-        assert_eq!(cross_hierarchy_label.x, 24.0);
-        assert_eq!(cross_hierarchy_label.y, 150.0);
+        // elkjs 0.9.3 with Mermaid 12 root and container options.
+        assert_eq!(alpha.width, 295.375);
+        assert_eq!(cross_hierarchy_label.x, 36.0);
+        assert_eq!(cross_hierarchy_label.y, 192.0);
         assert_eq!(cross_hierarchy_label.width, 66.609375);
-        assert_eq!(sibling_label.x, 135.9921875);
-        assert_eq!(sibling_label.y, 219.0);
+        assert_eq!(sibling_label.x, 167.9921875);
+        assert_eq!(sibling_label.y, 255.0);
     }
 
     #[test]
@@ -3227,14 +3273,17 @@ mod tests {
         let first = result.edges.iter().find(|edge| edge.id == "e1").unwrap();
         let second = result.edges.iter().find(|edge| edge.id == "e2").unwrap();
 
-        assert_eq!(group.width, 250.703125);
-        assert_eq!(group.height, 121.5);
-        assert_eq!(first.labels[0].x, 130.796875);
-        assert_eq!(first.labels[0].y, 96.5);
-        assert_eq!(first.points[2].y, 109.0);
-        assert_eq!(second.labels[0].x, 130.796875);
-        assert_eq!(second.labels[0].y, 56.5);
-        assert!(second.points.iter().all(|point| point.y == 69.0));
+        // elkjs 0.9.3 with Mermaid 12 root and container options.
+        assert_eq!(group.width, 334.703125);
+        assert_eq!(group.height, 145.0);
+        assert_eq!(first.labels[0].x, 172.796875);
+        assert_eq!(first.labels[0].y, 108.0);
+        assert!((first.points[0].y - 103.4).abs() < 1e-9);
+        assert_eq!(first.points[2].y, 120.5);
+        assert_eq!(second.labels[0].x, 172.796875);
+        assert_eq!(second.labels[0].y, 63.0);
+        assert!((second.points[0].y - 92.6).abs() < 1e-9);
+        assert_eq!(second.points[2].y, 75.5);
     }
 
     #[test]

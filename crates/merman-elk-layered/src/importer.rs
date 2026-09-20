@@ -19,7 +19,6 @@ use crate::graph::{
 use crate::options::{
     CycleBreakingStrategy, ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint,
     LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy, PortConstraints,
-    SpacingOptions,
 };
 use crate::random::RandomSeedAuthority;
 use crate::work::{NoopWorkControl, WorkControl, WorkError, ceil_log2, checked_mul, checked_sum};
@@ -47,7 +46,8 @@ pub struct ElkInputNode {
     pub layer_constraint: Option<LayerConstraint>,
     pub port_constraints: Option<PortConstraints>,
     pub node_label_placement: NodeLabelPlacement,
-    pub nested_spacing_base: Option<f64>,
+    /// Resolved options for the graph inside this node. Absent values use ELK defaults.
+    pub nested_options: Option<Box<LayeredOptions>>,
     pub label: Option<ElkInputLabel>,
 }
 
@@ -1373,25 +1373,13 @@ fn input_edge_containing_parent<'a>(
 }
 
 fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) -> LayeredOptions {
-    // Mirror Mermaid's selective subgraph option boundary rather than cloning the complete root
-    // configuration. buildSubgraphLayoutOptions forwards mergeEdges and nodePlacementStrategy;
-    // the former also keeps collector-port identity consistent across hierarchy boundaries.
-    let mut options = LayeredOptions {
-        random_seed: parent_options.random_seed,
-        direction: parent_options.direction,
-        hierarchy_handling: resolve_child_hierarchy_handling(
-            node.hierarchy_handling,
-            parent_options,
-        ),
-        port_constraints: node.port_constraints.unwrap_or(PortConstraints::Free),
-        inside_self_loops_activate: parent_options.inside_self_loops_activate,
-        merge_edges: parent_options.merge_edges,
-        node_placement_strategy: parent_options.node_placement_strategy,
-        ..LayeredOptions::default()
-    };
-    if let Some(spacing_base) = node.nested_spacing_base {
-        options.spacing = SpacingOptions::layered_base_value(spacing_base);
-    }
+    // ElkGraphImporter.createLGraph copies the container's own properties. Renderer-specific
+    // presets and overrides must arrive on that node rather than leak in from the root graph.
+    let mut options = node.nested_options.as_deref().cloned().unwrap_or_default();
+    options.direction = parent_options.direction;
+    options.hierarchy_handling =
+        resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
+    options.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
     options
 }
 
@@ -2505,6 +2493,7 @@ fn detect_parent_cycles<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SpacingOptions;
     use crate::compound::preprocess_source_ported_compound_graph;
     use crate::graph::LNodeKind;
     use crate::options::OrderingStrategy;
@@ -2520,7 +2509,7 @@ mod tests {
             layer_constraint: None,
             port_constraints: None,
             node_label_placement: NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -3049,6 +3038,10 @@ mod tests {
     fn merged_cross_edge_ports_use_constant_operation_local_probes() {
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        group.nested_options = Some(Box::new(LayeredOptions {
+            merge_edges: true,
+            ..Default::default()
+        }));
         let mut child = node("child");
         child.parent = Some("group".to_string());
         let edge_count = 32usize;
@@ -3398,7 +3391,10 @@ mod tests {
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         cluster.node_label_placement = NodeLabelPlacement::InsideTopCenter;
         cluster.label = Some(ElkInputLabel::center("Cluster", 64.0, 22.0));
-        cluster.nested_spacing_base = Some(30.0);
+        cluster.nested_options = Some(Box::new(LayeredOptions {
+            spacing: SpacingOptions::layered_base_value(30.0),
+            ..Default::default()
+        }));
         let mut child = node("A");
         child.parent = Some("cluster".to_string());
 
@@ -3416,13 +3412,20 @@ mod tests {
     fn importer_applies_nested_hierarchy_merge_without_cloning_root_options() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
-        cluster.nested_spacing_base = Some(30.0);
+        cluster.nested_options = Some(Box::new(LayeredOptions {
+            spacing: SpacingOptions::layered_base_value(30.0),
+            layering_strategy: crate::options::LayeringStrategy::LongestPath,
+            random_seed: 17,
+            ..Default::default()
+        }));
         let mut child = node("A");
         child.parent = Some("cluster".to_string());
         let mut input = graph(vec![cluster, child], vec![]);
         input.options.merge_hierarchy_edges = false;
         input.options.consider_model_order_strategy = OrderingStrategy::NodesAndEdges;
         input.options.spacing = SpacingOptions::layered_base_value(40.0);
+        input.options.layering_strategy = crate::options::LayeringStrategy::CoffmanGraham;
+        input.options.random_seed = 42;
 
         let lgraph = import_graph(&input).unwrap();
         let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
@@ -3435,6 +3438,11 @@ mod tests {
             OrderingStrategy::None
         );
         assert_eq!(nested.options.spacing.node_node, 30.0);
+        assert_eq!(
+            nested.options.layering_strategy,
+            crate::options::LayeringStrategy::LongestPath
+        );
+        assert_eq!(nested.options.random_seed, 17);
     }
 
     #[test]
@@ -4229,6 +4237,10 @@ mod tests {
 
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        group.nested_options = Some(Box::new(LayeredOptions {
+            random_seed: 0,
+            ..Default::default()
+        }));
         let mut child = node("child");
         child.parent = Some("group".to_string());
         let mut input = graph(vec![group, child], vec![]);
