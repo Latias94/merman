@@ -4,6 +4,7 @@ import Merman
 @main
 struct MermanAppleSmoke {
     static func main() throws {
+        if try importThemeRecipeInFreshProcess() { return }
         let client = Merman()
         guard client.bindingApiVersionV7() == 7 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
@@ -171,6 +172,7 @@ struct MermanAppleSmoke {
         }
 
         try verifyThemeAuthoringGoldens(client: client)
+        try verifyThemePresetRecipes(client: client)
         try engine.close()
         print("merman Apple UniFFI smoke passed")
     }

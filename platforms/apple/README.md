@@ -86,6 +86,8 @@ git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
 The final command proves that the checked-in UniFFI Swift projection matches the library used to build the XCFramework.
 
+The macOS smoke compares the shared theme catalog and authoring vectors, round-trips all ten preset recipes, and imports complete Cyberpunk and edited Class recipes in fresh processes. It also checks that unsupported Class node widths retain a source-addressed diagnostic and rejected admission. Set `MERMAN_APPLE_THEME_SMOKE_OUTPUT` to retain each run's recipe files, SVGs, and operation metadata under a chosen directory. These checks do not qualify visual output, iOS execution, or the Swift 5.9 compiler floor.
+
 ## Documentation And Releases
 
 - [Apple binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
