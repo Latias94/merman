@@ -19,9 +19,9 @@ Components: `beautiful-mermaid`, `mermaid`, `mermaid-ascii`, `mermaid-rs-rendere
 
 ### `cli-default`
 
-The default CLI feature closure without ELK, retaining the explicit RaTeX math/font support.
+The default CLI feature closure including ELK and RaTeX math/font support.
 
-Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
+Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`.
 
 ### `cli-release`
 
@@ -259,7 +259,7 @@ The merman-elk-layered crate contains modified Rust source translations of Eclip
 - Source path: `plugins`
 - Relationship: `modified`, `translated`
 - License expression: `EPL-2.0`
-- Artifact scopes: `cli-release`, `elk-render`, `source-archive`, `typst-publish`, `web-full`, `web-render`
+- Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-elk-layered`, `crates/merman-layout-elk`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md`](THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)
@@ -275,7 +275,7 @@ Mermaid's ELK adapter behavior is compared against this JavaScript distribution,
 - Source path: `.`
 - Relationship: `behavior-reference`
 - License expression: `EPL-2.0`
-- Artifact scopes: `cli-release`, `elk-render`, `playground-reference`, `source-archive`, `typst-publish`, `web-full`, `web-render`
+- Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-layout-elk`, `playground`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/elkjs/LICENSE.md`](THIRD_PARTY_LICENSES/elkjs/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)

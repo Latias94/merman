@@ -1,11 +1,12 @@
 # Choosing Merman capabilities
 
-This page documents the current development source. Registry channels publish independently, so
-verify the exact package version and provenance before copying an install command; workspace path
-snippets are for source-tree development.
+This page documents the development source for `0.8.0-alpha.7`. The published workspace release is
+`0.8.0-alpha.6`; the ELK product defaults below apply to this checkout and the planned alpha.7
+release. Registry channels publish independently, so verify the exact package version and provenance
+before copying an install command; workspace path snippets are for source-tree development.
 
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
-dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
+dependency. Every parser-capable build uses the same pinned Mermaid language model, detector,
 configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
 user-visible capabilities, output backends, or host adapters.
 
@@ -47,9 +48,10 @@ global capability implications.
 
 The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
 `merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
-not include the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk` aggregate
-when that closure is intended and its notices/provenance will accompany the artifact. Neither
-aggregate includes system adapters, analysis, ASCII, or binary exports.
+not include the EPL-2.0 ELK implementation. The `complete-svg-elk` aggregate adds ELK and is the
+`merman` facade default. Its notices and source provenance must accompany distributed artifacts.
+To omit ELK, disable default features and select `complete-svg` or the individual leaves required
+by the application. Neither aggregate includes system adapters, analysis, ASCII, or binary exports.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -69,8 +71,8 @@ select their own direct leaf set instead.
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Default `complete-svg-elk`, or `default-features = false, features = ["svg"]` for basic SVG |
-| Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
-| Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
+| SVG, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["complete-svg"]` |
+| SVG, Cytoscape, ELK, and math | `merman` | Default, or `default-features = false, features = ["complete-svg-elk"]` |
 | Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
 | Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
@@ -213,11 +215,12 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
-analysis, ASCII, PNG, JPEG, PDF, Cytoscape layout, math, local Iconify loading,
+analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
 Markdown conversion, checked Rustdoc fragment generation, native adapters, network icons, parallel
 Markdown, and shell completions.
-The separately assembled `cli-release` artifact additionally includes the ELK layout engine and
-its EPL-2.0 notices; a source install with ordinary defaults does not imply ELK availability.
+The `cli-release` artifact selects the same capabilities explicitly. Both closures include the
+EPL-2.0 ELK implementation and its notices. The published alpha.6 source default excludes ELK;
+its release archives already include it.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
@@ -262,15 +265,16 @@ packaged, and consumed with Rust's standard `#[doc = include_str!(...)]` or
 in its normal/build Cargo graph, supports crate-level docs, and makes diagram updates reviewable.
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
-features compile SVG, Cytoscape, and ELK into the proc-macro host. Add `math` for mathematical labels,
-or select `complete-svg` explicitly for SVG, Cytoscape, and math. This smaller default applies to
-the current source and the next release after `0.8.0-alpha.6`; the published alpha.6 macro still
-includes math by default. The `merman` facade default is `complete-svg-elk`; `complete-svg`
-remains the explicit lean aggregate.
-The explicit `complete-svg-elk` feature adds the EPL-2.0 ELK closure when a documentation artifact
-needs it. Optional dependency gating can keep that closure out of ordinary builds, but selecting
-the explicit ELK feature, `--all-features`, or an artifact profile that lists `layout-elk` compiles
-it.
+features compile SVG, Cytoscape, and ELK into the proc-macro host. Math is optional: add `math` or
+select `complete-svg-elk` for all four capabilities. These defaults apply to the current source
+and planned `0.8.0-alpha.7`; the published alpha.6 macro enables math and excludes ELK by default.
+The `merman` facade default is `complete-svg-elk` and continues to include math.
+
+The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
+out of ordinary builds while the dependency is disabled. To exclude ELK from documentation builds,
+use `default-features = false` and select `complete-svg` or narrower leaves. Cargo features are
+additive: selecting `complete-svg` alone does not remove an enabled default or a feature enabled
+by another dependency.
 
 | Concern | Checked CLI generation | Attribute macro |
 | --- | --- | --- |
