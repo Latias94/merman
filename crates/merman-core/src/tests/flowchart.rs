@@ -184,13 +184,13 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     assert_eq!(default.effective_config.get_str("layout"), Some("swimlane"));
     // Mermaid 12 gives an explicit initialized layout precedence over the family default.
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "layout": "elk"
+        "layout": "dagre"
     })));
 
     let site_default = engine
         .parse_metadata_sync("swimlane-beta LR\nA-->B\n")
         .expect("swimlane metadata");
-    assert_eq!(site_default.effective_config.get_str("layout"), Some("elk"));
+    assert_eq!(site_default.effective_config.get_str("layout"), Some("dagre"));
 
     let user_override = engine
         .parse_metadata_sync("%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n")
@@ -206,13 +206,13 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
         .expect("swimlane metadata with a null layout override");
     assert_eq!(
         cleared_override.effective_config.get_str("layout"),
-        Some("elk")
+        Some("dagre")
     );
 
     let known_type = engine
         .parse_metadata_with_type_sync("swimlane", "swimlane-beta LR\nA-->B\n")
         .expect("known-type swimlane metadata");
-    assert_eq!(known_type.effective_config.get_str("layout"), Some("elk"));
+    assert_eq!(known_type.effective_config.get_str("layout"), Some("dagre"));
 }
 
 #[test]
