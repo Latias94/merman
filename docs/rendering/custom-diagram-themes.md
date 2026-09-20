@@ -183,6 +183,11 @@ means explicitly transparent paint. Clear restores the family's base behavior; i
 transparent or "remove this last rule and reveal the previous theme rule." Canvas `base` is a paint,
 not a patch field: use `"transparent"`, not `null`, for a transparent canvas.
 
+Check the operation's theme execution metadata as well as its SVG. For example, Class Node fill
+Clear currently restores the base paint but retains an `unsupported-paint` diagnostic and rejected
+target admission. Explicit color and transparent fill do not remove the ordinary SVG target's
+Unverified status. A visible color change alone does not establish export qualification.
+
 This example changes explicit roles. It is **not** a global brand-color parameter. Cyberpunk
 contains independent node, actor, edge, marker, and data-series roles. Replacing every
 identical color string can damage those distinctions. A generated recipe is an editable snapshot,

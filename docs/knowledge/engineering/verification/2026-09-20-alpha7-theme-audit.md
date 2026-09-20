@@ -261,7 +261,7 @@ capability.
 | Transport/profile | Current evidence | Scope proved | Boundary retained |
 | --- | --- | --- | --- |
 | Python | Installed-consumer record from clean `0c1b1047a` | Shared authoring/support/catalog vectors and direct Cyberpunk recipe exchange | Historical clean-source wheel; no current registry installation or other host evidence |
-| Node Darwin ARM64, Node WASM | Refreshed pack/install smoke and content-capability correction below | 30 SVG renders and eight expected content-capability rejections per target; shared authoring/support/catalog vectors | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
+| Node Darwin ARM64, Node WASM | Refreshed pack/install smoke, content-capability correction and customized recipe exchange below | Shared vectors, eight content-capability rejections, and three saved customized recipes imported by fresh processes per target | Local tarball installation; no registry installation, other Node hosts or mobile runtime |
 | Web browser packages | Current Web owner smoke and Chromium package record; refreshed five-profile smoke log above | Five package capability projections, SVG/ASCII and DOM safety | Browser visual qualification and hosted archive provenance remain separate |
 | Typst WASM | Binaryen 131 package smoke | 22 positive fixtures, nine expected failures, support/materialization/error vectors | Cyberpunk constrained policy is an explicit resource rejection; no qualification promotion |
 | C ABI | Current nextest `0a5ea627-05b1-49e7-a345-389c3ef44d42`, 2/2 | Empty/default and SVG feature consumer paths with shared authoring errors | Source consumer, not installed SDK archive; six customization journeys remain open |
@@ -537,6 +537,43 @@ Reproduce this boundary through the existing Node owners: `npm test` under npm 1
 and the corresponding `assemble-packages.mjs` / `verify-packages.mjs --packed-root` paths.
 Pack with `npm pack`, install each tarball group with `npm install --offline --ignore-scripts`,
 then run `smoke-installed-package.mjs --project <consumer> --version 0.8.0-alpha.7 --target <target>`.
+
+### Node customized recipe exchange
+
+Commit `05065aa1a` extends the existing installed-package smoke with public workflow journeys
+2 and 3. It reuses the Web `customizeNodeColors` example to modify two explicit roles (canvas
+base and Node border) plus a Class-only fill rule in exported Cyberpunk. Three variants use an
+explicit fill, Clear and transparent paint. The test preserves every other recipe field,
+including layered canvas and effect graphs, and confirms the original export was not mutated.
+
+For each installed transport, three fresh Node processes read actual saved recipe files directly,
+without envelope extraction or preset regeneration. Their Class/Flowchart/Sequence/XY outputs
+and complete operation metadata match the parent engine in 12 comparisons per transport. The
+canvas rectangle and Class outer paths carry the requested colors. A source-styled Class node
+retains its own fill, stroke and width. Changing only the Class fill leaves the other three
+families' SVG bytes identical. The Class writer separates fill and stroke paths; the oracle
+checks both actual outer-path terminals rather than assuming one path owns both paints.
+
+The Clear variant also retains `unsupported-paint`, the authored `/styles/94` source location,
+and rejected target admission. Ordinary explicit/transparent variants retain Unverified target
+status. Restoring the default paint does not imply a qualified Clear route or a Portable SVG.
+These assertions keep the rendered effect and its support explanation distinct.
+
+Both local installed package groups from `3c19a74d6` pass this expanded smoke, and the Node suite
+remains 111/111 under Node 26.8.2/npm 12.0.2. This tranche changes consumer verification and
+documentation only; it reuses the unchanged installed runtime payloads and does not claim a new
+runtime build. Logs are in `target/bench/experiments/node-customized-recipes-20260920/`:
+
+| Log | SHA-256 |
+| --- | --- |
+| `node-wasm-smoke.log` | `3e34eaf8d44a13d03030eb4a295ce9460612c1a45a21c3135e37c04afb89fc36` |
+| `darwin-arm64-smoke.log` | `528cb11dd61e96b9a2a94d45921c8d987e7704c0a82d336d3c7556cb546992f1` |
+
+Reproduce with `smoke-installed-package.mjs --project <consumer> --version 0.8.0-alpha.7
+--target <node-wasm|darwin-arm64>` against the corresponding installed tarballs. This closes the
+bounded explicit-role modification and fresh-file import cases for these two installed Node
+transports. It does not define global brand recoloring, certify the preset portfolio, prove
+missing-font visual behavior, exercise PNG/PDF in Node, or complete the six-journey host matrix.
 
 # Classification and C7b deferral
 
