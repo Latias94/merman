@@ -244,6 +244,77 @@ fn load_bundle(path: &Path) -> Result<MermaidReferenceBundle, XtaskError> {
     serde_json::from_str(&text).map_err(XtaskError::from)
 }
 
+/// Runtime identity for staging generated config/theme artifacts before bundle admission.
+/// This validates the runtime being projected; it does not admit the rest of the bundle.
+pub(super) struct MermaidProjectionRuntime {
+    pub workspace: PathBuf,
+    pub version: String,
+    pub package_sha256: String,
+    pub source_tag: String,
+    pub source_commit: String,
+}
+
+impl MermaidProjectionRuntime {
+    pub fn selected() -> Self {
+        Self {
+            workspace: crate::cmd::mermaid_cli_root(),
+            version: crate::cmd::PINNED_MERMAID_VERSION.to_string(),
+            package_sha256: crate::cmd::PINNED_MERMAID_PACKAGE_SHA256.to_string(),
+            source_tag: crate::cmd::MERMAID_SOURCE_TAG.to_string(),
+            source_commit: crate::cmd::MERMAID_SOURCE_COMMIT.to_string(),
+        }
+    }
+
+    pub fn load(bundle_path: Option<&Path>) -> Result<Self, XtaskError> {
+        let runtime = if let Some(path) = bundle_path {
+            let bundle = load_bundle(path)?;
+            if bundle.release.package != "mermaid" {
+                return Err(XtaskError::MermaidReference(
+                    "projection release must be mermaid".into(),
+                ));
+            }
+            Self {
+                workspace: crate::cmd::workspace_root().join(&bundle.reference_cli.workspace),
+                version: bundle.release.version,
+                package_sha256: bundle.release.installed_content_sha256.ok_or_else(|| {
+                    XtaskError::MermaidReference(
+                        "projection requires the Mermaid package digest".into(),
+                    )
+                })?,
+                source_tag: bundle.release.source.reference,
+                source_commit: bundle.release.source.commit,
+            }
+        } else {
+            if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+                != crate::cmd::PINNED_MERMAID_VERSION
+            {
+                return Err(XtaskError::MermaidReference(
+                    "core and generator Mermaid pins differ".into(),
+                ));
+            }
+            Self::selected()
+        };
+        crate::cmd::validate_mermaid_cli_install(&runtime.workspace)?;
+        let package_root = runtime.workspace.join("node_modules/mermaid");
+        let manifest: JsonValue =
+            serde_json::from_str(&crate::util::read_text(&package_root.join("package.json"))?)?;
+        if manifest.get("version").and_then(JsonValue::as_str) != Some(&runtime.version) {
+            return Err(XtaskError::MermaidReference(format!(
+                "projection requires installed Mermaid {}",
+                runtime.version
+            )));
+        }
+        let actual = crate::cmd::upstream_svg_package_tree_sha256(&package_root)?;
+        if actual != runtime.package_sha256 {
+            return Err(XtaskError::MermaidReference(format!(
+                "Mermaid {} projection content drift: expected {}, found {actual}",
+                runtime.version, runtime.package_sha256
+            )));
+        }
+        Ok(runtime)
+    }
+}
+
 fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference> {
     let mut references = vec![
         &bundle.release,
@@ -726,8 +797,7 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
     let elk = bundle
         .external_layouts
         .iter()
-        .find(|reference| reference.id == "layout-elk")
-        .ok_or_else(|| XtaskError::MermaidReference("missing ELK layout reference".to_string()))?;
+        .find(|reference| reference.id == "layout-elk");
     let tidy_tree = bundle
         .external_layouts
         .iter()
@@ -746,26 +816,43 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
         bundle.schema_version
     )
     .expect("writing to a String cannot fail");
+    // Only an explicitly selected plugin owns a companion version. Standard Mermaid 12
+    // registers its own ELK and therefore has no external ELK version here.
     for (name, value) in [
-        ("MERMAID_JS_VERSION", bundle.release.version.as_str()),
-        ("MERMAID_PARSER_VERSION", bundle.parser.version.as_str()),
-        ("MERMAID_ZENUML_VERSION", zenuml.plugin.version.as_str()),
-        ("ZENUML_CORE_VERSION", zenuml.behavior.version.as_str()),
-        ("MERMAID_LAYOUT_ELK_VERSION", elk.version.as_str()),
+        ("MERMAID_JS_VERSION", Some(bundle.release.version.as_str())),
+        (
+            "MERMAID_PARSER_VERSION",
+            Some(bundle.parser.version.as_str()),
+        ),
+        (
+            "MERMAID_ZENUML_VERSION",
+            Some(zenuml.plugin.version.as_str()),
+        ),
+        (
+            "ZENUML_CORE_VERSION",
+            Some(zenuml.behavior.version.as_str()),
+        ),
+        (
+            "MERMAID_LAYOUT_ELK_VERSION",
+            elk.map(|elk| elk.version.as_str()),
+        ),
         (
             "MERMAID_LAYOUT_TIDY_TREE_VERSION",
-            tidy_tree.version.as_str(),
+            Some(tidy_tree.version.as_str()),
         ),
         (
             "MERMAID_REFERENCE_CLI_VERSION",
-            bundle.reference_cli.package.version.as_str(),
+            Some(bundle.reference_cli.package.version.as_str()),
         ),
     ] {
-        writeln!(
-            output,
-            "export const {name} = {} as const;",
-            rust_string(value)?
-        )
+        match value {
+            Some(value) => writeln!(
+                output,
+                "export const {name} = {} as const;",
+                rust_string(value)?
+            ),
+            None => writeln!(output, "export const {name} = null;"),
+        }
         .expect("writing to a String cannot fail");
     }
     writeln!(
@@ -1161,7 +1248,10 @@ fn verify_builtin_registry_inventory(
                     .join(&bundle.release.package),
             )
         } else {
-            (extract_builtin_layout_ids(&source), source_path.clone())
+            (
+                builtin_layout_ids_from_checkout(&checkout, &bundle.release.source.commit, &source),
+                source_path.clone(),
+            )
         };
         match actual_ids {
             Ok(actual_ids) if actual_ids != registry.ids => failures.push(format!(
@@ -1213,6 +1303,60 @@ fn installed_builtin_diagram_ids(
     if ids.is_empty() {
         return Err("Mermaid diagram metadata API returned no registered diagrams".to_string());
     }
+    Ok(ids)
+}
+
+// The selected source commit authenticates both files. This is the one upstream ELK
+// registration shape, not a TypeScript evaluator: changed registration requires review.
+fn builtin_layout_ids_from_checkout(
+    checkout: &Path,
+    commit: &str,
+    source: &str,
+) -> Result<Vec<String>, String> {
+    let mut ids = extract_builtin_layout_ids(source)?;
+    if source.contains("...elkLayoutLoaders()") {
+        // Read the companion constant from the exact commit, not an unverified working-tree file.
+        let object = format!(
+            "{commit}:packages/mermaid/src/rendering-util/layout-algorithms/elk/algorithms.ts"
+        );
+        let output = Command::new("git")
+            .args(["show", &object])
+            .current_dir(checkout)
+            .output()
+            .map_err(|error| format!("cannot read pinned ELK algorithms: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "cannot read pinned ELK algorithms: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let algorithms = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
+        ids.extend(extract_builtin_elk_layout_ids(source, &algorithms)?);
+    }
+    ensure_unique_registry_ids(&ids, "layout")?;
+    Ok(ids)
+}
+
+fn extract_builtin_elk_layout_ids(source: &str, algorithms: &str) -> Result<Vec<String>, String> {
+    if !source.contains("{ name: 'elk', loader, algorithm: 'elk.layered' }")
+        || !source.contains(
+            "...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))",
+        )
+    {
+        return Err(
+            "unrecognized built-in ELK registration; review the selected source".to_string(),
+        );
+    }
+    let declaration = "export const ELK_ALGORITHMS = [";
+    let start = algorithms
+        .find(declaration)
+        .ok_or_else(|| "missing ELK_ALGORITHMS declaration".to_string())?;
+    let algorithms =
+        crate::util::extract_string_array_at(algorithms, start + declaration.len() - 1)
+            .map_err(|error| error.to_string())?;
+    let mut ids = vec!["elk".to_string()];
+    ids.extend(algorithms);
+    ensure_unique_registry_ids(&ids, "ELK layout")?;
     Ok(ids)
 }
 
@@ -2532,6 +2676,44 @@ registerDefaultLayoutLoaders();
             extract_builtin_layout_ids(source).expect("extract default layouts"),
             ["dagre", "cose-bilkent"]
         );
+    }
+
+    #[test]
+    fn builtin_elk_registration_expands_the_pinned_algorithm_list() {
+        let source = "{ name: 'elk', loader, algorithm: 'elk.layered' },\n...ELK_ALGORITHMS.map((algorithm) => ({ name: algorithm, loader, algorithm }))";
+        let algorithms = "export const ELK_ALGORITHMS = ['elk.stress', 'elk.force', 'elk.mrtree', 'elk.sporeOverlap', 'elk.box', 'elk.rectpacking'] as const;";
+        assert_eq!(
+            extract_builtin_elk_layout_ids(source, algorithms).unwrap(),
+            [
+                "elk",
+                "elk.stress",
+                "elk.force",
+                "elk.mrtree",
+                "elk.sporeOverlap",
+                "elk.box",
+                "elk.rectpacking"
+            ]
+        );
+        assert!(
+            extract_builtin_elk_layout_ids(
+                &source.replace("name: algorithm", "name: 'other'"),
+                algorithms
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn builtin_elk_does_not_require_an_external_plugin_projection() {
+        let mut bundle =
+            load_bundle(&crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH)).unwrap();
+        bundle
+            .external_layouts
+            .retain(|reference| reference.id != "layout-elk");
+        let projection = render_typescript_projection(&bundle).unwrap();
+        assert!(projection.contains("export const MERMAID_LAYOUT_ELK_VERSION = null;"));
+        assert!(!projection.contains(r#""elk": "elk""#));
+        assert!(projection.contains(r#""tidy-tree": "tidy-tree""#));
     }
 
     #[test]

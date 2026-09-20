@@ -116,3 +116,23 @@ cargo run -p xtask -- gen-mermaid-reference --refresh-provenance
 The refresh renders every primary upstream SVG family and records the selected reference identity.
 The ordinary generator deliberately leaves provenance unchanged so a lock-only edit cannot relabel
 existing baselines.
+
+### Staging runtime projections during an upgrade
+
+Before promoting a new bundle, the existing generators can project an isolated installation
+using a temporary bundle descriptor under `target/`. Only its release runtime identity and
+reference workspace are used by this mode; successful projection does not admit the complete
+dependency graph or the selection receipt. The installed Mermaid version and package digest
+must match the descriptor. Both output paths must be explicit:
+
+```text
+cargo run -p xtask -- gen-default-config --reference-bundle target/upgrade/bundle.json --out target/upgrade/default_config.json --shape-out target/upgrade/default_config_shape.json
+cargo run -p xtask -- gen-theme-snapshot --reference-bundle target/upgrade/bundle.json --out target/upgrade/theme_variables.json --audit-out target/upgrade/theme_oracle.json
+```
+
+Without `--reference-bundle`, generators continue to enforce the selected workspace pins.
+Keep staged output outside accepted baseline directories until the implementation is ready.
+SVG generation uses the standard Mermaid bundle through the existing Puppeteer renderer and
+registers only the external layout plugins explicitly selected in the reference workspace.
+An absent theme remains absent; the runner no longer supplies the CLI's explicit `default`
+theme or registers its transitive ELK plugin over Mermaid's built-in implementation.

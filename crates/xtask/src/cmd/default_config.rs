@@ -7,6 +7,7 @@
 //! - the JSON-valued runtime config; and
 //! - the key shape contributed by JSON values, functions, and explicit `undefined` values.
 
+use super::mermaid_reference::MermaidProjectionRuntime;
 use crate::XtaskError;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
@@ -31,6 +32,7 @@ struct RuntimeProjectionPayload {
 
 #[derive(Debug, Clone, PartialEq)]
 struct DefaultConfigProjection {
+    version: String,
     values: JsonValue,
     config_keys: BTreeSet<String>,
     undefined_paths: BTreeSet<String>,
@@ -38,12 +40,14 @@ struct DefaultConfigProjection {
 }
 
 impl DefaultConfigProjection {
-    fn from_runtime(payload: RuntimeProjectionPayload) -> Result<Self, XtaskError> {
-        if payload.version != crate::cmd::PINNED_MERMAID_VERSION {
+    fn from_runtime(
+        payload: RuntimeProjectionPayload,
+        expected_version: &str,
+    ) -> Result<Self, XtaskError> {
+        if payload.version != expected_version {
             return Err(XtaskError::DefaultConfigProjection(format!(
                 "runtime projection requires Mermaid {}, found {}",
-                crate::cmd::PINNED_MERMAID_VERSION,
-                payload.version
+                expected_version, payload.version
             )));
         }
         if !payload.values.is_object() {
@@ -76,6 +80,7 @@ impl DefaultConfigProjection {
         }
 
         Ok(Self {
+            version: payload.version,
             values: payload.values,
             config_keys,
             undefined_paths,
@@ -85,7 +90,7 @@ impl DefaultConfigProjection {
 
     fn shape_json(&self) -> JsonValue {
         json!({
-            "baselineVersion": crate::cmd::PINNED_MERMAID_VERSION,
+            "baselineVersion": self.version,
             "configKeys": self.config_keys,
             "undefinedPaths": self.undefined_paths,
             "functionPaths": self.function_paths,
@@ -94,13 +99,15 @@ impl DefaultConfigProjection {
 }
 
 struct GenerateOptions {
+    reference_bundle: Option<PathBuf>,
     out_path: PathBuf,
     shape_out_path: PathBuf,
 }
 
 pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_generate_options(args)?;
-    let mut projection = project_pinned_mermaid_runtime()?;
+    let runtime = MermaidProjectionRuntime::load(options.reference_bundle.as_deref())?;
+    let mut projection = project_mermaid_runtime(&runtime)?;
     sort_json_value_keys(&mut projection.values);
     let mut shape = projection.shape_json();
     sort_json_value_keys(&mut shape);
@@ -113,11 +120,16 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         return Err(XtaskError::Usage);
     }
 
+    let mut reference_bundle = None;
     let mut out_path = None;
     let mut shape_out_path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--reference-bundle" => {
+                index += 1;
+                reference_bundle = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+            }
             "--out" => {
                 index += 1;
                 out_path = args.get(index).map(PathBuf::from);
@@ -131,6 +143,9 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         index += 1;
     }
 
+    if reference_bundle.is_some() && (out_path.is_none() || shape_out_path.is_none()) {
+        return Err(XtaskError::Usage);
+    }
     let out_was_explicit = out_path.is_some();
     let out_path = out_path.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_OUTPUT));
     let shape_out_path = shape_out_path.unwrap_or_else(|| {
@@ -141,30 +156,20 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         }
     });
     Ok(GenerateOptions {
+        reference_bundle,
         out_path,
         shape_out_path,
     })
 }
 
-fn project_pinned_mermaid_runtime() -> Result<DefaultConfigProjection, XtaskError> {
-    if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION != crate::cmd::PINNED_MERMAID_VERSION
-    {
-        return Err(XtaskError::DefaultConfigProjection(format!(
-            "default-config generation targets Mermaid {}, but the workspace pins {}",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
-        )));
-    }
-
-    let workspace_root = crate::cmd::workspace_root();
-    let tools_root = workspace_root.join("tools/mermaid-cli");
-    validate_pinned_mermaid_runtime(&tools_root)?;
-
+fn project_mermaid_runtime(
+    runtime: &MermaidProjectionRuntime,
+) -> Result<DefaultConfigProjection, XtaskError> {
     let output = Command::new("node")
         .arg("--input-type=module")
         .arg("-e")
         .arg(RUNTIME_PROJECTION_SCRIPT)
-        .current_dir(&tools_root)
+        .current_dir(&runtime.workspace)
         .output()
         .map_err(|error| {
             XtaskError::DefaultConfigProjection(format!(
@@ -179,37 +184,7 @@ fn project_pinned_mermaid_runtime() -> Result<DefaultConfigProjection, XtaskErro
     }
 
     let payload: RuntimeProjectionPayload = serde_json::from_slice(&output.stdout)?;
-    DefaultConfigProjection::from_runtime(payload)
-}
-
-fn validate_pinned_mermaid_runtime(tools_root: &Path) -> Result<(), XtaskError> {
-    let runtime_root = tools_root.join("node_modules/mermaid");
-    let required_manifests = [
-        tools_root.join("package.json"),
-        runtime_root.join("package.json"),
-        tools_root.join("node_modules/@mermaid-js/mermaid-cli/package.json"),
-    ];
-    if let Some(missing) = required_manifests
-        .iter()
-        .find(|manifest| !manifest.is_file())
-    {
-        return Err(XtaskError::MissingReference(format!(
-            "the pinned Mermaid generation runtime is missing at `{}`; run `npm ci --prefix tools/mermaid-cli`",
-            missing.display()
-        )));
-    }
-
-    crate::cmd::validate_mermaid_cli_install(tools_root)?;
-
-    let package_hash = crate::cmd::upstream_svg_package_tree_sha256(&runtime_root)?;
-    if package_hash != crate::cmd::PINNED_MERMAID_PACKAGE_SHA256 {
-        return Err(XtaskError::DefaultConfigProjection(format!(
-            "installed mermaid@{} content differs from the pinned package: expected {}, found {package_hash}; run `npm ci --prefix tools/mermaid-cli`",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            crate::cmd::PINNED_MERMAID_PACKAGE_SHA256
-        )));
-    }
-    Ok(())
+    DefaultConfigProjection::from_runtime(payload, &runtime.version)
 }
 
 fn unique_strings(field: &str, values: Vec<String>) -> Result<BTreeSet<String>, XtaskError> {
@@ -354,8 +329,11 @@ mod tests {
 
     #[test]
     fn runtime_projection_separates_json_values_from_non_json_shape() {
-        let projection =
-            DefaultConfigProjection::from_runtime(valid_payload()).expect("projection succeeds");
+        let projection = DefaultConfigProjection::from_runtime(
+            valid_payload(),
+            crate::cmd::PINNED_MERMAID_VERSION,
+        )
+        .expect("projection succeeds");
 
         assert!(projection.values["flowchart"].is_object());
         assert!(projection.values.get("nodeColors").is_none());
@@ -370,8 +348,9 @@ mod tests {
         let mut payload = valid_payload();
         payload.config_keys.retain(|key| key != "nodeColors");
 
-        let error = DefaultConfigProjection::from_runtime(payload)
-            .expect_err("missing shape leaf should fail");
+        let error =
+            DefaultConfigProjection::from_runtime(payload, crate::cmd::PINNED_MERMAID_VERSION)
+                .expect_err("missing shape leaf should fail");
         assert!(error.to_string().contains("nodeColors"));
     }
 

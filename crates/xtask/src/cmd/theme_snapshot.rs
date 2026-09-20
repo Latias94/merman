@@ -5,6 +5,7 @@
 //! locks the value-shape behavior that is easy to lose when translating JavaScript truthiness and
 //! merge semantics. Both artifacts come from one projection of the content-pinned runtime.
 
+use super::mermaid_reference::MermaidProjectionRuntime;
 use crate::XtaskError;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
@@ -63,20 +64,23 @@ struct RuntimeThemeProjection {
 }
 
 struct GenerateOptions {
+    reference_bundle: Option<PathBuf>,
     runtime_out_path: PathBuf,
     audit_out_path: PathBuf,
 }
 
 pub(crate) fn gen_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_generate_options(args)?;
-    let projection = project_pinned_mermaid_runtime()?;
-    let (runtime_artifact, audit_artifact) = build_theme_artifacts(projection)?;
+    let runtime = MermaidProjectionRuntime::load(options.reference_bundle.as_deref())?;
+    let projection = project_mermaid_runtime(&runtime)?;
+    let (runtime_artifact, audit_artifact) = build_theme_artifacts(projection, &runtime)?;
     write_compact_json(&options.runtime_out_path, &runtime_artifact)?;
     write_pretty_json(&options.audit_out_path, &audit_artifact)
 }
 
 fn build_theme_artifacts(
     projection: RuntimeThemeProjection,
+    runtime: &MermaidProjectionRuntime,
 ) -> Result<(JsonValue, JsonValue), XtaskError> {
     let oracle_case_count = projection
         .oracle_cases
@@ -89,10 +93,10 @@ fn build_theme_artifacts(
         .len();
     let provenance = json!({
         "generator": GENERATOR_COMMAND,
-        "mermaidVersion": crate::cmd::PINNED_MERMAID_VERSION,
-        "mermaidPackageSha256": crate::cmd::PINNED_MERMAID_PACKAGE_SHA256,
-        "mermaidSourceTag": crate::cmd::MERMAID_SOURCE_TAG,
-        "mermaidSourceCommit": crate::cmd::MERMAID_SOURCE_COMMIT,
+        "mermaidVersion": runtime.version,
+        "mermaidPackageSha256": runtime.package_sha256,
+        "mermaidSourceTag": runtime.source_tag,
+        "mermaidSourceCommit": runtime.source_commit,
     });
     let mut runtime_artifact = json!({
         "schemaVersion": THEME_ARTIFACT_SCHEMA_VERSION,
@@ -119,11 +123,16 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         return Err(XtaskError::Usage);
     }
 
+    let mut reference_bundle = None;
     let mut runtime_out_path = None;
     let mut audit_out_path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--reference-bundle" => {
+                index += 1;
+                reference_bundle = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+            }
             "--out" => {
                 index += 1;
                 runtime_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
@@ -137,30 +146,24 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         index += 1;
     }
 
+    if reference_bundle.is_some() && (runtime_out_path.is_none() || audit_out_path.is_none()) {
+        return Err(XtaskError::Usage);
+    }
     Ok(GenerateOptions {
+        reference_bundle,
         runtime_out_path: runtime_out_path.unwrap_or_else(|| PathBuf::from(THEME_RUNTIME_OUTPUT)),
         audit_out_path: audit_out_path.unwrap_or_else(|| PathBuf::from(THEME_AUDIT_OUTPUT)),
     })
 }
 
-fn project_pinned_mermaid_runtime() -> Result<RuntimeThemeProjection, XtaskError> {
-    if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION != crate::cmd::PINNED_MERMAID_VERSION
-    {
-        return Err(XtaskError::ThemeSnapshotProjection(format!(
-            "theme generation targets Mermaid {}, but the workspace pins {}",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
-        )));
-    }
-
-    let tools_root = crate::cmd::workspace_root().join("tools/mermaid-cli");
-    validate_pinned_mermaid_runtime(&tools_root)?;
-
+fn project_mermaid_runtime(
+    runtime: &MermaidProjectionRuntime,
+) -> Result<RuntimeThemeProjection, XtaskError> {
     let output = Command::new("node")
         .arg("--input-type=module")
         .arg("-e")
         .arg(RUNTIME_THEME_PROJECTION_SCRIPT)
-        .current_dir(&tools_root)
+        .current_dir(&runtime.workspace)
         .output()
         .map_err(|error| {
             XtaskError::ThemeSnapshotProjection(format!(
@@ -175,38 +178,17 @@ fn project_pinned_mermaid_runtime() -> Result<RuntimeThemeProjection, XtaskError
     }
 
     let projection: RuntimeThemeProjection = serde_json::from_slice(&output.stdout)?;
-    validate_projection(projection)
-}
-
-fn validate_pinned_mermaid_runtime(tools_root: &Path) -> Result<(), XtaskError> {
-    let runtime_root = tools_root.join("node_modules/mermaid");
-    if !runtime_root.join("package.json").is_file() {
-        return Err(XtaskError::MissingReference(format!(
-            "the pinned Mermaid theme runtime is missing at `{}`; run `npm ci --prefix tools/mermaid-cli`",
-            runtime_root.display()
-        )));
-    }
-
-    crate::cmd::validate_mermaid_cli_install(tools_root)?;
-    let package_hash = crate::cmd::upstream_svg_package_tree_sha256(&runtime_root)?;
-    if package_hash != crate::cmd::PINNED_MERMAID_PACKAGE_SHA256 {
-        return Err(XtaskError::ThemeSnapshotProjection(format!(
-            "installed mermaid@{} content differs from the pinned package: expected {}, found {package_hash}",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            crate::cmd::PINNED_MERMAID_PACKAGE_SHA256
-        )));
-    }
-    Ok(())
+    validate_projection(projection, &runtime.version)
 }
 
 fn validate_projection(
     projection: RuntimeThemeProjection,
+    expected_version: &str,
 ) -> Result<RuntimeThemeProjection, XtaskError> {
-    if projection.version != crate::cmd::PINNED_MERMAID_VERSION {
+    if projection.version != expected_version {
         return Err(XtaskError::ThemeSnapshotProjection(format!(
             "runtime projection requires Mermaid {}, found {}",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            projection.version
+            expected_version, projection.version
         )));
     }
 
@@ -454,8 +436,10 @@ mod tests {
             oracle_cases: JsonValue::Array(oracle_cases),
         };
 
-        let projection = validate_projection(projection).expect("complete projection is valid");
-        let (runtime, audit) = build_theme_artifacts(projection).unwrap();
+        let projection = validate_projection(projection, crate::cmd::PINNED_MERMAID_VERSION)
+            .expect("complete projection is valid");
+        let (runtime, audit) =
+            build_theme_artifacts(projection, &MermaidProjectionRuntime::selected()).unwrap();
 
         assert!(runtime.get("oracleCases").is_none());
         assert!(runtime.get("themes").is_some_and(JsonValue::is_object));
