@@ -121,7 +121,14 @@ upstream TypeScript or CSS. The fixture crate deliberately does not define the e
 `DiagramThemeSpec` JSON contract.
 
 The local checkout gate is intentionally ignored in ordinary CI because `repo-ref` is not a
-workspace input. Run it explicitly when refreshing the corpus:
+workspace input.
+
+Keep license mirrors byte-identical to the pinned upstream files, including trailing blank lines.
+The manifest's license hash validates both the local mirror and the upstream checkout. If a shared
+checkout has moved to another revision, use an independent worktree at the manifest revision and
+point `MERMAN_REPO_REF_ROOT` at a directory containing the three pinned checkouts.
+
+Run the gate explicitly when refreshing the corpus:
 
 ```bash
 MERMAN_REPO_REF_ROOT=repo-ref cargo nextest run -p merman-theme-fixtures \

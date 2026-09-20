@@ -57,16 +57,22 @@ The authoritative Stage 2 input is the hash-bound `gotoailab/modern_mermaid` sna
 `../../repo-ref/modern_mermaid`; its `src/utils/themes.ts`, `src/components/Preview.tsx`,
 `src/fonts.css` and `MERMAID_EXAMPLES.md` hashes match the corpus records. The checkout has one
 untracked `pnpm-workspace.yaml`, which was not read or modified. The repository's aggregate pinned
-checkout test currently stops at the Modern Mermaid license record: the upstream `LICENSE` has one
-additional trailing blank line, so its byte hash is
-`4e7ef9d2fd6e8b957ede09ca1bffe1844740721ea273d226b79bca2a9b9f3198`, while the normalized copied
-notice is `45195cf54a3816f4774dc762360b9d9a311fd66c7146d262ebe12ae55e420264`. A temporary exact
-source notice copy allowed the test to advance through Modern Mermaid and Mermaid, where it then
-stopped at the separately shared Excalidraw checkout revision
-`e160ff7ba0641fba729c528482de5277ffb19c58` instead of the manifest's
-`e4ab626739f5f163c5eca56190f615643218b61c`. We left both shared checkouts and the normalized
-notice untouched; therefore the three-source aggregate gate remains open, while the snapshot,
-source-file and semantic-matrix hashes remain independently verified.
+checkout test now passes for all three sources. The Modern Mermaid license mirror preserves the
+upstream `LICENSE` bytes, including its final blank line, with SHA-256
+`4e7ef9d2fd6e8b957ede09ca1bffe1844740721ea273d226b79bca2a9b9f3198`. Its manifest hash was corrected
+to match; checkout validation still requires exact byte equality. A path-specific Git whitespace
+attribute retains the verbatim license without treating its final blank line as an editing error.
+Excalidraw was verified in a separate detached worktree at the manifest's
+`e4ab626739f5f163c5eca56190f615643218b61c`; the shared checkout remains at
+`e160ff7ba0641fba729c528482de5277ffb19c58`.
+
+The explicit `pinned_source_checkouts_match_every_manifest_hash` nextest passed 1/1, checking
+revisions, license bytes, evidence-file hashes, citation bounds and source font bytes. The ordinary
+`merman-theme-fixtures` suite passed 67/67 with two intentional skips, and
+`verify-third-party-licenses.py` passed. Before/after logs, the exact checkout root and a source/hash
+receipt are retained under `target/bench/experiments/theme-source-check-20260920/`. The shared
+checkouts were not modified. This closes the aggregate source provenance gate; it does not promote
+fixture mechanisms into qualified public presets.
 
 The closed source matrix contains 24 themes, 18 mechanisms and 21 value facets. Seventeen
 mechanisms translate to typed capabilities; `backdrop-filter` remains one explicit residual. The
@@ -366,7 +372,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Catalog qualification | Native Cyberpunk/Brutalist/Spotless receipts and discovery inventory | Qualification cells intentionally remain empty; no catalog promotion |
 | CLI/LSP archive replay | cargo-dist macOS ARM64 archive assembly and execute-mode verifiers | Complete on macOS ARM64; Linux, Windows and Intel execution unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
-| Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells | Semantic matrix complete; aggregate three-source checkout gate remains open |
+| Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |
 | Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level, with Aurora and resource residuals explicitly Unverified |
 | Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited; portfolio-wide default/dark/high-contrast/document/brand/export review remains open |
 | WASM/Node/Python/Typst/CLI/native size | Current artifact identities, Web/Typst budgets, CLI/LSP archive sizes and legal digests | Measured current snapshots; matched alpha.6 attribution and cross-host deltas remain open |
