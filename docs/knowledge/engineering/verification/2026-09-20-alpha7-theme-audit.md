@@ -37,6 +37,10 @@ Sequence and XY Chart. Node contracts pass 109/109 under Node 24.21.0/npm 12.0.2
 owner tests pass 27/27. The same tranche repairs the standalone Node lock and regenerates legal
 projections without changing the intended capability recipe.
 
+The current source acceptance replay also passes
+`cargo nextest run --locked -p merman-theme-authoring-fixtures -p merman-theme-acceptance`:
+three public Cyberpunk Flowchart, Sequence and XY Chart recipe round-trip tests passed.
+
 The current literal Modern Mermaid matrix remains useful input coverage: 510 rows across SVG,
 PNG and PDF, with 480 successful outputs and 30 input-specific parse failures. The failures are
 classified as upstream-invalid or parser-specific before theme evaluation. The matrix measures
