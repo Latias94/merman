@@ -30,7 +30,8 @@ Commit `634adea3d` completed the current catalog and fixture projection:
 - Removed stale 35-family assumptions from xtask, WASM editor coverage, Playground examples and benchmark
   tests; synthetic assembler tests now use a local selected count instead of the production family count.
 - Added Agentflow to the Web smoke fixture matrix and catalog assertions.
-- Fixed the package prepack check for npm JSON array output by using the existing `allowNpm11` parser mode.\n- Corrected the feature-matrix product contract so the CLI default must equal its published recipe, including `layout-elk`.
+- Fixed the package prepack check for npm JSON array output by using the existing `allowNpm11` parser mode.
+- Corrected the feature-matrix product contract so the CLI default must equal its published recipe, including `layout-elk`.
 - Explicitly keep Agentflow out of ASCII rendering; the new render-model variant is routed to the existing
   unsupported-diagram error path.
 
