@@ -110,6 +110,7 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) tooltip_enabled: bool,
     pub(super) tooltip: &'a str,
     pub(super) look: &'a str,
+    pub(super) color_slot: Option<usize>,
 }
 
 pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
@@ -127,6 +128,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         tooltip_enabled,
         tooltip,
         look,
+        color_slot,
     } = attrs;
 
     if wrapped_in_a {
@@ -201,6 +203,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     }
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+    }
+    if let Some(slot) = color_slot {
+        let _ = write!(out, r#" data-color-id="color-{slot}""#);
     }
     out.push('>');
 }

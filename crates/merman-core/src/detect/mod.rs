@@ -264,6 +264,10 @@ pub(crate) fn detector_usecase(txt: &str, _config: &mut MermaidConfig) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
 }
 
+pub(crate) fn detector_agentflow(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_js_word_boundary(txt.trim_start(), "agentflow-beta")
+}
+
 pub(crate) fn detector_state_v2(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("stateDiagram")
 }

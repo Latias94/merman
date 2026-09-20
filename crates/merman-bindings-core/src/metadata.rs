@@ -1524,13 +1524,40 @@ mod tests {
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
         assert_eq!(flowchart.logical_family_kind, "flowchart");
         assert_eq!(flowchart.render_model_kind, Some("flowchart"));
-        assert!(flowchart.has_detector);
+        assert!(!flowchart.has_detector);
         assert!(flowchart.has_semantic_parser);
         assert!(flowchart.has_editor_parser);
         assert!(flowchart.has_combined_parser);
         assert!(flowchart.has_render_parser);
         assert!(!flowchart.has_header);
         assert_eq!(flowchart.config_namespace, Some("flowchart"));
+
+        let flowchart_v2 = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "flowchart-v2")
+            .expect("detectable flowchart variant should be present");
+        assert_eq!(flowchart_v2.metadata_id, Some("flowchart"));
+        assert_eq!(flowchart_v2.logical_family_kind, "flowchart");
+        assert_eq!(flowchart_v2.render_model_kind, Some("flowchart"));
+        assert!(flowchart_v2.has_detector);
+        assert!(flowchart_v2.has_header);
+
+        for (diagram_type, metadata_id) in [("agentflow", Some("agentflow")), ("usecase", None)] {
+            let capability = capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == diagram_type)
+                .unwrap_or_else(|| panic!("{diagram_type} capability should be present"));
+            assert_eq!(capability.metadata_id, metadata_id);
+            assert_eq!(capability.logical_family_kind, diagram_type);
+            assert_eq!(capability.render_model_kind, Some(diagram_type));
+            assert!(capability.has_detector);
+            assert!(capability.has_semantic_parser);
+            assert!(capability.has_editor_parser);
+            assert!(capability.has_combined_parser);
+            assert!(capability.has_render_parser);
+            assert!(capability.has_header);
+            assert_eq!(capability.config_namespace, Some(diagram_type));
+        }
 
         let swimlane = capabilities
             .iter()
@@ -1885,11 +1912,19 @@ mod tests {
             .expect("flowchart family capability should be present");
         assert_eq!(flowchart["logical_family_kind"], "flowchart");
         assert_eq!(flowchart["render_model_kind"], "flowchart");
-        assert_eq!(flowchart["has_detector"], true);
+        assert_eq!(flowchart["has_detector"], false);
         assert_eq!(flowchart["has_editor_parser"], true);
         assert_eq!(flowchart["has_combined_parser"], true);
         assert_eq!(flowchart["has_header"], false);
         assert_eq!(flowchart["config_namespace"], "flowchart");
+        let flowchart_v2 = family_capabilities
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|capability| capability["diagram_type"] == "flowchart-v2")
+            .expect("detectable flowchart variant should be present");
+        assert_eq!(flowchart_v2["has_detector"], true);
+        assert_eq!(flowchart_v2["has_header"], true);
         if cfg!(feature = "analysis") {
             let lint_rules: Value =
                 serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();

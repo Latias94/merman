@@ -390,6 +390,8 @@ pub(super) fn render_flowchart_svg_model(
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_kind: if swimlane_layout.is_some() {
             crate::family::RenderFamilyKind::Swimlane
+        } else if diagram_type == "agentflow" {
+            crate::family::RenderFamilyKind::Agentflow
         } else {
             crate::family::RenderFamilyKind::Flowchart
         },
@@ -434,6 +436,13 @@ pub(super) fn render_flowchart_svg_model(
         },
     )?;
     css.push_str(&class_defs_css);
+    if diagram_type == "agentflow" {
+        css.push_str(&super::agentflow::css(
+            diagram_id,
+            effective_config_value,
+            emit,
+        )?);
+    }
     emit.checkpoint()?;
     if swimlane_layout.is_some() {
         css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));

@@ -906,6 +906,9 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
         }
+        BuiltinFamilyArtifact::Agentflow { flow, .. } => {
+            flowchart::render_flowchart_svg_artifact(flow, metadata, options)
+        }
         BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
         }

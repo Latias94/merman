@@ -151,6 +151,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             tooltip_enabled,
             tooltip,
             look,
+            color_slot: super::super::agentflow::container_color_slot(ctx, node_id),
         },
     );
     ctx.checkpoint_emit()?;

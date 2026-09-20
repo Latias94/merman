@@ -1,6 +1,7 @@
 use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+mod agentflow;
 mod css;
 mod defs;
 mod document;

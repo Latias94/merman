@@ -36,6 +36,7 @@ macro_rules! include_checked_in_lalrpop_parser {
     };
 }
 
+pub mod agentflow;
 pub mod architecture;
 pub mod block;
 pub mod c4;

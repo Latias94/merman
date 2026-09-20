@@ -778,6 +778,11 @@ render_parser_controlled!(
     crate::diagrams::usecase::parse_usecase_model_for_render_controlled,
     RenderSemanticModel::Usecase
 );
+render_parser_controlled!(
+    render_agentflow,
+    crate::diagrams::agentflow::parse_agentflow_model_for_render_controlled,
+    RenderSemanticModel::Agentflow
+);
 
 #[derive(Clone, Copy)]
 struct Ordered<T> {
@@ -1054,6 +1059,8 @@ const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
     &[header(44, "flowchart-elk TD", "elk flowchart header")];
 const USECASE_HEADERS: &[HeaderDefinition] =
     &[header(45, "usecase-beta", "usecase diagram header")];
+const AGENTFLOW_HEADERS: &[HeaderDefinition] =
+    &[header(46, "agentflow-beta", "agentflow diagram header")];
 
 const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     id: "error",
@@ -1610,6 +1617,19 @@ const USECASE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     config_alias_order: None,
 }];
 
+const AGENTFLOW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "agentflow",
+    catalog_order: 43,
+    detector: Some(ordered(43, crate::detect::detector_agentflow)),
+    semantic: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow)),
+    combined: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow_json_and_editor_facts)),
+    typed: Some(ordered(43, render_agentflow)),
+    render_kind: Some("agentflow"),
+    metadata: Some(metadata("agentflow", Some(35))),
+    headers: AGENTFLOW_HEADERS,
+    config_alias_order: Some(36),
+}];
+
 const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     DiagramFamilyDefinition {
         logical_kind: "error",
@@ -1910,6 +1930,15 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
             frontmatter_order: 35,
         }),
         variants: USECASE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "agentflow",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
+        config: Some(FamilyConfigDefinition {
+            namespace: "agentflow",
+            frontmatter_order: 36,
+        }),
+        variants: AGENTFLOW_VARIANTS,
     },
 ];
 

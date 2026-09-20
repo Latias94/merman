@@ -193,6 +193,12 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         class_attr.push(' ');
     }
     class_attr.push_str("cluster");
+    if ctx.diagram_type == "agentflow" {
+        class_attr.push_str(" flow-cluster");
+    }
+    let color_attr = super::super::agentflow::container_color_slot(ctx, &cluster.id)
+        .map(|slot| format!(r#" data-color-id="color-{slot}""#))
+        .unwrap_or_default();
     let data_look = flowchart_config_look(ctx.config);
 
     // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
@@ -201,7 +207,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         let label_left = left + rect_w / 2.0 - label_w / 2.0;
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}">"#,
+            r#"<g class="{}" id="{}" data-look="{}"{color_attr}>"#,
             escape_xml_display(&class_attr),
             escape_xml_display(&cluster_dom_id),
             escape_xml_display(data_look),
@@ -273,7 +279,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-look="{}">"#,
+        r#"<g class="{}" id="{}" data-look="{}"{color_attr}>"#,
         escape_xml_display(&class_attr),
         escape_xml_display(&cluster_dom_id),
         escape_xml_display(data_look),

@@ -526,6 +526,7 @@ impl ModelComplexity {
             RenderSemanticModel::Venn(model) => Self::from_serializable(model),
             RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
             RenderSemanticModel::Usecase(model) => Self::from_serializable(model),
+            RenderSemanticModel::Agentflow(model) => Self::from_serializable(model),
         }
     }
 

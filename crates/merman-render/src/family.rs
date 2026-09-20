@@ -55,6 +55,7 @@ pub enum RenderFamilyKind {
     EventModeling,
     Venn,
     Usecase,
+    Agentflow,
 }
 
 impl RenderFamilyKind {
@@ -94,6 +95,7 @@ impl RenderFamilyKind {
             Self::EventModeling => "eventmodeling",
             Self::Venn => "venn",
             Self::Usecase => "usecase",
+            Self::Agentflow => "agentflow",
         }
     }
 }
@@ -235,6 +237,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
+    Agentflow {
+        semantic: diagrams::agentflow::AgentflowDiagramRenderModel,
+        flow: Box<FlowchartFamilyArtifact<FlowchartLayout>>,
+    },
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
@@ -338,6 +344,7 @@ pub(crate) enum BuiltinFamilyArtifact {
 
 #[derive(serde::Serialize)]
 enum LayoutProjection<'a> {
+    AgentflowDiagram(&'a FlowchartLayout),
     BlockDiagram(&'a BlockDiagramLayout),
     RequirementDiagram(&'a RequirementDiagramLayout),
     #[cfg(feature = "layout-cytoscape")]
@@ -437,6 +444,7 @@ fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value
 impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
+            Self::Agentflow { .. } => RenderFamilyKind::Agentflow,
             Self::Error(_) => RenderFamilyKind::Error,
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
             Self::State(_) => RenderFamilyKind::State,
@@ -480,6 +488,7 @@ impl BuiltinFamilyArtifact {
         metadata: &ParseMetadata,
     ) -> merman_core::Result<serde_json::Value> {
         match self {
+            Self::Agentflow { semantic, .. } => semantic.compatibility_json(metadata),
             Self::Error(pair) => pair.compatibility_json(metadata),
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
             Self::State(pair) => pair.compatibility_json(metadata),
@@ -520,6 +529,7 @@ impl BuiltinFamilyArtifact {
 
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
+            Self::Agentflow { flow, .. } => LayoutProjection::AgentflowDiagram(flow.pair.layout()),
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
@@ -1023,6 +1033,24 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
+        RenderSemanticModel::Agentflow(model) => model
+            .vertices
+            .iter()
+            .filter_map(|node| node.label.as_deref())
+            .chain(model.edges.iter().filter_map(|edge| edge.label.as_deref()))
+            .chain(
+                model
+                    .sub_graphs
+                    .iter()
+                    .filter_map(|graph| graph.title.as_deref()),
+            )
+            .chain(
+                model
+                    .connectors
+                    .iter()
+                    .filter_map(|connector| connector.title.as_deref()),
+            )
+            .any(crate::math::contains_delimited_math),
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
         RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
             || semantic_flowchart_requires_math(model),
@@ -1056,6 +1084,7 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
             required.push(RenderCapability::LayoutCytoscape);
         }
         RenderSemanticModel::Flowchart(_)
+        | RenderSemanticModel::Agentflow(_)
         | RenderSemanticModel::Class(_)
         | RenderSemanticModel::Usecase(_)
             if crate::uses_elk_layout(effective_config) =>
@@ -1125,8 +1154,10 @@ pub fn plan_render_with_policy(
         .copied()
         .filter(|capability| !capability_is_available(*capability, session))
         .collect();
-    let flowchart_svg_applicable = matches!(model, RenderSemanticModel::Flowchart(_))
-        && meta.effective_config.get_str("layout") != Some("swimlane");
+    let flowchart_svg_applicable = matches!(
+        model,
+        RenderSemanticModel::Flowchart(_) | RenderSemanticModel::Agentflow(_)
+    ) && meta.effective_config.get_str("layout") != Some("swimlane");
     let presentation_aspects = render_policy.resolve_aspects(
         flowchart_svg_applicable,
         crate::layout_backend::ElkRootAlgorithm::from_name(
@@ -1640,6 +1671,33 @@ fn prepare_non_class_render(
                     execution.elk_operation_seed(),
                 )
             })?)
+        }
+        RenderSemanticModel::Agentflow(model) => {
+            let (flowchart, render_context) =
+                model
+                    .to_flowchart_model()
+                    .map_err(|error| Error::InvalidModel {
+                        message: format!("failed to adapt agentflow layout model: {error}"),
+                    })?;
+            let flow = prepare_flowchart_artifact(
+                flowchart,
+                render_context,
+                render_policy.flowchart(),
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
+                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        &execution,
+                        svg_label_sidecar,
+                    )
+                },
+            )?;
+            BuiltinFamilyArtifact::Agentflow {
+                semantic: model,
+                flow,
+            }
         }
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
