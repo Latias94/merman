@@ -101,7 +101,7 @@
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
-        "contract": "A request requiring Cytoscape layout returns a typed missing-capability error when the engine is absent."
+        "contract": "Architecture requires Cytoscape and returns a typed missing-capability error when it is absent. Mindmap uses the registered Dagre fallback when Cose is absent; denying a compiled Cose loader remains a typed missing-capability error."
       }
     },
     {
@@ -112,7 +112,7 @@
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
-        "contract": "A request requiring ELK layout returns a typed missing-capability error when the engine is absent."
+        "contract": "An absent ELK loader uses the registered family fallback (Dagre, or Cose for Mindmap when available). A compiled loader denied by the render session returns a typed missing-capability error."
       }
     },
     {

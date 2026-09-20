@@ -20,6 +20,42 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
 
+/// The FlowDB minimum only reaches ordinary nodes that use `labelHelper`.
+/// Asset shapes set `node.width` before calling it, and fixed-size symbols bypass it.
+pub(crate) fn flowchart_node_label_min_width(
+    raw_label: &str,
+    layout_shape: Option<&str>,
+    config: &MermaidConfig,
+) -> f64 {
+    use super::FlowchartShape;
+
+    let shape = FlowchartShape::resolve(layout_shape.unwrap_or("squareRect"));
+    if raw_label.is_empty()
+        || matches!(
+            shape,
+            Ok(FlowchartShape::Anchor
+                | FlowchartShape::Choice
+                | FlowchartShape::CrossedCircle
+                | FlowchartShape::FilledCircle
+                | FlowchartShape::ForkJoin
+                | FlowchartShape::FramedCircle
+                | FlowchartShape::SmallCircle
+                | FlowchartShape::LightningBolt
+                | FlowchartShape::Icon
+                | FlowchartShape::IconCircle
+                | FlowchartShape::IconRounded
+                | FlowchartShape::IconSquare
+                | FlowchartShape::ImageSquare
+                | FlowchartShape::CollapsedGroup)
+        )
+    {
+        return 0.0;
+    }
+    crate::config::config_f64(config.as_value(), &["flowchart", "minNodeWidth"])
+        .unwrap_or(0.0)
+        .max(0.0)
+}
+
 fn normalize_flowchart_svg_line_breaks(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut pos = 0usize;
@@ -1224,6 +1260,43 @@ mod tests {
     use super::*;
     use crate::math::MathRenderer;
     use crate::model::{LayoutLabel, LayoutPoint};
+
+    #[test]
+    fn node_minimum_excludes_fixed_symbols_assets_and_empty_labels() {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "flowchart": { "minNodeWidth": 120.0 }
+        }));
+        assert_eq!(
+            flowchart_node_label_min_width("X", Some("rect"), &config),
+            120.0
+        );
+        assert_eq!(
+            flowchart_node_label_min_width("", Some("rect"), &config),
+            0.0
+        );
+        for shape in [
+            "icon",
+            "iconCircle",
+            "iconRounded",
+            "iconSquare",
+            "imageSquare",
+            "anchor",
+            "choice",
+            "cross-circ",
+            "f-circ",
+            "fork",
+            "stop",
+            "start",
+            "bolt",
+            "collapsedGroup",
+        ] {
+            assert_eq!(
+                flowchart_node_label_min_width("X", Some(shape), &config),
+                0.0,
+                "{shape}"
+            );
+        }
+    }
 
     #[derive(Debug)]
     struct PreciseMathRenderer;

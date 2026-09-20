@@ -29,9 +29,15 @@ pub(crate) fn resolve_appearance(
         } else {
             None
         };
+        // Mindmap's database chooses Cose only when the caller supplied no layout.
+        // Resolve this while authored layers are available, before global defaults
+        // become indistinguishable from an explicit request (including null).
+        let mindmap_default = (section == "mindmap" && key == "layout")
+            .then(|| Value::String("cose-bilkent".to_string()));
         let value = [source, initialize]
             .into_iter()
             .find_map(|layer| read_appearance(layer, section, key))
+            .or(mindmap_default.as_ref())
             .or(transitional_family_default.as_ref())
             .or_else(|| read_appearance(defaults, section, key));
         let Some(value) = value else {
@@ -147,6 +153,38 @@ mod tests {
         }
         let effective = resolve(json!({}), json!({ "flowchart": { "theme": "null" } }));
         assert_eq!(effective.get_str("theme"), Some("null"));
+    }
+
+    #[test]
+    fn mindmap_default_does_not_override_an_authored_layout() {
+        for (initialize, source, expected) in [
+            (json!({}), json!({}), json!("cose-bilkent")),
+            (json!({"layout": "elk"}), json!({}), json!("elk")),
+            (
+                json!({}),
+                json!({"layout": "tidy-tree"}),
+                json!("tidy-tree"),
+            ),
+            (
+                json!({"layout": "elk"}),
+                json!({"layout": null}),
+                Value::Null,
+            ),
+            (
+                json!({}),
+                json!({"mindmap": {"layout": "dagre"}}),
+                json!("dagre"),
+            ),
+        ] {
+            let defaults = MermaidConfig::from_value(json!({"layout": "elk"}));
+            let mut effective = defaults.clone();
+            let initialize = MermaidConfig::from_value(initialize);
+            let source = MermaidConfig::from_value(source);
+            effective.deep_merge(initialize.as_value());
+            effective.deep_merge(source.as_value());
+            resolve_appearance("mindmap", &source, &initialize, &defaults, &mut effective);
+            assert_eq!(effective.as_value()["layout"], expected);
+        }
     }
 
     #[test]

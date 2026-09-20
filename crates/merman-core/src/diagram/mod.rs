@@ -782,6 +782,16 @@ impl RenderSemanticModel {
         }
     }
 
+    pub(crate) fn offset_parser_diagnostic_positions(
+        &mut self,
+        line_offset: usize,
+        column_offset: usize,
+    ) {
+        if let Self::Agentflow(model) = self {
+            model.offset_diagnostic_positions(line_offset, column_offset);
+        }
+    }
+
     pub(crate) fn remap_warning_fact_spans(
         &mut self,
         mut remap: impl FnMut(&mut DiagramWarningFact),

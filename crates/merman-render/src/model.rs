@@ -204,6 +204,9 @@ pub struct MindmapDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub bounds: Option<Bounds>,
+    /// Swimlane decoration owned by the selected renderer, not semantic Mindmap nodes.
+    #[serde(skip)]
+    pub swimlane_lanes: Vec<LayoutCluster>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -686,6 +689,11 @@ pub struct StateDiagramLayout {
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Registered ELK layout uses its own edge painting projection.
+    #[serde(skip)]
+    pub uses_elk_adapter_dom: bool,
+    #[serde(skip)]
+    pub elk_edge_paths: std::collections::HashMap<String, Vec<LayoutPoint>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

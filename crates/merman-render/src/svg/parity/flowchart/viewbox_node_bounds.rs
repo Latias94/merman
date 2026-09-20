@@ -66,7 +66,7 @@ fn measure_flowchart_layout_node_label(
         &flow_node.classes,
         &flow_node.styles,
     );
-    Some(crate::flowchart::flowchart_label_metrics_for_layout(
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: label,
@@ -77,7 +77,17 @@ fn measure_flowchart_layout_node_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-    ))
+    );
+    let min_width = if ctx.subgraphs_by_id.contains_key(n.id.as_str()) {
+        0.0
+    } else {
+        crate::flowchart::flowchart_node_label_min_width(
+            label,
+            flow_node.layout_shape.as_deref(),
+            ctx.config,
+        )
+    };
+    Some(metrics.with_label_min_width(label, min_width, None))
 }
 
 fn layout_node_metrics_or_zero(

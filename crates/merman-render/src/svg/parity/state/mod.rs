@@ -36,6 +36,8 @@ type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 struct StateRenderCtx<'a> {
     diagram_id: SvgDiagramId<'a>,
     diagram_look: String,
+    uses_elk_adapter_dom: bool,
+    elk_edge_paths: &'a std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
     html_label_wrapping_width: f64,

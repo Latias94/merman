@@ -1458,14 +1458,21 @@ fn shape_diagnostic(node: &AgentflowNode) -> Option<AgentflowDiagnostic> {
 
 fn diagnostic_position(source: &str, span: SourceSpan) -> AgentflowDiagnosticPosition {
     let start = span.start.min(source.len());
-    let end = span.end.min(source.len());
+    let mut end = span.end.min(source.len());
+    let element = &source[start..end];
+    if element.ends_with('}') && find_metadata_start(element).is_some() {
+        // Jison consumes the closing metadata brace without returning a token.
+        end -= 1;
+    }
     let line_column = |offset: usize| {
         let prefix = &source[..offset];
         (
             prefix.bytes().filter(|byte| *byte == b'\n').count() + 1,
             prefix
                 .rsplit_once('\n')
-                .map_or(prefix.len(), |(_, line)| line.len()),
+                .map_or(prefix, |(_, line)| line)
+                .encode_utf16()
+                .count(),
         )
     };
     let (start_line, start_column) = line_column(start);
@@ -1475,8 +1482,61 @@ fn diagnostic_position(source: &str, span: SourceSpan) -> AgentflowDiagnosticPos
         start_column,
         end_line,
         end_column,
-        start_index: start,
-        end_index: end,
+        // Mermaid 12 does not enable Jison ranges; its fallback indices are both zero.
+        start_index: 0,
+        end_index: 0,
+    }
+}
+
+impl AgentflowDiagramRenderModel {
+    pub(crate) fn offset_diagnostic_positions(&mut self, line_offset: usize, column_offset: usize) {
+        for diagnostic in &mut self.diagnostics {
+            if let Some(position) = &mut diagnostic.position {
+                position.offset(line_offset, column_offset);
+            }
+        }
+    }
+}
+
+impl AgentflowDiagnosticPosition {
+    fn offset(&mut self, line_offset: usize, column_offset: usize) {
+        if self.start_line == 1 {
+            self.start_column += column_offset;
+        }
+        if self.end_line == 1 {
+            self.end_column += column_offset;
+        }
+        self.start_line += line_offset;
+        self.end_line += line_offset;
+    }
+}
+
+pub(crate) fn offset_compatibility_diagnostic_positions(
+    model: &mut Value,
+    line_offset: usize,
+    column_offset: usize,
+) {
+    if (line_offset == 0 && column_offset == 0) || model["type"] != "agentflow" {
+        return;
+    }
+    let Some(diagnostics) = model.get_mut("diagnostics").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for diagnostic in diagnostics {
+        let Some(position) = diagnostic.get_mut("position") else {
+            continue;
+        };
+        for (line_key, column_key) in [("startLine", "startColumn"), ("endLine", "endColumn")] {
+            let Some(line) = position[line_key].as_u64() else {
+                continue;
+            };
+            if line == 1
+                && let Some(column) = position[column_key].as_u64()
+            {
+                position[column_key] = Value::from(column + column_offset as u64);
+            }
+            position[line_key] = Value::from(line + line_offset as u64);
+        }
     }
 }
 

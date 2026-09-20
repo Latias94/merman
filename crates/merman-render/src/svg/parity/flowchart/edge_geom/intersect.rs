@@ -900,6 +900,15 @@ fn compute_node_label_metrics_for_intersection(
         &flow_node.classes,
         &flow_node.styles,
     );
+    let min_width = if ctx.subgraphs_by_id.contains_key(node_id) {
+        0.0
+    } else {
+        crate::flowchart::flowchart_node_label_min_width(
+            label_text,
+            flow_node.layout_shape.as_deref(),
+            ctx.config,
+        )
+    };
     if let Some(metrics) = ctx.svg_label_sidecar.and_then(|sidecar| {
         let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
         sidecar.prepared_metrics(
@@ -912,7 +921,7 @@ fn compute_node_label_metrics_for_intersection(
             crate::flowchart::FlowchartSvgWidthMode::Bbox,
         )
     }) {
-        return Some(metrics);
+        return Some(metrics.with_label_min_width(label_text, min_width, None));
     }
     let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
@@ -927,7 +936,7 @@ fn compute_node_label_metrics_for_intersection(
         },
     );
 
-    Some(metrics)
+    Some(metrics.with_label_min_width(label_text, min_width, None))
 }
 
 pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(

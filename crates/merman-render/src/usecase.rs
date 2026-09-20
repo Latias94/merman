@@ -1,6 +1,7 @@
 //! Mermaid 12 Usecase measurements and shared graph-layout projection.
 
 use crate::Result;
+use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
@@ -10,7 +11,6 @@ use serde_json::Value;
 use std::sync::Arc;
 
 mod dagre;
-mod elk_edge_geometry;
 mod layout;
 mod measure;
 

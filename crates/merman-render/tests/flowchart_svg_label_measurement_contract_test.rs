@@ -435,3 +435,77 @@ A["math $$x$$ label words"] --> B
     );
     assert_eq!(second_trace, first_trace, "complete SVG math-like trace");
 }
+
+#[test]
+fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
+    let backends = [
+        "dagre",
+        #[cfg(feature = "layout-elk")]
+        "elk",
+    ];
+    for backend in backends {
+        for html_labels in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: {backend}\n  look: classic\n  theme: default\n  htmlLabels: {html_labels}\n  flowchart:\n    minNodeWidth: 120\n    wrappingWidth: 200\n    padding: 10\n---\nflowchart LR\nA[X]\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse minimum width fixture")
+                .expect("detect flowchart");
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let nodes = projection["layout"]["FlowchartV2"]["nodes"]
+                .as_array()
+                .unwrap();
+            let node = nodes.iter().find(|node| node["id"] == "A").unwrap();
+            // A process rectangle adds horizontal padding four times to its label box.
+            assert_eq!(
+                node["width"].as_f64(),
+                Some(160.0),
+                "{backend}, HTML={html_labels}"
+            );
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if html_labels {
+                let label = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                assert_eq!(label.attribute("width"), Some("120"));
+                let div = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("div"))
+                    .unwrap();
+                let style = div.attribute("style").unwrap();
+                assert!(style.contains("display: table;"), "{style}");
+                assert!(style.contains("width: 120px;"), "{style}");
+            } else {
+                let text = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node.descendants().any(|child| child.text() == Some("X"))
+                    })
+                    .unwrap();
+                let label = text
+                    .ancestors()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap();
+                assert!(
+                    label
+                        .attribute("transform")
+                        .unwrap()
+                        .starts_with("translate(0,")
+                );
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject"))
+                );
+            }
+        }
+    }
+}

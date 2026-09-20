@@ -102,6 +102,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     let mut ctx = StateRenderCtx {
         diagram_id,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        elk_edge_paths: &layout.elk_edge_paths,
         diagram_look: state_render_settings.diagram_look,
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
@@ -263,7 +265,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         out
     }
 
-    ctx.nested_roots = compute_state_nested_roots(&ctx);
+    if !layout.uses_elk_adapter_dom {
+        ctx.nested_roots = compute_state_nested_roots(&ctx);
+    }
 
     drop(_g_build_ctx);
 

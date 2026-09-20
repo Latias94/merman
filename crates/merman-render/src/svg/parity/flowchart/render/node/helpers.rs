@@ -472,7 +472,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         metrics.height = 0.0;
     }
 
-    metrics
+    let min_width = layout_node
+        .filter(|node| !ctx.subgraphs_by_id.contains_key(node.id.as_str()))
+        .and_then(|node| ctx.nodes_by_id.get(node.id.as_str()))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    metrics.with_label_min_width(label_text, min_width, None)
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metrics(
@@ -483,7 +493,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
 ) -> Option<crate::text::TextMetrics> {
     let sidecar = ctx.svg_label_sidecar?;
     let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
-    sidecar.prepared_metrics(
+    let metrics = sidecar.prepared_metrics(
         owner,
         label_text,
         ctx.measurer,
@@ -491,5 +501,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
         Some(ctx.wrapping_width),
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
-    )
+    )?;
+    let min_width = ctx
+        .nodes_by_id
+        .get(node_id)
+        .filter(|_| !ctx.subgraphs_by_id.contains_key(node_id))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    Some(metrics.with_label_min_width(label_text, min_width, None))
 }

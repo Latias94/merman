@@ -50,6 +50,8 @@ pub struct PreprocessedSource {
     global_expected_syntax: Vec<EditorExpectedSyntax>,
     global_directive_prefixes: Vec<String>,
     recovered_incomplete_directive: bool,
+    frontmatter_line_offset: usize,
+    first_line_column_offset: usize,
 }
 
 impl PreprocessedSource {
@@ -82,11 +84,36 @@ impl PreprocessedSource {
             global_expected_syntax: Vec::new(),
             global_directive_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
+            frontmatter_line_offset: 0,
+            first_line_column_offset: 0,
         })
     }
 
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    pub(super) fn copy_global_editor_evidence_from(&mut self, source: &Self) {
+        self.global_expected_syntax
+            .clone_from(&source.global_expected_syntax);
+        self.global_directive_prefixes
+            .clone_from(&source.global_directive_prefixes);
+    }
+
+    pub(crate) fn parser_position_offset(&self) -> (usize, usize) {
+        (self.frontmatter_line_offset, self.first_line_column_offset)
+    }
+
+    pub(super) fn record_frontmatter_removal(&mut self, end: usize) {
+        self.frontmatter_line_offset += self.text[..end]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        self.first_line_column_offset = 0;
+    }
+
+    pub(super) fn set_first_line_column_offset(&mut self, columns: usize) {
+        self.first_line_column_offset = columns;
     }
 
     pub fn try_map_span(&self, span: SourceSpan) -> Option<SourceSpan> {

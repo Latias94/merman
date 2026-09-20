@@ -1651,6 +1651,15 @@ fn node_dimensions_and_label(
         );
     }
 
+    metrics = metrics.with_label_min_width(
+        raw_label,
+        super::flowchart_node_label_min_width(
+            raw_label,
+            node.layout_shape.as_deref(),
+            ctx.effective_config,
+        ),
+        None,
+    );
     let label = elk::Label {
         width: metrics.width,
         height: metrics.height,

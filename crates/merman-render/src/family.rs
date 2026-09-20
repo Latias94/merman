@@ -932,11 +932,22 @@ fn render_family_artifact_svg(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
+    // Agentflow is adapted to the Flowchart renderer, while Mermaid's config namespace remains
+    // `agentflow`. Keep the public metadata untouched and project only the renderer input.
+    let projected_metadata = if matches!(&artifact.family, BuiltinFamilyArtifact::Agentflow { .. })
+    {
+        let mut metadata = artifact.metadata.clone();
+        metadata.effective_config = project_agentflow_flowchart_config(&metadata.effective_config);
+        Some(metadata)
+    } else {
+        None
+    };
+    let metadata = projected_metadata.as_ref().unwrap_or(&artifact.metadata);
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             pair,
-            &artifact.metadata.effective_config,
+            &metadata.effective_config,
             &artifact.session,
             &options,
             debug,
@@ -944,7 +955,7 @@ fn render_family_artifact_svg(
     }
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
-        &artifact.metadata,
+        metadata,
         &artifact.session,
         &options,
         debug,
@@ -996,6 +1007,32 @@ fn prepare_flowchart_artifact<L>(
         svg_label_sidecar,
         policy,
     }))
+}
+
+fn project_agentflow_flowchart_config(
+    config: &merman_core::MermaidConfig,
+) -> merman_core::MermaidConfig {
+    let mut projected = config.clone();
+    let Some(agentflow) = config
+        .as_value()
+        .get("agentflow")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return projected;
+    };
+    for key in ["minNodeWidth", "wrappingWidth"] {
+        let flowchart_has_key = config
+            .as_value()
+            .get("flowchart")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|section| section.contains_key(key));
+        if !flowchart_has_key {
+            if let Some(value) = agentflow.get(key) {
+                projected.set_value(&format!("flowchart.{key}"), value.clone());
+            }
+        }
+    }
+    projected
 }
 
 fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
@@ -1078,15 +1115,17 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
         RenderSemanticModel::Architecture(_) => {
             required.push(RenderCapability::LayoutCytoscape);
         }
-        RenderSemanticModel::Mindmap(_)
-            if !crate::mindmap::uses_tidy_tree_layout(effective_config.as_value()) =>
-        {
-            required.push(RenderCapability::LayoutCytoscape);
+        RenderSemanticModel::Mindmap(_) => {
+            if let Some(capability) = crate::mindmap::required_layout_capability(effective_config) {
+                required.push(capability);
+            }
         }
         RenderSemanticModel::Flowchart(_)
         | RenderSemanticModel::Agentflow(_)
         | RenderSemanticModel::Class(_)
         | RenderSemanticModel::Usecase(_)
+        | RenderSemanticModel::State(_)
+        | RenderSemanticModel::Requirement(_)
             if crate::uses_elk_layout(effective_config) =>
         {
             required.push(RenderCapability::LayoutElk);
@@ -1320,6 +1359,8 @@ fn prepare_non_class_render(
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
                 )
             })?)
         }
@@ -1328,8 +1369,7 @@ fn prepare_non_class_render(
                 crate::state::layout_state_diagram_typed_with_work_meter(
                     model,
                     effective_config,
-                    execution.text_measurer(),
-                    execution.work_meter(),
+                    &execution,
                 )
             })?)
         }
@@ -1519,7 +1559,9 @@ fn prepare_non_class_render(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.work_meter_ref(),
+                    execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
                 )
             })?)
         }
@@ -1674,6 +1716,7 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Agentflow(model) => {
             let (flowchart, render_context) = model.to_flowchart_model();
+            let agentflow_config = project_agentflow_flowchart_config(&meta.effective_config);
             let flow = prepare_flowchart_artifact(
                 flowchart,
                 render_context,
@@ -1683,7 +1726,7 @@ fn prepare_non_class_render(
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         model,
                         label_sources,
-                        &meta.effective_config,
+                        &agentflow_config,
                         &execution,
                         svg_label_sidecar,
                     )
@@ -1752,6 +1795,25 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn agentflow_layout_config_projects_only_missing_flowchart_measurement_keys() {
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "agentflow": { "minNodeWidth": 180, "wrappingWidth": 240 },
+            "flowchart": { "minNodeWidth": 90 }
+        }));
+        let projected = project_agentflow_flowchart_config(&config);
+        let number = |config: &merman_core::MermaidConfig, path: &str| {
+            config
+                .as_value()
+                .pointer(path)
+                .and_then(serde_json::Value::as_f64)
+        };
+        assert_eq!(number(&projected, "/flowchart/minNodeWidth"), Some(90.0));
+        assert_eq!(number(&projected, "/flowchart/wrappingWidth"), Some(240.0));
+        assert_eq!(number(&config, "/flowchart/wrappingWidth"), None);
+        assert_eq!(number(&config, "/agentflow/minNodeWidth"), Some(180.0));
     }
 
     #[test]

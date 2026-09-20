@@ -128,8 +128,9 @@ pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
-    flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
+    flowchart_label_text_is_empty_for_mode, flowchart_node_label_min_width,
+    flowchart_node_svg_width_mode, flowchart_non_markdown_label_for_html,
+    flowchart_trim_html_collapsible_whitespace,
 };
 #[cfg(test)]
 pub(crate) use label::{

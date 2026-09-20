@@ -17,6 +17,7 @@ pub mod class;
 mod config;
 pub mod cynefin;
 mod dagre;
+mod elk_edge_geometry;
 mod elk_geometry;
 #[cfg(feature = "layout-elk")]
 mod elk_options;

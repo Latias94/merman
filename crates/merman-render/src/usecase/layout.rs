@@ -343,7 +343,7 @@ pub(super) fn prepare_edge_paths(
     config: &Value,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<HashMap<String, Vec<LayoutPoint>>> {
-    use super::elk_edge_geometry::{self as geometry, Shape};
+    use super::elk_edge_geometry::{self as geometry, Outline, Shape};
     let elk = crate::layout_backend::resolve_graph_layout(config).backend
         == crate::layout_backend::GraphLayoutBackend::Elk;
     // Dagre's recursive paint measurement includes title labels which may extend beyond
@@ -410,11 +410,19 @@ pub(super) fn prepare_edge_paths(
         let points = if elk {
             let start = Shape {
                 node: &layout.nodes[node_indexes[&edge.from]],
-                ellipse: plan_by_id[edge.from.as_str()].ellipse,
+                outline: if plan_by_id[edge.from.as_str()].ellipse {
+                    Outline::Ellipse
+                } else {
+                    Outline::Rect
+                },
             };
             let end = Shape {
                 node: &layout.nodes[node_indexes[&edge.to]],
-                ellipse: plan_by_id[edge.to.as_str()].ellipse,
+                outline: if plan_by_id[edge.to.as_str()].ellipse {
+                    Outline::Ellipse
+                } else {
+                    Outline::Rect
+                },
             };
             let mut input = Vec::with_capacity(edge.points.len() + 2);
             input.push(LayoutPoint {

@@ -1721,6 +1721,15 @@ fn layout_flowchart_with_model(
                 &n.classes,
             );
         }
+        metrics = metrics.with_label_min_width(
+            raw_label,
+            super::flowchart_node_label_min_width(
+                raw_label,
+                n.layout_shape.as_deref(),
+                effective_config,
+            ),
+            None,
+        );
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),

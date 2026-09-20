@@ -367,7 +367,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     edge.from, edge.to, edge.id
                 ),
             })?;
-        let rendered_d = curve_basis_path_d(&edge.points);
+        let rendered_d = if prepared.uses_elk() {
+            if edge.points.len() <= 2 {
+                super::super::curve::curve_linear_path_d(&edge.points)
+            } else {
+                super::super::curve::curve_rounded_path_d_and_bounds(&edge.points, 5.0, false, None)
+                    .0
+            }
+        } else {
+            curve_basis_path_d(&edge.points)
+        };
         if rendered_edge_paths
             .insert(identity.clone(), rendered_d.clone())
             .is_some()

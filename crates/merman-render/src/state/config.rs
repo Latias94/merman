@@ -147,6 +147,7 @@ impl<'a> StateConfigView<'a> {
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
+            label_min_width: self.state_compat_f64("minNodeWidth").unwrap_or(0.0),
             text_style: self.text_style(),
         }
     }
@@ -203,7 +204,9 @@ impl<'a> StateConfigView<'a> {
     }
 
     pub(crate) fn html_label_wrapping_width(&self) -> f64 {
-        config_f64_css_px(self.flowchart_config, &["wrappingWidth"])
+        config_f64_css_px(self.state_config, &["wrappingWidth"])
+            .filter(|width| *width != 0.0)
+            .or_else(|| config_f64_css_px(self.flowchart_config, &["wrappingWidth"]))
             .unwrap_or(DEFAULT_HTML_LABEL_WRAPPING_WIDTH)
             .max(0.0)
     }
@@ -253,6 +256,7 @@ pub(super) struct StateLayoutSettings {
     pub(super) wrap_mode: WrapMode,
     pub(super) wrapping_width: f64,
     pub(super) state_padding: f64,
+    pub(super) label_min_width: f64,
     pub(super) text_style: TextStyle,
 }
 
@@ -282,6 +286,13 @@ mod tests {
 
     #[test]
     fn state_html_label_wrapping_width_honors_number_and_px_string() {
+        let state_override =
+            json!({"state": {"wrappingWidth": 120}, "flowchart": {"wrappingWidth": 320}});
+        assert_eq!(
+            StateConfigView::new(&state_override).html_label_wrapping_width(),
+            120.0
+        );
+
         let numeric = json!({
             "flowchart": {
                 "wrappingWidth": 320

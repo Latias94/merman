@@ -38,6 +38,7 @@ pub struct PreprocessResult {
     pub source: PreprocessedSource,
     pub title: Option<String>,
     pub config: MermaidConfig,
+    pub(crate) with_comments: Option<PreprocessedSource>,
 }
 
 #[derive(Debug)]
@@ -306,67 +307,15 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
     #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
-    control.checkpoint()?;
-    let outer = preprocess_single_pass_controlled(
-        PreprocessedSource::new_controlled(input, control)?,
+    // Mermaid 12 passes the complete DiagramCode to Diagram.fromText on both public paths.
+    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+        input,
         registry,
         diagram_type,
         directive_recovery,
         capture_mode,
         control,
-    )?;
-    let outer_result = match outer.outcome {
-        PreprocessCaptureResult::Ready(outer) => outer,
-        PreprocessCaptureResult::Failed(error) => {
-            return Ok(PreprocessCaptureOutcome {
-                outcome: PreprocessCaptureResult::Failed(error),
-                source_config: outer.source_config,
-            });
-        }
-        PreprocessCaptureResult::Panicked(panic) => {
-            return Ok(PreprocessCaptureOutcome {
-                outcome: PreprocessCaptureResult::Panicked(panic),
-                source_config: outer.source_config,
-            });
-        }
-    };
-    control.checkpoint()?;
-    // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
-    // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
-    let inner = preprocess_single_pass_controlled(
-        outer_result.source,
-        registry,
-        diagram_type,
-        directive_recovery,
-        SourceConfigCaptureMode::Omit,
-        control,
-    )?;
-    let inner = match inner.outcome {
-        PreprocessCaptureResult::Ready(inner) => inner,
-        PreprocessCaptureResult::Failed(error) => {
-            return Ok(PreprocessCaptureOutcome {
-                outcome: PreprocessCaptureResult::Failed(error),
-                source_config: outer.source_config,
-            });
-        }
-        PreprocessCaptureResult::Panicked(panic) => {
-            return Ok(PreprocessCaptureOutcome {
-                outcome: PreprocessCaptureResult::Panicked(panic),
-                source_config: outer.source_config,
-            });
-        }
-    };
-    control.checkpoint()?;
-    let result = PreprocessResult {
-        source: prepare_parser_text_controlled(inner.source, control)?,
-        title: outer_result.title,
-        config: outer_result.config,
-    };
-    control.checkpoint()?;
-    Ok(PreprocessCaptureOutcome {
-        outcome: PreprocessCaptureResult::Ready(result),
-        source_config: outer.source_config,
-    })
+    )
 }
 
 fn preprocess_single_pass_controlled(
@@ -416,6 +365,7 @@ fn preprocess_single_pass_controlled(
                 SourceSpan::new(0, expected_end),
             );
         }
+        source.record_frontmatter_removal(frontmatter_len);
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)], control)?;
     }
 
@@ -477,12 +427,31 @@ fn preprocess_single_pass_controlled(
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
+    // Only Agentflow opts into Mermaid's comment-preserving parser input. Keep the existing
+    // edit map with that buffer so editor byte spans and domain lexer positions remain distinct.
+    let preserve_comments = match diagram_type {
+        Some(diagram_type) => diagram_type == "agentflow",
+        None => {
+            let header = source
+                .text()
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty() && !line.starts_with("%%"))
+                .unwrap_or("");
+            crate::detect::detector_agentflow(header, &mut MermaidConfig::empty_object())
+        }
+    };
+    let mut with_comments = preserve_comments.then(|| source.clone());
     remove_mermaid_comments_controlled(&mut source, capture_editor_evidence, control)?;
+    if let Some(with_comments) = &mut with_comments {
+        with_comments.copy_global_editor_evidence_from(&source);
+    }
     Ok(PreprocessCaptureOutcome {
         outcome: PreprocessCaptureResult::Ready(PreprocessResult {
             source,
             title,
             config: frontmatter_config,
+            with_comments,
         }),
         source_config,
     })
@@ -619,7 +588,7 @@ fn prepare_parser_code_controlled(
     Ok(preprocessed)
 }
 
-fn prepare_parser_text_controlled(
+pub(crate) fn prepare_parser_text_controlled(
     mut source: PreprocessedSource,
     control: &OperationControl,
 ) -> OperationControlResult<PreprocessedSource> {
@@ -645,6 +614,7 @@ fn strip_leading_utf8_bom(
     control: &OperationControl,
 ) -> OperationControlResult<()> {
     if source.text().starts_with('\u{feff}') {
+        source.set_first_line_column_offset(1);
         source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())], control)?;
     }
     Ok(())
@@ -692,6 +662,7 @@ fn remove_mermaid_comments_controlled(
         source.record_global_expected_syntax(EditorExpectedSyntaxKind::Directive, expected_span);
     }
     source.apply_edits(edits, control)?;
+    source.set_first_line_column_offset(0);
 
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let leading_whitespace = trim_start_whitespace_controlled(source.text(), &mut checkpoints)?;

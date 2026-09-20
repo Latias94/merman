@@ -71,7 +71,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
                 math_renderer: ctx.math_renderer,
             },
         )
-    });
+    })
+    .with_label_min_width(
+        label.text,
+        crate::flowchart::flowchart_node_label_min_width(
+            label.text,
+            Some(common.shape),
+            ctx.config,
+        ),
+        None,
+    );
     let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
         Some("stadium"),
         metrics,

@@ -20,6 +20,8 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
+    "agentflow",
+    "usecase",
     "er",
     "flowchart",
     "state",
@@ -3381,8 +3383,10 @@ mod tests {
     }
 
     #[test]
-    fn mermaid_11_16_new_families_are_available_to_upstream_svg_tools() {
+    fn added_families_are_available_to_upstream_svg_tools() {
         for diagram in [
+            "agentflow",
+            "usecase",
             "swimlane",
             "cynefin",
             "wardley",

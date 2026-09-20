@@ -1,4 +1,4 @@
-//! Usecase shape projection of Mermaid 12 ELK's `geometry.ts` and `render.ts`.
+//! Shared shape projection of Mermaid 12 ELK's `geometry.ts` and `render.ts`.
 //!
 //! Provider routes remain immutable. These helpers operate on the separate paint projection.
 
@@ -6,10 +6,17 @@ use crate::Result;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutNode, LayoutPoint as P};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outline {
+    Rect,
+    Ellipse,
+    Diamond,
+}
+
 #[derive(Clone, Copy)]
-pub(super) struct Shape<'a> {
+pub(crate) struct Shape<'a> {
     pub node: &'a LayoutNode,
-    pub ellipse: bool,
+    pub outline: Outline,
 }
 
 impl Shape<'_> {
@@ -20,17 +27,30 @@ impl Shape<'_> {
         }
     }
 
-    fn intersect(self, point: &P) -> P {
+    pub(crate) fn intersect(self, point: &P) -> P {
         let node = self.node;
         let dx = point.x - node.x;
         let dy = point.y - node.y;
         let w = node.width / 2.0;
         let h = node.height / 2.0;
-        if self.ellipse {
+        if self.outline == Outline::Ellipse {
             let det = (w * w * dy * dy + h * h * dx * dx).sqrt();
             return P {
                 x: node.x + w * h * dx / det,
                 y: node.y + w * h * dy / det,
+            };
+        }
+        if self.outline == Outline::Diamond {
+            // Mermaid 12 polygon intersection uses floating division without the old
+            // half-pixel rounding bias. A diamond's center ray has this closed form.
+            let scale = dx.abs() / w + dy.abs() / h;
+            return if scale == 0.0 {
+                self.center()
+            } else {
+                P {
+                    x: node.x + dx / scale,
+                    y: node.y + dy / scale,
+                }
             };
         }
         if dy.abs() * w > dx.abs() * h {
@@ -122,7 +142,8 @@ impl Shape<'_> {
             || (outside.x > node.x && crossing.x < node.x);
         // Match JS comparisons for a degenerate ellipse's NaN intersection;
         // sanitize() owns the finite-point fallback after endpoint clipping.
-        let rejected = wrong_side || distance(&outside, &crossing) <= 1.0;
+        let rejected = wrong_side
+            || (self.outline != Outline::Ellipse && distance(&outside, &crossing) <= 1.0);
         if !rejected {
             return crossing;
         }
@@ -207,7 +228,10 @@ fn replace_endpoint(points: &mut Vec<P>, start: bool, value: P) {
         return;
     }
     let index = if start { 0 } else { points.len() - 1 };
-    if (points[index].x - value.x).abs() < 0.1 && (points[index].y - value.y).abs() < 0.1 {
+    if points.len() > 2
+        && (points[index].x - value.x).abs() < 0.1
+        && (points[index].y - value.y).abs() < 0.1
+    {
         points.remove(index);
     } else {
         points[index] = value;
@@ -274,7 +298,13 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if let Some(index) = out.iter().position(|p| start.outside(p)) {
         let intersection = out
             .get(index + 1)
-            .and_then(|next| start.departure(&out[index], next))
+            .and_then(|next| {
+                if start.outline == Outline::Ellipse {
+                    None
+                } else {
+                    start.departure(&out[index], next)
+                }
+            })
             .unwrap_or_else(|| start.compute_intersection(&out[index], start_center));
         replace_endpoint(&mut out, true, intersection);
     }
@@ -285,7 +315,13 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if let Some(index) = outside {
         let intersection = index
             .checked_sub(1)
-            .and_then(|next| end.departure(&out[index], &out[next]))
+            .and_then(|next| {
+                if end.outline == Outline::Ellipse {
+                    None
+                } else {
+                    end.departure(&out[index], &out[next])
+                }
+            })
             .unwrap_or_else(|| end.compute_intersection(&out[index], end_center));
         replace_endpoint(&mut out, false, intersection);
     }
@@ -295,7 +331,7 @@ fn cutter(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     out
 }
 
-pub(super) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
+pub(crate) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -365,7 +401,7 @@ pub(super) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P>
         .collect()
 }
 
-pub(super) fn marker_segment(
+pub(crate) fn marker_segment(
     points: &mut Vec<P>,
     shape: Shape<'_>,
     marker: Option<&str>,
@@ -488,7 +524,7 @@ fn crossings(a: &[P], b: &[P], work: &mut OperationLayoutWorkControl) -> Result<
         .sum())
 }
 
-pub(super) fn straighten_routes(
+pub(crate) fn straighten_routes(
     routes: &mut [Vec<P>],
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
@@ -548,11 +584,11 @@ mod tests {
         let end_node = node(200.0, 15.0, 60.0, 60.0, false);
         let start = Shape {
             node: &start_node,
-            ellipse: true,
+            outline: Outline::Ellipse,
         };
         let end = Shape {
             node: &end_node,
-            ellipse: false,
+            outline: Outline::Rect,
         };
         let raw = points(&[
             (0.0, 0.0),
@@ -578,11 +614,11 @@ mod tests {
         let target_node = node(100.0, 100.0, 100.0, 120.0, true);
         let source = Shape {
             node: &source_node,
-            ellipse: false,
+            outline: Outline::Rect,
         };
         let target = Shape {
             node: &target_node,
-            ellipse: false,
+            outline: Outline::Rect,
         };
         let raw = points(&[
             (-100.0, 130.0),
@@ -640,7 +676,7 @@ mod tests {
         let terminal = node(100.0, 100.0, 100.0, 100.0, false);
         let shape = Shape {
             node: &terminal,
-            ellipse: false,
+            outline: Outline::Rect,
         };
         let mut route = points(&[(0.0, 90.0), (50.0, 90.0), (50.0, 100.0)]);
         marker_segment(&mut route, shape, Some("extension"), false);

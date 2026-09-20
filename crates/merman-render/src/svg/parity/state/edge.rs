@@ -434,6 +434,37 @@ fn state_edge_prepare_geometry(
     origin_x: f64,
     origin_y: f64,
 ) -> StatePreparedEdgeGeometry {
+    if ctx.uses_elk_adapter_dom {
+        let points = ctx
+            .elk_edge_paths
+            .get(&le.id)
+            .map(Vec::as_slice)
+            .unwrap_or(&le.points);
+        let data_points: Vec<_> = points
+            .iter()
+            .map(|point| crate::model::LayoutPoint {
+                x: point.x - origin_x,
+                y: point.y - origin_y,
+            })
+            .collect();
+        let mut curve_points = data_points.clone();
+        let rendered_d = super::super::edge_path::render_path(
+            &mut curve_points,
+            if le.points.is_empty() {
+                "linear"
+            } else {
+                "rounded"
+            },
+            None,
+            arrow_type_end,
+        );
+        return StatePreparedEdgeGeometry {
+            label_path_points: data_points.clone(),
+            data_points,
+            rendered_d,
+            points_were_explicitly_updated: false,
+        };
+    }
     let mut raw_local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         raw_local_points.push(crate::model::LayoutPoint {
@@ -488,7 +519,7 @@ fn write_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    if le.points.len() < 2 {
+    if !ctx.uses_elk_adapter_dom && le.points.len() < 2 {
         return;
     }
 
@@ -518,7 +549,16 @@ pub(super) fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
+    let mut classes = if ctx.uses_elk_adapter_dom
+        && edge
+            .classes
+            .split_whitespace()
+            .any(|class| class == "note-edge")
+    {
+        "edge-thickness-normal edge-pattern-dashed".to_string()
+    } else {
+        "edge-thickness-normal edge-pattern-solid".to_string()
+    };
     for c in edge.classes.split_whitespace() {
         if c.trim().is_empty() {
             continue;

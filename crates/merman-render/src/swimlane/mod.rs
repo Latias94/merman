@@ -1,7 +1,10 @@
 mod bounds;
 mod config;
 mod direction;
+mod flat;
 mod geometry;
+
+pub(crate) use flat::layout_flat;
 mod prepare;
 mod routing;
 mod sugiyama;
@@ -81,14 +84,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         math_renderer,
         svg_label_sidecar,
     );
-    let reversed = sugiyama::run(&mut working, config);
-    for edge in &mut working.original_edges {
-        edge.reversed_for_layout = reversed.contains(&edge.id);
-    }
-    bounds::assign_canonical_group_bounds(&mut working);
-    let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
-    routing::route(&mut working, &mut work_budget)?;
-    direction::post_process(&mut working, &mut work_budget)?;
+    run_layout_core(&mut working, config, work_meter)?;
 
     // Mermaid's swimlane core only normalizes the implicit `basis` curve to
     // `rounded`; an explicit edge/default/config curve remains authoritative.
@@ -115,6 +111,30 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         })
         .collect();
 
+    Ok(project_layout(working, &curve_by_id))
+}
+
+fn run_layout_core(
+    working: &mut working::WorkingLayout,
+    config: config::SwimlaneConfig,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<()> {
+    let reversed = sugiyama::run(working, config);
+    for edge in &mut working.original_edges {
+        edge.reversed_for_layout = reversed.contains(&edge.id);
+    }
+    bounds::assign_canonical_group_bounds(working);
+    let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
+    routing::route(working, &mut work_budget)?;
+    direction::post_process(working, &mut work_budget)?;
+
+    Ok(())
+}
+
+fn project_layout(
+    working: working::WorkingLayout,
+    curve_by_id: &std::collections::HashMap<&str, &str>,
+) -> SwimlaneLayout {
     let bounds = output_bounds(&working);
     let nodes = working
         .nodes
@@ -185,13 +205,13 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         })
         .collect();
 
-    Ok(SwimlaneLayout {
+    SwimlaneLayout {
         direction: working.direction,
         nodes,
         lanes,
         edges,
         bounds,
-    })
+    }
 }
 
 fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
