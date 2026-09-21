@@ -90,6 +90,30 @@ fn scripted_renderer_container_width(diagram: &str) -> u32 {
     }
 }
 
+pub(super) fn upstream_svg_render_input(
+    diagram: &str,
+    input_path: &Path,
+    output_path: &Path,
+    config_path: &Path,
+    svg_id: &str,
+    browser_executable: &Path,
+) -> JsonValue {
+    serde_json::json!({
+        "input_path": input_path.display().to_string(),
+        "output_path": output_path.display().to_string(),
+        "config_path": config_path.display().to_string(),
+        "svg_id": svg_id,
+        "seed": 1,
+        "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
+        "container_width": scripted_renderer_container_width(diagram),
+        "height": 600,
+        "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
+        "background_color": scripted_renderer_background_color(diagram),
+        "browser_executable": browser_executable.display().to_string(),
+        "capture_parse_error_svg": captures_parse_error_svg(diagram),
+    })
+}
+
 fn upstream_svg_supported_diagrams_message() -> String {
     format!("{}, all", UPSTREAM_SVG_DIAGRAMS.join(", "))
 }
@@ -367,6 +391,12 @@ fn probe_upstream_svg_render_environment(
         ))
     })?;
     validate_upstream_svg_render_probe(probe, &installed_mermaid_version(tools_root)?)
+}
+
+pub(super) fn probe_upstream_svg_browser_executable(
+    tools_root: &Path,
+) -> Result<PathBuf, XtaskError> {
+    Ok(probe_upstream_svg_render_environment(tools_root)?.browser_executable)
 }
 
 #[derive(Debug)]
@@ -1460,27 +1490,20 @@ fn gen_upstream_svgs_impl(
 
                 // Use the standard Mermaid bundle directly. The CLI registers its own external
                 // ELK plugin and supplies an explicit theme, overriding Mermaid 12 defaults.
-                let seed: u64 = 1;
                 let output_abs = if temp_out_path.is_absolute() {
                     temp_out_path.clone()
                 } else {
                     workspace_root.join(&temp_out_path)
                 };
 
-                let input_json = serde_json::json!({
-                    "input_path": snapshot_path.display().to_string(),
-                    "output_path": output_abs.display().to_string(),
-                    "config_path": mermaid_config.path().display().to_string(),
-                    "svg_id": svg_id,
-                    "seed": seed,
-                    "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
-                    "container_width": scripted_renderer_container_width(diagram),
-                    "height": 600,
-                    "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
-                    "background_color": scripted_renderer_background_color(diagram),
-                    "browser_executable": render_probe.browser_executable.display().to_string(),
-                    "capture_parse_error_svg": captures_parse_error_svg(diagram),
-                })
+                let input_json = upstream_svg_render_input(
+                    diagram,
+                    snapshot_path,
+                    &output_abs,
+                    mermaid_config.path(),
+                    &svg_id,
+                    &render_probe.browser_executable,
+                )
                 .to_string();
 
                 let mut cmd = Command::new("node");
