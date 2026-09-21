@@ -10,9 +10,11 @@ tags: theme,audit,c7a,alpha7
 
 # Decision
 
-This record is a current-source audit, not a release approval. The completed evidence is enough
-to retain the complete Cyberpunk recipe and its bounded native qualification profile, but C7a
-remains open. No tag, publication, push or public catalog promotion was performed.
+This record is the alpha.7 candidate delivery closure and current-source audit; it is not a
+release approval. The evidence package is complete for the exercised local profiles and is enough
+to retain the complete Cyberpunk recipe with its bounded native qualification profile. C7a release
+eligibility remains open only for the host, performance, preset and publication-boundary gates listed
+below. No tag, publication, push or public catalog promotion was performed.
 
 The strongest current result is the integrated-source Python, Node Darwin ARM64, Node WASM, Web,
 CLI/LSP, C ABI, Apple and Flutter consumer refresh. The evidence is execution-local and host-bound:
