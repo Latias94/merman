@@ -5,15 +5,15 @@ status: active
 
 # Current State
 
-- Active Mermaid parity focus: the repository is pinned to Mermaid 11.17.2. The primary SVG matrix
-  contains 35 source-backed families; `zenuml` remains the sole compatibility-only family. The
-  TreeView, Ishikawa, EventModeling, Venn, Swimlane, four Railroad dialects, Wardley, and
-  Cynefin families now have typed semantics, editor facts where upstream provides them, layout,
-  SVG rendering, pinned baselines, and executable comparison facts. Shared frontmatter/config
-  parsing follows the pinned same-indent delimiter rule and projects configuration namespaces from
-  the family catalog.
-- Golden refresh focus: regenerate 11.17.2 baselines after source-backed code changes. Known upstream
-  regressions such as Mermaid issue #7954 must be classified separately from local drift.
+- Active Mermaid parity focus: implement the Mermaid 12.0.0 alignment plan on
+  `refactor/mermaid-12-alignment`, targeting `v0.8.0-alpha.7` (unreleased main changes plus
+  this upgrade). The working reference bundle and runtime projections now select 12.0.0;
+  admission is still incomplete because the accepted SVG corpus and signed residual evidence
+  have not yet been refreshed. Do not treat a version projection as completed parity.
+- Golden refresh focus: the serial target-runtime generation is staging genuine Mermaid 12
+  SVGs in `target/mermaid12-upstream-svgs-all-3`. Keep existing manifests at their actual
+  identities until their new SVG bytes are reviewed and promoted. Do not relabel old output
+  or refresh residual signatures without examining the new differences.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
   contracts, editor snapshot memory use, and release-gate coverage.
 - Stable decisions: SVG text returned to browser-like surfaces must be validated before DOM
@@ -28,3 +28,5 @@ status: active
 - [Android JNI binding contract](../../bindings/ANDROID_JNI.md)
 - [Flutter/Dart FFI binding contract](../../bindings/FLUTTER_DART_FFI.md)
 - [Release package surfaces](../../release/PACKAGE_SURFACES.md)
+
+- [Mermaid 12 reference admission checkpoint](progress/2026-09/2026-09-21T013936Z-mermaid-12-reference-projection-admission-0e9509533c9245849d1b61bc38b8a674.md)
