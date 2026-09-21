@@ -196,8 +196,11 @@ The current source rerun passed `generate-rust-license-report.py --check` (13 re
 
 The current source also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
 `release-version.py check --version 0.8.0-alpha.7`, `cli_installation_contract.py`, and
-`verify_release_changelog.py --version 0.8.0-alpha.7`. These are preparation checks; the
-date-required immutable preflight remains intentionally unexecuted.
+`verify_release_changelog.py --version 0.8.0-alpha.7`. A temporary date-stamped candidate overlay
+also passes `verify_release_changelog.py --require-date`; its manifest is retained under
+`target/bench/experiments/preflight-candidate-bdb-20260921/`. The real hosted immutable preflight
+workflow was not dispatched, so hosted runner, registry dry-run and cross-platform results remain
+Unverified.
 
 The Android module's local Kotlin/JVM transport suite also passed with
 `platforms/android/gradlew test --no-daemon --max-workers=1` (`BUILD SUCCESSFUL`, 15 actionable
@@ -359,8 +362,8 @@ These are macOS ARM64 observations; Linux, Windows, Intel and hosted CI remain u
 
 Static release preparation also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
 `release-version.py check`, `cli_installation_contract.py` and the preparation-mode changelog
-check. The immutable date-required preflight was intentionally not run because this branch still
-has an Unreleased projection and no publication was authorized.
+check. The date-stamped overlay passes the local `--require-date` gate; the hosted immutable
+preflight was not dispatched because no publication workflow was authorized.
 
 The current source release/preset/archive contract selection also passes
 `python3 -m unittest scripts.test_qualify_theme_presets scripts.test_verify_cli_release_archive
@@ -373,8 +376,8 @@ do not turn the Linux-reference profiles into hosted Linux execution evidence.
 The current preparation pass additionally succeeded for `generate-rust-license-report.py --check`
 (13 reports), `sync-release-legal-materials.py --check` (382 projections),
 `verify-third-party-licenses.py`, and `verify_crate_package_legal_materials.py` (24 governed Cargo
-packages). These are preparation checks; the immutable date-required workflow and publication
-steps remain intentionally deferred.
+packages). These are local preparation checks; the hosted immutable workflow, registry dry-runs and
+publication steps remain explicitly Unverified/deferred.
 
 The declared local compiler floor is explicit and reproducible: `cargo +1.95.0 check --locked
 -p merman-theme-fixtures` passed, while the same package under `cargo +1.92.0` was rejected by
@@ -741,7 +744,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM, Web full/render, Typst and Apple records pass their exercised vectors at or after `bdb209e11`; remaining journeys and other hosts stay open |
 | Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
-| Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections and preparation-mode release checks | Complete for preparation mode; publication-date preflight is intentionally deferred |
+| Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections, local dated-changelog overlay and preparation checks | Local candidate preflight inputs pass; hosted immutable workflow, registry dry-runs and other-host jobs remain Unverified |
 | Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |
 | Theme semantics | Typed token, family, canvas, CSS, default/Clear/Transparent, light/dark and support-state fixtures | Complete at the fixture-contract level; ARM64 Apple and external C consumers confirm Class Clear/transparent and source-owned facet precedence; C native exports also exercise supplied fonts and missing glyphs, while Aurora and unexecuted targets remain explicitly Unverified |
 | Preset usability | Native selected cells, literal ten-preset execution and documented visual follow-ups | Limited but refreshed: the ten-preset dense Class/Mindmap/XY/Flowchart review covers current SVG/PNG/PDF behavior; high-contrast certification, controlled fonts, browser labels and wider-family qualification remain open |
