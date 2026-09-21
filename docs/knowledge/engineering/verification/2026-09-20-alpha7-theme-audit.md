@@ -134,9 +134,9 @@ The architecture consequence is bounded: modern Mermaid remains a design referen
 into Merman-owned typed tokens, family rules, canvas layers and resource metadata. No TypeScript
 evaluator, partial CSS parser, bundled Inter font or second export pipeline is justified. Delivery
 must keep the existing public materialization/export seam, target-local admission, explicit
-Unsupported/Unverified receipts and host/resource residuals. The current Web size and consumer results below, together with the historical Typst record, are
-reproducible candidate baselines; they are not evidence that the historical alpha.6 deltas are
-theme-only costs.
+Unsupported/Unverified receipts and host/resource residuals. The current Web and Typst size and
+consumer results below are reproducible candidate baselines; they are not evidence that the
+historical alpha.6 deltas are theme-only costs.
 
 The source-presentation trust boundary also differs from alpha.6: commit `81e008f66` replaces
 blanket font/theme-variable locks with validated CSS values for init and frontmatter, while the
@@ -354,11 +354,13 @@ archive rows below:
 | `merman-lsp-aarch64-apple-darwin.tar.xz` | 4,079,896 | `201313d1b706752bd62b2ec90197f2d2bb07d6a94e2efb97ae2d41328ef106ea` |
 
 The [earlier source replay](2026-09-20-cli-lsp-current-archive-replay.md) rebuilt both archives
-at `58f3a1531` and rejected the preceding archives' stale legal projections. The
-[current graph-reuse replay](2026-09-20-cli-lsp-reference-plan-replay.md) now replaces those
-local archive identities at `f3a783c29`: CLI 13,732,212 bytes and LSP 4,077,460 bytes. Both pass
-`--execute`, and the CLI also passes archive-bound qualification recording and fresh reexecution.
-These are macOS ARM64 observations; Linux, Windows, Intel and hosted CI remain unverified.
+at `58f3a1531` and rejected the preceding archives' stale legal projections. The historical
+[graph-reuse replay](2026-09-20-cli-lsp-reference-plan-replay.md) at `f3a783c29` recorded
+CLI 13,732,212 bytes and LSP 4,077,460 bytes; those archives pass `--execute`, and the CLI also
+passes archive-bound qualification recording and fresh reexecution. The [current single-pass
+replay](2026-09-20-cli-lsp-reference-plan-replay-single-pass.md) supersedes those local identities
+with the `bdb209e11` archive rows recorded above. These are macOS ARM64 observations; Linux,
+Windows, Intel and hosted CI remain unverified.
 
 Static release preparation also passes `release_surface_contract.py --version 0.8.0-alpha.7`,
 `release-version.py check`, `cli_installation_contract.py` and the preparation-mode changelog
@@ -742,7 +744,7 @@ own family-local semantic and export evidence; successful C7a literal renders do
 | Alpha.7 artifact and profile matrix | Web/Typst size matrices, installed Python/Node packages, native Cyberpunk profile and dependency-closure reports | Complete for the exercised macOS ARM64 profiles; other declared hosts remain unverified |
 | Installed consumer journeys | Python, Node native/WASM, current Web browser, current C ABI source consumer, current Apple Swift, current Flutter and current Typst consumers | Current-source records cover all exercised local lanes; registry/device/other-host routes remain limited |
 | Cross-transport authoring/support goldens | Shared light/dark, materialization, rule-edit, resource-error and preset-exchange vectors | Python, Node native/WASM, Web full/render, Typst and Apple records pass their exercised vectors at or after `bdb209e11`; remaining journeys and other hosts stay open |
-| Catalog qualification | `f3a783c29` CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
+| Catalog qualification | Current CLI archive record/companion and discovery inventory | 18 scoped HostDependent SVG/PNG cells pass fresh replay for this archive; shared catalog remains empty and broader qualification stays open |
 | CLI/LSP archive replay | cargo-dist `bdb209e11` archives, execute-mode verification and CLI qualification replay | Complete on the local macOS ARM64 host; Linux, Windows, Intel and hosted CI remain unverified |
 | Version, legal and preparation checks | Alpha.7 version projections, 13 license reports, 382 legal projections, local dated-changelog overlay and preparation checks | Local candidate preflight inputs pass; hosted immutable workflow, registry dry-runs and other-host jobs remain Unverified |
 | Modern Mermaid source coverage | Hash-bound source snapshot, 24 themes, 18 mechanisms, 25 fixtures and 120 target cells; pinned three-source checkout test | Semantic matrix and aggregate source provenance gate complete; public preset qualification remains separate |

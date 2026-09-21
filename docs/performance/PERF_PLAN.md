@@ -159,8 +159,8 @@ Before implementation:
 
 ## Priorities
 
-The [current Web/Typst artifact snapshot](../knowledge/engineering/verification/2026-09-21-web-typst-consumers.md)
-at `f3a783c29` passes all 24 existing size-budget metrics across six profiles, with installed Web
+The [current Web/Typst artifact snapshot](../knowledge/engineering/verification/2026-09-20-web-typst-consumers-single-pass.md)
+at `bdb209e11` passes all 24 existing size-budget metrics across six profiles, with installed Web
 and Typst owner checks. The refresh changes no size limits. Matched release-range footprint and
 runtime comparisons remain separate open work.
 
