@@ -14,10 +14,10 @@ rebuilt from that source on macOS ARM64 with Rust 1.95.0, Node 24.21.0, npm 12.0
 0.15.0 and wasm-tools 1.253.0. Cargo work used one build job. No tag, publication, budget change
 or qualification promotion was performed.
 
-The Web lane is current-source evidence. The Typst lane was attempted from the same checkout but
-could not complete because the host provides `wasm-opt version 132` while the packaging owner
-requires Binaryen 131. The preceding Binaryen-131 Typst record remains the last passing Typst
-consumer evidence and is historical with respect to this integrated source.
+Both Web and Typst lanes are current-source evidence. The Typst run uses the repository-local
+Binaryen 131 tool at `/private/tmp/merman-binaryen-131/binaryen-version_131/bin/wasm-opt`; the
+normal host PATH still exposes Binaryen 132, so the tool path is recorded explicitly for
+reproduction.
 
 # Web package and browser evidence
 
@@ -62,35 +62,40 @@ These are artifact footprints, not startup, throughput, browser text measurement
 measurements. The size matrix is current-source evidence; it does not claim a matched alpha.6
 delta or attribute a package-size change to the XML optimization alone.
 
-# Typst result and boundary
+# Typst package and artifact evidence
 
-The command
+With Binaryen 131 selected explicitly, `typst-package-smoke --profile publish` passed the real
+package consumer: 22 positive fixtures, nine expected compile failures, 22 support vectors, two
+materializations and three structured errors. The package is Typst `0.3.0`; the local compiler is
+Typst 0.15.1. The installed plugin is 11,207,404 bytes with SHA-256
+`d7b953e3d03b2b285a8fa396e527e3843448225568f5bda7f41e821a4a5c4674`.
+
+The current-source Typst size row also passes without changing the checked-in budget:
+
+| Profile | Raw bytes | Stripped bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: | ---: |
+| typst-wasm | 18,355,688 | 11,207,404 | 4,258,306 | 3,148,461 |
+
+The exact reproduction adds the Binaryen path to `PATH` before both owner commands:
 
 ```console
-cargo run --locked -p xtask -- typst-package-smoke --profile publish --out <output> --keep-artifacts --typst /opt/homebrew/bin/typst
+PATH=/private/tmp/merman-binaryen-131/binaryen-version_131/bin:$PATH cargo run --locked -p xtask -- typst-package-smoke --profile publish --out <output> --keep-artifacts --typst /opt/homebrew/bin/typst
+PATH=/private/tmp/merman-binaryen-131/binaryen-version_131/bin:$PATH cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-reached the optimized Typst WASM build, then stopped before packaging with:
-
-```text
-Typst WASM artifact: Typst packaging requires Binaryen 131 (`wasm-opt version 131`), found `wasm-opt version 132`
-```
-
-The corresponding `wasm-size-matrix --surface typst` command stops at the same owner check.
-There is no current-source Typst package, smoke, archive identity or size-budget pass to record
-from this run. The earlier Binaryen-131 record remains useful semantic and packaging evidence for
-source `f3a783c2944a77bc3b561b29f64b41af450ebe8b`, but it cannot serve as the integrated candidate
-identity until rerun with the required toolchain.
+This proves the integrated source on the local Binaryen-131/Typst-0.15.1 lane; CI's pinned
+Typst compiler, other hosts and registry installation remain separate boundaries.
 
 # Evidence location and limits
 
 The retained artifacts are under
 `target/bench/experiments/installed-theme-consumers-bdb-20260920/`, including `web-smoke.log`,
-`web-verify-packages.log`, `web-wasm-size-matrix.log`, the five Web archives and
-`web-package-group.json`. The failed Typst command output is in `typst-smoke.log` and
-`typst-wasm-size-matrix.log`.
+`web-verify-packages.log`, `web-wasm-size-matrix.log`, the five Web archives,
+`web-package-group.json`, `typst-binaryen131-smoke.log`, `typst-binaryen131-size.log` and the
+installed Typst package under `typst-binaryen131/`. The earlier failed PATH run remains in
+`typst-smoke.log` and `typst-wasm-size-matrix.log` as provenance for the toolchain diagnosis.
 
-This is local macOS ARM64 evidence. Registry installation, other operating systems, other
-browsers, CI's pinned Typst toolchain, visual preset qualification, cold start, first render,
-throughput, large-diagram memory and matched alpha.6 attribution remain outside this refresh.
+This is local macOS ARM64 evidence. Registry installation, other operating systems, other browsers, CI's pinned Typst compiler,
+visual preset qualification, cold start, first render, throughput, large-diagram memory and
+matched alpha.6 attribution remain outside this refresh.
 The broader audit and C7a eligibility remain open.
