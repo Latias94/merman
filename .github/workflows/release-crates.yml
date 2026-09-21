@@ -255,7 +255,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2.87.9
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: wasm-tools
 

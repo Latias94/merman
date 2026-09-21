@@ -28,7 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.15
         with:
           tool: nextest
 

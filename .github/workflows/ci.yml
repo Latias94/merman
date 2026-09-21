@@ -226,7 +226,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.15
         with:
           tool: nextest
 
@@ -402,7 +402,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.15
         with:
           tool: nextest
 
@@ -745,7 +745,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.15
         with:
           tool: wasm-tools
 
@@ -826,7 +826,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.15
         with:
           tool: wasm-tools
 
