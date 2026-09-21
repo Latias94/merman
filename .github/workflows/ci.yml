@@ -974,7 +974,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
 
