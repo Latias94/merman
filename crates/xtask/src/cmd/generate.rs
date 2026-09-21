@@ -2367,7 +2367,8 @@ const mermaidHtmlPath = path.join(mermaidCliRoot, 'dist', 'index.html');
 const mermaidIifePath = path.join(mermaidRoot, 'dist', 'mermaid.js');
 const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 const referenceManifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
-const selectedLayoutUrls = ['elk', 'tidy-tree']
+// Mermaid 12 owns ELK; the legacy plugin would replace its marker registry.
+const selectedLayoutUrls = ['tidy-tree']
   .filter((name) => referenceManifest.devDependencies?.[`@mermaid-js/layout-${name}`])
   .map((name) => url.pathToFileURL(path.join(process.cwd(), 'node_modules', '@mermaid-js',
     `layout-${name}`, 'dist', `mermaid-layout-${name}.esm.mjs`)).href);
@@ -2535,7 +2536,11 @@ const selectedLayoutUrls = ['elk', 'tidy-tree']
     }
 
     async function completeDeferredSequenceActorMath(renderedSvgText) {
-      if (!code.includes('$$')) return renderedSvgText;
+      // Sequence actors still start asynchronous KaTeX rendering in Mermaid 12.
+      // Other diagrams can contain HTML entities that are not valid in XML.
+      if (!code.includes('$$') || !/aria-roledescription\s*=\s*(["'])sequence\1/.test(renderedSvgText)) {
+        return renderedSvgText;
+      }
 
       const parsed = new DOMParser().parseFromString(renderedSvgText, 'image/svg+xml');
       if (parsed.querySelector('parsererror')) {
