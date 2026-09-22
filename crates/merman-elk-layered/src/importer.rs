@@ -1835,11 +1835,15 @@ fn ensure_port_at_node(
     }
 
     let port = graph.layerless_nodes[node].ports.len();
-    graph.layerless_nodes[node].ports.push(LPort::new(
-        format!("{node_id}:{port:?}"),
-        node,
-        port_type,
-    ));
+    let mut implicit_port = LPort::new(format!("{node_id}:{port:?}"), node, port_type);
+    // Mirror Mermaid's ELK `LGraphUtil.createPort`: dedicated implicit ports receive
+    // a direction-derived side before direction preprocessing/transposition runs.
+    let default_side = port_side_from_direction(graph.options.direction);
+    implicit_port.set_side(match port_type {
+        PortType::Output => default_side,
+        PortType::Input => default_side.opposed(),
+    });
+    graph.layerless_nodes[node].ports.push(implicit_port);
     Ok(Some(PortRef { node, port }))
 }
 

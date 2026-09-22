@@ -269,7 +269,8 @@ fn apply_start_intersection(
     };
     let outside = points[first_outside].clone();
     let center = points[0].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
+    let value = attach_along_departure_axis(ctx, node_id, shape, bounds, points, first_outside, 1)
+        .unwrap_or_else(|| node_intersection(ctx, node_id, shape, bounds, &outside, &center));
     replace_endpoint(points, Endpoint::Start, value);
 }
 
@@ -287,10 +288,81 @@ fn apply_end_intersection(
     let Some(outside) = outside else {
         return;
     };
-    let outside = points[outside].clone();
+    let outside_index = outside;
+    let outside = points[outside_index].clone();
     let center = points[points.len() - 1].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
+    let value = attach_along_departure_axis(ctx, node_id, shape, bounds, points, outside_index, -1)
+        .unwrap_or_else(|| node_intersection(ctx, node_id, shape, bounds, &outside, &center));
     replace_endpoint(points, Endpoint::End, value);
+}
+
+/// Port of Mermaid 12 `outlineAttachPoint`: for orthogonal departures,
+/// attach on the node outline along the route axis to preserve the ELK stub.
+/// Diagonal departures fall back to the centre-ray intersection.
+fn attach_along_departure_axis(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    shape: Option<&str>,
+    bounds: &BoundaryNode,
+    points: &[crate::model::LayoutPoint],
+    port_index: usize,
+    step: isize,
+) -> Option<crate::model::LayoutPoint> {
+    let port = points.get(port_index)?;
+    let next_index = port_index.checked_add_signed(step)?;
+    let next = points.get(next_index)?;
+    let dx = next.x - port.x;
+    let dy = next.y - port.y;
+    const EPS: f64 = 1e-6;
+    if dx.abs() <= EPS && dy.abs() <= EPS {
+        return None;
+    }
+    if dx.abs() > EPS && dy.abs() > EPS {
+        return None;
+    }
+
+    let center = crate::model::LayoutPoint {
+        x: bounds.x,
+        y: bounds.y,
+    };
+    let horizontal = dx.abs() > dy.abs();
+    let along = |value: f64| {
+        if horizontal {
+            crate::model::LayoutPoint {
+                x: value,
+                y: port.y,
+            }
+        } else {
+            crate::model::LayoutPoint {
+                x: port.x,
+                y: value,
+            }
+        }
+    };
+    let mut inner = if horizontal { center.x } else { center.y };
+    let mut outer = if horizontal { port.x } else { port.y };
+    let inside = |probe: &crate::model::LayoutPoint| {
+        let crossing = intersect_for_layout_shape(ctx, node_id, bounds, shape, probe);
+        let probe_distance = (probe.x - center.x).hypot(probe.y - center.y);
+        let outline_distance = (crossing.x - center.x).hypot(crossing.y - center.y);
+        probe_distance <= outline_distance + 1e-9
+    };
+
+    if !inside(&along(inner)) {
+        return None;
+    }
+    if inside(&along(outer)) {
+        return Some(port.clone());
+    }
+    for _ in 0..48 {
+        let mid = (inner + outer) / 2.0;
+        if inside(&along(mid)) {
+            inner = mid;
+        } else {
+            outer = mid;
+        }
+    }
+    Some(along(inner))
 }
 
 fn node_intersection(
