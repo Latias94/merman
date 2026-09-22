@@ -142,8 +142,7 @@ impl Shape<'_> {
             || (outside.x > node.x && crossing.x < node.x);
         // Match JS comparisons for a degenerate ellipse's NaN intersection;
         // sanitize() owns the finite-point fallback after endpoint clipping.
-        let rejected = wrong_side
-            || (self.outline != Outline::Ellipse && distance(&outside, &crossing) <= 1.0);
+        let rejected = wrong_side || distance(&outside, &crossing) <= 1.0;
         if !rejected {
             return crossing;
         }
@@ -228,10 +227,7 @@ fn replace_endpoint(points: &mut Vec<P>, start: bool, value: P) {
         return;
     }
     let index = if start { 0 } else { points.len() - 1 };
-    if points.len() > 2
-        && (points[index].x - value.x).abs() < 0.1
-        && (points[index].y - value.y).abs() < 0.1
-    {
+    if (points[index].x - value.x).abs() < 0.1 && (points[index].y - value.y).abs() < 0.1 {
         points.remove(index);
     } else {
         points[index] = value;
@@ -397,6 +393,7 @@ pub(crate) fn marker_segment(
 ) {
     let offset: f64 = match marker {
         Some("arrow_point") => 4.0,
+        Some("arrow_barb_neo") => 5.5,
         Some("extension") => 17.25,
         Some("arrow_cross" | "arrow_circle") => 12.5,
         _ => 0.0,
@@ -416,127 +413,11 @@ pub(crate) fn marker_segment(
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Axis {
-    Horizontal,
-    Vertical,
-}
-
-fn axis(a: &P, b: &P) -> Option<Axis> {
-    let dx = (b.x - a.x).abs();
-    let dy = (b.y - a.y).abs();
-    if dx > 0.01 && dy <= 0.01 {
-        Some(Axis::Horizontal)
-    } else if dy > 0.01 && dx <= 0.01 {
-        Some(Axis::Vertical)
-    } else {
-        None
-    }
-}
-
-fn straighten_front(points: &[P]) -> Option<Vec<P>> {
-    if points.len() < 5 {
-        return None;
-    }
-    let a = axis(&points[0], &points[1])?;
-    let other = if a == Axis::Horizontal {
-        Axis::Vertical
-    } else {
-        Axis::Horizontal
-    };
-    if axis(&points[2], &points[3]) != Some(a)
-        || axis(&points[1], &points[2]) != Some(other)
-        || distance(&points[0], &points[1]) > 30.0
-    {
-        return None;
-    }
-    let jog = if a == Axis::Horizontal {
-        (points[2].y - points[1].y).abs()
-    } else {
-        (points[2].x - points[1].x).abs()
-    };
-    if !(0.01..=16.0).contains(&jog) {
-        return None;
-    }
-    let along = |p: &P| if a == Axis::Horizontal { p.x } else { p.y };
-    if (along(&points[1]) - along(&points[0])).signum()
-        != (along(&points[3]) - along(&points[2])).signum()
-    {
-        return None;
-    }
-    let mut last = 3;
-    while last + 1 < points.len() && axis(&points[last], &points[last + 1]) == Some(a) {
-        last += 1;
-    }
-    if last == points.len() - 1 {
-        return None;
-    }
-    let mut moved = points.to_vec();
-    for point in &mut moved[2..=last] {
-        if a == Axis::Horizontal {
-            point.y = points[0].y;
-        } else {
-            point.x = points[0].x;
-        }
-    }
-    moved.drain(1..3);
-    Some(moved)
-}
-
-fn straighten(points: &[P]) -> Option<Vec<P>> {
-    let front = straighten_front(points);
-    let mut reversed = front.as_deref().unwrap_or(points).to_vec();
-    reversed.reverse();
-    if let Some(mut end) = straighten_front(&reversed) {
-        end.reverse();
-        Some(end)
-    } else {
-        front
-    }
-}
-
-fn crossings(a: &[P], b: &[P], work: &mut OperationLayoutWorkControl) -> Result<usize> {
-    let units = work.checked_mul(a.len().saturating_sub(1), b.len().saturating_sub(1))?;
-    work.charge_adapter(units)?;
-    let side = |o: &P, p: &P, q: &P| (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
-    let opposite = |a: f64, b: f64| (a > 0.0 && b < 0.0) || (a < 0.0 && b > 0.0);
-    Ok(a.windows(2)
-        .map(|a| {
-            b.windows(2)
-                .filter(|b| {
-                    opposite(side(&b[0], &b[1], &a[0]), side(&b[0], &b[1], &a[1]))
-                        && opposite(side(&a[0], &a[1], &b[0]), side(&a[0], &a[1], &b[1]))
-                })
-                .count()
-        })
-        .sum())
-}
-
 pub(crate) fn straighten_routes(
     routes: &mut [Vec<P>],
     work: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
-    for index in 0..routes.len() {
-        work.charge_adapter(routes[index].len())?;
-        let Some(candidate) = straighten(&routes[index]) else {
-            continue;
-        };
-        let mut before = 0;
-        let mut after = 0;
-        for (other, route) in routes.iter().enumerate() {
-            if other == index || route.len() < 2 {
-                continue;
-            }
-            let original_crossings = crossings(&routes[index], route, work)?;
-            let candidate_crossings = crossings(&candidate, route, work)?;
-            before = work.checked_add(before, original_crossings)?;
-            after = work.checked_add(after, candidate_crossings)?;
-        }
-        if after <= before {
-            routes[index] = candidate;
-        }
-    }
-    Ok(())
+    crate::elk_terminal_jogs::straighten_edge_terminals(routes, |units| work.charge_adapter(units))
 }
 
 #[cfg(test)]
@@ -564,6 +445,37 @@ mod tests {
 
     fn coordinates(points: &[P]) -> Vec<(f64, f64)> {
         points.iter().map(|point| (point.x, point.y)).collect()
+    }
+
+    #[test]
+    fn repeated_endpoint_is_removed_even_from_a_two_point_route() {
+        // Mermaid 12 geometry.spec.ts: replacement removes an already matching endpoint.
+        for (start, replacement, expected) in [
+            (true, (0.0, 0.0), (1.0, 1.0)),
+            (false, (1.0, 1.0), (0.0, 0.0)),
+        ] {
+            let mut route = points(&[(0.0, 0.0), (1.0, 1.0)]);
+            replace_endpoint(
+                &mut route,
+                start,
+                P {
+                    x: replacement.0,
+                    y: replacement.1,
+                },
+            );
+            assert_eq!(coordinates(&route), [expected]);
+        }
+    }
+
+    #[test]
+    fn ellipse_near_intersection_uses_the_shared_segment_fallback() {
+        let node = node(0.0, 0.0, 100.0, 60.0, false);
+        let shape = Shape {
+            node: &node,
+            outline: Outline::Ellipse,
+        };
+        let crossing = shape.compute_intersection(&P { x: 40.0, y: 18.0 }, &shape.center());
+        assert_eq!((crossing.x, crossing.y), (50.0, -12.0));
     }
 
     #[test]
@@ -626,22 +538,6 @@ mod tests {
     }
 
     #[test]
-    fn terminal_jog_moves_the_channel_without_moving_either_port() {
-        let raw = points(&[
-            (193.0, 116.25),
-            (218.0, 116.25),
-            (218.0, 119.5),
-            (400.0, 119.5),
-            (400.0, 300.0),
-        ]);
-        assert_eq!(
-            coordinates(&straighten(&raw).unwrap()),
-            [(193.0, 116.25), (400.0, 116.25), (400.0, 300.0)]
-        );
-        assert!(straighten(&raw[..4]).is_none());
-    }
-
-    #[test]
     fn terminal_jog_is_rejected_when_it_adds_a_crossing() {
         let raw = points(&[
             (193.0, 116.25),
@@ -669,5 +565,9 @@ mod tests {
         let mut route = points(&[(0.0, 90.0), (50.0, 90.0), (50.0, 100.0)]);
         marker_segment(&mut route, shape, Some("extension"), false);
         assert_eq!(coordinates(&route), [(0.0, 90.0), (50.0, 100.0)]);
+
+        let mut neo_route = points(&[(0.0, 90.0), (50.0, 90.0), (50.0, 100.0)]);
+        marker_segment(&mut neo_route, shape, Some("arrow_barb_neo"), false);
+        assert_eq!(coordinates(&neo_route), [(0.0, 90.0), (50.0, 100.0)]);
     }
 }

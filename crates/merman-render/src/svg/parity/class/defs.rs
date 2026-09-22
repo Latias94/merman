@@ -33,20 +33,11 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ClassMarkerProfile {
-    /// Mermaid 11.17.2's host marker helper used by the Dagre renderer.
-    Mermaid1172,
-    /// The marker helper bundled into the selected `@mermaid-js/layout-elk@0.2.3` release.
-    LayoutElk023,
-}
-
 pub(super) fn class_markers(
     out: &mut String,
     diagram_id: SvgDiagramId<'_>,
     diagram_marker_class: &str,
     include_margin_markers: bool,
-    profile: ClassMarkerProfile,
 ) {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a> {
@@ -77,11 +68,6 @@ pub(super) fn class_markers(
         wrap_defs: bool,
         shape: MarkerShape<'a>,
     }
-
-    let ordinary_marker_units = match profile {
-        ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
-        ClassMarkerProfile::LayoutElk023 => None,
-    };
 
     fn marker(ctx: &mut MarkerContext<'_>, spec: MarkerSpec<'_>) {
         if spec.wrap_defs {
@@ -145,7 +131,7 @@ pub(super) fn class_markers(
                 }
                 let _ = write!(
                     ctx.out,
-                    r#"><polygon points="{}"/></marker>"#,
+                    r#"><polygon points="{}" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#,
                     escape_xml_display(points)
                 );
             }
@@ -203,7 +189,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -218,7 +204,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -257,12 +243,6 @@ pub(super) fn class_markers(
         );
     }
 
-    let (extension_start_marker_w, extension_start_marker_h, extension_start_marker_units) =
-        if include_margin_markers {
-            ("20", "28", Some("userSpaceOnUse"))
-        } else {
-            ("190", "240", None)
-        };
     marker(
         &mut ctx,
         MarkerSpec {
@@ -270,9 +250,9 @@ pub(super) fn class_markers(
             kind: "extension",
             ref_x: "18",
             ref_y: "7",
-            marker_w: extension_start_marker_w,
-            marker_h: extension_start_marker_h,
-            marker_units: extension_start_marker_units,
+            marker_w: "20",
+            marker_h: "28",
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,7 L18,13 V 1 Z"),
@@ -287,10 +267,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: match profile {
-                ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
-                ClassMarkerProfile::LayoutElk023 => None,
-            },
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
@@ -338,7 +315,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -353,7 +330,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
@@ -401,7 +378,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
@@ -416,7 +393,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
@@ -464,7 +441,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -482,7 +459,7 @@ pub(super) fn class_markers(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: ordinary_marker_units,
+            marker_units: Some("userSpaceOnUse"),
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -529,60 +506,4 @@ pub(super) fn class_markers(
             },
         );
     }
-}
-
-pub(super) fn push_class_shadow_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config_value: &serde_json::Value,
-) {
-    let flood_color = effective_config_value
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id, flood_color, diagram_id, flood_color
-    );
-}
-
-pub(super) fn push_class_gradient(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config_value: &serde_json::Value,
-) {
-    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return;
-    }
-
-    let gradient_start =
-        config_string(effective_config_value, &["themeVariables", "gradientStart"])
-            .or_else(|| {
-                config_string(
-                    effective_config_value,
-                    &["themeVariables", "primaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config_value,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
-    let _ = write!(
-        out,
-        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
-    );
 }

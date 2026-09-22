@@ -22,7 +22,7 @@ use crate::compound::{
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{
     LGraph, LNode, LNodeKind, LPoint, LSize, LayeredEdge, PortRef, PortSide, PortType,
-    collector_port_id_suffix,
+    ReorderNodePortsWorkContext, collector_port_id_suffix,
 };
 #[cfg(test)]
 use crate::intermediate::edge_and_layer_constraint_reversal_may_mutate;
@@ -47,8 +47,8 @@ use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
     sweep::{
         CrossMinType, HierarchySweepDebugTrace, debug_crossings_layer_sweep_hierarchical_with_type,
-        minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_hierarchical_with_type,
-        minimize_crossings_layer_sweep_with_type,
+        minimize_crossings_layer_sweep_hierarchical_with_type,
+        minimize_crossings_layer_sweep_with_type, minimize_crossings_layer_sweep_with_work_control,
     },
 };
 use crate::p4nodes::{
@@ -1385,9 +1385,9 @@ fn execute_processor_with_work_control(
         ProcessorKind::PortSideProcessor => process_port_sides(graph),
         ProcessorKind::InvertedPortProcessor => process_inverted_ports(graph),
         ProcessorKind::PortListSorter => sort_port_lists(graph),
-        ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph),
+        ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph, work_control)?,
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
-            minimize_crossings_layer_sweep(graph);
+            minimize_crossings_layer_sweep_with_work_control(graph, work_control)?;
         }
         ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch => {
             minimize_crossings_layer_sweep_with_type(graph, CrossMinType::OneSidedGreedySwitch);
@@ -1497,8 +1497,7 @@ fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, Wo
             ])?;
             checked_mul(graph.options.thoroughness, auxiliary_nodes.max(1))?
         }
-        ProcessorKind::LayerSweepCrossingMinimizerBarycenter
-        | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+        ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
         | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
             checked_mul(graph.options.thoroughness.max(1), graph.edges.len().max(1))?
         }
@@ -1766,19 +1765,8 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
 }
 
 fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let max_ports = graph
-        .layerless_nodes
-        .iter()
-        .map(|node| node.ports.len())
-        .max()
-        .unwrap_or(0);
-    let chain_bound = checked_mul(
-        checked_add(graph.edges.len(), 1)?,
-        checked_add(max_ports, 2)?,
-    )?;
     let mut layer_copy_work = 0usize;
     let mut preprocessing_work = 0usize;
-    let mut relation_sort_work = 0usize;
     let mut reference_rewrites = 0usize;
     let mut reorder_context = None;
 
@@ -1795,13 +1783,6 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
             layer.nodes.len(),
         ])?;
 
-        let node_context =
-            checked_sum([previous_layer.nodes.len(), checked_mul(max_ports, 4)?, 1])?;
-        relation_sort_work = checked_add(
-            relation_sort_work,
-            stateful_relation_sort_work_units(layer.nodes.len(), node_context)?,
-        )?;
-
         for &node_index in &layer.nodes {
             let node = &graph.layerless_nodes[node_index];
             if matches!(
@@ -1812,23 +1793,7 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
             }
 
             let port_count = node.ports.len();
-            let outgoing_ports = node
-                .ports
-                .iter()
-                .filter(|port| !port.outgoing_edges.is_empty())
-                .count();
-            preprocessing_work = checked_sum([
-                preprocessing_work,
-                checked_mul(port_count, 2)?,
-                checked_mul(outgoing_ports, chain_bound)?,
-            ])?;
-            relation_sort_work = checked_add(
-                relation_sort_work,
-                stateful_relation_sort_work_units(
-                    port_count,
-                    checked_add(previous_layer.nodes.len(), 1)?,
-                )?,
-            )?;
+            preprocessing_work = checked_add(preprocessing_work, checked_mul(port_count, 2)?)?;
             reference_rewrites = checked_add(
                 reference_rewrites,
                 prepared_reorder_node_ports_work_units(graph, node_index, &mut reorder_context)?,
@@ -1836,93 +1801,15 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
         }
     }
 
-    // The stateful ELK comparator must keep its stable-sort call order. Model its owner-local layer
-    // and port widths plus the references each resulting permutation actually rewrites; taking the
-    // fourth power of total hierarchy payload rejected ordinary official Mermaid fixtures.
+    // Admit the fixed scans and reference rewrites before mutating the graph. Long-edge target
+    // walks and stateful comparisons charge their actual visited chains and current relation
+    // sets inside the processor; whole-graph bounds charged ordinary sparse DAGs as dense sorts.
     checked_sum([
         local_graph_work_units(graph)?,
         layer_copy_work,
         preprocessing_work,
-        relation_sort_work,
         reference_rewrites,
     ])
-}
-
-fn stateful_relation_sort_work_units(
-    item_count: usize,
-    contextual_scan: usize,
-) -> Result<usize, WorkError> {
-    let comparisons = checked_n_log_n(item_count)?;
-    let squared = checked_mul(item_count, item_count)?;
-    // The official stateful comparator clones two relation sets and can clone/extend another set
-    // inside each side of the transitive-closure update. Keep this local to the sorted owner set.
-    let relation_closure =
-        checked_sum([checked_mul(squared, 4)?, checked_mul(item_count, 8)?, 16])?;
-    checked_mul(comparisons, checked_add(relation_closure, contextual_scan)?)
-}
-
-struct ReorderNodePortsWorkContext {
-    shared_reference_work: usize,
-    self_loop_holder_scan_work: usize,
-    self_loop_payload_by_node: Vec<usize>,
-}
-
-impl ReorderNodePortsWorkContext {
-    fn new(graph: &LGraph) -> Result<Self, WorkError> {
-        let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
-        for holder in &graph.self_loop_holders {
-            let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
-                continue;
-            };
-            for hyper_loop in &holder.hyper_loops {
-                *payload = checked_sum([
-                    *payload,
-                    hyper_loop.ports.len(),
-                    checked_mul(hyper_loop.edges.len(), 2)?,
-                ])?;
-            }
-        }
-
-        let mut descendant_nodes = 0usize;
-        let mut stack = graph
-            .layerless_nodes
-            .iter()
-            .filter_map(|node| node.nested_graph.as_deref())
-            .collect::<Vec<_>>();
-        while let Some(current) = stack.pop() {
-            descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
-            stack.extend(
-                current
-                    .layerless_nodes
-                    .iter()
-                    .filter_map(|node| node.nested_graph.as_deref()),
-            );
-        }
-
-        Ok(Self {
-            shared_reference_work: checked_sum([
-                checked_mul(graph.edges.len(), 3)?,
-                checked_mul(graph.layerless_nodes.len(), 3)?,
-                descendant_nodes,
-                graph.id.len(),
-            ])?,
-            self_loop_holder_scan_work: graph.self_loop_holders.len(),
-            self_loop_payload_by_node,
-        })
-    }
-
-    fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
-        let port_count = graph.layerless_nodes[node_index].ports.len();
-        checked_sum([
-            checked_mul(port_count, 4)?,
-            self.shared_reference_work,
-            self.self_loop_holder_scan_work,
-            self.self_loop_payload_by_node
-                .get(node_index)
-                .copied()
-                .unwrap_or(0),
-        ])
-    }
 }
 
 fn prepared_reorder_node_ports_work_units(
@@ -3855,19 +3742,16 @@ mod tests {
 
         // Free ports make PortListSorter visit the owner node without sorting or rewriting it.
         assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1));
-        // SortByInputModel copies the one-node layer three times, scans two ports twice, charges
-        // one two-item stateful relation sort, and performs one exact owner reference rewrite.
-        assert_eq!(
-            sort_by_input_model_work_units(&graph),
-            Ok(4 + 3 + 4 + 100 + 15)
-        );
+        // SortByInputModel's initial tranche covers three layer copies, two port scans and
+        // the owner reference rewrite. Stateful comparisons are charged during the actual sort.
+        assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 3 + 4 + 15));
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::PortListSorter),
             Ok(5)
         );
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::SortByInputModelProcessor),
-            Ok(126)
+            Ok(26)
         );
 
         graph.layerless_nodes[0].port_constraints = PortConstraints::FixedOrder;
@@ -3875,6 +3759,157 @@ mod tests {
         // rewrite. SortByInputModel now skips the node after the layer-copy work.
         assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1 + 2 + 2 + 15));
         assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 3));
+    }
+
+    #[test]
+    fn model_order_sort_dynamic_budget_preserves_order_and_stops_before_failed_permutation() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("node", 10.0, 10.0, Some(0));
+        node.ports.push(LPort::new("west", 0, PortType::Input));
+        node.ports.push(LPort::new("east", 0, PortType::Output));
+        node.ports[0].side = PortSide::West;
+        node.ports[1].side = PortSide::East;
+        graph.layerless_nodes.push(node);
+        graph.layers.push(Layer {
+            nodes: vec![0],
+            ..Layer::default()
+        });
+        let kind = ProcessorKind::SortByInputModelProcessor;
+        let floor = processor_work_units(&graph, kind).unwrap();
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut expected = graph.clone();
+        execute_processor_with_work_control(&mut expected, kind, &mut measured).unwrap();
+        assert!(measured.charged > floor);
+        assert_eq!(expected.layerless_nodes[0].ports[0].id, "east");
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        let mut interrupted = graph.clone();
+        assert_eq!(
+            execute_processor_with_work_control(&mut interrupted, kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(
+            interrupted, graph,
+            "a rejected comparison must not install its port permutation"
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, expected);
+        assert_eq!(exact.remaining, 0);
+    }
+
+    #[test]
+    fn barycenter_budget_tracks_executed_sweeps_and_preserves_seeded_order() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right),
+            nodes: vec![node("a"), node("b"), node("c"), node("d")],
+            edges: vec![edge("ad", "a", "d"), edge("bc", "b", "c")],
+        })
+        .unwrap();
+        layer_network_simplex(&mut graph).unwrap();
+        process_port_sides(&mut graph);
+        sort_port_lists(&mut graph);
+        graph.layers[0].nodes = vec![0, 1];
+        graph.layers[1].nodes = vec![2, 3];
+        let kind = ProcessorKind::LayerSweepCrossingMinimizerBarycenter;
+        let floor = processor_work_units(&graph, kind).unwrap();
+        let mut denied = graph.clone();
+        let mut below_floor = BudgetWorkControl::new(floor - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut denied, kind, &mut below_floor),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(
+            denied, graph,
+            "the scan floor must reject before port-ID initialization"
+        );
+
+        let mut expected = graph.clone();
+        execute_processor(&mut expected, kind).unwrap();
+        assert_eq!(
+            crate::p3order::counting::CrossingsCounter::new().count_all_crossings(&expected),
+            0
+        );
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut actual = graph.clone();
+        execute_processor_with_work_control(&mut actual, kind, &mut measured).unwrap();
+        assert_eq!(
+            actual, expected,
+            "work control must preserve node/port orders and RNG state"
+        );
+        assert!(measured.charged > floor);
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut graph.clone(), kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, expected);
+        assert_eq!(exact.remaining, 0);
+
+        // An initially crossing-free model order stops after its first try regardless of
+        // thoroughness. No unexecuted attempts or sweeps should consume a work budget.
+        let mut low = expected.clone();
+        low.options.thoroughness = 1;
+        let mut high = low.clone();
+        high.options.thoroughness = 100;
+        let mut low_budget = BudgetWorkControl::new(usize::MAX);
+        let mut high_budget = BudgetWorkControl::new(usize::MAX);
+        execute_processor_with_work_control(&mut low, kind, &mut low_budget).unwrap();
+        execute_processor_with_work_control(&mut high, kind, &mut high_budget).unwrap();
+        assert_eq!(low_budget.charged, high_budget.charged);
+        high.options.thoroughness = 1;
+        assert_eq!(low, high);
+    }
+
+    #[test]
+    fn barycenter_high_degree_early_return_charges_linear_port_restore() {
+        const DEGREE: usize = 1024;
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: false,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right)
+            },
+            nodes: vec![node("a"), node("b")],
+            edges: (0..DEGREE)
+                .map(|index| edge(&format!("ab-{index}"), "a", "b"))
+                .collect(),
+        })
+        .unwrap();
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+        process_port_sides(&mut graph);
+        sort_port_lists(&mut graph);
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .all(|node| node.ports.len() == DEGREE)
+        );
+        // Both sides use matching top-to-bottom endpoint positions.
+        assert_eq!(CrossingsCounter::new().count_all_crossings(&graph), 0);
+        let context = ReorderNodePortsWorkContext::new(&graph).unwrap();
+        let minimum_restore_work = 8 * DEGREE * 2
+            + context.node_work(&graph, 0).unwrap()
+            + context.node_work(&graph, 1).unwrap();
+        let kind = ProcessorKind::LayerSweepCrossingMinimizerBarycenter;
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut result = graph.clone();
+        execute_processor_with_work_control(&mut result, kind, &mut measured).unwrap();
+        assert!(measured.checks.last().copied().unwrap() >= minimum_restore_work);
+        assert_eq!(CrossingsCounter::new().count_all_crossings(&result), 0);
+        assert_eq!(graph.edges, result.edges);
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut graph.clone(), kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, result);
+        assert_eq!(exact.remaining, 0);
     }
 
     #[test]

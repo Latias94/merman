@@ -17,6 +17,7 @@ pub(super) struct FlatLayout {
     pub size: source_port::LSize,
     pub content_shifts: HashMap<String, Point>,
     pub size_constraints_active: bool,
+    pub edge_translation: Point,
 }
 
 pub(super) enum ScopeContext<'a> {
@@ -134,6 +135,7 @@ pub(super) fn layout(
     };
     let mut size;
     let mut content_shifts = HashMap::new();
+    let mut edge_translation = Point { x: 0.0, y: 0.0 };
     // Ordinary directional containers retain buildSubgraphLayoutOptions' padding and node
     // spacing. Their algorithms do not inherit the root-only Rectpacking preset.
     let (container_padding, minimum, explicit) = match context {
@@ -494,6 +496,10 @@ pub(super) fn layout(
                 options.spacing = 50.0;
             }
             let placed = spore_overlap::layout(&nodes, &edges, &options, &mut random, work)?;
+            edge_translation = Point {
+                x: placed.translation.x,
+                y: placed.translation.y,
+            };
             size = source_port::LSize {
                 width: placed.width,
                 height: placed.height,
@@ -530,7 +536,26 @@ pub(super) fn layout(
         // CalculateGraphSize writes dimensions directly. Other providers export through
         // ElkUtil.resizeNode, which fixes the owner's size for its parent's invocation.
         size_constraints_active: graph.options.algorithm == Algorithm::Radial,
+        edge_translation,
     })
+}
+
+// ElkMath.clipVector shrinks only vectors outside the rectangle. SPOrE clips the
+// target toward the already clipped source, including coincident hierarchical endpoints.
+pub(super) fn clip_spore_endpoint(origin: Point, target: Point, width: f64, height: f64) -> Point {
+    let dx = target.x - origin.x;
+    let dy = target.y - origin.y;
+    let mut scale: f64 = 1.0;
+    if dx.abs() > width / 2.0 {
+        scale = scale.min(width / 2.0 / dx.abs());
+    }
+    if dy.abs() > height / 2.0 {
+        scale = scale.min(height / 2.0 / dy.abs());
+    }
+    Point {
+        x: origin.x + dx * scale,
+        y: origin.y + dy * scale,
+    }
 }
 
 fn provider_padding(padding: source_port::ElkPadding) -> box_layout::Padding {

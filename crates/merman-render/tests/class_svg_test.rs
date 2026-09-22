@@ -243,7 +243,7 @@ class Animal
 }
 
 #[test]
-fn class_stylesheet_matches_signed_mermaid_11_16_css_contract() {
+fn class_stylesheet_matches_signed_mermaid_12_css_contract() {
     const FIXTURE: &str = "stress_class_many_relations_labels_020";
     let local_svg = render_class_fixture(
         &format!("{FIXTURE}.mmd"),
@@ -269,7 +269,7 @@ fn class_stylesheet_matches_signed_mermaid_11_16_css_contract() {
     );
     assert!(
         local_css.starts_with(
-            r#"#class-contract{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}"#
+            r#"#class-contract{font-family:"Recursive Variable",arial,sans-serif;font-size:14px;fill:#28253D;}"#
         ),
         "the public root fill must use textColor rather than classText"
     );
@@ -333,9 +333,9 @@ namespace Company.Project.Module {
 "#,
     );
 
-    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="neo""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
@@ -365,11 +365,11 @@ fn class_svg_scopes_text_color_for_html_labels() {
         "expected class SVG to reset HTML label paragraph margins"
     );
     assert!(
-        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#131300;}"#),
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#28253D;}"#),
         "expected class SVG to make HTML labels self-contained instead of inheriting host page color"
     );
     assert!(
-        svg.contains(r#"#merman .label text{fill:#131300;}"#),
+        svg.contains(r#"#merman .label text{fill:#28253D;}"#),
         "expected class SVG text labels to get an explicit fill color"
     );
 }
@@ -421,26 +421,23 @@ Animal --> Keeper
 fn class_svg_hand_drawn_basic_node_uses_rough_wrapper_and_hachure_paths() {
     let svg = render_class_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
+        r##"%%{init: {"layout": "dagre", "look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
 classDiagram
   class Class10
 "##,
     );
 
-    assert!(
-        svg.contains(
-            r#"<g class="rough-node default" id="merman-classId-Class10-0" data-look="handDrawn""#
-        ),
-        "hand-drawn class node should use Mermaid's rough-node wrapper class: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"<g class="node default" id="merman-classId-Class10-0""#),
-        "hand-drawn class node should not keep the classic node wrapper class: {svg}"
-    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-classId-Class10-0"))
+        .expect("hand-drawn Class10 node");
+    assert_eq!(node.attribute("class"), Some("rough-node default"));
+    assert_eq!(node.attribute("data-look"), Some("handDrawn"));
     assert!(
         svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
-                r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+                r##"stroke="#f8fafc" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && svg.contains(
                 r##"stroke="#ef4444" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##
@@ -469,7 +466,6 @@ classDiagram
         "lollipopStart-margin",
         "lollipopEnd-margin",
     ];
-    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
     let diagram_role = document
         .root_element()
         .attribute("aria-roledescription")
@@ -493,7 +489,7 @@ classDiagram
     let marker_positions = marker_ids.map(|marker_id| {
         let marker_attr = format!(r#"id="merman_{diagram_role}-{marker_id}""#);
         svg.find(&marker_attr)
-            .unwrap_or_else(|| panic!("missing Mermaid 11.16 class marker {marker_id}: {svg}"))
+            .unwrap_or_else(|| panic!("missing Dagre class marker {marker_id}: {svg}"))
     });
     assert!(
         marker_positions.windows(2).all(|pair| pair[0] < pair[1]),
@@ -526,7 +522,7 @@ classDiagram
 
     assert!(
         svg.contains(r#"class="rough-node default""#)
-            && svg.contains(r##"stroke="#f9f" stroke-width="4" fill="none""##)
+            && svg.contains(r##"stroke="#f9f" stroke-width="1.5" fill="none""##)
             && svg.contains(r##"stroke="#333" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:#f9f;stroke:#333;stroke-width:4px;color:white""##)
             && svg.contains(r##"style="fill:#f9f;stroke:#333;stroke-width:4px;color:white"><p>Class10</p>"##),
         "inline style should reach hand-drawn class rough paths and label span: {svg}"
@@ -549,7 +545,7 @@ classDiagram
     assert!(
         svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
-                r##"stroke="#fff5ad" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+                r##"stroke="#fff5ad" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && svg.contains(
                 r##"stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
@@ -798,13 +794,27 @@ style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
 "##,
     );
 
-    assert!(
-        svg.contains(r#"id="merman-Platform" data-look="classic""#)
-            && svg.contains(r#"data-look="classic" xlink:href="https://example.com/service""#)
-            && svg.contains(r#"id="merman-classId-Service-0""#)
-            && svg.contains(r#"id="merman-classId-Client-"#),
-        "Class ELK layout should still render namespaces and class nodes through the Class SVG renderer: {svg}"
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let namespace = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-Platform"))
+        .expect("Platform namespace");
+    assert_eq!(namespace.attribute("data-look"), Some("neo"));
+    let service = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-classId-Service-0"))
+        .expect("Service class node");
+    let service_link = service.parent_element().expect("Service link wrapper");
+    assert!(service_link.has_tag_name("a"));
+    assert_eq!(service_link.attribute("data-look"), Some("neo"));
+    assert_eq!(
+        service_link.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.com/service")
     );
+    assert!(document.descendants().any(|node| {
+        node.attribute("id")
+            .is_some_and(|id| id.starts_with("merman-classId-Client-"))
+    }));
     assert!(
         svg.contains(r#"xlink:href="https://example.com/service""#)
             && svg.contains(r#"title="Open Service""#),
@@ -846,7 +856,7 @@ Animal <|-- Duck
         .find(r#"<g class="nodes""#)
         .expect("Class ELK nodes group");
     let edges = svg
-        .find(r#"<g class="edges edgePath""#)
+        .find(r#"<g class="edgePaths edges""#)
         .expect("Class ELK edge paths group");
     let labels = svg
         .find(r#"<g class="edgeLabels""#)
@@ -859,7 +869,7 @@ Animal <|-- Duck
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn class_svg_elk_layout_uses_layout_elk_023_marker_profile() {
+fn class_svg_elk_layout_uses_shared_mermaid12_markers() {
     let svg = render_class_svg_from_text(
         r#"---
 config:
@@ -892,8 +902,8 @@ class C1["One"]
     ] {
         assert_eq!(
             marker_units(marker),
-            None,
-            "ELK 0.2.3 ordinary marker {marker}"
+            Some("userSpaceOnUse"),
+            "Mermaid 12 shared ordinary marker {marker}"
         );
     }
     assert_eq!(marker_units("extensionStart"), Some("userSpaceOnUse"));
@@ -920,8 +930,8 @@ namespace Platform.Core {
     );
 
     assert!(
-        svg.contains(r#"#merman .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}"#),
-        "expected class namespace cluster CSS to provide the upstream yellow fill: {svg}"
+        svg.contains(r#"#merman .cluster rect{fill:#F9F9FB;stroke:#BDBCCC;stroke-width:1px;}"#),
+        "expected class namespace cluster CSS to provide the Mermaid 12 default theme fill: {svg}"
     );
     assert!(
         !svg.contains(r#"style="fill:none !important;stroke:black !important""#),
@@ -1005,21 +1015,21 @@ classDiagram
 }
 
 #[test]
-fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() {
+fn class_svg_namespaces_use_hierarchical_labels_and_keep_relation_label() {
     let svg = render_class_fixture(
         "upstream_namespaces_and_generics.mmd",
         &LayoutOptions::default(),
         &SvgRenderOptions::default(),
     );
 
-    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="neo""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="neo""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
             && svg.contains("<p>Module</p>"),
-        "expected dotted namespace labels to use Mermaid 11.15 path segments"
+        "expected dotted namespace labels to use Mermaid path segments"
     );
     let company_pos = svg
         .find(r#"id="merman-Company""#)
@@ -1135,8 +1145,13 @@ fn class_svg_nested_namespace_relation_endpoints_share_node_coordinate_frame() {
 
 #[test]
 fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
-    let svg = render_class_fixture(
-        "stress_class_comments_inside_namespaces_024.mmd",
+    let text = std::fs::read_to_string(
+        workspace_root().join("fixtures/class/stress_class_comments_inside_namespaces_024.mmd"),
+    )
+    .expect("fixture");
+    let svg = render_class_svg_from_text_with_engine_and_options(
+        Engine::new(),
+        &format!("%%{{init: {{\"layout\": \"dagre\"}}}}%%\n{text}"),
         &LayoutOptions::default(),
         &SvgRenderOptions {
             diagram_id: Some("stress_class_comments_inside_namespaces_024".to_string()),
@@ -1175,7 +1190,8 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
 #[test]
 fn class_svg_namespace_extraction_depends_on_cross_boundary_edges() {
     let extracted = render_class_svg_from_text(
-        r#"classDiagram
+        r#"%%{init: {"layout": "dagre"}}%%
+classDiagram
 namespace Internal {
   class A
   note for A "inside"
@@ -1247,7 +1263,8 @@ X --> Y
     }
 
     let retained = render_class_svg_from_text(
-        r#"classDiagram
+        r#"%%{init: {"layout": "dagre"}}%%
+classDiagram
 namespace Internal {
   class A
 }
@@ -1305,11 +1322,13 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
         },
     );
 
+    assert!(
+        svg.contains(
+            r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="neo""#
+        )
+    );
     assert!(svg.contains(
-        r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="classic""#
-    ));
-    assert!(svg.contains(
-        r#"id="stress_class_nested_namespaces_many_levels_021-Root.B.B1" data-look="classic""#
+        r#"id="stress_class_nested_namespaces_many_levels_021-Root.B.B1" data-look="neo""#
     ));
     assert!(
         svg.contains("<p>A</p>") && svg.contains("<p>B1</p>"),
@@ -1425,11 +1444,12 @@ classDiagram
 }
 
 #[test]
-fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
-    let svg = render_class_fixture(
-        "stress_class_parallel_edges_and_cardinality_004.mmd",
-        &LayoutOptions::headless_svg_defaults(),
-        &SvgRenderOptions::default(),
+fn class_svg_dagre_edge_labels_precede_terminals_in_edge_labels_group() {
+    let svg = render_class_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+        }))),
+        include_str!("../../../fixtures/class/stress_class_parallel_edges_and_cardinality_004.mmd"),
     );
 
     let edge_labels_start = svg
@@ -1499,17 +1519,16 @@ classDiagram
 "##,
     );
 
+    let css = embedded_stylesheet(&svg);
+    let root_rule = css.split_once('}').expect("root stylesheet rule").0;
+    assert!(root_rule.starts_with("#merman{"), "{root_rule}");
     assert!(
-        svg.contains(
-            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24;fill:"#
-        ),
-        "numeric themeVariables.fontSize should be emitted like Mermaid's raw CSS value"
+        root_rule.contains("font-size:24;"),
+        "numeric themeVariables.fontSize should be emitted like Mermaid's raw CSS value: {root_rule}"
     );
     assert!(
-        !svg.contains(
-            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:"#
-        ),
-        "numeric themeVariables.fontSize must not be rewritten as a px string"
+        !root_rule.contains("font-size:24px;"),
+        "numeric themeVariables.fontSize must not be rewritten as a px string: {root_rule}"
     );
 }
 

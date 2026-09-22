@@ -2899,7 +2899,14 @@ system - satisfies -> req1
             .begin_session()
             .unwrap();
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
     }
 
@@ -3017,7 +3024,14 @@ class Formula["$$x^2$$"]
             .unwrap();
 
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
         assert!(!plan.is_ready());
 
@@ -3078,7 +3092,14 @@ class Formula["$$x^2$$"]
             .unwrap();
 
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert!(plan.missing_capabilities().is_empty());
         assert!(plan.is_ready());
 
@@ -3160,7 +3181,14 @@ $$interface$$ ()-- Formula
                 .unwrap();
 
             let plan = plan_render(&parsed, &session).unwrap();
-            assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+            assert_eq!(
+                plan.required_capabilities(),
+                if cfg!(feature = "layout-elk") {
+                    &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+                } else {
+                    &[RenderCapability::Math][..]
+                }
+            );
             assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
 
             let svg = render_class_math(source);

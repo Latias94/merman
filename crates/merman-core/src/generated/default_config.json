@@ -1,4 +1,15 @@
 {
+  "agentflow": {
+    "diagramPadding": 8,
+    "look": "neo",
+    "minNodeWidth": 120,
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "theme": "redux-color",
+    "titleTopMargin": 25,
+    "useMaxWidth": true,
+    "wrappingWidth": 120
+  },
   "architecture": {
     "edgeElasticity": 0.45,
     "fontSize": 16,
@@ -109,10 +120,11 @@
     "external_system_queue_border_color": "#8A8A8A",
     "flowchart": {
       "curve": "basis",
-      "defaultRenderer": "dagre-wrapper",
       "diagramPadding": 8,
       "htmlLabels": null,
       "inheritDir": false,
+      "look": "neo",
+      "minNodeWidth": 120,
       "nodeSpacing": 50,
       "padding": 15,
       "rankSpacing": 50,
@@ -120,9 +132,10 @@
         "bottom": 0,
         "top": 0
       },
+      "theme": "redux-color",
       "titleTopMargin": 25,
       "useMaxWidth": true,
-      "wrappingWidth": 200
+      "wrappingWidth": 120
     },
     "height": 60,
     "messageFontFamily": "\"Open Sans\", sans-serif",
@@ -155,9 +168,10 @@
     "wrapPadding": 10
   },
   "class": {
-    "defaultRenderer": "dagre-wrapper",
     "hideEmptyMembersBox": false,
-    "hierarchicalNamespaces": true
+    "hierarchicalNamespaces": true,
+    "look": "neo",
+    "theme": "redux-color"
   },
   "cynefin": {
     "boundaryAmplitude": 8,
@@ -174,9 +188,11 @@
     "considerModelOrder": "NODES_AND_EDGES",
     "forceNodeModelOrder": false,
     "keepEntryNodeOnTop": false,
+    "layeringLayerBound": 4,
+    "lineHops": true,
     "mergeEdges": false,
-    "nodePlacementAlignment": "NONE",
-    "nodePlacementStrategy": "BRANDES_KOEPF"
+    "preset": "default",
+    "straightenEdges": true
   },
   "er": {
     "diagramPadding": 20,
@@ -184,11 +200,13 @@
     "fill": "honeydew",
     "fontSize": 12,
     "layoutDirection": "TB",
+    "look": "neo",
     "minEntityHeight": 75,
     "minEntityWidth": 100,
     "nodeSpacing": 140,
     "rankSpacing": 80,
     "stroke": "gray",
+    "theme": "redux-color",
     "titleTopMargin": 25,
     "useMaxWidth": true
   },
@@ -199,9 +217,10 @@
   },
   "flowchart": {
     "curve": "basis",
-    "defaultRenderer": "dagre-wrapper",
     "diagramPadding": 8,
     "inheritDir": false,
+    "look": "neo",
+    "minNodeWidth": 120,
     "nodeSpacing": 50,
     "padding": 15,
     "rankSpacing": 50,
@@ -209,9 +228,10 @@
       "bottom": 0,
       "top": 0
     },
+    "theme": "redux-color",
     "titleTopMargin": 25,
     "useMaxWidth": true,
-    "wrappingWidth": 200
+    "wrappingWidth": 120
   },
   "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
   "fontSize": 16,
@@ -306,7 +326,7 @@
     "ticketBaseUrl": "",
     "useMaxWidth": true
   },
-  "layout": "dagre",
+  "layout": "elk",
   "legacyMathML": false,
   "logLevel": 5,
   "look": "classic",
@@ -373,6 +393,7 @@
   "requirement": {
     "fontSize": 14,
     "line_height": 20,
+    "look": "neo",
     "rect_border_color": "#bbb",
     "rect_border_size": "0.5px",
     "rect_fill": "#f9f9f9",
@@ -380,6 +401,7 @@
     "rect_min_width": 200,
     "rect_padding": 10,
     "text_color": "#333",
+    "theme": "redux-color",
     "useMaxWidth": true
   },
   "sankey": {
@@ -420,6 +442,7 @@
     "hideUnusedParticipants": false,
     "labelBoxHeight": 20,
     "labelBoxWidth": 50,
+    "look": "neo",
     "messageAlign": "center",
     "messageFontFamily": "\"trebuchet ms\", verdana, arial, sans-serif",
     "messageFontSize": 16,
@@ -433,6 +456,7 @@
     "noteMargin": 10,
     "rightAngles": false,
     "showSequenceNumbers": false,
+    "theme": "redux-color",
     "useMaxWidth": true,
     "width": 150,
     "wrap": false,
@@ -441,7 +465,6 @@
   "startOnLoad": true,
   "state": {
     "compositTitleSize": 35,
-    "defaultRenderer": "dagre-wrapper",
     "dividerMargin": 10,
     "edgeLengthFactor": "20",
     "fontSize": 24,
@@ -449,22 +472,30 @@
     "forkHeight": 7,
     "forkWidth": 70,
     "labelHeight": 16,
+    "layout": "elk",
+    "look": "neo",
+    "minNodeWidth": 120,
     "miniPadding": 2,
     "noteMargin": 10,
     "padding": 8,
     "radius": 5,
     "sizeUnit": 5,
     "textHeight": 10,
+    "theme": "redux-color",
     "titleShift": -15,
     "titleTopMargin": 25,
-    "useMaxWidth": true
+    "useMaxWidth": true,
+    "wrappingWidth": 120
   },
   "suppressErrorRendering": false,
   "swimlane": {
     "automaticLaneOrdering": false,
     "ignoreCrossLaneEdges": true,
+    "layout": "swimlane",
     "lineHops": "arc",
+    "look": "neo",
     "optimizeRanksByCrossings": true,
+    "theme": "redux-color",
     "useMaxWidth": true
   },
   "theme": "default",
@@ -532,9 +563,28 @@
     "valueFontSize": 12,
     "valueFormat": ","
   },
+  "usecase": {
+    "actorFontFamily": "\"Open Sans\", sans-serif",
+    "actorFontSize": 14,
+    "actorFontWeight": "normal",
+    "colorScheme": "role",
+    "diagramPadding": 20,
+    "look": "neo",
+    "minNodeWidth": 120,
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "theme": "redux-color",
+    "useMaxWidth": true,
+    "usecaseFontFamily": "\"Open Sans\", sans-serif",
+    "usecaseFontSize": 12,
+    "usecaseFontWeight": "normal",
+    "wrappingWidth": 120
+  },
   "venn": {
     "height": 450,
+    "look": "neo",
     "padding": 8,
+    "theme": "redux-color",
     "useDebugLayout": false,
     "useMaxWidth": true,
     "width": 800

@@ -20,7 +20,10 @@ mod dagre;
 mod elk_edge_geometry;
 mod elk_geometry;
 #[cfg(feature = "layout-elk")]
+mod elk_hierarchy;
+#[cfg(feature = "layout-elk")]
 mod elk_options;
+mod elk_terminal_jogs;
 mod entities;
 pub mod environment;
 pub mod er;
@@ -909,7 +912,7 @@ Animal <|-- Duck
             .find(r#"<g class="clusters"/>"#)
             .expect("ELK clusters group");
         let edges_pos = svg
-            .find(r#"<g class="edges edgePath">"#)
+            .find(r#"<g class="edges edgePaths">"#)
             .expect("ELK edge paths group");
         let labels_pos = svg
             .find(r#"<g class="edgeLabels">"#)
@@ -957,7 +960,7 @@ A{A} --> B & C
             .find(r#"<g class="clusters"/>"#)
             .expect("ELK clusters group");
         let edges_pos = svg
-            .find(r#"<g class="edges edgePath">"#)
+            .find(r#"<g class="edges edgePaths">"#)
             .expect("ELK edge paths group");
         let labels_pos = svg
             .find(r#"<g class="edgeLabels">"#)

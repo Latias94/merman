@@ -362,6 +362,202 @@ fn cross_provider_boundary_edges_are_not_flattened_or_sent_to_layered_diagnostic
     }
 }
 
+fn cross_provider_graph(algorithm: Algorithm, directional_child: bool) -> Graph {
+    let mut input = graph(algorithm);
+    input.id = "root".into();
+    for (node, id) in input.nodes.iter_mut().zip(["a", "b", "outside"]) {
+        node.id = id.into();
+    }
+    input.nodes[0].parent = Some("g".into());
+    input.nodes[1].parent = Some("g".into());
+    input.nodes[2].width = 50.0;
+    input.nodes[2].height = 25.0;
+    let mut group = input.nodes[0].clone();
+    group.id = "g".into();
+    group.parent = None;
+    group.kind = NodeKind::Group;
+    group.direction = directional_child.then_some(Direction::Right);
+    input.nodes.insert(0, group);
+    input.edges[0] = Edge {
+        id: "inside".into(),
+        source: "a".into(),
+        target: "b".into(),
+        label: None,
+        minlen: 1,
+        inside_self_loops_yo: false,
+    };
+    input.edges[1] = Edge {
+        id: "cross".into(),
+        source: "a".into(),
+        target: "outside".into(),
+        label: Some(Label {
+            width: 20.0,
+            height: 10.0,
+        }),
+        minlen: 1,
+        inside_self_loops_yo: false,
+    };
+    input
+}
+
+#[test]
+fn cross_provider_peer_edges_preserve_provider_layout_and_missing_sections() {
+    // Force/MrTree explicitly exclude isHierarchical edges; Box/Rectpacking never
+    // route them. Mermaid render.ts then clips its centre-to-centre fallback.
+    for algorithm in [
+        Algorithm::Box,
+        Algorithm::Rectpacking,
+        Algorithm::Force,
+        Algorithm::Stress,
+        Algorithm::MrTree,
+    ] {
+        for directional_child in [false, true] {
+            for reverse in [false, true] {
+                let mut input = cross_provider_graph(algorithm, directional_child);
+                if reverse {
+                    let edge = &mut input.edges[1];
+                    std::mem::swap(&mut edge.source, &mut edge.target);
+                }
+                let mut without_cross = input.clone();
+                without_cross.edges.pop();
+                let expected = super::super::layout(&without_cross).unwrap();
+                let actual = super::super::layout(&input).unwrap();
+                assert_eq!(
+                    actual.nodes, expected.nodes,
+                    "{algorithm:?}, directional={directional_child}, reverse={reverse}"
+                );
+                assert_eq!(
+                    actual.edges.iter().find(|edge| edge.id == "inside"),
+                    expected.edges.iter().find(|edge| edge.id == "inside")
+                );
+                let cross = actual.edges.iter().find(|edge| edge.id == "cross").unwrap();
+                assert!(
+                    cross.points.is_empty(),
+                    "{algorithm:?} must retain missing sections"
+                );
+                assert_eq!(
+                    cross.labels,
+                    [EdgeLabelLayout {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 20.0,
+                        height: 10.0
+                    }]
+                );
+                assert_eq!(actual.edges.len(), 2);
+            }
+        }
+    }
+}
+
+#[test]
+fn radial_cross_provider_incoming_edge_keeps_raw_hierarchy_explicitly_unsupported() {
+    let mut input = cross_provider_graph(Algorithm::Radial, false);
+    input.nodes.rotate_right(1);
+    assert_eq!(input.nodes[0].id, "outside");
+    assert_eq!(input.edges[1].source, "a");
+    assert_eq!(input.edges[1].target, "outside");
+    // elkjs 0.9.3 RadialUtil.findRoot includes hierarchical incoming edges. With outside
+    // declared before g, a->outside changes the selected root from outside to g. The current
+    // flat kernel cannot represent cross-scope adjacency; do not return the edge-free layout.
+    // Root Radial is a raw-adapter option; Mermaid clears explicit container algorithms on
+    // cross-boundary paths before invoking ELK.
+    assert!(
+        matches!(super::super::layout(&input), Err(Error::UnsupportedCrossProviderEdge { edge_id }) if edge_id == "cross")
+    );
+    input.edges.pop();
+    assert!(
+        super::super::layout(&input).is_ok(),
+        "ordinary Radial hierarchy without cross-scope adjacency remains supported"
+    );
+}
+
+#[test]
+fn spore_cross_provider_edges_use_source_local_coordinates_and_label_translation() {
+    // Actual elkjs 0.9.3 with Mermaid's ordinary child options: padding/baseValue=24,
+    // portsSurrounding=12, nodeNode=50, edgeNodeBetweenLayers=30, edgeEdge=20,
+    // BRANDES_KOEPF/BALANCED, DEPTH_FIRST. SPOrE reads the descendant's own local x/y.
+    let input = cross_provider_graph(Algorithm::SporeOverlap, false);
+    let actual = super::super::layout(&input).unwrap();
+    let cross = actual.edges.iter().find(|edge| edge.id == "cross").unwrap();
+    let group = actual.nodes.iter().find(|node| node.id == "g").unwrap();
+    let child = actual.nodes.iter().find(|node| node.id == "a").unwrap();
+    close(
+        child.x - child.width / 2.0 - (group.x - group.width / 2.0),
+        24.0,
+    );
+    close(
+        child.y - child.height / 2.0 - (group.y - group.height / 2.0),
+        28.2,
+    );
+    assert_eq!(cross.points.len(), 2);
+    for point in &cross.points {
+        close(point.x, 37.78531073446328);
+        close(point.y, 28.200000000000003);
+    }
+    close(cross.labels[0].x, 12.0);
+    close(cross.labels[0].y, 12.0);
+    assert_eq!(cross.labels[0].width, 20.0);
+    let inside = actual
+        .edges
+        .iter()
+        .find(|edge| edge.id == "inside")
+        .unwrap();
+    assert!(!inside.points.is_empty());
+    let mut reverse = input.clone();
+    let edge = &mut reverse.edges[1];
+    std::mem::swap(&mut edge.source, &mut edge.target);
+    let reversed = super::super::layout(&reverse).unwrap();
+    assert_eq!(actual.nodes, reversed.nodes);
+    let cross = reversed
+        .edges
+        .iter()
+        .find(|edge| edge.id == "cross")
+        .unwrap();
+    for point in &cross.points {
+        close(point.x, 40.7683615819209);
+        close(point.y, 33.0);
+    }
+}
+
+#[test]
+fn cross_provider_parent_edge_uses_the_inner_non_layered_container() {
+    for algorithm in [Algorithm::Box, Algorithm::SporeOverlap] {
+        let mut input = cross_provider_graph(algorithm, true);
+        input.edges[1].source = "g".into();
+        input.edges[1].target = "a".into();
+        let actual = super::super::layout(&input).unwrap();
+        let cross = actual.edges.iter().find(|edge| edge.id == "cross").unwrap();
+        let group = actual.nodes.iter().find(|node| node.id == "g").unwrap();
+        let origin = Point {
+            x: group.x - group.width / 2.0,
+            y: group.y - group.height / 2.0,
+        };
+        if algorithm == Algorithm::Box {
+            assert!(cross.points.is_empty());
+            close(cross.labels[0].x, origin.x);
+            close(cross.labels[0].y, origin.y);
+        } else {
+            let child = actual.nodes.iter().find(|node| node.id == "a").unwrap();
+            assert_eq!(cross.points.len(), 2);
+            // Source clips both ends to the descendant centre before the outer provider
+            // positions g. The final public coordinates receive g's offset exactly once.
+            for point in &cross.points {
+                close(point.x, child.x);
+                close(point.y, child.y);
+            }
+            // elkjs 0.9.3 with ordinary container spacing.nodeNode=50/padding=24
+            // translates the original label by 49 in each axis before outer placement.
+            close(group.width, 198.0);
+            close(group.height, 123.0);
+            close(child.x - origin.x, 44.0);
+            close(child.y - origin.y, 34.0);
+            close(cross.labels[0].x - origin.x, 49.0);
+            close(cross.labels[0].y - origin.y, 49.0);
+        }
+    }
+}
+
 #[test]
 fn force_and_stress_require_operation_authority_for_zero_seed() {
     let seed = ElkOperationSeed::from_operation_seed(NonZeroU64::new(987).unwrap());

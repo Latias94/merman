@@ -23,6 +23,76 @@ fn write_class_icon_css(out: &mut String, id: SvgDiagramId<'_>) {
     );
 }
 
+// The same palette gate drives CSS slots and node stamping (colorThemeGate.ts).
+pub(super) fn class_palette_size(config: &serde_json::Value) -> usize {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return 0;
+    }
+    config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn write_class_palette_css(out: &mut String, id: SvgDiagramId<'_>, config: &serde_json::Value) {
+    if class_palette_size(config) == 0 {
+        return;
+    }
+    let Some(borders) = config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return;
+    };
+    let backgrounds = config
+        .pointer("/themeVariables/bkgColorArray")
+        .and_then(serde_json::Value::as_array)
+        .filter(|colors| !colors.is_empty());
+    let look = config
+        .get("look")
+        .and_then(|value| match value {
+            serde_json::Value::String(value) => Some(value.clone()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        })
+        .filter(|look| {
+            !look.is_empty()
+                && look
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+        .unwrap_or_else(|| "classic".into());
+    let color = |value: &serde_json::Value| {
+        // Stylis removes declaration-value whitespace from upstream generated CSS.
+        value
+            .as_str()
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| value.to_string())
+    };
+    for (index, border) in borders.iter().enumerate() {
+        let border = color(border);
+        let _ = write!(
+            out,
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .outer-path path{{stroke:{border};"#
+        );
+        if let Some(backgrounds) = backgrounds {
+            let _ = write!(
+                out,
+                "fill:{};",
+                color(&backgrounds[index % backgrounds.len()])
+            );
+        }
+        out.push('}');
+        let _ = write!(
+            out,
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{border};}}"#
+        );
+    }
+}
+
 pub(super) fn class_css(
     diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
@@ -35,6 +105,7 @@ pub(super) fn class_css(
         super::super::css::info_css_parts_with_raw_theme_font_size(diagram_id, effective_config);
     let theme = PresentationTheme::new(effective_config).class_diagram();
     let mut out = parts.css_prefix;
+    write_class_palette_css(&mut out, diagram_id, effective_config);
     let fallback_font_family = normalize_css_font_family(render_font_family);
     let font_family = if parts.font_family.is_empty() {
         fallback_font_family.as_str()

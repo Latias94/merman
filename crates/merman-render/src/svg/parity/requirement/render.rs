@@ -335,7 +335,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     let font_family = Some(render_settings.font_family);
     let font_size = render_settings.font_size;
-    let default_fill_color = theme.color("requirementBackground", "#ECECFF");
+    let default_fill_color = theme.color("mainBkg", "#ECECFF");
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
     let hand_drawn_seed = options.rough_randomness(
         render_settings.hand_drawn_seed,
@@ -545,21 +545,54 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str("<g>");
 
-    // Markers.
+    // Mermaid 12 selects the Neo variants in requirementRenderer.ts.
+    let marker_units = if look == "neo" {
+        r#" markerUnits="userSpaceOnUse""#
+    } else {
+        ""
+    };
+    let marker_stroke = if look == "neo" {
+        let width = effective_config
+            .pointer("/themeVariables/strokeWidth")
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| value.to_string())
+            })
+            .unwrap_or_else(|| "undefined".to_owned());
+        format!(r#" stroke-width="{}""#, escape_xml(&width))
+    } else {
+        String::new()
+    };
+    let arrow_view_box = if look == "neo" {
+        r#" viewBox="0 0 25 20""#
+    } else {
+        ""
+    };
+    let arrow_join = if look == "neo" {
+        r#" stroke-linejoin="miter""#
+    } else {
+        ""
+    };
     let _ = write!(
         &mut out,
-        r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"><g><circle cx="10" cy="10" r="9" fill="none"/><line x1="1" x2="19" y1="10" y2="10"/><line y1="1" y2="19" x1="10" x2="10"/></g></marker></defs>"#,
+        r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}><g><circle cx="10" cy="10" r="9" fill="none"{marker_stroke}/><line x1="1" x2="19" y1="10" y2="10"{marker_stroke}/><line y1="1" y2="19" x1="10" x2="10"{marker_stroke}/></g></marker></defs>"#,
     );
     let _ = write!(
         &mut out,
-        r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
+        r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"{marker_units}{marker_stroke}{arrow_view_box}><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"{arrow_join}/></marker></defs>"#,
     );
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
 
-    out.push_str(r#"<g class="edgePaths">"#);
+    out.push_str(if prepared.uses_elk() {
+        r#"<g class="edges edgePaths">"#
+    } else {
+        r#"<g class="edgePaths">"#
+    });
     for e in &layout.edges {
         let identity = edge_identity(e);
         let prepared_label = prepared_edges
@@ -583,6 +616,21 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let d = rendered_edge_paths
             .get(&identity)
             .expect("Requirement edge paths were validated before root rendering");
+        let mut masked_style = String::new();
+        if look == "neo"
+            && let Some(length) = super::super::svg_path_length_from_d(d)
+        {
+            super::super::edge_path::write_neo_edge_mask(
+                &mut masked_style,
+                length,
+                None,
+                None,
+                !is_contains,
+                false,
+            );
+        }
+        masked_style.push_str(style);
+        let style = masked_style.as_str();
         let data_points_b64 =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&e.points));
 
@@ -785,6 +833,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
             stroke_override,
             stroke_width_override,
         ) = parse_node_style_overrides(css_styles);
+        let path_style = if look != "handDrawn"
+            && !node_styles.is_empty()
+            && (!border_colors.is_empty()
+                || config_string(
+                    effective_config,
+                    &["themeVariables", "requirementEdgeLabelBackground"],
+                )
+                .is_some_and(|value| !value.is_empty()))
+        {
+            format!(r#" style="{}""#, escape_xml(&node_styles))
+        } else {
+            String::new()
+        };
         let fill_color = fill_override.as_deref().unwrap_or(&default_fill_color);
         let stroke_color = stroke_override.as_deref().unwrap_or(&default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
@@ -822,13 +883,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"/>"##,
+            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"{path_style}/>"##,
             d = escape_xml(&fill_path),
             fill = escape_xml(fill_color),
         );
         let _ = write!(
             &mut out,
-            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/>"##,
+            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"{path_style}/>"##,
             d = escape_xml(&stroke_path),
             stroke = escape_xml(stroke_color),
             stroke_width = fmt(stroke_width),
@@ -892,42 +953,83 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
-            let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
-                if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                    .randomness(hand_drawn_seed.clone())
-                    .roughness(0.0)
-                    .fill_style(roughr::core::FillStyle::Solid)
-                    .stroke(stroke)
-                    .stroke_width(stroke_width as f32)
-                    .stroke_line_dash(vec![0.0, 0.0])
-                    .stroke_line_dash_offset(0.0)
-                    .fill_line_dash(vec![0.0, 0.0])
-                    .fill_line_dash_offset(0.0)
-                    .disable_multi_stroke(false)
-                    .disable_multi_stroke_fill(false)
-                    .build()
+            if look == "neo" {
+                // requirementBox.ts uses a closed polygon of height 0.001 so its
+                // gradient stroke has a nonzero bounding box, with a separate solid fill.
+                let (fill_d, stroke_d) = roughjs_paths_for_rect(StateRoughRectSpec {
+                    x,
+                    y: divider_y,
+                    w: n.width,
+                    h: 0.001,
+                    fill: fill_color,
+                    stroke: stroke_color,
+                    stroke_width: stroke_width as f32,
+                    randomness: &hand_drawn_seed,
+                })
+                .unwrap_or_else(|| {
+                    (
+                        format!(
+                            "M{} {} L{} {} L{} {} L{} {}",
+                            fmt(x),
+                            fmt(divider_y),
+                            fmt(x + n.width),
+                            fmt(divider_y),
+                            fmt(x + n.width),
+                            fmt(divider_y + 0.001),
+                            fmt(x),
+                            fmt(divider_y + 0.001)
+                        ),
+                        rough_rect_stroke_path_d(x, divider_y, n.width, 0.001),
+                    )
+                });
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{path_style}/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{path_style}/></g>"#,
+                    escape_xml(&fill_d),
+                    escape_xml(fill_color),
+                    escape_xml(&stroke_d),
+                    escape_xml(stroke_color),
+                    fmt(stroke_width)
+                );
+            } else {
+                let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color)
                 {
-                    roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-                        x,
-                        divider_y,
-                        x + n.width,
-                        divider_y,
-                        &mut opts,
-                    ))
+                    if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                        .randomness(hand_drawn_seed.clone())
+                        .roughness(0.0)
+                        .fill_style(roughr::core::FillStyle::Solid)
+                        .stroke(stroke)
+                        .stroke_width(stroke_width as f32)
+                        .stroke_line_dash(vec![0.0, 0.0])
+                        .stroke_line_dash_offset(0.0)
+                        .fill_line_dash(vec![0.0, 0.0])
+                        .fill_line_dash_offset(0.0)
+                        .disable_multi_stroke(false)
+                        .disable_multi_stroke_fill(false)
+                        .build()
+                    {
+                        roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+                            x,
+                            divider_y,
+                            x + n.width,
+                            divider_y,
+                            &mut opts,
+                        ))
+                    } else {
+                        rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                    }
                 } else {
                     rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-                }
-            } else {
-                rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
-            };
-            let _ = write!(
-                &mut out,
-                r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
-                style = escape_xml(&node_styles),
-                d = escape_xml(&divider_d),
-                stroke = escape_xml(stroke_color),
-                stroke_width = fmt(stroke_width),
-            );
+                };
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                    style = escape_xml(&node_styles),
+                    d = escape_xml(&divider_d),
+                    stroke = escape_xml(stroke_color),
+                    stroke_width = fmt(stroke_width),
+                );
+            }
         }
 
         out.push_str("</g>");

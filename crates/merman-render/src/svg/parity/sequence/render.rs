@@ -142,10 +142,12 @@ fn render_sequence_diagram_svg_inner(
         checkpoints,
     )?;
 
+    let actor_diagram_id = diagram_id.to_string();
     let actor_ctx = SequenceActorRenderContext {
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
+        diagram_id: &actor_diagram_id,
         sanitize_config,
         math_renderer: options.math_renderer(),
         actor_wrap_width: settings.actor_wrap_width,
@@ -173,16 +175,23 @@ fn render_sequence_diagram_svg_inner(
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     checkpoints.checkpoint()?;
     write_scoped_sequence_base_defs(&mut out, diagram_id);
+    if crate::config::config_diagram_look(effective_config).as_str() == "neo" {
+        let theme = effective_config
+            .get("theme")
+            .and_then(serde_json::Value::as_str);
+        let flood_color = if matches!(theme, Some("redux" | "redux-color")) {
+            "#000000"
+        } else {
+            "#FFFFFF"
+        };
+        let _ = write!(
+            out,
+            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
+        );
+    }
     checkpoints.checkpoint()?;
 
-    render_sequence_actor_man_tops(
-        &mut out,
-        model,
-        &nodes_by_id,
-        settings.actor_height,
-        diagram_id,
-        checkpoints,
-    )?;
+    render_sequence_actor_man_tops(&mut out, &actor_ctx, diagram_id)?;
 
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
@@ -242,15 +251,7 @@ fn render_sequence_diagram_svg_inner(
     )?;
 
     if settings.mirror_actors {
-        render_sequence_actor_man_bottoms(
-            &mut out,
-            model,
-            &nodes_by_id,
-            settings.actor_height,
-            settings.label_box_height,
-            diagram_id,
-            checkpoints,
-        )?;
+        render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
     }
 
     if let Some(title) = effective_title {

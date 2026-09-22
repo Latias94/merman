@@ -127,14 +127,16 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
             let shape_style_escaped = escape_attr(&shape_style_attr);
-            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.end_outer_fill.as_str());
-            let outer_stroke = ctx.theme_defaults.end_outer_stroke.as_str();
-            let inner_fill = ctx.theme_defaults.inner_end_background.as_str();
-            let inner_stroke = ctx.theme_defaults.end_inner_stroke.as_str();
+            // stateEnd overrides RoughJS options with lineColor for the outer outline and
+            // stateBorder (falling back to nodeBorder) for both paints of the inner circle.
+            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
+            let outer_stroke = ctx.theme_defaults.line_color.as_str();
+            let inner_fill = ctx.theme_defaults.state_border.as_str();
+            let inner_stroke = inner_fill;
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
@@ -147,8 +149,10 @@ pub(super) fn render_state_node_svg(
                 shape_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_fill),
+                shape_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_stroke),
+                shape_style_escaped,
             );
             drop(_g_emit);
         }
@@ -234,9 +238,7 @@ pub(super) fn render_state_node_svg(
 
             let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
             let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
-            let stroke_width_attr = stroke_width_override
-                .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
-                .max(0.0);
+            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
             let shape_style_escaped = escape_attr(&shape_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(

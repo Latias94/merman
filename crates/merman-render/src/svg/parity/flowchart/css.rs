@@ -2,39 +2,9 @@
 
 use super::*;
 
-fn scope_flowchart_drop_shadow(
-    diagram_id: impl std::fmt::Display + Copy,
-    value: &str,
-    checkpoint: &dyn Fn() -> Result<()>,
-) -> Result<String> {
-    const SMALL: &str = "url(#drop-shadow-small)";
-    const REGULAR: &str = "url(#drop-shadow)";
-
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    loop {
-        let next = match (rest.find(SMALL), rest.find(REGULAR)) {
-            (Some(small), Some(regular)) if small <= regular => {
-                Some((small, SMALL.len(), "drop-shadow-small"))
-            }
-            (Some(_), Some(regular)) => Some((regular, REGULAR.len(), "drop-shadow")),
-            (Some(small), None) => Some((small, SMALL.len(), "drop-shadow-small")),
-            (None, Some(regular)) => Some((regular, REGULAR.len(), "drop-shadow")),
-            (None, None) => None,
-        };
-        let Some((index, matched_len, local_id)) = next else {
-            out.push_str(rest);
-            return Ok(out);
-        };
-        out.push_str(&rest[..index]);
-        let _ = write!(out, "url(#{diagram_id}-{local_id})");
-        checkpoint()?;
-        rest = &rest[index + matched_len..];
-    }
-}
-
 pub(in crate::svg::parity::flowchart) fn flowchart_css(
     diagram_id: SvgDiagramId<'_>,
+    diagram_type: &str,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
@@ -42,6 +12,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
 ) -> Result<String> {
     flowchart_css_for_id(
         diagram_id,
+        diagram_type,
         effective_config,
         font_family,
         font_size,
@@ -51,6 +22,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
 
 fn flowchart_css_for_id(
     diagram_id: impl std::fmt::Display + Copy,
+    diagram_type: &str,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
@@ -65,15 +37,13 @@ fn flowchart_css_for_id(
     let node_text_color = theme.node_text_color.as_str();
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
-    let radius = theme.radius.as_str();
-    let drop_shadow = theme.drop_shadow.as_str();
-    let neo = theme.common.is_neo();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
     let edge_label_background = theme.edge_label_background.as_str();
     let tertiary = theme.tertiary.as_str();
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
+    let tooltip_border = theme_token(effective_config, "border2", cluster_border);
 
     let label_bkg = css_rgba_fade(edge_label_background, 0.5)?;
     let id = diagram_id;
@@ -116,14 +86,24 @@ fn flowchart_css_for_id(
     checkpoint()?;
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
         id,
         font_family,
         fmt(font_size),
-        id,
-        id,
-        font_family,
-        node_text_color
+        id
+    );
+    checkpoint()?;
+    if diagram_type != "agentflow" {
+        out.push_str(&super::agentflow::flowchart_container_css(
+            diagram_id,
+            effective_config,
+            checkpoint,
+        )?);
+    }
+    let _ = write!(
+        &mut out,
+        r#"#{} .label{{font-family:{};color:{};}}"#,
+        id, font_family, node_text_color
     );
     checkpoint()?;
     let _ = write!(
@@ -174,7 +154,7 @@ fn flowchart_css_for_id(
         diagram_id,
         font_family,
         tertiary,
-        cluster_border,
+        tooltip_border,
         diagram_id,
         text_color,
         diagram_id
@@ -182,7 +162,7 @@ fn flowchart_css_for_id(
     checkpoint()?;
     let _ = write!(
         &mut out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
         id,
         id,
         edge_label_background,
@@ -195,18 +175,15 @@ fn flowchart_css_for_id(
         edge_label_background,
         id,
         id,
+    );
+    crate::svg::parity::css::write_mermaid_common_neo_css(&mut out, id, effective_config);
+    checkpoint()?;
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
+        &mut out,
         id,
-        font_family
+        &crate::config::config_root_font_family_css(effective_config),
     );
     checkpoint()?;
-    if neo {
-        let scoped_drop_shadow = scope_flowchart_drop_shadow(diagram_id, drop_shadow, checkpoint)?;
-        let _ = write!(
-            &mut out,
-            r#"#{id} .node[data-look="neo"] rect.basic.label-container{{rx:{radius}px;ry:{radius}px;}}#{id} .node[data-look="neo"] .label-container{{filter:{scoped_drop_shadow};stroke-linejoin:round;}}#{id} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}#{id} .edgeLabel rect{{opacity:1;}}#{id} .labelBkg{{background-color:{edge_label_background};}}"#,
-        );
-        checkpoint()?;
-    }
 
     Ok(out)
 }
@@ -325,6 +302,7 @@ mod tests {
     fn khroma_named_edge_label_background_preserves_channels() {
         let css = flowchart_css_for_id(
             "theme_named_color",
+            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "rebeccapurple"
@@ -345,6 +323,7 @@ mod tests {
     fn unsupported_edge_label_background_returns_color_error() {
         let error = flowchart_css_for_id(
             "theme_unknown_color",
+            "flowchart-v2",
             &json!({
                 "themeVariables": {
                     "edgeLabelBackground": "not-a-css-color"

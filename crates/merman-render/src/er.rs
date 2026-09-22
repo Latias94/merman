@@ -1802,7 +1802,7 @@ fn er_elk_graph(
             id: format!("er-rel-{index}"),
             source: relationship.entity_a.clone(),
             target: relationship.entity_b.clone(),
-            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
+            label: (!relationship.role_a.is_empty()).then_some(elk::Label {
                 width: label_width,
                 height: label_height,
             }),

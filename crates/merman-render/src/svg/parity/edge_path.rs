@@ -3,6 +3,51 @@
 mod fix_corners;
 pub(super) use fix_corners::maybe_fix_corners;
 
+/// Mirrors Mermaid `edges.js`'s static Neo marker mask, independently of path clipping.
+/// Class, State, ER, and Requirement markers have no entry in `markerOffsets2`.
+pub(super) fn write_neo_edge_mask(
+    out: &mut String,
+    path_length: f64,
+    arrow_type_start: Option<&str>,
+    arrow_type_end: Option<&str>,
+    dashed: bool,
+    line_hop_applied: bool,
+) {
+    use std::fmt::Write as _;
+
+    fn mask_offset(arrow_type: Option<&str>) -> f64 {
+        match arrow_type {
+            Some("arrow_point") => 4.0,
+            Some("arrow_cross" | "arrow_circle") => 12.5,
+            _ => 0.0,
+        }
+    }
+
+    let start_offset = mask_offset(arrow_type_start);
+    let end_offset = mask_offset(arrow_type_end);
+    let middle_length = if line_hop_applied {
+        (path_length - start_offset - end_offset).max(0.0)
+    } else {
+        path_length - start_offset - end_offset
+    };
+    out.push_str("stroke-dasharray: 0 ");
+    let _ = write!(out, "{} ", super::fmt(start_offset));
+    if dashed {
+        let pairs = (middle_length / 4.0).floor();
+        let pairs = if pairs.is_finite() {
+            pairs.max(0.0) as usize
+        } else {
+            0
+        };
+        for _ in 0..pairs {
+            out.push_str("2 2 ");
+        }
+    } else {
+        let _ = write!(out, "{} ", super::fmt(middle_length));
+    }
+    let _ = write!(out, "{}; stroke-dashoffset: 0;", super::fmt(end_offset));
+}
+
 pub(super) fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
     match arrow_type {
         Some("arrow_point") => Some(4.0),

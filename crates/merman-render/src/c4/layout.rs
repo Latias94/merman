@@ -477,6 +477,41 @@ fn intersect_person_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
     intersect_point(from, end_point)
 }
 
+fn intersect_boundary_point(boundary: &Rect, target: LayoutPoint) -> LayoutPoint {
+    // c4Renderer.drawBoundary uses the shared, centre-based intersect.rect function.
+    let center_x = boundary.origin.x + boundary.size.width / 2.0;
+    let center_y = boundary.origin.y + boundary.size.height / 2.0;
+    let dx = target.x - center_x;
+    let dy = target.y - center_y;
+    let mut half_width = boundary.size.width / 2.0;
+    let mut half_height = boundary.size.height / 2.0;
+    let (x, y) = if dy.abs() * half_width > dx.abs() * half_height {
+        if dy < 0.0 {
+            half_height = -half_height;
+        }
+        (
+            if dy == 0.0 {
+                0.0
+            } else {
+                half_height * dx / dy
+            },
+            half_height,
+        )
+    } else {
+        if dx < 0.0 {
+            half_width = -half_width;
+        }
+        (
+            half_width,
+            if dx == 0.0 { 0.0 } else { half_width * dy / dx },
+        )
+    };
+    LayoutPoint {
+        x: center_x + x,
+        y: center_y + y,
+    }
+}
+
 fn intersect_shape_point(shape: C4NodeShape, from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
     match shape {
         C4NodeShape::Rounded | C4NodeShape::Framed => intersect_point(from, end_point),
@@ -1075,12 +1110,12 @@ pub(crate) fn layout_c4_diagram_typed(
         max_y: box_stopy,
     });
 
-    let mut shape_rects: HashMap<&str, (Rect, C4NodeShape)> = HashMap::new();
+    let mut endpoint_rects: HashMap<&str, (Rect, Option<C4NodeShape>)> = HashMap::new();
     for s in model.shapes.iter() {
         let Some(l) = state.shapes.get(&s.alias) else {
             continue;
         };
-        shape_rects.insert(
+        endpoint_rects.insert(
             s.alias.as_str(),
             (
                 Rect {
@@ -1088,9 +1123,28 @@ pub(crate) fn layout_c4_diagram_typed(
                     size: merman_core::geom::Size::new(l.width, l.height),
                     margin: l.margin,
                 },
-                c4_node_shape(s),
+                Some(c4_node_shape(s)),
             ),
         );
+    }
+
+    // Mermaid's getC4Shape resolves a shape first, then falls back to a boundary.
+    for boundary in &model.boundaries {
+        let Some(layout) = state.boundaries.get(&boundary.alias) else {
+            continue;
+        };
+        endpoint_rects
+            .entry(boundary.alias.as_str())
+            .or_insert_with(|| {
+                (
+                    Rect {
+                        origin: merman_core::geom::point(layout.x, layout.y),
+                        size: merman_core::geom::Size::new(layout.width, layout.height),
+                        margin: 0.0,
+                    },
+                    None,
+                )
+            });
     }
 
     let rel_font = conf.message_font();
@@ -1151,20 +1205,20 @@ pub(crate) fn layout_c4_diagram_typed(
             });
 
         let (from, from_shape) =
-            shape_rects
+            endpoint_rects
                 .get(rel.from_alias.as_str())
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!(
-                        "c4: relationship references missing from shape {}",
+                        "c4: relationship references missing from element {}",
                         rel.from_alias
                     ),
                 })?;
         let (to, to_shape) =
-            shape_rects
+            endpoint_rects
                 .get(rel.to_alias.as_str())
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!(
-                        "c4: relationship references missing to shape {}",
+                        "c4: relationship references missing to element {}",
                         rel.to_alias
                     ),
                 })?;
@@ -1177,8 +1231,14 @@ pub(crate) fn layout_c4_diagram_typed(
             x: from.origin.x + from.size.width / 2.0,
             y: from.origin.y + from.size.height / 2.0,
         };
-        let start_point = intersect_shape_point(*from_shape, from, from_center);
-        let end_point = intersect_shape_point(*to_shape, to, to_center);
+        let start_point = match from_shape {
+            Some(shape) => intersect_shape_point(*shape, from, from_center),
+            None => intersect_boundary_point(from, from_center),
+        };
+        let end_point = match to_shape {
+            Some(shape) => intersect_shape_point(*shape, to, to_center),
+            None => intersect_boundary_point(to, to_center),
+        };
 
         rels_out.push(C4RelLayout {
             from: rel.from_alias.clone(),

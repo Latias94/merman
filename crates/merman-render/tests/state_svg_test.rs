@@ -99,8 +99,91 @@ note right of Idle : seeded note"#;
 }
 
 #[test]
-fn state_svg_honors_mermaid_11_16_theme_css_options() {
+fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
+    for look in ["classic", "neo"] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "layout": "elk",
+            "themeVariables": {
+                "mainBkg": "#112233",
+                "lineColor": "#223344",
+                "stateBorder": "#334455",
+                "specialStateColor": "#445566",
+                "innerEndBackground": "#556677",
+                "background": "#667788"
+            }
+        })));
+        let svg = render_state_svg_from_text_with_engine(
+            engine,
+            "stateDiagram-v2\n[*] --> Ready\nReady --> Done: finish\nDone --> [*]\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
+            .collect();
+        assert_eq!(
+            labels.len(),
+            if cfg!(feature = "layout-elk") { 1 } else { 3 },
+            "{look}: label groups follow the selected provider's insertion contract"
+        );
+        let paths = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "edgePaths")
+                    })
+            })
+            .expect("edge path group");
+        if cfg!(feature = "layout-elk") {
+            assert!(
+                paths
+                    .attribute("class")
+                    .unwrap()
+                    .split_whitespace()
+                    .any(|class| class == "edges")
+            );
+        }
+        for edge in paths.children().filter(|node| node.has_tag_name("path")) {
+            let marker = edge.attribute("marker-end").expect("transition marker");
+            assert_eq!(
+                marker.ends_with("-margin)"),
+                look == "neo",
+                "{look}: {marker}"
+            );
+        }
+        let end_outer = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("outer-path")
+                    && node.children().any(|child| child.has_tag_name("g"))
+            })
+            .expect("end-state double circle");
+        let outer_paints: Vec<_> = end_outer
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect();
+        assert_eq!(outer_paints[0].attribute("fill"), Some("#112233"));
+        assert_eq!(outer_paints[1].attribute("stroke"), Some("#223344"));
+        let inner = end_outer
+            .children()
+            .find(|node| node.has_tag_name("g"))
+            .unwrap();
+        let inner_paints: Vec<_> = inner
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect();
+        assert_eq!(inner_paints[0].attribute("fill"), Some("#334455"));
+        assert_eq!(inner_paints[1].attribute("stroke"), Some("#334455"));
+    }
+}
+
+#[test]
+fn state_svg_classic_look_honors_theme_css_options() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "classic",
         "themeVariables": {
             "transitionColor": "#202020",
             "lineColor": "#303030",
@@ -140,8 +223,8 @@ Active --> [*]: done"#,
         "expected State barbEnd marker CSS to follow transitionColor and the prefixed marker id: {svg}"
     );
     assert!(
-        svg.contains(r##"[id$="-dependencyStart"],#merman [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##),
-        "expected State dependency marker CSS to use Mermaid 11.16 suffix selectors: {svg}"
+        svg.contains(r##"#merman [id$="-dependencyStart"],#merman [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:4;}"##),
+        "expected State dependency marker CSS to use Mermaid suffix selectors: {svg}"
     );
     assert!(
         svg.contains(r#".transition{stroke:#202020;stroke-width:4;fill:none;}"#),
@@ -161,7 +244,7 @@ Active --> [*]: done"#,
     );
     assert!(
         !svg.contains(r#"id="merman-gradient""#) && svg.contains(r#"id="merman-drop-shadow""#),
-        "classic state SVG should emit 11.16 drop-shadow defs but not gradient defs unless useGradient is set: {svg}"
+        "classic state SVG should emit classic drop-shadow defs but not gradient defs unless useGradient is set: {svg}"
     );
     assert!(
         !svg.contains(r#"markerUnits="strokeWidth""#),
@@ -171,7 +254,7 @@ Active --> [*]: done"#,
         svg.contains(r#"id="merman-edge0""#)
             && svg.contains(r#"data-look="classic""#)
             && svg.contains(r#"id="merman-state-Active-1""#),
-        "classic state DOM should use Mermaid 11.16 scoped ids and explicit data-look: {svg}"
+        "classic state DOM should use Mermaid scoped ids and explicit data-look: {svg}"
     );
 }
 
@@ -214,8 +297,8 @@ state Active {
         "expected neo state SVG to use Mermaid's neo barb marker geometry: {svg}"
     );
     assert!(
-        svg.contains(r#"marker-end="url(#merman_stateDiagram-barbEnd)""#),
-        "expected neo state transitions to keep an arrowhead marker: {svg}"
+        svg.contains(r#"marker-end="url(#merman_stateDiagram-barbEnd-margin)""#),
+        "expected neo state transitions to use the margin arrowhead marker"
     );
     assert!(
         svg.contains(
@@ -314,6 +397,105 @@ state Parent {
 }
 
 #[test]
+fn state_composite_paint_uses_large_and_multiline_title_measurements() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html_labels in [true, false] {
+            for title in ["Large title", "First<br/>Second"] {
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "layout": layout,
+                        "look": "classic",
+                        "htmlLabels": html_labels,
+                        "themeVariables": { "fontSize": "32px" }
+                    })));
+                let source = format!("stateDiagram-v2\nstate \"{title}\" as Parent {{\n A\n}}\n");
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .expect("parse composite")
+                    .expect("State diagram");
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                    .expect("prepare composite");
+                let projection = artifact.layout_json().expect("State layout projection");
+                let clusters = projection["layout"]["StateDiagramV2"]["clusters"]
+                    .as_array()
+                    .expect("State clusters");
+                let cluster = clusters
+                    .iter()
+                    .find(|cluster| cluster["id"] == "Parent")
+                    .expect("Parent cluster");
+                let title_height = cluster["title_label"]["height"].as_f64().unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("render composite");
+                let document = roxmltree::Document::parse(rendered.svg()).expect("State SVG");
+                let group = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("data-id") == Some("Parent")
+                    })
+                    .expect("Parent SVG group");
+                let rect = |class| {
+                    group
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect") && node.attribute("class") == Some(class)
+                        })
+                        .expect("composite rectangle")
+                };
+                let number = |node: roxmltree::Node<'_, '_>, name| {
+                    node.attribute(name).unwrap().parse::<f64>().unwrap()
+                };
+                let outer = rect("outer");
+                let inner = rect("inner");
+                // clusters.js reserves the full painted bbox plus the fixed border gap.
+                assert!(
+                    (number(inner, "y") - number(outer, "y") - title_height - 2.0).abs() < 0.001,
+                    "{layout}, html={html_labels}, title={title}"
+                );
+                assert!(
+                    (number(outer, "height") - number(inner, "height") - title_height - 6.0).abs()
+                        < 0.001,
+                    "{layout}, html={html_labels}, title={title}"
+                );
+                let label = group
+                    .children()
+                    .find(|node| node.attribute("class") == Some("cluster-label"))
+                    .expect("composite title");
+                if html_labels {
+                    let foreign = label
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .expect("HTML title");
+                    assert_eq!(number(foreign, "height"), title_height);
+                    assert_eq!(
+                        title_height,
+                        if title.contains("<br/>") { 96.0 } else { 48.0 }
+                    );
+                    assert_eq!(label.descendants().filter(|node| node.has_tag_name(("http://www.w3.org/1999/xhtml", "br"))).count(),
+                        usize::from(title.contains("<br/>")));
+                } else {
+                    assert!(
+                        title_height > 24.0,
+                        "32px title must exceed the old fixed height"
+                    );
+                    assert_eq!(
+                        label
+                            .descendants()
+                            .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                            .count(),
+                        if title.contains("<br/>") { 2 } else { 1 }
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_notes() {
     let svg = render_state_svg_from_text(
         r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
@@ -387,23 +569,47 @@ Display : Running
 
 #[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
-    let svg = render_state_svg_from_text(
-        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
-stateDiagram-v2
-A --> B
-"#,
-    );
-
-    assert!(
-        svg.contains(r#"class="edgeLabel""#)
-            && svg.contains(r#"<g class="label" data-id="edge0" transform="translate(0, 0)"></g>"#),
-        "root htmlLabels=false should keep the State empty edge label container: {svg}"
-    );
-    assert_eq!(
-        svg.matches("<foreignObject").count(),
-        0,
-        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for empty State edge label DOM: {svg}"
-    );
+    for backend in ["elk", "dagre"] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": backend,
+            "htmlLabels": false,
+            "flowchart": {"htmlLabels": true}
+        })));
+        let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA --> B\n");
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
+            .collect();
+        if backend == "elk" && cfg!(feature = "layout-elk") {
+            assert!(
+                labels.is_empty(),
+                "ELK only inserts groups for present labels"
+            );
+        } else {
+            assert_eq!(
+                labels.len(),
+                1,
+                "Dagre inserts an empty wrapper for an unlabeled edge"
+            );
+            let label = labels[0]
+                .children()
+                .find(|node| node.is_element())
+                .expect("Dagre label group");
+            assert_eq!(label.attribute("data-id"), Some("edge0"));
+            assert_eq!(label.attribute("transform"), Some("translate(0, 0)"));
+            assert!(
+                !label.children().any(|node| node.is_element()),
+                "empty SVG labels have no HTML child"
+            );
+        }
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject")),
+            "{backend}: root htmlLabels=false overrides the deprecated Flowchart setting"
+        );
+    }
 }
 
 #[test]
@@ -436,7 +642,8 @@ A --> A: again
 #[test]
 fn state_svg_leaf_self_loop_keeps_dagre_label_anchor_without_an_explicit_path_update() {
     let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 A --> A: again
 "#,
     );
@@ -457,7 +664,8 @@ A --> A: again
 #[test]
 fn state_svg_composite_self_loop_uses_the_explicitly_updated_cluster_path_for_its_label() {
     let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 state Active {
   Idle
 }
@@ -485,7 +693,8 @@ Active --> Active: LOG
 #[test]
 fn state_svg_direct_composite_self_loop_keeps_unclipped_dagre_endpoints() {
     let svg = render_state_svg_from_text(
-        r#"stateDiagram-v2
+        r#"%%{init: {"layout": "dagre"}}%%
+stateDiagram-v2
 [*] --> Active
 state Active {
   [*] --> Ready
@@ -755,8 +964,8 @@ note right of Idle : themed note"#,
         "start-state styling should consume specialStateColor: {svg}"
     );
     assert!(
-        svg.contains(r##"fill="#22c55e""##) && svg.contains(r##"stroke="#020617""##),
-        "end-state inner rough path should consume innerEndBackground/background: {svg}"
+        svg.contains(r##"fill="#38bdf8""##) && svg.contains(r##"stroke="#38bdf8""##),
+        "end-state inner rough path should consume stateBorder for fill and stroke: {svg}"
     );
     assert!(
         svg.contains(r##"fill="#fef3c7""##)

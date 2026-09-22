@@ -62,6 +62,7 @@ pub(super) struct ClassNodeDividerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub timing: RenderTiming,
 }
 
@@ -131,6 +132,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
@@ -147,7 +149,16 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub timing: RenderTiming,
+}
+
+fn write_class_color_slot(out: &mut String, color_index: Option<usize>, palette_size: usize) {
+    if palette_size > 0
+        && let Some(index) = color_index
+    {
+        let _ = write!(out, r#" data-color-id="color-{}""#, index % palette_size);
+    }
 }
 
 pub(super) fn render_class_node_shell_open(
@@ -158,6 +169,8 @@ pub(super) fn render_class_node_shell_open(
     emit: ClassEmitCheckpoint<'_>,
     look: &str,
     security_level_loose: bool,
+    color_index: Option<usize>,
+    palette_size: usize,
 ) -> crate::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -219,6 +232,7 @@ pub(super) fn render_class_node_shell_open(
         super::super::util::escape_attr_into(out, look);
         out.push('"');
     }
+    write_class_color_slot(out, color_index, palette_size);
     if has_tooltip {
         out.push_str(r#" title=""#);
         super::super::util::escape_attr_into(out, tooltip);
@@ -317,7 +331,7 @@ pub(super) fn render_class_node_basic_container(
     if hand_drawn {
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/>"#,
+            r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
             escape_attr_display(&fill_d),
             escape_attr_display(ctx.node_fill),
         );
@@ -360,7 +374,12 @@ pub(super) fn render_class_node_dividers(
     for y in divider_ys {
         let _ = write!(
             out,
-            r#"<g class="divider" style="{}">"#,
+            r#"<g class="divider{}" style="{}">"#,
+            if ctx.look == "neo" && !ctx.use_gradient {
+                " neo-line"
+            } else {
+                ""
+            },
             escape_attr_display(ctx.node_style_attr)
         );
         let d = if ctx.look == "handDrawn" {
@@ -711,6 +730,7 @@ pub(super) fn render_class_html_node_body(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
+                use_gradient: ctx.use_gradient,
                 timing: ctx.timing,
             },
         )
@@ -1082,6 +1102,7 @@ pub(super) fn render_class_svg_node_body(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
+                use_gradient: ctx.use_gradient,
                 timing: ctx.timing,
             },
         )
@@ -1299,4 +1320,18 @@ pub(super) fn render_class_svg_title_group(
         out.push_str("</tspan></tspan>");
     }
     out.push_str("</text></g></g></g>");
+}
+
+#[cfg(test)]
+mod palette_tests {
+    #[test]
+    fn class_palette_slots_wrap_and_leave_unassigned_containers_unstamped() {
+        let mut attributes = String::new();
+        super::write_class_color_slot(&mut attributes, Some(4), 3);
+        assert_eq!(attributes, r#" data-color-id="color-1""#);
+        attributes.clear();
+        super::write_class_color_slot(&mut attributes, None, 3);
+        super::write_class_color_slot(&mut attributes, Some(0), 0);
+        assert!(attributes.is_empty());
+    }
 }

@@ -135,6 +135,7 @@ pub(super) fn render_sequence_activation_group(
     out: &mut String,
     plan: &SequenceActivationPlan,
     message_id: &str,
+    is_neo: bool,
 ) {
     let Some(group_index) = plan.group_by_start_id.get(message_id).copied() else {
         return;
@@ -146,7 +147,7 @@ pub(super) fn render_sequence_activation_group(
     if let Some(Some(a)) = plan.groups.get(group_index) {
         let _ = write!(
             out,
-            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
+            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}/>"##,
             x = fmt(a.startx),
             y = fmt(a.starty),
             w = fmt(a.width),
@@ -154,6 +155,7 @@ pub(super) fn render_sequence_activation_group(
             idx = a.class_idx,
             fill = escape_xml(&plan.fill),
             stroke = escape_xml(&plan.stroke),
+            look_attr = if is_neo { r#" data-look="neo""# } else { "" },
         );
     }
     out.push_str("</g>");

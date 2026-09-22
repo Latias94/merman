@@ -21,7 +21,9 @@ pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
     "redux-dark-color",
 ];
 
-const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+const THEME_RUNTIME_SCHEMA_VERSION: u32 = 2;
+#[cfg(test)]
+const THEME_AUDIT_SCHEMA_VERSION: u32 = 1;
 
 // Generated from the content-pinned Mermaid runtime by `xtask gen-theme-snapshot`.
 static GENERATED_THEME_RUNTIME: OnceLock<GeneratedThemeRuntimeArtifact> = OnceLock::new();
@@ -31,8 +33,17 @@ static GENERATED_THEME_AUDIT: OnceLock<GeneratedThemeAuditArtifact> = OnceLock::
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GeneratedThemeRuntimeArtifact {
+struct GeneratedThemeRuntimeStorage {
     schema_version: u32,
+    provenance: GeneratedThemeProvenance,
+    themes: Map<String, Value>,
+    dark_mode_true_overrides: Map<String, Value>,
+    oracle_case_count: usize,
+}
+
+#[derive(Debug)]
+struct GeneratedThemeRuntimeArtifact {
+    #[cfg(test)]
     provenance: GeneratedThemeProvenance,
     themes: Map<String, Value>,
     dark_mode_true: Map<String, Value>,
@@ -435,11 +446,28 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 
 fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
     GENERATED_THEME_RUNTIME.get_or_init(|| {
-        let artifact: GeneratedThemeRuntimeArtifact =
-            serde_json::from_str(include_str!("generated/theme_variables_11_17_2.json"))
+        let storage: GeneratedThemeRuntimeStorage =
+            serde_json::from_str(include_str!("generated/theme_variables_12_0_0.json"))
                 .expect("generated Mermaid theme runtime JSON is valid");
-        assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
-        assert_generated_theme_provenance(&artifact.provenance);
+        assert_eq!(storage.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
+        assert_generated_theme_provenance(&storage.provenance);
+        let dark_mode_true = storage
+            .dark_mode_true_overrides
+            .into_iter()
+            .map(|(name, changes)| {
+                let base = storage.themes[&name]
+                    .as_object()
+                    .expect("generated theme base is an object");
+                (name, Value::Object(restore_theme_overrides(base, changes)))
+            })
+            .collect();
+        let artifact = GeneratedThemeRuntimeArtifact {
+            #[cfg(test)]
+            provenance: storage.provenance,
+            themes: storage.themes,
+            dark_mode_true,
+            oracle_case_count: storage.oracle_case_count,
+        };
         assert_eq!(artifact.oracle_case_count, THEME_ORACLE_CASE_COUNT);
         for program in THEME_PROGRAMS {
             assert!(
@@ -457,6 +485,38 @@ fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
         }
         artifact
     })
+}
+
+// Schema 2 stores exact top-level set/remove deltas. Assigned nulls and objects replace
+// whole values, unlike JSON merge patch. Restore the full maps once before theme evaluation.
+fn restore_theme_overrides(base: &Map<String, Value>, changes: Value) -> Map<String, Value> {
+    let Value::Object(mut changes) = changes else {
+        panic!("generated theme overrides are an object");
+    };
+    let Value::Object(assignments) = changes.remove("set").expect("generated overrides have set")
+    else {
+        panic!("generated theme assignments are an object");
+    };
+    let Value::Array(removals) = changes
+        .remove("remove")
+        .expect("generated overrides have remove")
+    else {
+        panic!("generated theme removals are an array");
+    };
+    assert!(
+        changes.is_empty(),
+        "unknown generated theme override fields"
+    );
+    let mut restored = base.clone();
+    for key in removals {
+        let key = key.as_str().expect("generated theme removal is a string");
+        assert!(
+            restored.remove(key).is_some(),
+            "generated removal requires a base key"
+        );
+    }
+    restored.extend(assignments);
+    restored
 }
 
 fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
@@ -480,10 +540,10 @@ fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
 fn generated_theme_audit() -> &'static GeneratedThemeAuditArtifact {
     GENERATED_THEME_AUDIT.get_or_init(|| {
         let artifact: GeneratedThemeAuditArtifact = serde_json::from_str(include_str!(
-            "../../../fixtures/_verification/theme_variables_oracle_11_17_2.json"
+            "../../../fixtures/_verification/theme_variables_oracle_12_0_0.json"
         ))
         .expect("generated Mermaid theme audit JSON is valid");
-        assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
+        assert_eq!(artifact.schema_version, THEME_AUDIT_SCHEMA_VERSION);
         assert_generated_theme_provenance(&artifact.provenance);
         assert_eq!(artifact.provenance, generated_theme_runtime().provenance);
         assert_eq!(artifact.oracle_cases.len(), THEME_ORACLE_CASE_COUNT);
@@ -631,7 +691,27 @@ impl ThemeResolution {
             }
 
             let before_dependencies = calculated_snapshot.variables.clone();
+            if program.kind == ThemeProgramKind::Extended {
+                apply_extended_theme_visible_derivations(
+                    theme,
+                    &explicit,
+                    &mut calculated_snapshot.variables,
+                )?;
+            }
             program.apply_dependency_graph(&explicit, &mut calculated_snapshot.variables)?;
+            // Only default runs updateColors() in its constructor. Its first-pass
+            // container stroke survives later secondary-border overrides.
+            if program.kind != ThemeProgramKind::Default
+                && !explicit.contains_key("flowContainerStroke")
+                && let Some(border) = calculated_snapshot
+                    .variables
+                    .get("secondaryBorderColor")
+                    .cloned()
+            {
+                calculated_snapshot
+                    .variables
+                    .insert("flowContainerStroke".to_string(), border);
+            }
             for (key, value) in &calculated_snapshot.variables {
                 if before_dependencies.get(key) != Some(value) {
                     calculated_snapshot
@@ -657,6 +737,19 @@ impl ThemeResolution {
             );
         }
         explicit_replay.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
+        // Mermaid base.calculate() disables the inferred gradient after replay so an
+        // explicitly supplied node stroke paints under the default neo look.
+        if program.kind == ThemeProgramKind::Base
+            && explicit.contains_key("nodeBorder")
+            && !explicit.contains_key("useGradient")
+        {
+            explicit_replay
+                .variables
+                .insert("useGradient".to_string(), Value::Bool(false));
+            explicit_replay
+                .origins
+                .insert("useGradient".to_string(), ThemeValueOrigin::Calculated);
+        }
 
         Ok(Self {
             default_snapshot,
@@ -1271,16 +1364,7 @@ fn apply_snapshot_theme_defaults(
     theme: &str,
 ) -> Result<(), ColorError> {
     let tv = theme_variables_map(config);
-    if tv.is_empty() {
-        return finish_theme_defaults(config, theme, tv);
-    }
-
-    let explicit = tv.clone();
-    let mut resolved = tv;
-    let program = ThemeProgram::resolve(theme);
-    merge_theme_variable_defaults(&mut resolved, program.calculation_snapshot(&explicit));
-    apply_extended_theme_visible_derivations(theme, &explicit, &mut resolved)?;
-    finish_theme_defaults(config, theme, resolved)
+    finish_theme_defaults(config, theme, tv)
 }
 
 fn apply_extended_theme_visible_derivations(
@@ -1311,6 +1395,17 @@ fn apply_extended_theme_visible_derivations(
             let secondary = theme_color::adjust(&primary, ColorAdjustment::hsl(-120.0, 0.0, 0.0))?;
             tv.insert("secondaryColor".to_string(), Value::String(secondary));
         }
+    }
+
+    // updateColors() resolves a falsy border before Agentflow reads it. The
+    // explicit value is replayed only after all dependent colors are calculated.
+    if value_is_missing(tv, "secondaryBorderColor") {
+        let secondary = required_color(tv, "secondaryColor")?;
+        let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
+        tv.insert(
+            "secondaryBorderColor".to_string(),
+            Value::String(mk_border(&secondary, dark_mode)?),
+        );
     }
 
     if explicit.contains_key("background") {
@@ -1374,8 +1469,96 @@ fn apply_extended_theme_visible_derivations(
         && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
     {
         let primary = required_color(tv, "primaryColor")?;
-        for key in ["requirementBackground", "pie1"] {
-            set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
+        set_derived_string_unless_explicit(tv, explicit, "requirementBackground", primary.clone());
+        if theme != "redux-dark-color" {
+            set_derived_string_unless_explicit(tv, explicit, "pie1", primary);
+        }
+    }
+
+    // Mermaid 12 uses a visible, direction-aware band on the light extended
+    // themes, and resolves dark themes' constructor placeholder from mainBkg.
+    if matches!(theme, "neo" | "redux" | "redux-color")
+        && explicit.contains_key("background")
+        && !explicit.contains_key("rectBkgColor")
+    {
+        let background = required_color(tv, "background")?;
+        let band = if theme_color::is_dark(&background)? {
+            theme_color::lighten(&background, 4.0)?
+        } else {
+            theme_color::darken(&background, 4.0)?
+        };
+        tv.insert("rectBkgColor".to_string(), Value::String(band));
+    }
+    if matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color") {
+        let second_is_placeholder =
+            explicit.get("secondBkg").and_then(Value::as_str) == Some("calculated");
+        if (explicit.contains_key("mainBkg") && !explicit.contains_key("secondBkg"))
+            || second_is_placeholder
+        {
+            let second = theme_color::lighten(&required_color(tv, "mainBkg")?, 16.0)?;
+            tv.insert("secondBkg".to_string(), Value::String(second));
+        }
+        if (explicit.contains_key("mainBkg") || explicit.contains_key("secondBkg"))
+            && !explicit.contains_key("doneTaskBkgColor")
+            && let Some(second) = tv.get("secondBkg").cloned()
+        {
+            tv.insert("doneTaskBkgColor".to_string(), second);
+        }
+    }
+    if matches!(theme, "redux-color" | "redux-dark-color") {
+        // The categorical scale now drives pie slices and Gantt section bands.
+        for index in 0..12 {
+            let scale = format!("cScale{index}");
+            if explicit.contains_key(&scale) {
+                // Both Redux color themes use fixed categorical fallbacks in
+                // updateColors(). Consumers read that stage, not the final replay.
+                let fallback =
+                    ThemeProgram::resolve(theme).calculation_snapshot(explicit)[&scale].clone();
+                set_if_missing(tv, &scale, fallback);
+                let color = tv[&scale].clone();
+                let pie = format!("pie{}", index + 1);
+                if !explicit.contains_key(&pie) {
+                    tv.insert(pie, color.clone());
+                }
+                let section = match index {
+                    0 => Some("sectionBkgColor"),
+                    1 => Some("sectionBkgColor2"),
+                    _ => None,
+                };
+                if let Some(section) = section.filter(|key| !explicit.contains_key(*key)) {
+                    tv.insert(section.to_string(), color.clone());
+                }
+            }
+        }
+        if theme == "redux-dark-color"
+            && explicit.contains_key("background")
+            && !explicit.contains_key("altSectionBkgColor")
+            && let Some(background) = tv.get("background").cloned()
+        {
+            tv.insert("altSectionBkgColor".to_string(), background);
+        }
+        for (palette, prefix) in [("borderColorArray", "venn"), ("bkgColorArray", "fillType")] {
+            if prefix == "fillType" && theme == "redux-dark-color" {
+                continue;
+            }
+            if let Some(colors) = explicit.get(palette).and_then(Value::as_array) {
+                for index in 0..8 {
+                    let key = format!("{prefix}{}", index + usize::from(prefix == "venn"));
+                    if explicit.contains_key(&key) {
+                        continue;
+                    }
+                    let color = if prefix == "venn" && !colors.is_empty() {
+                        colors.get(index % colors.len())
+                    } else {
+                        colors.get(index)
+                    };
+                    if let Some(color) = color {
+                        tv.insert(key, color.clone());
+                    } else {
+                        tv.remove(&key);
+                    }
+                }
+            }
         }
     }
 
@@ -2889,6 +3072,24 @@ mod tests {
     }
 
     #[test]
+    fn generated_theme_overrides_preserve_null_replacement_and_removal() {
+        let base = serde_json::json!({"unchanged": false, "deleted": 1, "nullable": "old", "object": {"old": 1}});
+        let restored = restore_theme_overrides(
+            base.as_object().unwrap(),
+            serde_json::json!({
+                "set": {"nullable": null, "object": {"new": 2}, "added": 0},
+                "remove": ["deleted"]
+            }),
+        );
+        assert_eq!(
+            Value::Object(restored),
+            serde_json::json!({
+                "unchanged": false, "nullable": null, "object": {"new": 2}, "added": 0
+            })
+        );
+    }
+
+    #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
         for &theme in SUPPORTED_THEME_NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
@@ -3032,6 +3233,147 @@ mod tests {
                 Some("Inter, sans-serif"),
                 "theme {theme} should replay the explicit font override"
             );
+        }
+    }
+
+    #[test]
+    fn base_node_border_override_controls_inferred_gradient() {
+        for (overrides, expected) in [
+            (json!({ "nodeBorder": "#225577" }), false),
+            (
+                json!({ "nodeBorder": "#225577", "useGradient": true }),
+                true,
+            ),
+            (json!({ "mainBkg": "#ffe1ef" }), true),
+            (json!({ "useGradient": false }), false),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": "base", "themeVariables": overrides
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            assert_eq!(config.as_value()["themeVariables"]["useGradient"], expected);
+        }
+    }
+
+    #[test]
+    fn agentflow_stroke_follows_upstream_constructor_order() {
+        for &theme in SUPPORTED_THEME_NAMES {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": { "secondaryBorderColor": "#123456" }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let expected = if theme == "default" {
+                json!("hsl(60, 60%, 83.5294117647%)")
+            } else {
+                json!("#123456")
+            };
+            assert_eq!(
+                config.as_value()["themeVariables"]["flowContainerStroke"],
+                expected,
+                "{theme}"
+            );
+        }
+    }
+
+    #[test]
+    fn extended_theme_bands_follow_mermaid_12_background_derivations() {
+        for theme in ["neo", "redux", "redux-color"] {
+            for (background, expected) in [
+                ("#000000", "hsl(0, 0%, 4%)"),
+                ("#ffffff", "hsl(0, 0%, 96%)"),
+            ] {
+                let mut config = MermaidConfig::from_value(json!({
+                    "theme": theme, "themeVariables": { "background": background }
+                }));
+                apply_theme_defaults(&mut config).unwrap();
+                assert_eq!(
+                    config.as_value()["themeVariables"]["rectBkgColor"],
+                    expected,
+                    "{theme}"
+                );
+            }
+        }
+        for theme in ["neo-dark", "redux-dark", "redux-dark-color"] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme, "themeVariables": { "mainBkg": "#101112" }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let variables = &config.as_value()["themeVariables"];
+            assert_eq!(
+                variables["secondBkg"], "hsl(210, 5.8823529412%, 22.6666666667%)",
+                "{theme}"
+            );
+            assert_eq!(
+                variables["doneTaskBkgColor"], variables["secondBkg"],
+                "{theme}"
+            );
+        }
+    }
+
+    #[test]
+    fn redux_color_categorical_overrides_feed_pie_gantt_and_journey() {
+        for theme in ["redux-color", "redux-dark-color"] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": {
+                    "primaryColor": "#123456", "cScale0": "#234567", "cScale1": "#345678",
+                    "borderColorArray": ["#456789"], "bkgColorArray": ["#567890"],
+                    "background": "#000000", "pie2": "#678901"
+                }
+            }));
+            apply_theme_defaults(&mut config).unwrap();
+            let variables = &config.as_value()["themeVariables"];
+            assert_eq!(variables["pie1"], "#234567", "{theme}");
+            assert_eq!(variables["pie2"], "#678901", "{theme}");
+            assert_eq!(variables["sectionBkgColor"], "#234567", "{theme}");
+            assert_eq!(variables["sectionBkgColor2"], "#345678", "{theme}");
+            assert_eq!(variables["venn8"], "#456789", "{theme}");
+            if theme == "redux-color" {
+                assert_eq!(variables["fillType0"], "#567890");
+                assert!(variables.get("fillType1").is_none());
+            } else {
+                assert_eq!(variables["fillType0"], "#701a75");
+                assert_eq!(variables["altSectionBkgColor"], "#000000");
+            }
+        }
+    }
+
+    #[test]
+    fn redux_categorical_falsy_override_replays_after_pie_derivation() {
+        for theme in ["redux-color", "redux-dark-color"] {
+            for explicit_scale in [json!(false), json!(0)] {
+                let mut config = MermaidConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": { "cScale2": explicit_scale }
+                }));
+                apply_theme_defaults(&mut config).unwrap();
+                let variables = &config.as_value()["themeVariables"];
+                assert_eq!(variables["cScale2"], explicit_scale, "{theme}");
+                assert_eq!(variables["pie3"], "#ffb86a", "{theme}");
+            }
+        }
+    }
+
+    #[test]
+    fn agentflow_falsy_border_replays_after_container_stroke_derivation() {
+        for (theme, expected_stroke) in [
+            ("redux-color", "hsl(-120, 0%, 70%)"),
+            ("redux-dark-color", "hsl(180, 0%, 18.3529411765%)"),
+        ] {
+            for explicit_border in [json!(false), json!(0)] {
+                let mut config = MermaidConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": { "secondaryBorderColor": explicit_border }
+                }));
+                apply_theme_defaults(&mut config).unwrap();
+                let variables = &config.as_value()["themeVariables"];
+                assert_eq!(
+                    variables["secondaryBorderColor"], explicit_border,
+                    "{theme}"
+                );
+                assert_eq!(variables["flowContainerStroke"], expected_stroke, "{theme}");
+            }
         }
     }
 

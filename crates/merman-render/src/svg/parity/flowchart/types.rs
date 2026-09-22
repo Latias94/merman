@@ -49,7 +49,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
-    pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) edge_label_padding: f64,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,

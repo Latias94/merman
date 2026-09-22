@@ -13,6 +13,71 @@ use super::options::{
 use crate::random::{
     GraphSeedScope, JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase,
 };
+use crate::work::{WorkError, checked_add, checked_mul, checked_sum};
+
+pub(crate) struct ReorderNodePortsWorkContext {
+    shared_reference_work: usize,
+    self_loop_holder_scan_work: usize,
+    self_loop_payload_by_node: Vec<usize>,
+}
+
+impl ReorderNodePortsWorkContext {
+    pub(crate) fn new(graph: &LGraph) -> Result<Self, WorkError> {
+        let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
+        for holder in &graph.self_loop_holders {
+            let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
+                continue;
+            };
+            for hyper_loop in &holder.hyper_loops {
+                *payload = checked_sum([
+                    *payload,
+                    hyper_loop.ports.len(),
+                    checked_mul(hyper_loop.edges.len(), 2)?,
+                ])?;
+            }
+        }
+
+        let mut descendant_nodes = 0usize;
+        let mut stack = graph
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref())
+            .collect::<Vec<_>>();
+        while let Some(current) = stack.pop() {
+            descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
+            stack.extend(
+                current
+                    .layerless_nodes
+                    .iter()
+                    .filter_map(|node| node.nested_graph.as_deref()),
+            );
+        }
+
+        Ok(Self {
+            shared_reference_work: checked_sum([
+                checked_mul(graph.edges.len(), 3)?,
+                checked_mul(graph.layerless_nodes.len(), 3)?,
+                descendant_nodes,
+                graph.id.len(),
+            ])?,
+            self_loop_holder_scan_work: graph.self_loop_holders.len(),
+            self_loop_payload_by_node,
+        })
+    }
+
+    pub(crate) fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
+        let port_count = graph.layerless_nodes[node_index].ports.len();
+        checked_sum([
+            checked_mul(port_count, 4)?,
+            self.shared_reference_work,
+            self.self_loop_holder_scan_work,
+            self.self_loop_payload_by_node
+                .get(node_index)
+                .copied()
+                .unwrap_or(0),
+        ])
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {

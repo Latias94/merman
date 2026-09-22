@@ -35,9 +35,10 @@ mod root_bounds;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, sequence_actor_popup_panel_height,
-    sequence_text_dimensions_height_px, sequence_text_line_step_px,
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT,
+    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
+    SequenceActorBands, sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
+    sequence_text_line_step_px,
 };
 pub(crate) use metrics::{
     SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
@@ -395,6 +396,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_index,
         actor_widths,
         actor_base_heights,
+        actor_text_heights,
         actor_box,
         actor_left_x,
         actor_centers_x,
@@ -413,6 +415,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         math_renderer,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
+        is_neo: settings.is_neo,
         actor_margin: settings.actor_margin,
         actor_font_size: settings.actor_text_style.font_size,
         box_margin: settings.box_margin,
@@ -438,6 +441,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_centers_x: &actor_centers_x,
         actor_widths: &actor_widths,
         actor_base_heights: &actor_base_heights,
+        actor_text_heights: &actor_text_heights,
         actor_top_offset_y,
         max_actor_layout_height,
         sequence_default_width: settings.sequence_default_width,

@@ -728,6 +728,24 @@ fn calc_terminal_label_position(
     Some((x, y))
 }
 
+/// Terminal labels are positioned on the final ELK paint path, after channel straightening.
+pub(crate) fn reposition_elk_terminal_labels(edge: &mut LayoutEdge) {
+    for (label, position) in [
+        (&mut edge.start_label_left, TerminalPos::StartLeft),
+        (&mut edge.start_label_right, TerminalPos::StartRight),
+        (&mut edge.end_label_left, TerminalPos::EndLeft),
+        (&mut edge.end_label_right, TerminalPos::EndRight),
+    ] {
+        // Every rendered Class terminal has a truthy arrow-type string, including "none".
+        if let Some(label) = label
+            && let Some((x, y)) = calc_terminal_label_position(10.0, position, &edge.points)
+        {
+            label.x = x;
+            label.y = y;
+        }
+    }
+}
+
 fn intersect_segment_with_rect(
     p0: &LayoutPoint,
     p1: &LayoutPoint,
@@ -1956,8 +1974,14 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
-    let measured =
-        measure_class_diagram(model, effective_config, measurer, math_renderer, &settings)?;
+    let measured = measure_class_diagram(
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        &settings,
+        false,
+    )?;
     layout_class_diagram_dagre(model, measured, &settings, work_control)
 }
 
@@ -1975,8 +1999,14 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
-    let measured =
-        measure_class_diagram(model, effective_config, measurer, math_renderer, &settings)?;
+    let measured = measure_class_diagram(
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        &settings,
+        true,
+    )?;
     layout_class_diagram_elk_from_measured(
         model,
         measured,
@@ -1997,6 +2027,7 @@ fn measure_class_diagram(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     settings: &ClassLayoutSettings,
+    uses_elk_adapter: bool,
 ) -> Result<MeasuredClassDiagram> {
     validate_class_namespace_hierarchy(model)?;
     let wrap_mode_node = settings.wrap_mode_node;
@@ -2203,8 +2234,13 @@ fn measure_class_diagram(
     }
 
     for rel in &model.relations {
+        let title = if uses_elk_adapter {
+            crate::text::mermaid_html_breaks_to_newlines(&rel.title)
+        } else {
+            std::borrow::Cow::Borrowed(rel.title.as_str())
+        };
         let (lw, lh) = edge_title_metrics(
-            &rel.title,
+            &title,
             measurer,
             text_style,
             wrap_mode_label,
@@ -2470,7 +2506,8 @@ pub fn debug_build_class_diagram_dagre_graph(
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassLayoutGraph> {
     let settings = ClassConfigView::new(effective_config.as_value()).layout_settings();
-    let measured = measure_class_diagram(model, effective_config, measurer, None, &settings)?;
+    let measured =
+        measure_class_diagram(model, effective_config, measurer, None, &settings, false)?;
     Ok(measured.graph.to_dagre())
 }
 
@@ -3079,6 +3116,7 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             None,
             &layout_settings,
+            true,
         )
         .expect("measure Class diagram");
         let settings = super::ClassElkLayoutSettings {

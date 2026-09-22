@@ -85,3 +85,32 @@ mod tests {
         assert_eq!(super::SEQUENCE_FRAME_GEOM_PAD_PX, 10.0);
     }
 }
+
+/// Mermaid's Neo participant row: glyph, gap, measured text, gap to the lifeline.
+pub(crate) const SEQUENCE_GLYPH_BAND_HEIGHT: f64 = 44.0;
+pub(crate) fn sequence_actor_stack_height(text_height: f64) -> f64 {
+    SEQUENCE_GLYPH_BAND_HEIGHT + 6.0 + text_height + 6.0
+}
+
+pub(crate) struct SequenceActorBands {
+    pub(crate) glyph_bottom_y: f64,
+    pub(crate) label_center_y: f64,
+}
+
+impl SequenceActorBands {
+    pub(crate) fn new(actor_y: f64, row_height: f64, text_height: f64, footer: bool) -> Self {
+        if footer {
+            let glyph_bottom_y = actor_y + 10.0 + SEQUENCE_GLYPH_BAND_HEIGHT;
+            Self {
+                glyph_bottom_y,
+                label_center_y: glyph_bottom_y + 6.0 + text_height / 2.0,
+            }
+        } else {
+            let datum = actor_y + row_height;
+            Self {
+                glyph_bottom_y: datum - 6.0 - text_height - 6.0,
+                label_center_y: datum - 3.0 - text_height / 2.0,
+            }
+        }
+    }
+}

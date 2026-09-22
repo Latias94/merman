@@ -110,24 +110,13 @@ fn render_class_diagram_svg_model_inner(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    // The host Dagre path uses Mermaid 11.17.2's marker helper. The selected ELK 0.2.3 release
-    // bundles the pre-marker-fix helper, which intentionally omits markerUnits on nine ordinary
-    // markers while retaining it on extensionStart and all margin variants.
-    class_markers(
-        &mut out,
-        diagram_id,
-        aria_roledescription,
-        true,
-        if layout.uses_elk_adapter_dom {
-            ClassMarkerProfile::LayoutElk023
-        } else {
-            ClassMarkerProfile::Mermaid1172
-        },
-    );
+    // Mermaid 12 shares the host marker definitions across registered layouts.
+    class_markers(&mut out, diagram_id, aria_roledescription, true);
     emit.checkpoint()?;
 
     let ClassRenderLookups {
         class_nodes_by_id,
+        class_color_indices,
         relations_by_id,
         relation_index_by_id,
         note_by_id,
@@ -142,6 +131,19 @@ fn render_class_diagram_svg_model_inner(
         font_weight: None,
         font_style: None,
     };
+    let mut paint_edges = std::borrow::Cow::Borrowed(layout.edges.as_slice());
+    if layout.uses_elk_adapter_dom {
+        let mut edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        super::edge::prepare_class_elk_edge_paths(
+            &mut edges,
+            effective_config,
+            options.work_meter(),
+        )?;
+        paint_edges = std::borrow::Cow::Owned(edges);
+    }
     let mut missing_section_points = rustc_hash::FxHashMap::default();
     if layout.uses_elk_adapter_dom {
         let nodes_by_id: rustc_hash::FxHashMap<_, _> = layout
@@ -164,7 +166,7 @@ fn render_class_diagram_svg_model_inner(
         }
     }
     let group_ctx = ClassSplitEdgeGroupsRenderContext {
-        edges: &layout.edges,
+        edges: &paint_edges,
         missing_section_points: &missing_section_points,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
@@ -180,8 +182,9 @@ fn render_class_diagram_svg_model_inner(
         look: settings.look.as_str(),
         hand_drawn_seed: settings.hand_drawn_seed.clone(),
         timing,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         edge_paths_class: if layout.uses_elk_adapter_dom {
-            "edges edgePath"
+            "edgePaths edges"
         } else {
             "edgePaths"
         },
@@ -196,6 +199,7 @@ fn render_class_diagram_svg_model_inner(
     let nodes_ctx = ClassNodesRenderContext {
         layout,
         class_nodes_by_id: &class_nodes_by_id,
+        class_color_indices: &class_color_indices,
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,
         settings: &settings,
@@ -246,8 +250,8 @@ fn render_class_diagram_svg_model_inner(
 
     // Both Mermaid 11.17.2 renderers append shared resources after the graph wrapper. ELK changes
     // only the layout geometry and edge z-order; it does not create a second top-level painter.
-    push_class_shadow_defs(&mut out, diagram_id, effective_config);
-    push_class_gradient(&mut out, diagram_id, effective_config);
+    push_look_shadow_defs(&mut out, diagram_id, effective_config);
+    push_look_gradient(&mut out, diagram_id, effective_config);
     emit.checkpoint()?;
 
     drop(render_guard);

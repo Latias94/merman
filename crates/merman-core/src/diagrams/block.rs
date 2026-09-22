@@ -64,6 +64,12 @@ pub struct BlockClassDefRenderModel {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct BlockNodeRenderModel {
     pub id: String,
+    #[serde(
+        default,
+        rename = "colorIndex",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub color_index: Option<usize>,
     #[serde(default)]
     pub label: String,
     #[serde(default, rename = "type")]
@@ -131,6 +137,7 @@ struct BlockNodeCompatibility {
 #[derive(Debug, Clone, Default)]
 struct Block {
     id: String,
+    color_index: Option<usize>,
     block_type: String,
     label: Option<String>,
     children: Vec<Block>,
@@ -166,6 +173,7 @@ impl Block {
 fn clone_block_shallow(block: &Block) -> Block {
     Block {
         id: block.id.clone(),
+        color_index: block.color_index,
         block_type: block.block_type.clone(),
         label: block.label.clone(),
         children: Vec::new(),
@@ -223,6 +231,7 @@ fn clone_block_tree_nonrecursive(
 #[derive(Debug, Default)]
 struct BlockDb {
     root_id: String,
+    next_color_index: usize,
     block_database: HashMap<String, Block>,
     block_database_order: Vec<String>,
     blocks: Vec<Block>,
@@ -235,6 +244,7 @@ struct BlockDb {
 impl BlockDb {
     fn clear(&mut self) {
         self.root_id = "root".to_string();
+        self.next_color_index = 0;
         self.block_database.clear();
         self.block_database_order.clear();
         self.blocks.clear();
@@ -454,6 +464,11 @@ impl BlockDb {
 
             let existed = self.block_database.contains_key(&block.id);
             if !existed {
+                // Assign only on first insertion, before descending into children, like BlockDB.
+                if block.block_type == "composite" {
+                    block.color_index = Some(self.next_color_index);
+                    self.next_color_index += 1;
+                }
                 self.insert_block(block.id.clone(), clone_block_shallow(&block));
             } else {
                 let mut existing = self
@@ -546,6 +561,9 @@ fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Ve
     obj.insert("type".to_string(), json!(&block.block_type));
     obj.insert("label".to_string(), json!(&block.label));
     obj.insert("children".to_string(), Value::Array(children));
+    if let Some(index) = block.color_index {
+        obj.insert("colorIndex".to_string(), json!(index));
+    }
 
     if let Some(v) = block.width {
         obj.insert("width".to_string(), json!(v));
@@ -638,6 +656,7 @@ fn block_to_render_node_shallow(
 ) -> BlockNodeRenderModel {
     BlockNodeRenderModel {
         id: b.id.clone(),
+        color_index: b.color_index,
         label: b.label.clone().unwrap_or_default(),
         block_type: b.block_type.clone(),
         children,
@@ -2551,6 +2570,23 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    #[test]
+    fn block_composite_color_indices_follow_first_insertion_preorder() {
+        let model =
+            parse("block-beta\nblock:outer\nblock:inner\nA\nend\nend\nblock:sibling\nB\nend\n");
+        let blocks = model["blocksFlat"].as_array().unwrap();
+        for (id, index) in [("outer", 0), ("inner", 1), ("sibling", 2)] {
+            let block = blocks.iter().find(|block| block["id"] == id).unwrap();
+            assert_eq!(block["colorIndex"], json!(index));
+        }
+        for id in ["root", "A", "B"] {
+            let block = blocks.iter().find(|block| block["id"] == id).unwrap();
+            assert!(block.get("colorIndex").is_none());
+        }
+        assert_eq!(model["blocks"][0]["colorIndex"], json!(0));
+        assert_eq!(model["blocks"][0]["children"][0]["colorIndex"], json!(1));
     }
 
     fn meta() -> ParseMetadata {

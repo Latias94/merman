@@ -708,7 +708,7 @@ mod tests {
         let capabilities: Value = serde_json::from_slice(&bytes).unwrap();
         let capabilities = capabilities.as_array().unwrap();
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 33);
         let flowchart = capabilities
             .iter()
             .find(|capability| capability["diagram_type"] == "flowchart")
@@ -994,7 +994,7 @@ mod tests {
             "parser_complete"
         );
         assert_eq!(value["diagrams"][0]["syntax"]["source_mapped_spans"], true);
-        assert_eq!(value["diagrams"][0]["syntax"]["effective_layout"], "dagre");
+        assert_eq!(value["diagrams"][0]["syntax"]["effective_layout"], "elk");
         assert!(
             value["diagrams"][0]["syntax"]["semantic_items"]
                 .as_array()

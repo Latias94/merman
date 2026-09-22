@@ -62,10 +62,10 @@ fn packet_css(
         style.block_stroke_width,
         style.block_fill_color
     );
-    let _ = write!(
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        diagram_id, font
+        diagram_id,
+        &crate::config::config_root_font_family_css(effective_config),
     );
     out
 }

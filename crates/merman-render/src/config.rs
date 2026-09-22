@@ -146,6 +146,19 @@ pub(crate) fn config_font_family_css(cfg: &Value) -> String {
     font_family_css(font_family)
 }
 
+/// Mermaid's generated :root custom property reads config.fontFamily, independently
+/// of the theme font used by diagram styles (mermaidAPI.createCssStyles).
+pub(crate) fn config_root_font_family_css(cfg: &Value) -> String {
+    let Some(font_family) = config_string(cfg, &["fontFamily"]) else {
+        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+    };
+    // An explicitly blank value produces no declaration in the browser CSSOM.
+    if font_family.trim().is_empty() {
+        return String::new();
+    }
+    font_family_css(font_family)
+}
+
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
     let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
@@ -443,6 +456,35 @@ mod tests {
                 "themeVariables": {
                     "fontFamily": " ; "
                 }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn root_font_family_is_independent_of_the_theme_font() {
+        for empty in ["", "   "] {
+            assert_eq!(
+                config_root_font_family_css(&json!({"fontFamily": empty})),
+                ""
+            );
+        }
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": { "fontFamily": "Arial, sans-serif" }
+            })),
+            "Courier,monospace"
+        );
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "themeVariables": { "fontFamily": "Arial, sans-serif" }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(
+            config_root_font_family_css(&json!({
+                "fontFamily": "serif; color: red"
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
         );

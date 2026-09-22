@@ -266,9 +266,9 @@ impl AgentflowDiagramRenderModel {
                     .nodes
                     .iter()
                     .filter(|child| {
-                        !containment
-                            .refused
-                            .contains(&(graph.id.as_str(), child.as_str()))
+                        // Hidden containers never enter Agentflow's parent database. Project only
+                        // admitted parent assignments so a backend cannot recreate a hidden parent.
+                        containment.parents.get(child.as_str()).copied() == Some(graph.id.as_str())
                     })
                     .cloned()
                     .collect(),
@@ -369,7 +369,6 @@ impl AgentflowDiagramRenderModel {
                     ancestor = result.parents.get(id).copied();
                 }
                 if ancestor.is_some() {
-                    result.refused.insert((graph.id.as_str(), child.as_str()));
                     result.diagnostics.push(AgentflowDiagnostic {
                         id: "CONTAINMENT_VIOLATION".into(), severity: "warning".into(),
                         message: format!("Container \"{}\" cannot contain \"{}\" because \"{}\" already contains it. The nesting that would close the loop is dropped.", graph.id, child, child),
@@ -389,7 +388,6 @@ impl AgentflowDiagramRenderModel {
 struct AgentflowContainment<'a> {
     collapsed_replacements: HashMap<&'a str, &'a str>,
     parents: HashMap<&'a str, &'a str>,
-    refused: HashSet<(&'a str, &'a str)>,
     diagnostics: Vec<AgentflowDiagnostic>,
 }
 

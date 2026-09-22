@@ -10,7 +10,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
 use merman_layout_elk as elk;
-use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{
@@ -1264,306 +1264,29 @@ fn first_elk_parent_cycle_assignment(
     }))
 }
 
-// Heavy-light decomposition keeps hierarchy preprocessing and retained memory linear while making
-// repeated common-ancestor queries logarithmic in branching depth (and constant on a heavy chain).
-struct FlowchartHierarchyIndex<'a> {
-    ids: Vec<&'a str>,
-    index_by_id: HashMap<&'a str, usize>,
-    parent: Vec<Option<usize>>,
-    depth: Vec<usize>,
-    root: Vec<usize>,
-    chain_head: Vec<usize>,
-}
-
-impl<'a> FlowchartHierarchyIndex<'a> {
-    fn build(
-        model: &'a FlowchartModel,
-        parent_by_id: &HashMap<String, String>,
-        work_control: &mut Option<&mut ElkOperationWorkControl>,
-    ) -> Result<Self> {
-        let item_capacity =
-            checked_adapter_add(work_control, model.nodes.len(), model.subgraphs.len())?;
-        charge_adapter_work(work_control, item_capacity)?;
-        let mut ids = Vec::with_capacity(item_capacity);
-        let mut index_by_id = HashMap::with_capacity(item_capacity);
-        for id in model
-            .nodes
-            .iter()
-            .map(|node| node.id.as_str())
-            .chain(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()))
-        {
-            if let Entry::Vacant(entry) = index_by_id.entry(id) {
-                let index = ids.len();
-                ids.push(id);
-                entry.insert(index);
-            }
-        }
-
-        charge_adapter_work(work_control, ids.len())?;
-        let mut parent = vec![None; ids.len()];
-        for (index, id) in ids.iter().copied().enumerate() {
-            parent[index] = parent_by_id
-                .get(id)
-                .and_then(|parent| index_by_id.get(parent.as_str()).copied());
-        }
-
-        charge_adapter_work(work_control, ids.len())?;
-        let mut children = vec![Vec::new(); ids.len()];
-        let mut roots = Vec::new();
-        for (index, parent) in parent.iter().copied().enumerate() {
-            match parent {
-                Some(parent) => children[parent].push(index),
-                None => roots.push(index),
-            }
-        }
-
-        let hierarchy_stage_work = checked_adapter_mul(work_control, ids.len(), 2)?;
-        charge_adapter_work(work_control, hierarchy_stage_work)?;
-        let mut depth = vec![0usize; ids.len()];
-        let mut root = vec![0usize; ids.len()];
-        let mut preorder = Vec::with_capacity(ids.len());
-        let mut stack = roots
-            .iter()
-            .rev()
-            .copied()
-            .map(|node| (node, node))
-            .collect::<Vec<_>>();
-        while let Some((node, root_node)) = stack.pop() {
-            root[node] = root_node;
-            preorder.push(node);
-            for child in children[node].iter().rev().copied() {
-                depth[child] = checked_adapter_add(work_control, depth[node], 1)?;
-                stack.push((child, root_node));
-            }
-        }
-
-        charge_adapter_work(work_control, hierarchy_stage_work)?;
-        let mut subtree_size = vec![1usize; ids.len()];
-        let mut heavy_child = vec![None; ids.len()];
-        for node in preorder.iter().rev().copied() {
-            let mut largest_child = 0usize;
-            for child in children[node].iter().copied() {
-                subtree_size[node] =
-                    checked_adapter_add(work_control, subtree_size[node], subtree_size[child])?;
-                if subtree_size[child] > largest_child {
-                    largest_child = subtree_size[child];
-                    heavy_child[node] = Some(child);
-                }
-            }
-        }
-
-        charge_adapter_work(work_control, hierarchy_stage_work)?;
-        let mut chain_head = vec![0usize; ids.len()];
-        let mut chains = roots
-            .iter()
-            .rev()
-            .copied()
-            .map(|root| (root, root))
-            .collect::<Vec<_>>();
-        while let Some((start, head)) = chains.pop() {
-            let mut current = Some(start);
-            while let Some(node) = current {
-                chain_head[node] = head;
-                for child in children[node].iter().rev().copied() {
-                    if Some(child) != heavy_child[node] {
-                        chains.push((child, child));
-                    }
-                }
-                current = heavy_child[node];
-            }
-        }
-
-        Ok(Self {
-            ids,
-            index_by_id,
-            parent,
-            depth,
-            root,
-            chain_head,
-        })
-    }
-
-    fn len(&self) -> usize {
-        self.ids.len()
-    }
-
-    fn common_ancestor_index(
-        &self,
-        left: &str,
-        right: &str,
-        work_control: &mut Option<&mut ElkOperationWorkControl>,
-    ) -> Result<Option<usize>> {
-        let (Some(mut left), Some(mut right)) = (
-            self.index_by_id.get(left).copied(),
-            self.index_by_id.get(right).copied(),
-        ) else {
-            return Ok(None);
-        };
-
-        // Mermaid's findCommonAncestor is endpoint-inclusive, except that a self edge resolves to
-        // the endpoint's parent (None here represents Mermaid's synthetic root).
-        if left == right {
-            return Ok(self.parent[left]);
-        }
-        if self.root[left] != self.root[right] {
-            return Ok(None);
-        }
-
-        while self.chain_head[left] != self.chain_head[right] {
-            charge_adapter_work(work_control, 1)?;
-            let left_head = self.chain_head[left];
-            let right_head = self.chain_head[right];
-            if self.depth[left_head] > self.depth[right_head] {
-                left = self.parent[left_head]
-                    .expect("same-root heavy-light query has a parent above the deeper chain");
-            } else {
-                right = self.parent[right_head]
-                    .expect("same-root heavy-light query has a parent above the deeper chain");
-            }
-        }
-        charge_adapter_work(work_control, 1)?;
-        Ok(Some(if self.depth[left] <= self.depth[right] {
-            left
-        } else {
-            right
-        }))
-    }
-
-    #[cfg(test)]
-    fn common_ancestor_id(
-        &self,
-        left: &str,
-        right: &str,
-        work_control: &mut Option<&mut ElkOperationWorkControl>,
-    ) -> Result<Option<&'a str>> {
-        self.common_ancestor_index(left, right, work_control)
-            .map(|ancestor| ancestor.map(|ancestor| self.ids[ancestor]))
-    }
-}
-
-struct UnmarkedHierarchyPaths {
-    next: Vec<usize>,
-    sentinel: usize,
-}
-
-impl UnmarkedHierarchyPaths {
-    fn new(node_count: usize) -> Self {
-        Self {
-            next: (0..=node_count).collect(),
-            sentinel: node_count,
-        }
-    }
-
-    fn find(&mut self, node: usize) -> usize {
-        let mut root = node;
-        while self.next[root] != root {
-            root = self.next[root];
-        }
-        let mut current = node;
-        while self.next[current] != current {
-            let next = self.next[current];
-            self.next[current] = root;
-            current = next;
-        }
-        root
-    }
-
-    fn remove(&mut self, node: usize, parent: Option<usize>) {
-        let parent = parent.unwrap_or(self.sentinel);
-        let next = self.find(parent);
-        self.next[node] = next;
-    }
-}
-
 fn include_children_groups<'a>(
     model: &'a FlowchartModel,
-    parent_by_id: &HashMap<String, String>,
+    parent_by_id: &'a HashMap<String, String>,
     work_control: &mut Option<&mut ElkOperationWorkControl>,
 ) -> Result<HashSet<&'a str>> {
     if model.subgraphs.is_empty() || model.edges.is_empty() {
         return Ok(HashSet::new());
     }
-
     let item_count = checked_adapter_add(work_control, model.nodes.len(), model.subgraphs.len())?;
-    charge_adapter_work(work_control, item_count)?;
-    let valid_ids = model
-        .nodes
-        .iter()
-        .map(|node| node.id.as_str())
-        .chain(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()))
-        .collect::<HashSet<_>>();
-    charge_adapter_work(work_control, model.edges.len())?;
-    let cross_parent_edges = model
-        .edges
-        .iter()
-        .filter(|edge| {
-            valid_ids.contains(edge.from.as_str())
-                && valid_ids.contains(edge.to.as_str())
-                && parent_by_id.get(&edge.from) != parent_by_id.get(&edge.to)
-        })
-        .collect::<Vec<_>>();
-    if cross_parent_edges.is_empty() {
-        return Ok(HashSet::new());
-    }
-
-    let hierarchy = FlowchartHierarchyIndex::build(model, parent_by_id, work_control)?;
-    // Cross-parent edges override direction-induced SeparateChildren on both endpoint-to-LCA
-    // paths. Mermaid's walk includes both endpoints and the common ancestor; path compression may
-    // skip only nodes already marked by an earlier edge.
-    charge_adapter_work(work_control, hierarchy.len())?;
-    let mut unmarked = UnmarkedHierarchyPaths::new(hierarchy.len());
-    let mut include_children = HashSet::new();
-    for edge in cross_parent_edges {
-        let ancestor =
-            hierarchy.common_ancestor_index(edge.from.as_str(), edge.to.as_str(), work_control)?;
-        mark_include_children_path(
-            edge.from.as_str(),
-            ancestor,
-            &hierarchy,
-            &mut unmarked,
-            &mut include_children,
-            work_control,
-        )?;
-        mark_include_children_path(
-            edge.to.as_str(),
-            ancestor,
-            &hierarchy,
-            &mut unmarked,
-            &mut include_children,
-            work_control,
-        )?;
-    }
-    Ok(include_children)
-}
-
-fn mark_include_children_path<'a>(
-    node_id: &str,
-    ancestor: Option<usize>,
-    hierarchy: &FlowchartHierarchyIndex<'a>,
-    unmarked: &mut UnmarkedHierarchyPaths,
-    include_children: &mut HashSet<&'a str>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
-) -> Result<()> {
-    let Some(start) = hierarchy.index_by_id.get(node_id).copied() else {
-        return Ok(());
-    };
-    let stop_depth = ancestor.map(|ancestor| hierarchy.depth[ancestor]);
-    loop {
-        let node = unmarked.find(start);
-        if node == unmarked.sentinel
-            || stop_depth.is_some_and(|stop_depth| hierarchy.depth[node] < stop_depth)
-        {
-            break;
-        }
-        charge_adapter_work(work_control, 1)?;
-        include_children.insert(hierarchy.ids[node]);
-        let reached_ancestor = Some(node) == ancestor;
-        unmarked.remove(node, hierarchy.parent[node]);
-        if reached_ancestor {
-            break;
-        }
-    }
-    Ok(())
+    crate::elk_hierarchy::include_children(
+        model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .chain(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()))
+            .map(|id| (id, parent_by_id.get(id).map(String::as_str))),
+        item_count,
+        model
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str())),
+        work_control,
+    )
 }
 
 fn subgraph_label(
@@ -1913,7 +1636,7 @@ mod tests {
     fn elk_preserves_operation_computed_length_precision() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
             )
             .expect("parse ok")
@@ -2467,8 +2190,17 @@ mod tests {
         ));
         let mut no_work_control = None;
         let parent_by_id = parent_by_id(&model, &mut no_work_control).unwrap();
-        let hierarchy =
-            FlowchartHierarchyIndex::build(&model, &parent_by_id, &mut no_work_control).unwrap();
+        let hierarchy = crate::elk_hierarchy::HierarchyIndex::build(
+            model
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .chain(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()))
+                .map(|id| (id, parent_by_id.get(id).map(String::as_str))),
+            model.nodes.len() + model.subgraphs.len(),
+            &mut no_work_control,
+        )
+        .unwrap();
         let ids = [
             "leaf",
             "sibling",

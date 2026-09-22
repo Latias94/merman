@@ -343,14 +343,11 @@ fn render_flowchart_elk_edge_paths(
     ctx.checkpoint_emit()?;
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     if edges.is_empty() {
-        out.push_str(r#"<g class="edges edgePath"/>"#);
+        out.push_str(r#"<g class="edges edgePaths"/>"#);
         return Ok(());
     }
 
-    // The published 0.2.3 ELK bundle predates Mermaid core's pluralized
-    // default and emits `edges edgePath`; this is the class present in the
-    // pinned 11.17.2 reference CLI SVGs.
-    out.push_str(r#"<g class="edges edgePath">"#);
+    out.push_str(r#"<g class="edges edgePaths">"#);
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     for e in edges {
         ctx.checkpoint_emit()?;

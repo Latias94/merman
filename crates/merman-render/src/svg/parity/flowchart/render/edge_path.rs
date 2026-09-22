@@ -157,12 +157,26 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
+        write_flowchart_marker_id_xml(
+            out,
+            ctx.diagram_id,
+            ctx.diagram_type,
+            base,
+            data_look == "neo" && !flowchart_edge_is_animated(ctx, edge),
+            marker_color,
+        );
         out.push_str(r#")""#);
     }
     if let Some(base) = flowchart_edge_marker_end_base(edge) {
         out.push_str(r#" marker-end="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
+        write_flowchart_marker_id_xml(
+            out,
+            ctx.diagram_id,
+            ctx.diagram_type,
+            base,
+            data_look == "neo" && !flowchart_edge_is_animated(ctx, edge),
+            marker_color,
+        );
         out.push_str(r#")""#);
     }
     out.push_str(" />");
@@ -177,20 +191,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     Ok(())
 }
 
-fn flowchart_edge_is_animated(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-) -> bool {
-    edge.animate == Some(true)
-        || edge.animation.is_some()
-        || edge
-            .classes
-            .iter()
-            .filter_map(|class| ctx.class_defs.get(class))
-            .flatten()
-            .any(|declaration| declaration.contains("animation"))
-}
-
 fn flowchart_neo_edge_path_length(
     geom: &FlowchartEdgePathGeom,
     edge: &crate::flowchart::FlowEdge,
@@ -202,14 +202,6 @@ fn flowchart_neo_edge_path_length(
     }
 }
 
-fn flowchart_neo_marker_mask_offset(arrow_type: Option<&str>) -> f64 {
-    match arrow_type {
-        Some("arrow_point") => 4.0,
-        Some("arrow_cross" | "arrow_circle") => 12.5,
-        _ => 0.0,
-    }
-}
-
 fn write_flowchart_neo_edge_mask(
     out: &mut String,
     path_length: f64,
@@ -218,24 +210,14 @@ fn write_flowchart_neo_edge_mask(
 ) {
     let (arrow_type_start, arrow_type_end) =
         super::super::edge_geom::arrow_types_for_edge(edge.edge_type.as_deref());
-    let start_offset = flowchart_neo_marker_mask_offset(arrow_type_start);
-    let end_offset = flowchart_neo_marker_mask_offset(arrow_type_end);
-    let middle_length = if line_hop_applied {
-        (path_length - start_offset - end_offset).max(0.0)
-    } else {
-        path_length - start_offset - end_offset
-    };
-
-    out.push_str("stroke-dasharray: 0 ");
-    let _ = write!(out, "{} ", fmt(start_offset));
-    if matches!(edge.stroke.as_deref(), Some("dotted" | "dashed")) {
-        for _ in 0..(middle_length / 4.0).floor().max(0.0) as usize {
-            out.push_str("2 2 ");
-        }
-    } else {
-        let _ = write!(out, "{} ", fmt(middle_length));
-    }
-    let _ = write!(out, "{}; stroke-dashoffset: 0;", fmt(end_offset));
+    crate::svg::parity::edge_path::write_neo_edge_mask(
+        out,
+        path_length,
+        arrow_type_start,
+        arrow_type_end,
+        matches!(edge.stroke.as_deref(), Some("dotted" | "dashed")),
+        line_hop_applied,
+    );
 }
 
 #[cfg(test)]

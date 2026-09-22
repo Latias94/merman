@@ -105,6 +105,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         elk_edge_paths: &layout.elk_edge_paths,
         diagram_look: state_render_settings.diagram_look,
+        palette_size: state_palette_size(effective_config),
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
@@ -590,7 +591,11 @@ fn render_state_root(
 
     // edge paths
     let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-    out.push_str(r#"<g class="edgePaths">"#);
+    out.push_str(if ctx.uses_elk_adapter_dom {
+        r#"<g class="edges edgePaths">"#
+    } else {
+        r#"<g class="edgePaths">"#
+    });
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -695,8 +700,8 @@ fn render_state_root(
         }
     }
 
-    // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
-    if ctx.include_edges {
+    // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
+    if ctx.include_edges && !ctx.uses_elk_adapter_dom {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -791,13 +796,34 @@ fn render_state_cluster(
     let y = top - origin_y;
     let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
 
+    let _ = write!(
+        out,
+        r#"<g class="{}" id="{}""#,
+        escape_attr(class),
+        dom_id.attr()
+    );
+    if shape != "divider" {
+        let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+    }
+    let _ = write!(out, r#" data-look="{}""#, escape_attr(data_look));
+    if ctx.palette_size > 0
+        && let Some(color_index) = ctx
+            .nodes_by_id
+            .get(cluster_id)
+            .and_then(|node| node.color_index)
+    {
+        let _ = write!(
+            out,
+            r#" data-color-id="color-{}""#,
+            color_index % ctx.palette_size
+        );
+    }
+    out.push('>');
+
     if shape == "divider" {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(data_look),
+            r#"<g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
@@ -814,14 +840,16 @@ fn render_state_cluster(
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
 
+    // roundedWithTitle in Mermaid's clusters.js uses the painted label bbox in both
+    // rendering modes. ELK's reduced title-strip reservation is not the paint height.
+    let title_height = cluster.title_label.height;
+    let inner_y = y + title_height + 2.0;
+    let inner_height = cluster.height - title_height - 6.0;
+
     if ctx.html_labels {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
@@ -830,33 +858,30 @@ fn render_state_cluster(
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
             fmt(cluster.title_label.width.max(0.0)),
-            escape_xml(&title),
+            fmt(title_height),
+            state_node_label_plain_html(&title),
             fmt(x),
-            fmt(y + 26.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 30.0).max(1.0))
+            fmt(inner_height)
         );
     } else {
         let title_dom = state_svg_text_label(&title, false, None);
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(y + 1.0),
+            fmt(y - 2.0),
             title_dom,
             fmt(x),
-            fmt(y + 21.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 29.0).max(1.0))
+            fmt(inner_height)
         );
     }
 }

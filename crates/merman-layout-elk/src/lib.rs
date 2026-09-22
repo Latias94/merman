@@ -176,7 +176,7 @@ pub enum Error {
     LayeredDiagnosticsRequired,
     #[error("phase diagnostics require one scope; use layout for separately scheduled containers")]
     SeparateScopesDiagnosticsUnsupported,
-    #[error("cross-provider hierarchy routing is not yet available for edge `{edge_id}`")]
+    #[error("unsupported ELK hierarchy/provider combination for edge `{edge_id}`")]
     UnsupportedCrossProviderEdge { edge_id: String },
     #[error(transparent)]
     Box(#[from] source_port::algorithms::box_layout::Error),
@@ -481,7 +481,7 @@ fn layout_scopes(
         if index.scopes[scope].algorithm != Algorithm::Layered {
             let (input, edge_metadata) =
                 index.materialize_flat_scope(scope, &arena, work_control)?;
-            let output = flat::layout(
+            let mut output = flat::layout(
                 &input,
                 &index.scopes[scope].seed_scope,
                 index.scopes[scope]
@@ -505,6 +505,7 @@ fn layout_scopes(
                 operation_seed,
                 work_control,
             )?;
+            index.complete_flat_hierarchy_edges(scope, &arena, &mut output, work_control)?;
             arena[scope] = Some(ScopeLayout {
                 layout: output.layout,
                 size: output.size,
@@ -567,8 +568,8 @@ impl<'a> HierarchyIndex<'a> {
         work: &mut dyn WorkControl,
     ) -> Result<(Graph, HashMap<String, ScopeEdgeMetadata>)> {
         let scope = &self.scopes[scope_index];
-        // Cross-provider boundary routing is a separate contract. Until its source handling
-        // is integrated, reject it instead of inventing provider ports or silently losing edges.
+        // Only Layered-owned boundary segments reach this branch. Upstream Layered rejects
+        // endpoints inside a scope handled by another provider; do not invent external ports.
         if let Some(edge) = scope.edges.iter().find(|edge| edge.segment.is_some()) {
             return Err(Error::UnsupportedCrossProviderEdge {
                 edge_id: self.graph.edges[edge.original].id.clone(),
@@ -605,6 +606,7 @@ impl<'a> HierarchyIndex<'a> {
         let edges = scope
             .edges
             .iter()
+            .filter(|edge| !self.is_flat_hierarchy_edge(scope_index, edge))
             .map(|edge| self.graph.edges[edge.original].clone())
             .collect();
         let metadata = scope
@@ -636,6 +638,143 @@ impl<'a> HierarchyIndex<'a> {
             },
             metadata,
         ))
+    }
+
+    fn is_flat_hierarchy_edge(&self, scope: usize, edge: &ScopedEdge) -> bool {
+        matches!((edge.source, edge.target), (ScopedEndpoint::Node(source), ScopedEndpoint::Node(target))
+            if self.node_scope[source] != scope || self.node_scope[target] != scope)
+    }
+
+    fn complete_flat_hierarchy_edges(
+        &self,
+        scope: usize,
+        arena: &[Option<ScopeLayout>],
+        output: &mut flat::FlatLayout,
+        work: &mut dyn WorkControl,
+    ) -> Result<()> {
+        let hierarchical = self.scopes[scope]
+            .edges
+            .iter()
+            .filter(|edge| self.is_flat_hierarchy_edge(scope, edge))
+            .collect::<Vec<_>>();
+        if hierarchical.is_empty() {
+            return Ok(());
+        }
+        work.check(hierarchical.len())?;
+        work.charge(hierarchical.len())?;
+        let spore = self.scopes[scope].algorithm == Algorithm::SporeOverlap;
+        let mut geometry = HashMap::new();
+        if spore {
+            let mut required_scopes = HashSet::new();
+            for edge in &hierarchical {
+                let (ScopedEndpoint::Node(source), ScopedEndpoint::Node(target)) =
+                    (edge.source, edge.target)
+                else {
+                    unreachable!("flat hierarchy endpoints are original nodes")
+                };
+                for node in [source, target] {
+                    if Some(node) == self.scopes[scope].anchor {
+                        continue;
+                    }
+                    required_scopes.insert(self.node_scope[node]);
+                    if let Some(parent) = self.parent[node]
+                        && Some(parent) != self.scopes[scope].anchor
+                    {
+                        required_scopes.insert(self.node_scope[parent]);
+                    }
+                }
+            }
+            for required in required_scopes {
+                let nodes = if required == scope {
+                    &output.layout.nodes
+                } else {
+                    &arena[required]
+                        .as_ref()
+                        .expect("descendant scopes are complete")
+                        .layout
+                        .nodes
+                };
+                work.check(nodes.len())?;
+                work.charge(nodes.len())?;
+                geometry.extend(nodes.iter().map(|node| (node.id.as_str(), node)));
+            }
+        }
+        let mut completed = Vec::with_capacity(hierarchical.len());
+        for edge in hierarchical {
+            let original = &self.graph.edges[edge.original];
+            let mut points = Vec::new();
+            if spore {
+                let endpoint = |endpoint| {
+                    let ScopedEndpoint::Node(index) = endpoint else {
+                        unreachable!("flat endpoint")
+                    };
+                    if Some(index) == self.scopes[scope].anchor {
+                        // An edge to the layout parent is contained in that parent's inner
+                        // graph. At this export point the parent has not been positioned yet.
+                        return (
+                            Point {
+                                x: output.size.width / 2.0,
+                                y: output.size.height / 2.0,
+                            },
+                            output.size.width,
+                            output.size.height,
+                        );
+                    }
+                    let node = geometry[self.graph.nodes[index].id.as_str()];
+                    let mut center = Point {
+                        x: node.x,
+                        y: node.y,
+                    };
+                    if let Some(parent) = self.parent[index]
+                        && Some(parent) != self.scopes[scope].anchor
+                    {
+                        if self.node_scope[parent] == self.node_scope[index] {
+                            let parent = geometry[self.graph.nodes[parent].id.as_str()];
+                            center.x -= parent.x - parent.width / 2.0;
+                            center.y -= parent.y - parent.height / 2.0;
+                        } else {
+                            let parent_scope = self.node_scope[parent];
+                            let shifts = if parent_scope == scope {
+                                &output.content_shifts
+                            } else {
+                                &arena[parent_scope]
+                                    .as_ref()
+                                    .expect("parent scope is complete")
+                                    .content_shifts
+                            };
+                            if let Some(shift) = shifts.get(&self.graph.nodes[parent].id) {
+                                center.x += shift.x;
+                                center.y += shift.y;
+                            }
+                        }
+                    }
+                    (center, node.width, node.height)
+                };
+                let (source, sw, sh) = endpoint(edge.source);
+                let (target, tw, th) = endpoint(edge.target);
+                // SPOrE ElkGraphImporter.applyPositions reads each endpoint's own local
+                // coordinates, including for hierarchical edges. Do not add ancestor offsets.
+                let start = flat::clip_spore_endpoint(source, target, sw, sh);
+                let end = flat::clip_spore_endpoint(target, start, tw, th);
+                points.extend([start, end]);
+            }
+            completed.push(EdgeLayout {
+                id: original.id.clone(),
+                points,
+                labels: original
+                    .label
+                    .into_iter()
+                    .map(|label| EdgeLabelLayout {
+                        x: output.edge_translation.x,
+                        y: output.edge_translation.y,
+                        width: label.width,
+                        height: label.height,
+                    })
+                    .collect(),
+            });
+        }
+        output.layout.edges.extend(completed);
+        Ok(())
     }
 
     fn build(graph: &'a Graph, work_control: &mut dyn WorkControl) -> Result<Self> {
@@ -865,6 +1004,53 @@ impl<'a> HierarchyIndex<'a> {
             edge_owner_scope[edge_index] = owner;
             edge_model_order[edge_index] = scopes[owner].owned_edges.len();
             scopes[owner].owned_edges.push(edge_index);
+            if scopes[owner].algorithm == Algorithm::Radial {
+                // Radial uses hierarchical incoming edges to select its root and may traverse
+                // successors in other scopes. The flat kernel cannot represent that node domain;
+                // keep this raw-adapter combination unsupported instead of silently changing roots.
+                return Err(Error::UnsupportedCrossProviderEdge {
+                    edge_id: edge.id.clone(),
+                });
+            }
+            if scopes[owner].algorithm != Algorithm::Layered {
+                // Force/MrTree importers exclude hierarchical edges; packing providers never
+                // route them. SPOrE exports the original contained edge after node placement.
+                // None of these providers imports Layered's synthetic boundary segments.
+                let containing_scope = pieces
+                    .iter()
+                    .find_map(|(scope, source, target, _)| {
+                        [source, target]
+                            .into_iter()
+                            .any(|endpoint| {
+                                matches!(
+                                    endpoint,
+                                    ScopedEndpoint::ParentBoundary {
+                                        connects_node: true,
+                                        ..
+                                    }
+                                )
+                            })
+                            .then_some(*scope)
+                    })
+                    .unwrap_or(owner);
+                if scopes[containing_scope].algorithm == Algorithm::Layered {
+                    // ELK Layered cannot import a parent endpoint belonging to another
+                    // provider's scope (as opposed to an ordinary descendant-to-peer edge).
+                    return Err(Error::UnsupportedCrossProviderEdge {
+                        edge_id: edge.id.clone(),
+                    });
+                }
+                scopes[containing_scope].edges.push(ScopedEdge {
+                    original: edge_index,
+                    source: ScopedEndpoint::Node(source),
+                    target: ScopedEndpoint::Node(target),
+                    segment: None,
+                    segment_order: None,
+                    segment_count: 0,
+                    carries_label: true,
+                });
+                continue;
+            }
             let label_piece = edge.label.map(|_| compound_center_segment(&pieces));
             let segment_count = pieces.len();
             for (piece_index, (scope, source, target, segment)) in pieces.drain(..).enumerate() {

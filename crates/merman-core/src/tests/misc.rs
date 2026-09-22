@@ -12,7 +12,7 @@ fn parse_graph_defaults_to_flowchart_v2() {
     assert_eq!(res.config.as_value(), &json!({}));
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#ECECFF")
+        Some("#ffffff")
     );
 }
 
@@ -189,7 +189,7 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.primaryColor"),
-        Some("#ECECFF")
+        Some("#cccccc")
     );
     assert_eq!(
         res.effective_config
@@ -1084,13 +1084,15 @@ fn parse_matches_public_api_for_mismatched_indented_frontmatter() {
     .unwrap_err();
     assert!(err.to_string().contains("Malformed YAML front-matter"));
 
-    let res = block_on(engine.parse_metadata(
+    // Mermaid 12 mermaidAPI.parse passes DiagramCode directly to Diagram.fromText:
+    // a second preprocess no longer strips the indented opener. Upstream rejects
+    // this input in the sequence parser; metadata-only Merman retains its public
+    // MalformedFrontMatter boundary for an unconsumed leading delimiter.
+    let err = block_on(engine.parse_metadata(
         "   ---\ntitle: mismatched YAML front-matter\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
     ))
-    .expect("the public Mermaid parse pipeline exposes this frontmatter on its second preprocess");
-    assert_eq!(res.diagram_type, "sequence");
-    assert_eq!(res.title, None);
-    assert_eq!(res.config.as_value(), &json!({}));
+    .expect_err("a mismatched frontmatter opener must survive the single preprocess pass");
+    assert!(matches!(err, Error::MalformedFrontMatter));
 }
 
 #[test]

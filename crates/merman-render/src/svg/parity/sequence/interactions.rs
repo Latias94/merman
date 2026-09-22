@@ -95,7 +95,12 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        render_sequence_activation_group(out, &activation_plan, &msg.id);
+        render_sequence_activation_group(
+            out,
+            &activation_plan,
+            &msg.id,
+            crate::config::config_diagram_look(ctx.sanitize_config.as_value()).as_str() == "neo",
+        );
         render_sequence_note(out, msg, &note_ctx)?;
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {

@@ -50,7 +50,8 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
 #[test]
 fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
     let expected = json!({
-        "defaultRenderer": "dagre-wrapper",
+        "theme": "redux-color",
+        "look": "neo",
         "hideEmptyMembersBox": false,
         "hierarchicalNamespaces": true
     });
@@ -59,7 +60,7 @@ fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
             .as_value()
             .get("class"),
         Some(&expected),
-        "Mermaid 11.17 defaultConfig.ts replaces rather than spreads the schema Class object"
+        "Mermaid 12 defaultConfig.ts carries appearance defaults into the replacement Class object"
     );
 }
 

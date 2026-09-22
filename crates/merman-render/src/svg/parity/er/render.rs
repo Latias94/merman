@@ -2,6 +2,31 @@ use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
 
+// ELK overwrites the model curve after routing; Dagre retains ER's basis curve.
+fn er_edge_path_d(
+    points: &[crate::model::LayoutPoint],
+    is_elk_layout: bool,
+    missing_section: bool,
+) -> String {
+    if missing_section {
+        return super::super::curve::curve_linear_path_d(points);
+    }
+    if is_elk_layout {
+        return super::super::curve::curve_rounded_path_d_and_bounds(points, 5.0, false, None).0;
+    }
+    if let [a, b] = points {
+        return curve_basis_path_d(&[
+            a.clone(),
+            crate::model::LayoutPoint {
+                x: (a.x + b.x) / 2.0,
+                y: (a.y + b.y) / 2.0,
+            },
+            b.clone(),
+        ]);
+    }
+    curve_basis_path_d(points)
+}
+
 fn is_er_redux_color_theme(effective_config: &serde_json::Value) -> bool {
     matches!(
         SvgTheme::new(effective_config).theme_name().as_str(),
@@ -32,32 +57,26 @@ fn er_color_indices(
         .collect()
 }
 
-fn er_theme_color_limit(effective_config: &serde_json::Value) -> usize {
-    config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .filter(|value| value.is_finite())
-        .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
-        .unwrap_or(12)
-}
-
 fn er_redux_color_css<I>(
     diagram_id: I,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
-    theme_color_limit: usize,
 ) -> String
 where
     I: Copy + std::fmt::Display,
 {
     let mut out = String::new();
-    for index in 0..theme_color_limit {
-        let Some(border_color) = border_colors.get(index) else {
-            continue;
+    for (index, border_color) in border_colors.iter().enumerate() {
+        let border_color = border_color.trim();
+        let fill = if background_colors.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "fill:{};",
+                background_colors[index % background_colors.len()].trim()
+            )
         };
-        let fill = background_colors
-            .get(index)
-            .map(|color| format!("fill:{color};"))
-            .unwrap_or_default();
         let _ = write!(
             &mut out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
@@ -426,7 +445,6 @@ pub(crate) fn render_er_diagram_svg_model(
     } else {
         Vec::new()
     };
-    let theme_color_limit = er_theme_color_limit(effective_config);
     let color_indices = er_color_indices(model);
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
@@ -498,7 +516,10 @@ pub(crate) fn render_er_diagram_svg_model(
         };
         (self_loop, idx, 0)
     }
-    edges.sort_by_key(er_edge_sort_key);
+    edges.sort_by_key(|edge| {
+        let (self_loop, index, secondary) = er_edge_sort_key(edge);
+        (if is_elk_layout { 0 } else { self_loop }, index, secondary)
+    });
 
     // Box and Rectpacking intentionally leave sections empty. Resolve their paint geometry
     // before measuring bounds, while retaining provenance to select a linear curve below.
@@ -522,6 +543,23 @@ pub(crate) fn render_er_diagram_svg_model(
                 }
                 missing_sections.insert(edge.id.clone());
             }
+        }
+    }
+
+    if is_elk_layout {
+        for edge in &edges {
+            options
+                .work_meter()
+                .charge(edge.points.len().saturating_add(2))?;
+        }
+        if effective_config
+            .pointer("/elk/straightenEdges")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false)
+        {
+            crate::elk_terminal_jogs::straighten_edge_terminals(&mut edges, |units| {
+                options.work_meter().charge(units).map_err(Into::into)
+            })?;
         }
     }
 
@@ -651,7 +689,6 @@ pub(crate) fn render_er_diagram_svg_model(
         data_look,
         &redux_border_colors,
         &redux_background_colors,
-        theme_color_limit,
     );
     insert_er_redux_color_css(&mut css, diagram_id, &redux_color_css);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
@@ -659,7 +696,7 @@ pub(crate) fn render_er_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
 
-    // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
+    // Mermaid 12 erRenderer-unified selects the themed marker variants only for Neo.
     // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
     let diagram_type_esc = escape_xml(diagram_type);
@@ -673,16 +710,52 @@ pub(crate) fn render_er_diagram_svg_model(
         );
     }
 
+    let neo_markers = data_look == "neo";
+    let marker_units = if neo_markers {
+        r#" markerUnits="userSpaceOnUse""#
+    } else {
+        ""
+    };
+    let marker_stroke = if neo_markers {
+        let stroke_width = config_string(effective_config, &["themeVariables", "strokeWidth"])
+            .or_else(|| {
+                effective_config
+                    .pointer("/themeVariables/strokeWidth")
+                    .map(ToString::to_string)
+            })
+            .unwrap_or_else(|| "undefined".to_owned());
+        format!(r#" stroke-width="{}""#, escape_xml(&stroke_width))
+    } else {
+        String::new()
+    };
+    let marker_background = if neo_markers {
+        effective_config
+            .pointer("/themeVariables/mainBkg")
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| value.to_string())
+            })
+            .unwrap_or_else(|| "white".to_owned())
+    } else {
+        "white".to_owned()
+    };
+    let marker_background = escape_xml(&marker_background);
+    let zero_more_start_x = if neo_markers { "45.5" } else { "48" };
+    let zero_more_end_x = if neo_markers { "11" } else { "9" };
+
     let _ = writeln!(
         &mut out,
-        r#"<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M9,0 L9,18 M15,0 L15,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M3,0 L3,18 M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
-<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
+        r#"<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"{marker_units}><path d="M9,0 L9,18 M15,0 L15,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"{marker_units}><path d="M3,0 L3,18 M9,0 L9,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"{marker_units}><circle fill="{marker_background}" cx="21" cy="9" r="6"{marker_stroke}/><path d="M9,0 L9,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"{marker_units}><circle fill="{marker_background}" cx="9" cy="9" r="6"{marker_stroke}/><path d="M21,0 L21,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"{marker_units}><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"{marker_units}><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"{marker_units}><circle fill="{marker_background}" cx="{zero_more_start_x}" cy="18" r="6"{marker_stroke}/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"{marker_stroke}/></marker></defs>
+<defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"{marker_units}><circle fill="{marker_background}" cx="{zero_more_end_x}" cy="18" r="6"{marker_stroke}/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"{marker_stroke}/></marker></defs>"#
     );
     options.checkpoint_emit()?;
 
@@ -726,22 +799,18 @@ pub(crate) fn render_er_diagram_svg_model(
         translate_y,
     };
 
-    // Mermaid 11.17 renders both providers through the common layout painter. The provider only
-    // changes the edge group name and z-order: ELK lowers `.edges` beneath `.clusters`, while
-    // Dagre keeps the ordinary `edgePaths` group after clusters.
+    // Mermaid 12 keeps edges above clusters and below nodes for every layout.
     let _ = writeln!(&mut out, r#"<g class="root">"#);
-    if !is_elk_layout {
-        if layout.clusters.is_empty() {
-            out.push_str(r#"<g class="clusters"/>"#);
-        } else {
-            out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
-            out.push_str("</g>");
-        }
+    if layout.clusters.is_empty() {
+        out.push_str(r#"<g class="clusters"/>"#);
+    } else {
+        out.push_str(r#"<g class="clusters">"#);
+        render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+        out.push_str("</g>");
     }
 
     if is_elk_layout {
-        out.push_str(r#"<g class="edges edgePath">"#);
+        out.push_str(r#"<g class="edges edgePaths">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
@@ -771,30 +840,31 @@ pub(crate) fn render_er_diagram_svg_model(
                 .collect();
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let mut curve_points = shifted.clone();
-            if !missing_section && curve_points.len() == 2 {
-                let a = &curve_points[0];
-                let b = &curve_points[1];
-                curve_points.insert(
-                    1,
-                    crate::model::LayoutPoint {
-                        x: (a.x + b.x) / 2.0,
-                        y: (a.y + b.y) / 2.0,
-                    },
-                );
-            }
-            let d = if missing_section {
-                super::super::curve::curve_linear_path_d(&curve_points)
-            } else {
-                curve_basis_path_d(&curve_points)
-            };
+            let d = er_edge_path_d(&shifted, is_elk_layout, missing_section);
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+                r#"<path d="{}" id="{}" class="{}" style=""#,
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
+            );
+            if data_look == "neo"
+                && let Some(length) = super::super::svg_path_length_from_d(&d)
+            {
+                super::super::edge_path::write_neo_edge_mask(
+                    &mut out, length, None, None, is_dashed, false,
+                );
+            }
+            // ELK's buildEdgeData supplies fill:none when the ER model has no edge style.
+            out.push_str(if is_elk_layout {
+                "fill:none;;;fill:none"
+            } else {
+                "undefined;;;undefined"
+            });
+            let _ = write!(
+                &mut out,
+                r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
                 escape_xml(&edge_dom_id),
                 escape_xml(&data_points),
                 escape_xml(data_look)
@@ -813,18 +883,6 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.push_str("</g>");
 
-    // The published `@mermaid-js/layout-elk@0.2.3` common painter lowers the edge group after
-    // insertion, so its root order is edges, clusters, edgeLabels, nodes.
-    if is_elk_layout {
-        if layout.clusters.is_empty() {
-            out.push_str(r#"<g class="clusters"/>"#);
-        } else {
-            out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
-            out.push_str("</g>");
-        }
-    }
-
     out.push_str(r#"<g class="edgeLabels">"#);
     if options.debug.include_edges {
         for e in &edges {
@@ -835,8 +893,12 @@ pub(crate) fn render_er_diagram_svg_model(
             let rel_text = rel_text_raw.trim();
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
 
+            // Mermaid's shared renderer checks `Boolean(edge.label)`: an empty role has no
+            // label wrapper, while whitespace remains a real (zero-size) label.
+            if rel_text_raw.is_empty() {
+                continue;
+            }
             let has_label_text = !rel_text.is_empty();
-            let has_whitespace_only_label = !rel_text_raw.is_empty() && rel_text.is_empty();
             let (w, h, mut cx, mut cy) = if has_label_text {
                 if let Some(lbl) = &e.label {
                     (
@@ -849,7 +911,16 @@ pub(crate) fn render_er_diagram_svg_model(
                     (0.0, 0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0, 0.0, 0.0)
+                let (x, y) = e
+                    .label
+                    .as_ref()
+                    .map(|label| (label.x + translate_x, label.y + translate_y))
+                    .or_else(|| {
+                        super::super::edge_label_geometry::calc_label_position(&e.points)
+                            .map(|point| (point.x + translate_x, point.y + translate_y))
+                    })
+                    .unwrap_or((0.0, 0.0));
+                (0.0, 0.0, x, y)
             };
 
             if has_label_text && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
@@ -867,19 +938,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect();
-                let mut curve_points = shifted.clone();
-                if curve_points.len() == 2 {
-                    let a = &curve_points[0];
-                    let b = &curve_points[1];
-                    curve_points.insert(
-                        1,
-                        crate::model::LayoutPoint {
-                            x: (a.x + b.x) / 2.0,
-                            y: (a.y + b.y) / 2.0,
-                        },
-                    );
-                }
-                let rendered_d = curve_basis_path_d(&curve_points);
+                let rendered_d = er_edge_path_d(&shifted, is_elk_layout, false);
                 let position = super::super::edge_label_geometry::position_edge_label(
                     crate::model::LayoutPoint { x: cx, y: cy },
                     &shifted,
@@ -939,15 +998,15 @@ pub(crate) fn render_er_diagram_svg_model(
                 }
             } else {
                 if edge_html_labels {
-                    // Mermaid emits a `translate(undefined,NaN)` transform for relationship labels
-                    // that are whitespace-only (but not for fully empty strings). Preserve that
-                    // oddity for DOM parity in `structure` mode (see upstream Cypress fixture
-                    // `*_blank_or_empty_labels_007`).
-                    if has_whitespace_only_label {
-                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
-                    } else {
-                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                    }
+                    // Whitespace is truthy to Mermaid's `hasEdgeLabel`, so it receives a
+                    // zero-size wrapper at the measured edge position. Empty strings returned
+                    // above before reaching this branch.
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label""#,
+                        fmt(cx),
+                        fmt(cy)
+                    );
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
@@ -955,11 +1014,12 @@ pub(crate) fn render_er_diagram_svg_model(
                     );
                     out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
                 } else {
-                    if has_whitespace_only_label {
-                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
-                    } else {
-                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                    }
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label""#,
+                        fmt(cx),
+                        fmt(cy)
+                    );
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
@@ -1307,12 +1367,8 @@ pub(crate) fn render_er_diagram_svg_model(
         out.push_str("</g>");
 
         // Row rectangles
-        let odd_fill = theme_token(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
-        let even_fill = theme_token(
-            effective_config,
-            "rowEven",
-            "hsl(240, 100%, 97.2745098039%)",
-        );
+        let odd_fill = svg_theme.optional_color("rowOdd");
+        let even_fill = svg_theme.optional_color("rowEven");
         let mut y = sep_y;
         for (idx, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
@@ -1326,9 +1382,9 @@ pub(crate) fn render_er_diagram_svg_model(
                 "row-rect-even"
             };
             let row_fill = if is_odd {
-                odd_fill.as_str()
+                odd_fill.as_deref()
             } else {
-                even_fill.as_str()
+                even_fill.as_deref()
             };
             let _ = write!(
                 &mut out,
@@ -1356,13 +1412,16 @@ pub(crate) fn render_er_diagram_svg_model(
                 } else {
                     override_style_attr.clone()
                 };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
-                escape_xml(row_fill),
-                row_override_style_attr
-            );
+            // RoughJS omits the fill path when the theme does not supply a row color.
+            if let Some(row_fill) = row_fill.filter(|fill| !fill.is_empty() && *fill != "none") {
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
+                    roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
+                    escape_xml(row_fill),
+                    row_override_style_attr
+                );
+            }
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
@@ -1751,8 +1810,7 @@ mod tests {
             "an empty color palette must not produce a modulo-by-zero color id"
         );
 
-        assert_eq!(super::er_theme_color_limit(&config), 2);
-        let css = super::er_redux_color_css("er", "classic", &borders, &backgrounds, 2);
+        let css = super::er_redux_color_css("er", "classic", &borders, &backgrounds);
         assert!(css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
         ));
@@ -1760,7 +1818,7 @@ mod tests {
             r##"#er [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
         ));
 
-        let dark_css = super::er_redux_color_css("er", "classic", &borders, &[], 2);
+        let dark_css = super::er_redux_color_css("er", "classic", &borders, &[]);
         assert!(dark_css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
         ));

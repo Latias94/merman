@@ -1,4 +1,4 @@
-//! Ordered evaluation of Mermaid 11.17.2's `theme-base.js`.
+//! Ordered evaluation of Mermaid 12.0.0's `theme-base.js`.
 //!
 //! Constructor inputs are deliberately separate from calculated release snapshots. Starting
 //! from a calculated palette would make `a || b` retain stale defaults instead of deriving `b`
@@ -140,6 +140,7 @@ pub(super) fn calculate(explicit: &Map<String, Value>) -> Result<Map<String, Val
     inherit_many(
         &mut tv,
         &[
+            ("flowContainerStroke", "secondaryBorderColor"),
             ("nodeTextColor", "primaryTextColor"),
             ("actorBorder", "primaryBorderColor"),
             ("actorBkg", "mainBkg"),

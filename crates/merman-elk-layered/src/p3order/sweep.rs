@@ -17,12 +17,18 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::graph::{LGraph, LNode, LNodeKind, PortRef, PortSide, PortType};
+use crate::graph::{
+    LGraph, LNode, LNodeKind, PortRef, PortSide, PortType, ReorderNodePortsWorkContext,
+};
 use crate::options::{OrderingStrategy, PortConstraints};
 use crate::p3order::counting::{
     BinaryIndexedTree, CrossingsCounter, ports_in_north_south_east_west_order,
 };
 use crate::random::JavaRandom;
+use crate::work::{
+    NoopWorkControl, WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_n_log_n,
+    checked_sum,
+};
 
 use super::{
     GraphInfoHolder, SweepCopy, count_model_order_node_changes, count_model_order_port_changes,
@@ -267,8 +273,28 @@ impl BarycenterPortDistributor {
         current_index: usize,
         forward: bool,
     ) {
+        self.distribute_ports_while_sweeping_with_work_control(
+            graph,
+            order,
+            current_index,
+            forward,
+            &mut NoopWorkControl,
+            None,
+        )
+        .expect("unrestricted port distribution must complete");
+    }
+
+    fn distribute_ports_while_sweeping_with_work_control(
+        &mut self,
+        graph: &mut LGraph,
+        order: &[Vec<usize>],
+        current_index: usize,
+        forward: bool,
+        work_control: &mut dyn WorkControl,
+        reorder_work: Option<&ReorderNodePortsWorkContext>,
+    ) -> Result<(), WorkError> {
         if order.is_empty() || current_index >= order.len() {
-            return;
+            return Ok(());
         }
 
         self.update_node_positions(order, current_index);
@@ -289,20 +315,42 @@ impl BarycenterPortDistributor {
 
             self.calculate_port_ranks(graph, &fixed_layer, port_type_for(forward));
             for node in &free_layer {
-                self.distribute_ports(graph, *node, side, order);
+                self.distribute_ports_with_work_control(
+                    graph,
+                    *node,
+                    side,
+                    order,
+                    work_control,
+                    reorder_work,
+                )?;
             }
 
             self.calculate_port_ranks(graph, &free_layer, port_type_for(!forward));
             for node in &fixed_layer {
                 if graph.layerless_nodes[*node].nested_graph.is_none() {
-                    self.distribute_ports(graph, *node, side.opposed(), order);
+                    self.distribute_ports_with_work_control(
+                        graph,
+                        *node,
+                        side.opposed(),
+                        order,
+                        work_control,
+                        reorder_work,
+                    )?;
                 }
             }
         } else {
             for node in &free_layer {
-                self.distribute_ports(graph, *node, side, order);
+                self.distribute_ports_with_work_control(
+                    graph,
+                    *node,
+                    side,
+                    order,
+                    work_control,
+                    reorder_work,
+                )?;
             }
         }
+        Ok(())
     }
 
     fn calculate_port_ranks(&mut self, graph: &LGraph, layer: &[usize], port_type: PortType) {
@@ -325,6 +373,7 @@ impl BarycenterPortDistributor {
             .unwrap_or(0.0)
     }
 
+    #[cfg(test)]
     fn distribute_ports(
         &mut self,
         graph: &mut LGraph,
@@ -332,18 +381,38 @@ impl BarycenterPortDistributor {
         side: PortSide,
         order: &[Vec<usize>],
     ) {
+        self.distribute_ports_with_work_control(
+            graph,
+            node,
+            side,
+            order,
+            &mut NoopWorkControl,
+            None,
+        )
+        .unwrap();
+    }
+
+    fn distribute_ports_with_work_control(
+        &mut self,
+        graph: &mut LGraph,
+        node: usize,
+        side: PortSide,
+        order: &[Vec<usize>],
+        work_control: &mut dyn WorkControl,
+        reorder_work: Option<&ReorderNodePortsWorkContext>,
+    ) -> Result<(), WorkError> {
         if graph.layerless_nodes[node]
             .port_constraints
             .is_order_fixed()
         {
-            return;
+            return Ok(());
         }
 
         for port_side in [side, PortSide::South, PortSide::North] {
             let ports = ports_on_side(graph, node, port_side);
             self.distribute_ports_on_side(graph, node, &ports, order);
         }
-        self.sort_ports(graph, node);
+        self.sort_ports(graph, node, work_control, reorder_work)
     }
 
     fn distribute_ports_on_side(
@@ -469,7 +538,18 @@ impl BarycenterPortDistributor {
         }
     }
 
-    fn sort_ports(&self, graph: &mut LGraph, node: usize) {
+    fn sort_ports(
+        &self,
+        graph: &mut LGraph,
+        node: usize,
+        work_control: &mut dyn WorkControl,
+        reorder_work: Option<&ReorderNodePortsWorkContext>,
+    ) -> Result<(), WorkError> {
+        let port_count = graph.layerless_nodes[node].ports.len();
+        charge_barycenter_work(
+            work_control,
+            checked_add(port_count, checked_n_log_n(port_count)?)?,
+        )?;
         let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
         order.sort_by(|left, right| {
             let left_port = &graph.layerless_nodes[node].ports[*left];
@@ -501,7 +581,16 @@ impl BarycenterPortDistributor {
                 left_barycenter.total_cmp(&right_barycenter)
             }
         });
+        if order.iter().copied().eq(0..port_count) {
+            return Ok(());
+        }
+        // Hierarchy sweeps retain their pipeline-level admission and use the unrestricted
+        // wrapper. Only controlled flat sweeps need the shared reference-domain census.
+        if let Some(reorder_work) = reorder_work {
+            charge_barycenter_work(work_control, reorder_work.node_work(graph, node)?)?;
+        }
         graph.reorder_node_ports(node, order);
+        Ok(())
     }
 
     fn set_port_barycenter(&mut self, graph: &LGraph, port: PortRef, barycenter: f64) {
@@ -3110,6 +3199,7 @@ impl GreedySwitchHeuristic {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn minimize_crossings_layer_sweep(graph: &mut LGraph) -> bool {
     minimize_crossings_layer_sweep_with_type(graph, CrossMinType::Barycenter)
 }
@@ -3127,7 +3217,8 @@ pub(crate) fn minimize_crossings_layer_sweep_with_type(
 
     initialize_crossing_minimization_port_ids(graph);
     match cross_min_type {
-        CrossMinType::Barycenter => minimize_barycenter(graph),
+        CrossMinType::Barycenter => minimize_barycenter(graph, &mut NoopWorkControl)
+            .expect("unrestricted barycenter sweep must complete"),
         CrossMinType::OneSidedGreedySwitch => minimize_one_sided_greedy_switch(graph),
         CrossMinType::TwoSidedGreedySwitch => minimize_two_sided_greedy_switch(graph),
     }
@@ -3207,7 +3298,99 @@ fn debug_barycenter_layer(
         .collect()
 }
 
-fn minimize_barycenter(graph: &mut LGraph) -> bool {
+pub(crate) fn minimize_crossings_layer_sweep_with_work_control(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<bool, WorkError> {
+    if graph.layers.is_empty()
+        || graph.layers.iter().all(|layer| layer.nodes.is_empty())
+        || (graph.layers.len() == 1 && graph.layers[0].nodes.len() <= 1)
+    {
+        return Ok(false);
+    }
+    // The pipeline admits the graph scan before this initialization allocates port IDs.
+    initialize_crossing_minimization_port_ids(graph);
+    minimize_barycenter(graph, work_control)
+}
+
+fn charge_barycenter_work(
+    work_control: &mut dyn WorkControl,
+    units: usize,
+) -> Result<(), WorkError> {
+    work_control.check(units)?;
+    work_control.charge(units)
+}
+
+fn barycenter_scan_work(graph: &LGraph) -> Result<usize, WorkError> {
+    checked_add(
+        checked_sum(graph.layers.iter().map(|layer| layer.nodes.len()))?,
+        checked_sum(graph.layerless_nodes.iter().map(|node| node.ports.len()))?,
+    )
+}
+
+fn barycenter_crossing_count_work(graph: &LGraph) -> Result<usize, WorkError> {
+    let ports = checked_sum(graph.layerless_nodes.iter().map(|node| node.ports.len()))?;
+    // Every side is visited once. Each edge contributes at most one Fenwick query and
+    // insertion; removing each port contributes one more logarithmic operation.
+    checked_sum([
+        checked_mul(barycenter_scan_work(graph)?, 2)?,
+        checked_mul(
+            checked_add(ports, checked_mul(graph.edges.len(), 2)?)?,
+            ceil_log2(checked_add(ports, 1)?),
+        )?,
+    ])
+}
+
+fn barycenter_layer_work(graph: &LGraph, layer: &[usize]) -> Result<usize, WorkError> {
+    let nodes = layer.len();
+    let pairs = checked_mul(nodes, nodes)?;
+    let mut work = checked_sum([nodes, checked_n_log_n(nodes)?, pairs])?;
+    let mut constraints = 0usize;
+    let mut has_layout_units = false;
+    for &node in layer {
+        let node = &graph.layerless_nodes[node];
+        work = checked_sum([work, node.ports.len(), node.barycenter_associates.len()])?;
+        constraints = checked_add(constraints, node.in_layer_successor_constraints.len())?;
+        has_layout_units |= node.in_layer_layout_unit.is_some();
+        for port in &node.ports {
+            work = checked_sum([work, port.incoming_edges.len(), port.outgoing_edges.len()])?;
+        }
+    }
+    if graph.options.force_node_model_order {
+        // Only this layer participates in insertion sorting and transitive relation updates.
+        work = checked_add(
+            work,
+            checked_mul(
+                pairs,
+                checked_sum([checked_mul(pairs, 4)?, checked_mul(nodes, 8)?, 16])?,
+            )?,
+        )?;
+    } else {
+        // Forster's layout-unit discovery scans the layer for adjacent normal nodes.
+        work = checked_add(work, checked_mul(pairs, 2)?)?;
+        if constraints > 0 || has_layout_units {
+            let relations = if has_layout_units {
+                checked_add(constraints, pairs)?
+            } else {
+                constraints
+            };
+            // At most n groups can merge; each merge visits the group/relation lists.
+            work = checked_add(work, checked_mul(nodes, checked_add(nodes, relations)?)?)?;
+        }
+        if graph.in_layer_successor_constraints_between_non_dummies {
+            work = checked_mul(work, 2)?;
+        }
+    }
+    Ok(work)
+}
+
+fn minimize_barycenter(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<bool, WorkError> {
+    let scan_work = barycenter_scan_work(graph)?;
+    charge_barycenter_work(work_control, scan_work)?;
+    let reorder_work = ReorderNodePortsWorkContext::new(graph)?;
     let mut graph_info = GraphInfoHolder::new(graph);
 
     let mut random = graph.random.clone();
@@ -3225,6 +3408,7 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
         graph.options.consider_model_order_strategy != OrderingStrategy::None;
 
     for run_index in 0..thoroughness {
+        charge_barycenter_work(work_control, scan_work)?;
         let port_distributor =
             BarycenterPortDistributor::new(distributor_kind, &graph_info.current_node_order);
         let mut heuristic = BarycenterHeuristic::new(graph, random.clone(), port_distributor);
@@ -3234,11 +3418,14 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
             &mut heuristic,
             first_try_with_initial_order && run_index == 0,
             first_try_with_initial_order && run_index == 1,
-        );
+            work_control,
+            &reorder_work,
+        )?;
         random = heuristic.random;
 
         if crossings < best_crossings {
             best_crossings = crossings;
+            charge_barycenter_work(work_control, scan_work)?;
             if let Some(copy) = graph_info.currently_best_node_and_port_order.clone() {
                 graph_info.set_best_node_and_port_order(copy);
             }
@@ -3250,9 +3437,20 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
 
     graph.random = random;
     let Some(best_sweep) = graph_info.get_best_sweep().cloned() else {
-        return false;
+        return Ok(false);
     };
-    best_sweep.transfer_node_and_port_orders_to_graph(graph, true)
+    let mut transfer_work = scan_work;
+    for (nodes, port_orders) in best_sweep.node_order.iter().zip(&best_sweep.port_orders) {
+        for (&node, keys) in nodes.iter().zip(port_orders) {
+            transfer_work = checked_sum([
+                transfer_work,
+                super::port_order_lookup_work_units(graph, node, keys)?,
+                reorder_work.node_work(graph, node)?,
+            ])?;
+        }
+    }
+    charge_barycenter_work(work_control, transfer_work)?;
+    Ok(best_sweep.transfer_node_and_port_orders_to_graph(graph, true))
 }
 
 fn minimize_two_sided_greedy_switch(graph: &mut LGraph) -> bool {
@@ -3324,19 +3522,32 @@ fn minimize_crossings_with_counter(
     heuristic: &mut BarycenterHeuristic,
     first_try_with_initial_order: bool,
     second_try_with_initial_order: bool,
-) -> usize {
+    work_control: &mut dyn WorkControl,
+    reorder_work: &ReorderNodePortsWorkContext,
+) -> Result<usize, WorkError> {
     let mut is_forward_sweep = heuristic.random.next_bool();
 
+    let count_work = barycenter_crossing_count_work(graph)?;
+    charge_barycenter_work(work_control, count_work)?;
     let initial_crossings =
         CrossingsCounter::new().count_all_crossings_in_order(graph, &graph_info.current_node_order);
     if initial_crossings == 0 && first_try_with_initial_order {
+        charge_barycenter_work(work_control, barycenter_scan_work(graph)?)?;
         graph_info.set_currently_best_node_and_port_order(graph);
-        return 0;
+        return Ok(0);
     }
 
     if (!first_try_with_initial_order && !second_try_with_initial_order)
         || graph.options.consider_model_order_strategy == OrderingStrategy::None
     {
+        charge_barycenter_work(
+            work_control,
+            barycenter_layer_work(
+                graph,
+                &graph_info.current_node_order
+                    [first_index(is_forward_sweep, graph_info.current_node_order.len())],
+            )?,
+        )?;
         heuristic.set_first_layer_order(
             graph,
             &mut graph_info.current_node_order,
@@ -3352,23 +3563,36 @@ fn minimize_crossings_with_counter(
         heuristic,
         is_forward_sweep,
         !first_try_with_initial_order && !second_try_with_initial_order,
-    );
+        work_control,
+        reorder_work,
+    )?;
 
+    charge_barycenter_work(work_control, count_work)?;
     let mut crossings_in_graph =
         CrossingsCounter::new().count_all_crossings_in_order(graph, &graph_info.current_node_order);
     loop {
+        charge_barycenter_work(work_control, barycenter_scan_work(graph)?)?;
         graph_info.set_currently_best_node_and_port_order(graph);
         if crossings_in_graph == 0 {
-            return 0;
+            return Ok(0);
         }
 
         is_forward_sweep = !is_forward_sweep;
         let old_number_of_crossings = crossings_in_graph;
-        sweep_reducing_crossings(graph, graph_info, heuristic, is_forward_sweep, false);
+        sweep_reducing_crossings(
+            graph,
+            graph_info,
+            heuristic,
+            is_forward_sweep,
+            false,
+            work_control,
+            reorder_work,
+        )?;
+        charge_barycenter_work(work_control, count_work)?;
         crossings_in_graph = CrossingsCounter::new()
             .count_all_crossings_in_order(graph, &graph_info.current_node_order);
         if old_number_of_crossings <= crossings_in_graph {
-            return old_number_of_crossings;
+            return Ok(old_number_of_crossings);
         }
     }
 }
@@ -3379,22 +3603,38 @@ fn sweep_reducing_crossings(
     heuristic: &mut BarycenterHeuristic,
     forward: bool,
     first_sweep: bool,
-) {
+    work_control: &mut dyn WorkControl,
+    reorder_work: &ReorderNodePortsWorkContext,
+) -> Result<(), WorkError> {
     let length = graph_info.current_node_order.len();
     if length == 0 {
-        return;
+        return Ok(());
     }
 
-    heuristic.port_distributor.distribute_ports_while_sweeping(
-        graph,
-        &graph_info.current_node_order,
-        first_index(forward, length),
-        forward,
-    );
+    // Charge each actual sweep, including port ranking and both adjacent-layer visits.
+    let scan = barycenter_scan_work(graph)?;
+    charge_barycenter_work(
+        work_control,
+        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
+    )?;
+    heuristic
+        .port_distributor
+        .distribute_ports_while_sweeping_with_work_control(
+            graph,
+            &graph_info.current_node_order,
+            first_index(forward, length),
+            forward,
+            work_control,
+            Some(reorder_work),
+        )?;
 
     let mut index = first_free(forward, length);
     while is_not_end(length, index, forward) {
         let free_layer_index = index as usize;
+        charge_barycenter_work(
+            work_control,
+            barycenter_layer_work(graph, &graph_info.current_node_order[free_layer_index])?,
+        )?;
         heuristic.minimize_crossings(
             graph,
             &mut graph_info.current_node_order,
@@ -3402,14 +3642,19 @@ fn sweep_reducing_crossings(
             forward,
             first_sweep,
         );
-        heuristic.port_distributor.distribute_ports_while_sweeping(
-            graph,
-            &graph_info.current_node_order,
-            free_layer_index,
-            forward,
-        );
+        heuristic
+            .port_distributor
+            .distribute_ports_while_sweeping_with_work_control(
+                graph,
+                &graph_info.current_node_order,
+                free_layer_index,
+                forward,
+                work_control,
+                Some(reorder_work),
+            )?;
         index = next_index(index, forward);
     }
+    Ok(())
 }
 
 fn sweep_reducing_crossings_greedy(
@@ -4942,7 +5187,17 @@ mod tests {
         );
         let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
 
-        sweep_reducing_crossings(&mut graph, &mut graph_info, &mut heuristic, true, false);
+        let reorder_work = ReorderNodePortsWorkContext::new(&graph).unwrap();
+        sweep_reducing_crossings(
+            &mut graph,
+            &mut graph_info,
+            &mut heuristic,
+            true,
+            false,
+            &mut NoopWorkControl,
+            &reorder_work,
+        )
+        .unwrap();
 
         let free_ports = graph.layerless_nodes[free]
             .ports

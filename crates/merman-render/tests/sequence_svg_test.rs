@@ -1327,7 +1327,7 @@ fn sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15()
 }
 
 #[test]
-fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15() {
+fn sequence_layout_nested_activation_bounds_include_full_stack_with_neo_marker_spacing() {
     let layout = layout_sequence_from_text(
         r#"sequenceDiagram
     participant C as Caller
@@ -1355,7 +1355,12 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 
     let nested_call = c_to_a_edges[1];
     let outer_call = c_to_a_edges[2];
-    let expected_left_target = a_center - 5.0 - 3.0;
+    // Mermaid 12 applies Neo spacing before shortening the line for its arrowhead.
+    let activation_half_width = 5.0;
+    let neo_marker_spacing = 3.0;
+    let arrowhead_shortening = 3.0;
+    let expected_left_target =
+        a_center - activation_half_width - neo_marker_spacing - arrowhead_shortening;
 
     assert!(
         (nested_call.points[1].x - expected_left_target).abs() <= 0.0001,
@@ -1488,12 +1493,23 @@ fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() 
 }
 
 #[test]
-fn sequence_block_root_width_replays_upstream_bounds_insert_lifecycle() {
+fn sequence_classic_block_root_width_replays_upstream_bounds_insert_lifecycle() {
     for (fixture, expected_min_x, expected_width) in [
         ("stress_create_destroy_inside_alt_030.mmd", -50.0, 734.0),
         ("stress_critical_break_007.mmd", -50.0, 650.0),
     ] {
-        let svg = render_sequence_svg_from_fixture(fixture);
+        let text = std::fs::read_to_string(
+            workspace_root()
+                .join("fixtures")
+                .join("sequence")
+                .join(fixture),
+        )
+        .expect("fixture");
+        // Keep this bounds-insertion regression independent of Neo marker spacing.
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "sequence": { "look": "classic" }
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(engine, &text);
         let (view_box, max_width) = root_view_box_and_max_width(&svg);
         assert_eq!(
             view_box[0], expected_min_x,
@@ -1848,9 +1864,21 @@ fn sequence_fallback_wraps_block_candidates_without_losing_text() {
 }
 
 #[test]
-fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
+fn sequence_classic_nested_opt_wraps_from_source_block_width() {
     let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
-    let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join(fixture),
+    )
+    .expect("fixture");
+    // Classic retains the source block width used by this deterministic wrapping oracle.
+    // Neo shortens message bounds before calculateLoopBounds derives that width.
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "sequence": { "look": "classic" }
+    })));
+    let svg = render_sequence_svg_from_text_with_engine(engine, &text);
     let group_start = svg
         .find(r#"<g data-et="control-structure" data-id="i17">"#)
         .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
@@ -1866,7 +1894,7 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
     assert_eq!(
         loop_lines.len(),
         3,
-        "nested opt title should use three Mermaid 11.16 lines"
+        "classic nested opt title should use three deterministic lines"
     );
     for (line, expected) in loop_lines.iter().zip([
         "[this is a nested opt",
@@ -2074,10 +2102,10 @@ A-->B: Headless dotted"#,
 }
 
 #[test]
-fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
+fn sequence_classic_svg_honors_theme_css_options() {
     let svg = render_sequence_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
+        r##"%%{init: {"sequence": {"look": "classic"}, "themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
 sequenceDiagram
 autonumber
 participant Alice
@@ -2607,7 +2635,7 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
 }
 
 #[test]
-fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
+fn sequence_central_connection_rtl_layout_uses_neo_marker_spacing() {
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -2640,7 +2668,12 @@ fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
         .expect("expected first central-connection edge");
     assert_eq!(edge.points.len(), 2);
     assert_eq!(edge.points[0].x, 442.0);
-    assert_eq!(edge.points[1].x, 83.0);
+    // The central-connection target boundary is 5px from the actor center; Neo spacing and
+    // arrowhead shortening add another 3px each for this right-to-left signal.
+    assert_eq!(
+        edge.points[1].x,
+        actor_center("actor-top-Alice") + 5.0 + 3.0 + 3.0
+    );
 }
 
 #[test]
@@ -2649,11 +2682,11 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
     let svg = render_sequence_svg_from_fixture(fixture);
 
     assert!(
-        svg.contains(r#"<text x="443" y="32.5""#),
+        svg.contains(r#"<text x="443" y="37""#),
         "expected Bob top actor center from layout to be preserved in SVG: {svg}"
     );
     assert!(
-        svg.contains(r#"<text x="820" y="32.5""#),
+        svg.contains(r#"<text x="820" y="37""#),
         "expected Charlie top actor center from layout to be preserved in SVG: {svg}"
     );
     assert!(
@@ -2661,10 +2694,10 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
             .into_iter()
             .any(|tag| {
                 tag.contains(r#"x1="442""#)
-                    && tag.contains(r#"x2="83""#)
+                    && tag.contains(r#"x2="86""#)
                     && tag.contains(r#"class="messageLine"#)
             }),
-        "expected first message x positions to stay near layout/golden spacing: {svg}"
+        "expected first message to preserve layout centers and Neo marker spacing: {svg}"
     );
 }
 
@@ -2739,4 +2772,128 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         !svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && !svg.contains(r#"Answer: $$2$$"#),
         "expected mixed sequence message formulas to replace source delimiters: {svg}"
     );
+}
+
+#[test]
+fn sequence_neo_shadow_and_participant_paints_are_scoped_and_look_specific() {
+    for (look, theme, flood) in [
+        ("neo", "redux", "#000000"),
+        ("neo", "default", "#FFFFFF"),
+        ("classic", "redux", ""),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "theme": theme
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(
+            engine,
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: hello\nactivate Bob\nNote over Bob: note\nBob-->>Alice: done\ndeactivate Bob\n",
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+        let filters: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("filter") && node.attribute("id") == Some("merman-drop-shadow")
+            })
+            .collect();
+        assert_eq!(filters.len(), usize::from(look == "neo"));
+        if let Some(filter) = filters.first() {
+            assert_eq!(filter.attribute("height"), Some("130%"));
+            assert_eq!(filter.attribute("width"), Some("130%"));
+            let shadow = filter
+                .children()
+                .find(|node| node.has_tag_name("feDropShadow"))
+                .unwrap();
+            assert_eq!(shadow.attribute("flood-color"), Some(flood));
+            assert_eq!(shadow.attribute("flood-opacity"), Some("0.06"));
+            let definitions: Vec<_> = doc
+                .root_element()
+                .children()
+                .filter(|node| node.has_tag_name("defs"))
+                .collect();
+            assert_eq!(
+                definitions.last().unwrap().first_element_child(),
+                Some(*filter)
+            );
+        }
+        for rect in doc.descendants().filter(|node| node.has_tag_name("rect")) {
+            let class = rect.attribute("class").unwrap_or("");
+            if class.starts_with("actor ") || class.starts_with("activation") || class == "note" {
+                assert_eq!(
+                    rect.attribute("data-look"),
+                    (look == "neo").then_some("neo")
+                );
+            }
+            if class.starts_with("actor ") {
+                assert_eq!(
+                    rect.attribute("rx"),
+                    Some(if look == "neo" { "6" } else { "3" })
+                );
+                assert_eq!(
+                    rect.attribute("filter"),
+                    (look == "neo").then_some("url(#merman-drop-shadow)")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
+    let source = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join("participant_types.mmd"),
+    )
+    .unwrap();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"look": "neo"}),
+    ));
+    let svg = render_sequence_svg_from_text_with_engine(engine, &source);
+    let doc = roxmltree::Document::parse(&svg).expect("Sequence participant-types SVG");
+    for (name, kind) in [("boundary", "boundary"), ("C", "control"), ("E", "entity")] {
+        let node = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("name") == Some(name) && node.attribute("data-type") == Some(kind)
+            })
+            .expect("participant glyph");
+        if kind == "control" {
+            assert_eq!(node.attribute("filter"), None);
+            assert_eq!(
+                node.descendants()
+                    .find(|child| child.has_tag_name("circle"))
+                    .and_then(|circle| circle.attribute("filter")),
+                Some("url(#merman-drop-shadow)")
+            );
+        } else {
+            assert_eq!(
+                node.attribute("filter"),
+                Some("url(#merman-drop-shadow)"),
+                "{name}"
+            );
+        }
+        let label = node
+            .descendants()
+            .find(|child| child.has_tag_name("text"))
+            .expect("glyph label");
+        assert_eq!(
+            label.attribute("y"),
+            Some("62"),
+            "{name} label should share the Neo band"
+        );
+    }
+    let footer_names: Vec<_> = doc
+        .descendants()
+        .filter(|node| {
+            matches!(
+                node.attribute("class"),
+                Some("actor-man actor-bottom") | Some("actor actor-bottom")
+            )
+        })
+        .filter(|node| matches!(node.attribute("name"), Some("boundary" | "C" | "E")))
+        .filter_map(|node| node.attribute("name"))
+        .collect();
+    assert_eq!(footer_names, ["boundary", "C", "E"]);
 }

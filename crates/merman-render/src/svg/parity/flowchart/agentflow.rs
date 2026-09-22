@@ -1,4 +1,4 @@
-//! Agentflow's kind palette and declaration-ordered container colors.
+//! Flowchart container colors and Agentflow's separate kind-first palette.
 
 use super::*;
 use serde_json::Value;
@@ -31,12 +31,15 @@ fn container_slot(ordinal: usize, palette_len: usize) -> usize {
 }
 
 pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
-    if ctx.diagram_type != "agentflow" {
-        return None;
-    }
     let colors = palette(ctx.config.as_value());
     let ordinal = ctx.model.subgraph_color_ordinal(id)?;
-    (!colors.is_empty()).then(|| container_slot(ordinal, colors.len()))
+    (!colors.is_empty()).then(|| {
+        if ctx.diagram_type == "agentflow" {
+            container_slot(ordinal, colors.len())
+        } else {
+            ordinal % colors.len()
+        }
+    })
 }
 
 pub(super) fn css(
@@ -104,6 +107,82 @@ pub(super) fn css(
             out,
             "{expanded} rect,{collapsed} rect,{expanded} path,{collapsed} path{{{}}}",
             declarations(slot)
+        );
+    }
+    Ok(out)
+}
+
+/// Port of flowchart/styles.ts genColor. Shape attributes are stamped using this same
+/// border palette length; inline author styles retain their normal CSS precedence.
+pub(super) fn flowchart_container_css(
+    diagram_id: impl std::fmt::Display + Copy,
+    config: &Value,
+    checkpoint: &dyn Fn() -> Result<()>,
+) -> Result<String> {
+    let borders = palette(config);
+    let mut out = String::new();
+    if borders.is_empty() {
+        return Ok(out);
+    }
+    let look = config
+        .get("look")
+        .and_then(Value::as_str)
+        .filter(|look| {
+            !look.is_empty()
+                && look
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        })
+        .unwrap_or("classic");
+    let backgrounds = config
+        .pointer("/themeVariables/bkgColorArray")
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty());
+    for (slot, border) in borders.iter().enumerate() {
+        checkpoint()?;
+        let border = border
+            .as_str()
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| border.to_string());
+        let background = backgrounds.map(|values| {
+            let value = &values[slot % values.len()];
+            value
+                .as_str()
+                .map(|value| value.trim().to_owned())
+                .unwrap_or_else(|| value.to_string())
+        });
+        let fill = background
+            .as_ref()
+            .map(|value| format!("fill:{value};"))
+            .unwrap_or_default();
+        let prefix =
+            format!(r##"#{diagram_id} [data-look="{look}"][data-color-id="color-{slot}"]"##);
+        let collapsed =
+            |suffix: &str| format!("{prefix}.node {suffix},{prefix}.rough-node {suffix}");
+        let lane = |suffix: &str| {
+            format!(
+                "{prefix}.swimlane.cluster .swimlane-title{suffix},{prefix}.swimlane.cluster .swimlane-body{suffix}"
+            )
+        };
+        let _ = write!(
+            out,
+            "{prefix}.cluster:not(.swimlane) rect{{stroke:{border};{fill}}}{prefix}.cluster:not(.swimlane) path{{stroke:{border};{fill}}}{prefix}.swimlane.cluster rect.swimlane-title,{prefix}.swimlane.cluster rect.swimlane-body{{stroke:{border};{fill}}}{}{{stroke:{border};}}",
+            lane(" path:nth-of-type(2)")
+        );
+        if let Some(background) = background {
+            let _ = write!(
+                out,
+                "{}{{stroke:{background};}}",
+                lane(" path:first-of-type")
+            );
+        }
+        let _ = write!(
+            out,
+            "{},{}{{stroke:{border};{fill}}}{}{{fill:{border};}}{}{{stroke:{border};}}",
+            collapsed(".collapsed-group"),
+            collapsed(".collapsed-group path"),
+            collapsed(".collapsed-indicator"),
+            collapsed(".collapsed-separator")
         );
     }
     Ok(out)

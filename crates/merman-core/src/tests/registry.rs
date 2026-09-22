@@ -186,13 +186,19 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         "wardley-beta\ncomponent API [0.6, 0.7]\n"
     ),
     combined_family!("cynefin", "cynefin", "cynefin-beta\n  complex\n"),
+    combined_family!("agentflow", "agentflow", "agentflow-beta\nA --> B\n"),
+    combined_family!(
+        "usecase",
+        "usecase",
+        "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n"
+    ),
 ];
 
 #[test]
 fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
     let capabilities = diagram_family_capabilities();
-    assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 41);
-    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
+    assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 43);
+    assert_eq!(capabilities.len(), 43, "pinned Mermaid 12 catalog drift");
 
     let expected_ids = FAMILY_CHARACTERIZATION_MATRIX
         .iter()
@@ -206,10 +212,10 @@ fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
         .iter()
         .map(|row| row.logical_family)
         .collect::<BTreeSet<_>>();
-    assert_eq!(expected_ids.len(), 41, "matrix variant ids must be unique");
+    assert_eq!(expected_ids.len(), 43, "matrix variant ids must be unique");
     assert_eq!(
         logical_families.len(),
-        33,
+        35,
         "matrix logical families drifted"
     );
     assert_eq!(
@@ -530,7 +536,7 @@ fn pinned_baseline_uses_one_catalog_for_all_registry_projections() {
 #[test]
 fn canonical_catalog_admits_every_mermaid_family() {
     let capabilities = diagram_family_capabilities();
-    assert_eq!(capabilities.len(), 41, "pinned Mermaid 11.16 catalog drift");
+    assert_eq!(capabilities.len(), 43, "pinned Mermaid 12 catalog drift");
 
     for capability in capabilities
         .iter()
@@ -621,6 +627,8 @@ fn canonical_header_facts_preserve_the_pinned_authoring_surface() {
             "wardley-beta",
             "cynefin-beta",
             "flowchart-elk TD",
+            "usecase-beta",
+            "agentflow-beta",
         ]
     );
     for header in diagram_header_facts() {
@@ -674,6 +682,8 @@ fn canonical_supported_diagrams_are_backed_by_typed_render_parsers() {
             "wardley",
             "xychart",
             "zenuml",
+            "agentflow",
+            "usecase",
         ]
     );
 
@@ -706,7 +716,7 @@ fn built_in_typed_render_family_catalog_is_canonical_and_concrete() {
         .map(|family| family.render_model_kind)
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(families.len(), 31);
+    assert_eq!(families.len(), 33);
     assert_eq!(model_kinds.len(), families.len());
     assert_eq!(
         diagram_types,
@@ -742,6 +752,8 @@ fn built_in_typed_render_family_catalog_is_canonical_and_concrete() {
             "wardley",
             "xychart",
             "zenuml",
+            "agentflow",
+            "usecase",
         ]
     );
     assert!(

@@ -1235,7 +1235,7 @@ mod tests {
         );
         assert_eq!(detection.diagram_type, "flowchart");
         assert_eq!(detection.syntax_id, "flowchart-v2");
-        assert_eq!(detection.effective_layout_id, "dagre");
+        assert_eq!(detection.effective_layout_id, "elk");
         assert_eq!(editor_document_context_builds_for_tests(), 1);
     }
 

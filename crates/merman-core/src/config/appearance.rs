@@ -12,23 +12,6 @@ pub(crate) fn resolve_appearance(
 ) {
     let section = family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
     for key in ["theme", "look", "layout"] {
-        // Keep target family defaults below user layers until the atomic 12.x bundle promotion
-        // supplies them in generated configuration. Remove these bridges with that promotion.
-        let transitional_family_default = if section == "swimlane"
-            && key == "layout"
-            && defaults.as_value().pointer("/swimlane/layout").is_none()
-        {
-            Some(Value::String("swimlane".to_string()))
-        } else if section == "agentflow" && defaults.as_value().pointer("/agentflow").is_none() {
-            match key {
-                "theme" => Some(Value::String("redux-color".to_string())),
-                "look" => Some(Value::String("neo".to_string())),
-                "layout" => Some(Value::String("elk".to_string())),
-                _ => None,
-            }
-        } else {
-            None
-        };
         // Mindmap's database chooses Cose only when the caller supplied no layout.
         // Resolve this while authored layers are available, before global defaults
         // become indistinguishable from an explicit request (including null).
@@ -38,7 +21,6 @@ pub(crate) fn resolve_appearance(
             .into_iter()
             .find_map(|layer| read_appearance(layer, section, key))
             .or(mindmap_default.as_ref())
-            .or(transitional_family_default.as_ref())
             .or_else(|| read_appearance(defaults, section, key));
         let Some(value) = value else {
             continue;

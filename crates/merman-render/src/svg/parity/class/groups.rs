@@ -32,6 +32,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) look: &'a str,
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
+    pub(super) uses_elk_adapter_dom: bool,
     pub(super) edge_paths_class: &'static str,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -80,6 +81,7 @@ pub(super) fn render_class_split_edge_groups(
             look: ctx.look,
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
+            uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
             edge_paths_class: ctx.edge_paths_class,
             emit: ctx.emit,
         },

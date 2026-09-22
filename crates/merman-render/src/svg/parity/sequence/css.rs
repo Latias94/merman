@@ -198,10 +198,10 @@ pub(super) fn sequence_css(
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
         id, drop_shadow, node_border
     );
-    let _ = write!(
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
     );
     out
 }

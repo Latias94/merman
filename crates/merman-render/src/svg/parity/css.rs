@@ -121,8 +121,11 @@ where
     }
 }
 
-fn write_mermaid_common_neo_css<I>(out: &mut String, id: I, effective_config: &serde_json::Value)
-where
+pub(super) fn write_mermaid_common_neo_css<I>(
+    out: &mut String,
+    id: I,
+    effective_config: &serde_json::Value,
+) where
     I: Copy + std::fmt::Display,
 {
     let css = MermaidCommonNeoCss::new(effective_config);
@@ -202,7 +205,7 @@ where
     out
 }
 
-fn write_mermaid_base_css_root_rule_to<I>(
+pub(in crate::svg::parity) fn write_mermaid_base_css_root_rule_to<I>(
     out: &mut dyn std::fmt::Write,
     id: I,
     font_family: &str,
@@ -210,6 +213,9 @@ fn write_mermaid_base_css_root_rule_to<I>(
 where
     I: Copy + std::fmt::Display,
 {
+    if font_family.is_empty() {
+        return Ok(());
+    }
     write!(
         out,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
@@ -260,6 +266,7 @@ enum InfoCssFontSizeSource {
 
 struct InfoCssValues {
     font_family: String,
+    root_font_family: String,
     font_size_css: String,
     normal_edge_stroke_width_css: String,
     text_color: String,
@@ -288,8 +295,10 @@ impl InfoCssValues {
         }
         .unwrap_or_else(|| "16px".to_string());
 
+        let root_font_family = crate::config::config_root_font_family_css(effective_config);
         Self {
             font_family,
+            root_font_family,
             font_size_css,
             normal_edge_stroke_width_css: mermaid_stroke_width_px(effective_config),
             text_color: theme_token(effective_config, "textColor", "#333"),
@@ -324,7 +333,7 @@ impl InfoCssValues {
         I: Copy + std::fmt::Display,
     {
         write_mermaid_common_neo_css_to(out, id, &self.neo)?;
-        write_mermaid_base_css_root_rule_to(out, id, &self.font_family)
+        write_mermaid_base_css_root_rule_to(out, id, &self.root_font_family)
     }
 }
 
@@ -499,7 +508,10 @@ where
 
     write_mermaid_common_neo_css(&mut out, id, effective_config);
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    out.push_str(&mermaid_base_css_root_rule(id, &font_family));
+    out.push_str(&mermaid_base_css_root_rule(
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
+    ));
     ArchitectureCssParts {
         css: out,
         font_family,
@@ -732,7 +744,8 @@ where
     let _ = write!(
         &mut out,
         r#"#{} [data-look=neo].labelBkg{{background-color:{};}}"#,
-        id, label_background
+        id,
+        css_rgba_fade(&tertiary_color, 0.5)?
     );
     let _ = write!(
         &mut out,
@@ -740,7 +753,10 @@ where
         id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
     write_mermaid_common_neo_css(&mut out, id, effective_config);
-    out.push_str(&mermaid_base_css_root_rule(id, &font));
+    out.push_str(&mermaid_base_css_root_rule(
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
+    ));
     Ok(out)
 }
 

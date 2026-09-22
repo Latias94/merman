@@ -46,10 +46,22 @@ fn approx_eq(a: f64, b: f64) -> bool {
 }
 
 fn layout_flowchart(text: &str) -> FlowchartLayout {
+    layout_flowchart_with_engine(text, Engine::new())
+}
+
+fn layout_dagre_flowchart(text: &str) -> FlowchartLayout {
+    layout_flowchart_with_engine(
+        text,
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+            serde_json::json!({"layout": "dagre"}),
+        )),
+    )
+}
+
+fn layout_flowchart_with_engine(text: &str, engine: Engine) -> FlowchartLayout {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let engine = Engine::new();
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -124,20 +136,20 @@ fn rects_overlap(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), eps: f64) -> 
 
 #[test]
 fn flowchart_node_spacing_zero_falls_back_to_mermaid_default() {
-    let default = layout_flowchart(
+    let default = layout_dagre_flowchart(
         r#"flowchart TB
 A --> B
 A --> C
 "#,
     );
-    let zero = layout_flowchart(
+    let zero = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"nodeSpacing": 0}}}%%
 flowchart TB
 A --> B
 A --> C
 "#,
     );
-    let roomy = layout_flowchart(
+    let roomy = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"nodeSpacing": 100}}}%%
 flowchart TB
 A --> B
@@ -214,18 +226,18 @@ one@{ view: collapsed }
 
 #[test]
 fn flowchart_rank_spacing_zero_falls_back_to_mermaid_default() {
-    let default = layout_flowchart(
+    let default = layout_dagre_flowchart(
         r#"flowchart TB
 A --> B
 "#,
     );
-    let zero = layout_flowchart(
+    let zero = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"rankSpacing": 0}}}%%
 flowchart TB
 A --> B
 "#,
     );
-    let roomy = layout_flowchart(
+    let roomy = layout_dagre_flowchart(
         r#"%%{init: {"flowchart": {"rankSpacing": 100}}}%%
 flowchart TB
 A --> B
@@ -365,7 +377,9 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         .join("upstream_subgraphs.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -649,7 +663,9 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
     )
     .expect("read fixture");
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -698,7 +714,9 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
     let text_no_margin = "flowchart TD\nsubgraph A\na-->b\nend\n";
     let text_with_margin = "%%{init: {\"flowchart\": {\"subGraphTitleMargin\": {\"top\": 10, \"bottom\": 5}}}}%%\nflowchart TD\nsubgraph A\na-->b\nend\n";
 
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
 
     let parsed_no_margin = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text_no_margin, ParseOptions::default()),
@@ -831,7 +849,7 @@ fn flowchart_subgraph_dir_does_not_override_parent_layout_for_external_cluster()
 
 #[test]
 fn flowchart_layout_merges_self_loop_segments_into_one_logical_edge() {
-    let layout = layout_flowchart("flowchart TB\nA -->|again| A\n");
+    let layout = layout_dagre_flowchart("flowchart TB\nA -->|again| A\n");
 
     assert_eq!(layout.edges.len(), 1);
     let edge = &layout.edges[0];
@@ -848,7 +866,7 @@ fn flowchart_layout_merges_self_loop_segments_into_one_logical_edge() {
 
 #[test]
 fn flowchart_safe_anchor_avoids_leaf_inside_extractable_sibling_cluster() {
-    let layout = layout_flowchart(
+    let layout = layout_dagre_flowchart(
         "flowchart TD\nsubgraph P\n  subgraph I\n    a\n  end\n  b\nend\nb --> x\nP --> y\n",
     );
 
@@ -890,8 +908,9 @@ fn flowchart_regular_edge_id_containing_cyclic_special_is_not_a_helper() {
 
 #[test]
 fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
-    let layout =
-        layout_flowchart("flowchart TD\nA first-loop@-->|first| A\nA second-loop@-->|second| A\n");
+    let layout = layout_dagre_flowchart(
+        "flowchart TD\nA first-loop@-->|first| A\nA second-loop@-->|second| A\n",
+    );
 
     assert_eq!(layout.edges.len(), 1);
     assert_eq!(layout.edges[0].id, "second-loop");
@@ -990,7 +1009,10 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
     // common compound parent (the outer subgraph), so only the outer cluster must include it.
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Left\n    a\n  end\n  subgraph Right\n    b\n  end\n  a -->|this is a very very very long cross-subgraph label| b\nend\n";
 
-    let engine = Engine::new();
+    // Keep the minimum node width from hiding the measured-label relationship.
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"flowchart": {"minNodeWidth": 0}}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1128,7 +1150,11 @@ fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
         "securityLevel: loose\n  elk:\n    nodePlacementAlignment: NONE",
     );
 
-    let engine = Engine::new();
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default", "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -1302,7 +1328,13 @@ Y@{ shape: curved-trapezoid, label: "Label" }
 Z@{ shape: folder, label: "Label" }
 "#;
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1893,7 +1925,15 @@ fn flowchart_fixed_radius_circles_use_source_defined_nominal_diameters() {
 #[test]
 fn flowchart_public_shape_aliases_use_their_source_geometry() {
     let layout = layout_flowchart(
-        r#"flowchart TB
+        r#"---
+config:
+  theme: default
+  look: classic
+  flowchart:
+    minNodeWidth: 0
+    padding: 15
+---
+flowchart TB
 R0@{ shape: rect, label: "same" }
 R1@{ shape: proc, label: "same" }
 R2@{ shape: process, label: "same" }
@@ -1947,7 +1987,13 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
         .unwrap();
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -1983,7 +2029,7 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 }
 
 #[test]
-fn flowchart_empty_subgraph_node_uses_configured_svg_wrapping_width() {
+fn dagre_flowchart_empty_subgraph_node_uses_configured_svg_wrapping_width() {
     fn layout_for(wrapping_width: usize) -> FlowchartLayout {
         let text = format!(
             r#"%%{{init: {{"htmlLabels": false, "flowchart": {{"htmlLabels": false, "wrappingWidth": {wrapping_width}}}}}}}%%
@@ -1992,7 +2038,7 @@ subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
 end
 "#
         );
-        layout_flowchart(&text)
+        layout_dagre_flowchart(&text)
     }
 
     let narrow = layout_for(60);
@@ -2075,7 +2121,13 @@ fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrappin
     // display-table min-content width may exceed `max-width`, while height remains single-line.
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": true}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2126,7 +2178,13 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
     // satisfy the width constraint, increasing height.
     let text = "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": false}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2234,7 +2292,14 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
     // with the default width=200).
     let text = format!("flowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n");
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -2283,7 +2348,14 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n"
     );
 
-    let engine = Engine::new();
+    // Isolate label/shape rules from the release's default appearance and minimum width.
+    let engine =
+        Engine::new().with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "layout": "dagre",
+            "theme": "default",
+            "look": "classic",
+            "flowchart": {"minNodeWidth": 0, "padding": 15}
+        })));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
     )
@@ -2328,7 +2400,10 @@ B[Same label]
 classDef small font-size:50%;
 "#;
 
-    let engine = Engine::new();
+    // Keep the minimum node width from hiding the measured-label relationship.
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"flowchart": {"minNodeWidth": 0}}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2365,7 +2440,15 @@ classDef small font-size:50%;
 #[test]
 fn flowchart_html_class_box_styles_follow_span_block_layout() {
     let layout = layout_flowchart(
-        r#"flowchart LR
+        r#"---
+config:
+  theme: default
+  look: classic
+  flowchart:
+    minNodeWidth: 0
+    padding: 15
+---
+flowchart LR
 Plain[same]
 Background[same]:::background
 Border[same]:::border
@@ -2574,12 +2657,14 @@ fn non_cyclic_subgraph_membership_chain_still_lays_out() {
 }
 
 #[test]
-fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
+fn dagre_duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";
-    let engine = Engine::new();
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"layout": "dagre"}),
+    ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -2606,8 +2691,8 @@ fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
 }
 
 #[test]
-fn duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
-    let layout = layout_flowchart(
+fn dagre_duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
+    let layout = layout_dagre_flowchart(
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
     );
 
@@ -2621,8 +2706,8 @@ fn duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
 }
 
 #[test]
-fn duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
-    let layout = layout_flowchart(
+fn dagre_duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
+    let layout = layout_dagre_flowchart(
         "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
     );
 
@@ -2636,8 +2721,8 @@ fn duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
 }
 
 #[test]
-fn duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty() {
-    let layout = layout_flowchart(
+fn dagre_duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty() {
+    let layout = layout_dagre_flowchart(
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
     );
 

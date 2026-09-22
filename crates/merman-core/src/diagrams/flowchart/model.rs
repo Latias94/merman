@@ -211,7 +211,7 @@ impl FlowchartRenderContext {
             styles,
             collapsed_subgraphs,
             collapsed_replacements,
-            subgraph_color_ordinals: FxHashMap::default(),
+            subgraph_color_ordinals: build_subgraph_color_ordinals(subgraphs),
         }
     }
 
@@ -311,6 +311,43 @@ impl FlowchartRenderContext {
                     }),
             )
     }
+}
+
+fn build_subgraph_color_ordinals(subgraphs: &[FlowSubgraph]) -> FxHashMap<String, usize> {
+    let ids: FxHashSet<&str> = subgraphs.iter().map(|graph| graph.id.as_str()).collect();
+    let mut parents = FxHashMap::default();
+    for graph in subgraphs {
+        for child in &graph.nodes {
+            if ids.contains(child.as_str()) {
+                parents.insert(child.as_str(), graph.id.as_str());
+            }
+        }
+    }
+    let mut children: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+    for graph in subgraphs {
+        if let Some(&parent) = parents.get(graph.id.as_str()) {
+            children.entry(parent).or_default().push(graph.id.as_str());
+        }
+    }
+    // Jison stores containers when they close. A containment preorder restores declaration
+    // order and keeps each slot stable when the same container is rendered collapsed.
+    let mut pending: Vec<_> = subgraphs
+        .iter()
+        .rev()
+        .filter(|graph| !parents.contains_key(graph.id.as_str()))
+        .map(|graph| graph.id.as_str())
+        .collect();
+    let mut ordinals = FxHashMap::default();
+    while let Some(id) = pending.pop() {
+        if ordinals.contains_key(id) {
+            continue;
+        }
+        ordinals.insert(id.to_owned(), ordinals.len());
+        if let Some(children) = children.get(id) {
+            pending.extend(children.iter().rev().copied());
+        }
+    }
+    ordinals
 }
 
 fn build_collapsed_replacements(

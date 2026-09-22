@@ -4159,9 +4159,10 @@ flowchart TD
 
     #[test]
     fn dagre_preserves_operation_computed_length_precision() {
+        // Isolate host precision from Mermaid 12's minimum label width.
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
             )
             .expect("parse ok")

@@ -75,17 +75,20 @@ fn er_svg_renders_entities_and_relationships() {
     let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
 
     assert!(svg.contains(r#"id="merman-entity-BOOK-0""#));
-    assert!(svg.contains(r#"data-look="classic""#));
+    assert!(svg.contains(r#"data-look="neo""#));
     assert!(svg.contains(r#"id="merman-id_entity-BOOK-0_entity-PAGE-1_0""#));
     assert!(svg.contains(r#"id="merman-drop-shadow""#));
     assert!(svg.contains("relationshipLine"));
+    let edge_style_pattern = if cfg!(feature = "layout-elk") {
+        r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="stroke-dasharray: [^"]*; stroke-dashoffset: 0;fill:none;;;fill:none"[^>]*>"#
+    } else {
+        r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="undefined;;;undefined"[^>]*>"#
+    };
     assert!(
-        Regex::new(
-            r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="undefined;;;undefined"[^>]*>"#
-        )
-        .expect("relationship path regex")
-        .is_match(&svg),
-        "relationship paths should preserve Mermaid's exact empty pathStyle serialization"
+        Regex::new(edge_style_pattern)
+            .expect("relationship path regex")
+            .is_match(&svg),
+        "relationship paths should preserve the selected renderer's pathStyle serialization"
     );
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
@@ -95,10 +98,17 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(
         {
             let path_re = Regex::new(r#"<path[^>]*relationshipLine[^>]*>"#).expect("regex");
-            let d_re = Regex::new(r#"\bd="[^"]*C"#).expect("regex");
-            path_re.find_iter(&svg).any(|m| d_re.is_match(m.as_str()))
+            let d_re = Regex::new(r#"\bd="([^"]*)"#).expect("regex");
+            path_re.find_iter(&svg).any(|m| {
+                let d = &d_re.captures(m.as_str()).expect("path data")[1];
+                if cfg!(feature = "layout-elk") {
+                    d.contains('L') && !d.contains('C')
+                } else {
+                    d.contains('C')
+                }
+            })
         },
-        "expected curveBasis cubic bezier commands in relationship paths"
+        "expected ELK rounded segments or Dagre basis curves in relationship paths"
     );
     assert!(
         svg.contains("color: rgb(255, 255, 255) !important;"),
@@ -243,4 +253,51 @@ erDiagram
             && !edge_labels.contains("<foreignObject"),
         "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
     );
+}
+
+#[test]
+fn er_svg_distinguishes_empty_and_whitespace_relationship_labels() {
+    let svg = render_er_svg_from_text(
+        r#"erDiagram
+BOOK }|..|{ AUTHOR : ""
+BOOK }|..|{ GENRE : " "
+AUTHOR }|..|{ GENRE : "  "
+"#,
+        &SvgRenderOptions::default(),
+    );
+    let labels = edge_labels_group(&svg);
+    assert_eq!(labels.matches(r#"<g class="edgeLabel""#).count(), 2);
+    assert!(!labels.contains("undefined"));
+    assert!(!labels.contains("NaN"));
+    assert_eq!(labels.matches(r#"width="0" height="0""#).count(), 2);
+}
+
+#[test]
+fn er_svg_row_fills_follow_optional_theme_colors() {
+    for (variables, expected_fills) in [
+        (serde_json::json!({}), vec![]),
+        (
+            serde_json::json!({"rowOdd": "#123456", "rowEven": "#abcdef"}),
+            vec!["#123456", "#abcdef"],
+        ),
+        (serde_json::json!({"rowOdd": "none", "rowEven": ""}), vec![]),
+    ] {
+        let config = serde_json::json!({"theme": "redux", "themeVariables": variables});
+        let text = format!(
+            "%%{{init: {config}}}%%\nerDiagram\n BOOK {{\n string title\n int pages\n }}\n"
+        );
+        let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
+        let row_re = Regex::new(r#"<g[^>]*class="row-rect-(?:odd|even)"[^>]*>(.*?)</g>"#).unwrap();
+        let rows = row_re.captures_iter(&svg).collect::<Vec<_>>();
+        assert_eq!(rows.len(), 2);
+        for (index, row) in rows.iter().enumerate() {
+            assert_eq!(
+                row[1].matches("<path ").count(),
+                if expected_fills.is_empty() { 1 } else { 2 }
+            );
+            if let Some(fill) = expected_fills.get(index) {
+                assert!(row[1].contains(&format!(r#"fill="{fill}""#)));
+            }
+        }
+    }
 }

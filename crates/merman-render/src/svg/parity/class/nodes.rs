@@ -44,6 +44,7 @@ pub(super) struct ClassNodesRenderState<'a> {
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNode>,
+    pub(super) class_color_indices: &'a FxHashMap<&'a str, usize>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
     pub(super) settings: &'a ClassRenderSettings,
@@ -608,6 +609,7 @@ fn render_class_split_edges_for_namespace(
         look: edge_ctx.look,
         hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
         timing: edge_ctx.timing,
+        uses_elk_adapter_dom: edge_ctx.uses_elk_adapter_dom,
         edge_paths_class: edge_ctx.edge_paths_class,
         emit: edge_ctx.emit,
     };
@@ -747,6 +749,8 @@ fn render_class_node_id(
         ctx.emit,
         settings.look.as_str(),
         settings.security_level_loose,
+        ctx.class_color_indices.get(n.id.as_str()).copied(),
+        super::css::class_palette_size(ctx.effective_config),
     )?;
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {
@@ -796,6 +800,8 @@ fn render_class_node_id(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
+                use_gradient: config_bool(ctx.effective_config, &["themeVariables", "useGradient"])
+                    .unwrap_or(false),
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
@@ -823,6 +829,8 @@ fn render_class_node_id(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
+                use_gradient: config_bool(ctx.effective_config, &["themeVariables", "useGradient"])
+                    .unwrap_or(false),
                 timing: ctx.timing,
             },
         );

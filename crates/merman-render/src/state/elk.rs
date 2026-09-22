@@ -6,8 +6,9 @@
 use super::StateDiagramModel;
 use super::config::*;
 use super::layout::{
-    edge_label_metrics, note_group_owner_id, state_hidden_prefixes, state_node_dimensions,
-    title_label_metrics, validate_state_parent_cycles,
+    edge_label_metrics, note_group_owner_id, state_fork_join_painted_dimensions,
+    state_hidden_prefixes, state_node_dimensions, title_label_metrics,
+    validate_state_parent_cycles,
 };
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
@@ -75,6 +76,7 @@ pub(super) fn layout(
         |id: &str| -> String { canonical_groups.get(id).copied().unwrap_or(id).to_owned() };
     let mut nodes = Vec::with_capacity(model.nodes.len());
     let mut source_nodes = HashMap::new();
+    let mut painted_group_labels = HashMap::new();
     for node in &model.nodes {
         if hidden.is_hidden(&node.id) || canonical(&node.id) != node.id {
             continue;
@@ -87,6 +89,10 @@ pub(super) fn layout(
             .unwrap_or_else(|| node.id.clone());
         let (width, height) = if group {
             (0.0, 0.0)
+        } else if matches!(node.shape.as_str(), "fork" | "join") {
+            // ELK insertMeasuredNode replaces forkJoin's padded dimensions with the
+            // painted element bbox. Dagre retains that shape function's padding.
+            state_fork_join_painted_dimensions(settings.graph.rankdir)
         } else {
             state_node_dimensions(node, &settings, measurer)?
         };
@@ -96,7 +102,13 @@ pub(super) fn layout(
             } else {
                 title_label_metrics(&title, measurer, &settings.text_style, settings.wrap_mode)
             };
-            Some(elk::Label { width, height })
+            painted_group_labels.insert(node.id.as_str(), elk::Label { width, height });
+            // Mermaid ELK's getMeasuredLabelData removes the 2px labelBBox adjustment
+            // before reserving the title strip; the cluster painter retains the full bbox.
+            Some(elk::Label {
+                width,
+                height: (height - 2.0).max(0.0),
+            })
         } else {
             None
         };
@@ -140,12 +152,9 @@ pub(super) fn layout(
         {
             continue;
         }
-        let (width, height) = edge_label_metrics(
-            &edge.label,
-            measurer,
-            &settings.text_style,
-            settings.wrap_mode,
-        );
+        let label = crate::text::mermaid_html_breaks_to_newlines(&edge.label);
+        let (width, height) =
+            edge_label_metrics(&label, measurer, &settings.text_style, settings.wrap_mode);
         edges.push(elk::Edge {
             id: edge.id.clone(),
             source: canonical(&edge.start),
@@ -156,7 +165,7 @@ pub(super) fn layout(
         });
         source_edges.insert(edge.id.as_str(), edge);
     }
-    let graph = elk::Graph {
+    let mut graph = elk::Graph {
         id: "root".to_owned(),
         direction: direction(&model.direction),
         nodes,
@@ -168,6 +177,7 @@ pub(super) fn layout(
         },
         options: crate::elk_options::layout_options(config),
     };
+    crate::elk_hierarchy::apply_to_graph(&mut graph, work)?;
     let placed = elk::layout_with_operation_seed_and_work_control(&graph, operation_seed, work)
         .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
     let graph_nodes: HashMap<_, _> = graph
@@ -202,10 +212,7 @@ pub(super) fn layout(
             })?;
         if source.kind == elk::NodeKind::Group {
             let semantic = source_nodes[node.id.as_str()];
-            let label = source.label.unwrap_or(elk::Label {
-                width: 0.0,
-                height: 0.0,
-            });
+            let label = painted_group_labels[node.id.as_str()];
             output.clusters.push(LayoutCluster {
                 id: node.id.clone(),
                 x: node.x,

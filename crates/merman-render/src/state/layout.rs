@@ -1452,6 +1452,14 @@ pub(super) fn note_group_owner_id(id: &str) -> Option<&str> {
     (!owner.is_empty()).then_some(owner)
 }
 
+pub(super) fn state_fork_join_painted_dimensions(rankdir: RankDir) -> (f64, f64) {
+    if matches!(rankdir, RankDir::LR | RankDir::RL) {
+        (10.0, 70.0)
+    } else {
+        (70.0, 10.0)
+    }
+}
+
 pub(super) fn state_node_dimensions(
     n: &StateNode,
     settings: &StateLayoutSettings,
@@ -1470,11 +1478,7 @@ pub(super) fn state_node_dimensions(
         "choice" => (28.0, 28.0),
         "fork" | "join" => {
             let (mut width, mut height) =
-                if matches!(settings.graph.rankdir, RankDir::LR | RankDir::RL) {
-                    (10.0, 70.0)
-                } else {
-                    (70.0, 10.0)
-                };
+                state_fork_join_painted_dimensions(settings.graph.rankdir);
             width += settings.state_padding / 2.0;
             height += settings.state_padding / 2.0;
             (width, height)

@@ -42,11 +42,18 @@ pub(super) fn render_sequence_note(
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,
-        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"/>"##,
+        r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"{look_attr}/>"##,
         x = fmt(x),
         y = fmt(y),
         w = fmt(n.width),
-        h = fmt(n.height)
+        h = fmt(n.height),
+        look_attr = if crate::config::config_diagram_look(ctx.sanitize_config.as_value()).as_str()
+            == "neo"
+        {
+            r#" data-look="neo""#
+        } else {
+            ""
+        },
     );
     if let Some(katex) = sequence_katex_label(
         raw,

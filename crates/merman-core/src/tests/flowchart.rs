@@ -190,7 +190,10 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
     let site_default = engine
         .parse_metadata_sync("swimlane-beta LR\nA-->B\n")
         .expect("swimlane metadata");
-    assert_eq!(site_default.effective_config.get_str("layout"), Some("dagre"));
+    assert_eq!(
+        site_default.effective_config.get_str("layout"),
+        Some("dagre")
+    );
 
     let user_override = engine
         .parse_metadata_sync("%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n")

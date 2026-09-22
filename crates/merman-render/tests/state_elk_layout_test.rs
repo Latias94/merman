@@ -143,3 +143,68 @@ fn state_elk_packing_keeps_missing_sections_but_paints_edges_and_labels() {
     assert!(label["label"]["x"].as_f64().unwrap().is_finite());
     assert!(svg.contains("next"));
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_cross_concurrency_edges_remain_orthogonal_through_parent_boundaries() {
+    let source = include_str!(
+        "../../../fixtures/state/stress_state_concurrency_with_external_edges_051.mmd"
+    );
+    let (layout, _) = render(source, "elk");
+    let nodes = layout["nodes"].as_array().unwrap();
+    let edges = layout["edges"].as_array().unwrap();
+    for source in ["A2", "B2"] {
+        let edge = edges
+            .iter()
+            .find(|edge| edge["from"] == source && edge["to"] == "End")
+            .unwrap();
+        let points = edge["points"].as_array().unwrap();
+        assert!(points.len() >= 4);
+        for segment in points.windows(2) {
+            let dx = segment[0]["x"].as_f64().unwrap() - segment[1]["x"].as_f64().unwrap();
+            let dy = segment[0]["y"].as_f64().unwrap() - segment[1]["y"].as_f64().unwrap();
+            assert!(
+                dx.abs() < 1e-8 || dy.abs() < 1e-8,
+                "cross-container route has a diagonal: {segment:?}"
+            );
+        }
+        let node = nodes.iter().find(|node| node["id"] == source).unwrap();
+        for point in points.iter().take(3) {
+            assert!(
+                (point["x"].as_f64().unwrap() - node["x"].as_f64().unwrap()).abs() < 1e-8,
+                "the compound route must keep its port column across both container boundaries"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_fork_join_uses_painted_bounds_after_measurement() {
+    for (direction, expected) in [("TB", (70.0, 10.0)), ("LR", (10.0, 70.0))] {
+        let source = format!(
+            "stateDiagram-v2\ndirection {direction}\nstate F <<fork>>\nstate J <<join>>\nF --> A\nA --> J\n"
+        );
+        for (backend, padding) in [("elk", 0.0), ("dagre", 4.0)] {
+            let (layout, _) = render(&source, backend);
+            for id in ["F", "J"] {
+                let node = layout["nodes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"] == id)
+                    .unwrap();
+                assert_eq!(
+                    node["width"],
+                    expected.0 + padding,
+                    "{backend} {direction} {id}"
+                );
+                assert_eq!(
+                    node["height"],
+                    expected.1 + padding,
+                    "{backend} {direction} {id}"
+                );
+            }
+        }
+    }
+}
