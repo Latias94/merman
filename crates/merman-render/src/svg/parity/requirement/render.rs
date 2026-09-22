@@ -206,10 +206,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         out
     }
 
-    fn is_prototype_pollution_id(id: &str) -> bool {
-        id == "__proto__"
-    }
-
     fn parse_node_style_overrides(
         css_styles: &[String],
     ) -> (
@@ -696,9 +692,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
-        if n.id == "__proto__" {
-            continue;
-        }
         let cx = n.x + n.width / 2.0;
         let cy = n.y + n.height / 2.0;
         let prepared_node = prepared_nodes
@@ -761,9 +754,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         } else {
             format!("node {}", node_classes.join(" "))
         };
-        let id_attr = if is_prototype_pollution_id(&n.id) {
-            String::new()
-        } else if has_diagram_id {
+        let id_attr = if has_diagram_id {
             format!(r#" id="{diagram_id}-{}""#, escape_xml(&n.id))
         } else {
             format!(r#" id="{}""#, escape_xml(&n.id))

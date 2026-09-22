@@ -27,16 +27,8 @@ pub(crate) use config::RequirementConfigView;
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
     let source_node_count = model
         .requirements
-        .iter()
-        .filter(|node| node.name != "__proto__")
-        .count()
-        .saturating_add(
-            model
-                .elements
-                .iter()
-                .filter(|node| node.name != "__proto__")
-                .count(),
-        );
+        .len()
+        .saturating_add(model.elements.len());
     let source_edge_count = model.relationships.len();
     let self_loop_count = model
         .relationships
@@ -712,12 +704,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     });
 
     for r in &model.requirements {
-        // Mermaid's underlying graph data structures historically used plain JS objects in a few
-        // places. The `__proto__` id can still trigger prototype pollution safeguards, effectively
-        // dropping the node from the rendered graph. Mirror the upstream SVG baselines.
-        if r.name == "__proto__" {
-            continue;
-        }
         if r.name.trim().is_empty() {
             return Err(Error::InvalidModel {
                 message: format!("missing requirement name label for {}", r.name),
@@ -746,9 +732,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     }
 
     for e in &model.elements {
-        if e.name == "__proto__" {
-            continue;
-        }
         if e.name.trim().is_empty() {
             return Err(Error::InvalidModel {
                 message: format!("missing element name label for {}", e.name),
@@ -1141,6 +1124,29 @@ mod tests {
                 metrics.height += 12.0;
             }
             metrics
+        }
+    }
+
+    #[test]
+    fn requirement_layout_work_counts_prototype_named_requirements_and_elements() {
+        for (requirement_name, element_name) in
+            [("__proto__", "constructor"), ("constructor", "__proto__")]
+        {
+            let mut model: RequirementDiagramRenderModel =
+                serde_json::from_value(serde_json::json!({
+                    "requirements": [{ "name": requirement_name, "type": "Requirement" }],
+                    "elements": [{ "name": element_name, "type": "System" }],
+                }))
+                .expect("valid Requirement model");
+            assert_eq!(requirement_layout_work_units(&model), 2);
+            model.relationships.push(
+                merman_core::diagrams::requirement::RequirementRenderRelationship {
+                    rel_type: "satisfies".to_string(),
+                    src: element_name.to_string(),
+                    dst: requirement_name.to_string(),
+                },
+            );
+            assert_eq!(requirement_layout_work_units(&model), 5);
         }
     }
 

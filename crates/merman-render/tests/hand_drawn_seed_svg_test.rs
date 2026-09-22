@@ -526,6 +526,7 @@ fn requirement_svg_hand_drawn_seed_controls_visible_rough_paths() {
         |seed| {
             source_with_init(
                 json!({
+                    "look": "classic",
                     "handDrawnSeed": seed,
                     "themeVariables": {
                         "mainBkg": "#f0fdf4",
