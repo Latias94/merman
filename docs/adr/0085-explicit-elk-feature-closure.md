@@ -2,8 +2,10 @@
 
 ## Status
 
-Accepted. The Rustdoc default in decision 1 is superseded by ADR-0088 for the next release after
-`0.8.0-alpha.6`; the facade default and both crates' explicit aggregates remain unchanged.
+Accepted historically. [ADR-0089](0089-mermaid-12-default-elk-products.md) supersedes the facade,
+CLI, and Rustdoc default selections for `0.8.0-alpha.7`. The explicit aggregate membership and
+artifact-specific license boundary below remain in force. ADR-0088's math opt-in decision also
+remains in force for Rustdoc.
 
 ## Date
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted for the next release after `0.8.0-alpha.6`.
+Accepted for the next release after `0.8.0-alpha.6`. The no-ELK product default is superseded by
+[ADR-0089](0089-mermaid-12-default-elk-products.md) for `0.8.0-alpha.7`; math remains opt-in and
+the explicit aggregates retain their membership.
 
 ## Date
 
