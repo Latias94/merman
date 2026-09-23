@@ -69,7 +69,34 @@ AE1–AE6 为准，并把内嵌字体边界改为当前产品决策：主题保�
 - FFI staticlib 减少 2,993,632 字节（-4.20%）。
 - 旧代码关闭字体功能与当前分支相比，CLI stripped 只减少 133,656 字节（-0.30%），FFI dylib stripped 减少 231,528 字节（-1.04%）。这说明当前主题模型本身的额外体积已经很小；主要体积来自被移除的字体实现和依赖闭包。
 
-因此，按当前产品边界，性能和体积都可接受：普通主题渲染没有可见性能回归，字体实现的体积负担已被移除，当前剩余体积变化属于主题模型代码本身的有限成本。R6 仍保持“部分满足”，因为冷启动、内存和最终发布 archive 的跨消费者复测尚未与本次测量一起闭环。
+仅就“退役 embedded-font 实现”这个改动切片，性能和体积结果可接受：普通主题渲染没有可见回归，字体实现的体积负担已被移除。此结论不能外推到主题重构整体或 alpha.6 到当前的完整版本区间；后者的对照见下节。R6 仍未关闭，冷启动、内存和最终发布 archive 的跨消费者复测也尚未闭环。
+
+#alpha.6 默认配置到当前版本的整体成本对照（2026-09-23）
+
+用户指出前一轮没有使用主题重构前的版本作为基线，这是正确的。前一节的旧代码对照回答的是“退役 embedded-font 实现是否有回归”，不能代表主题重构整体成本。以下补充正式 `v0.8.0-alpha.6` tag 与当前提交的默认配置对照。
+
+alpha.6 没有主题系统，也没有 `embedded-fonts` feature。它的默认 `merman` feature 是 `complete-svg`，包含 `math`；Math 自己依赖 `ratex-svg/embed-fonts` 以绘制数学公式，这不是主题字体支持。当前 `merman` 默认仍是 `complete-svg`。两边都使用各自的默认 feature 编译 `pipeline` 基准；benchmark 使用 `Renderer::new()` 的默认主题路径，没有显式注入自定义 preset 或 ThemeRecipe。输入相同，Criterion 设为 20 samples、1 秒 warm-up、2 秒 measurement；下表为三轮的中位数。
+
+| 基准 | alpha.6 | 当前 | 变化 |
+| --- | ---: | ---: | ---: |
+| `end_to_end/flowchart_tiny` | 33.96 µs | 104.64 µs | +208.2% |
+| `end_to_end/sequence_medium` | 137.41 µs | 331.73 µs | +141.4% |
+| `end_to_end/class_medium` | 578.52 µs | 1.058 ms | +82.9% |
+| `render/flowchart_tiny` | 13.31 µs | 30.41 µs | +128.5% |
+| `render/sequence_medium` | 37.57 µs | 117.47 µs | +212.7% |
+
+这是明显的 alpha.6 到当前版本性能差异，不能视为噪声，也不能判定为主题单独造成：基准的输入相同，但 SVG 输出字节/hash 已变化；期间还有大量 renderer、字体测量和产品能力变化。严格比较工具因此将大部分 fixture 标成不可比；这组手动精确 benchmark 只作为版本区间的回归信号。现有 alpha.6 U10 决策级证据也确认 Class tiny/medium 存在版本区间回归，但同样没有把原因单独归给主题。其可匹配的阶段数据中，Class parse 仅约 +0.6% 至 +17.9%，Class render 约 +37.9% 至 +62.3%；layout 阶段因投影身份改变未能比较。这把调查重点指向 render 路径，但仍不足以把增量归因给主题，而非同期 renderer 变化。
+
+默认 `merman-cli` release artifact 的单机 macOS arm64 对照：
+
+| 形态 | alpha.6 | 当前 | 变化 |
+| --- | ---: | ---: | ---: |
+| 原始二进制 | 41,582,304 B | 49,786,864 B | +8,204,560 B（+19.73%） |
+| `strip -Sx` 后 | 36,772,040 B | 43,759,592 B | +6,987,552 B（+19.00%） |
+
+两个版本默认 CLI 的 normal dependency closure 都是 317 个 unique package names；集合并非相同。当前新增集合中，`merman-theme-contract` 和 `serde_json_canonicalizer` 属于主题交换路径；`palette_math` 来自同期 `roughr` 依赖更新，其余 workspace package 变化也不能只归给主题。package 数量相同不代表依赖成本为零，也无法解释静态链接后的体积变化。
+
+**修正判断：**前一节证明字体退役本身没有可测的主题 API 或普通 SVG 渲染回归，并减少了体积；但它不能证明“主题重构整体没有性能/体积负担”。按 alpha.6 到当前默认配置的整体结果，CLI 增长约 19%，普通图渲染慢约 1.8–3.1 倍，超出“主题功能应只有少量成本”的直觉范围。由于两个版本的输出语义和实现也变化了，目前应把这视为需要归因的版本区间回归，而不是接受为主题必然成本。下一步应固定同一 Mermaid 输入与输出语义，逐阶段比较 parse/layout/render，并做主题 plumbing 的开/关或可控消融；在完成归因前，R6 的性能和 footprint 仍是未关闭项。
 
 #R1–R15 状态
 
