@@ -43,7 +43,8 @@
             "children": [],
             "widthInColumns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       }
     ],
     "edges": [],
@@ -93,7 +94,8 @@
                 "children": [],
                 "widthInColumns": 1
               }
-            ]
+            ],
+            "colorIndex": 0
           }
         ],
         "columns": 2
@@ -138,7 +140,8 @@
             "children": [],
             "widthInColumns": 1
           }
-        ]
+        ],
+        "colorIndex": 0
       },
       {
         "id": "D",
