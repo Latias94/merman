@@ -170,6 +170,31 @@ fn find_pipe_label_end(input: &str, mut pos: usize) -> Option<usize> {
     None
 }
 
+/// Byte length of the non-ASCII identifier character starting at `pos`, if any.
+///
+/// Mermaid's flowchart grammar accepts `UNICODE_TEXT` (Unicode letters) in node ids, e.g.
+/// `開始 --> 終了`. ASCII characters keep their existing byte-level rules; a non-ASCII character
+/// continues an id when it is alphabetic (CJK ideographs, kana, the prolonged sound mark `ー`,
+/// accented Latin). Non-ASCII digits (`１`) and punctuation (`、`) are rejected, as in
+/// mermaid@11.17.2.
+fn non_ascii_id_char_len(input: &str, pos: usize) -> Option<usize> {
+    if !input.is_char_boundary(pos) {
+        return None;
+    }
+    let ch = input[pos..].chars().next()?;
+    (!ch.is_ascii() && ch.is_alphabetic()).then(|| ch.len_utf8())
+}
+
+/// Whether the character at `pos` continues a word for keyword / direction boundary checks
+/// (`[A-Za-z0-9_-]` or a non-ASCII identifier character).
+fn continues_word(input: &str, pos: usize) -> bool {
+    match input.as_bytes().get(pos) {
+        None => false,
+        Some(&b) if b.is_ascii() => b.is_ascii_alphanumeric() || b == b'_' || b == b'-',
+        Some(_) => non_ascii_id_char_len(input, pos).is_some(),
+    }
+}
+
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
@@ -232,8 +257,7 @@ impl<'input> Lexer<'input> {
         if after >= self.input.len() {
             return true;
         }
-        let b = self.input.as_bytes()[after];
-        !b.is_ascii_alphanumeric() && b != b'_' && b != b'-'
+        !continues_word(self.input, after)
     }
 
     pub(super) fn skip_ws(&mut self) {
@@ -321,11 +345,8 @@ impl<'input> Lexer<'input> {
         for d in ["TB", "TD", "BT", "LR", "RL"] {
             if rest.starts_with(d) {
                 let after = self.pos + d.len();
-                if after < self.input.len() {
-                    let b = self.input.as_bytes()[after];
-                    if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
-                        continue;
-                    }
+                if continues_word(self.input, after) {
+                    continue;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -344,11 +365,8 @@ impl<'input> Lexer<'input> {
             };
             if let Some(d) = mapped {
                 let after = self.pos + 1;
-                if after < self.input.len() {
-                    let next = self.input.as_bytes()[after];
-                    if next.is_ascii_alphanumeric() || next == b'_' || next == b'-' {
-                        return None;
-                    }
+                if continues_word(self.input, after) {
+                    return None;
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
@@ -923,10 +941,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        if !first.is_ascii_alphanumeric() && first != b'_' {
+        if first.is_ascii_alphanumeric() || first == b'_' {
+            self.pos += 1;
+        } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
+            self.pos += len;
+        } else {
             return None;
         }
-        self.pos += 1;
 
         while self.pos < bytes.len() {
             if self.pos + 1 < bytes.len()
@@ -938,6 +959,10 @@ impl<'input> Lexer<'input> {
             let b = bytes[self.pos];
             if b.is_ascii_alphanumeric() || b == b'_' {
                 self.pos += 1;
+                continue;
+            }
+            if let Some(len) = non_ascii_id_char_len(self.input, self.pos) {
+                self.pos += len;
                 continue;
             }
             if b == b'-' {
