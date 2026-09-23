@@ -2,7 +2,7 @@
 type: Audit Report
 title: Theme acceptance analysis after embedded-font retirement
 timestamp: 2026-09-23
-source_commit: d3c895b3e
+source_commit: 3b760a0c7
 comparison_branch: main
 preserved_branch: preserve/embedded-fonts-theme
 ---
@@ -36,6 +36,40 @@ AE1–AE6 为准，并把内嵌字体边界改为当前产品决策：主题保�
   binding/native ABI projections、平台绑定和 SVG structure gate 已通过。
 - 发布产物测量显示：相对旧版启用字体实现，剥离符号的 CLI 减少 705,520 字节，FFI dylib 减少
   1,306,520 字节，FFI staticlib 减少 2,993,632 字节。该测量是 macOS arm64 单机证据。
+
+#性能与二进制大小证据（2026-09-23）
+
+这次测量把两种问题分开：
+
+- **主题运行时成本**：`dfe54f279`（旧代码、关闭 `embedded-fonts`）对比当前分支；两边使用相同的 `svg` profile、相同 fixture、相同宿主字体路径。
+- **字体实现总成本**：旧代码开启 `embedded-fonts` 对比当前分支，使用前一轮 macOS arm64 release artifact 测量。
+
+主题运行时的三轮 Criterion 精确基准中位数如下；正值表示当前分支更慢：
+
+| 基准 | 旧代码关闭字体 | 当前分支 | 变化 |
+| --- | ---: | ---: | ---: |
+| `end_to_end/flowchart_tiny` | 103.40 µs | 104.70 µs | +1.26% |
+| `end_to_end/sequence_medium` | 322.22 µs | 326.61 µs | +1.36% |
+| `end_to_end/class_medium` | 1.0813 ms | 1.1026 ms | +1.97% |
+| `end_to_end/mindmap_medium` | 308.53 µs | 308.05 µs | -0.16% |
+| `render/flowchart_tiny` | 31.46 µs | 31.68 µs | +0.70% |
+| `render/sequence_medium` | 122.09 µs | 121.18 µs | -0.75% |
+
+主题 API 的单轮精确测量也没有显示回归：`theme_compile_definition/default` -0.84%、
+`theme_materialize/default` -0.72%、`theme_compile_preset/cyberpunk` +1.06%、
+`theme_export_preset/editor-light` -0.48%、`theme_catalog/reused_engine` +0.92%、
+`theme_catalog/fresh_engine` -0.01%。与完整旧实现（开启 `embedded-fonts`）相比，当前分支的
+主题 API 结果同样在约 ±2% 噪声范围内：Cyberpunk preset 编译为 -1.27%，catalog reused 为
+-1.34%，fresh engine 为 -2.24%。这些不是发布承诺的精确上限，只用于确认没有数量级回归。
+
+二进制结果来自同一台 macOS arm64、Rust 1.95.0、release profile、串行构建：
+
+- 对旧实现开启字体功能，当前分支的 CLI stripped 减少 705,520 字节（-1.59%）。
+- FFI dylib stripped 减少 1,306,520 字节（-5.62%）。
+- FFI staticlib 减少 2,993,632 字节（-4.20%）。
+- 旧代码关闭字体功能与当前分支相比，CLI stripped 只减少 133,656 字节（-0.30%），FFI dylib stripped 减少 231,528 字节（-1.04%）。这说明当前主题模型本身的额外体积已经很小；主要体积来自被移除的字体实现和依赖闭包。
+
+因此，按当前产品边界，性能和体积都可接受：普通主题渲染没有可见性能回归，字体实现的体积负担已被移除，当前剩余体积变化属于主题模型代码本身的有限成本。R6 仍保持“部分满足”，因为冷启动、内存和最终发布 archive 的跨消费者复测尚未与本次测量一起闭环。
 
 #R1–R15 状态
 
