@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "entity-CUSTOMER-0",
-          "x": 66.4,
-          "y": 50.0,
-          "width": 116.8,
-          "height": 84.0,
+          "x": 65.6,
+          "y": 52.5,
+          "width": 107.2,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "entity-ORDER-1",
-          "x": 66.4,
-          "y": 214.0,
+          "x": 65.6,
+          "y": 173.5,
           "width": 100.0,
-          "height": 84.0,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -29,16 +29,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 66.4,
-              "y": 92.0
+              "x": 65.6,
+              "y": 93.0
             },
             {
-              "x": 66.4,
-              "y": 132.0
-            },
-            {
-              "x": 66.4,
-              "y": 172.0
+              "x": 65.6,
+              "y": 133.0
             }
           ],
           "label": null,
@@ -52,10 +48,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 124.8,
-        "max_y": 256.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 119.2,
+        "max_y": 214.0
       }
     }
   }

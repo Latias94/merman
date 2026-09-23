@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "A::B",
-          "x": 85.477,
-          "y": 201.0,
-          "width": 170.953,
-          "height": 134.0,
+          "x": 81.672,
+          "y": 220.5,
+          "width": 139.344,
+          "height": 155.0,
           "is_cluster": true
         },
         {
-          "id": "IPC::Sender",
-          "x": 85.477,
-          "y": 201.0,
-          "width": 100.953,
-          "height": 84.0,
+          "id": "RenderProcessHost",
+          "x": 81.672,
+          "y": 52.5,
+          "width": 133.484,
+          "height": 81.0,
           "is_cluster": false
         },
         {
-          "id": "RenderProcessHost",
-          "x": 85.477,
-          "y": 42.0,
-          "width": 149.125,
-          "height": 84.0,
+          "id": "IPC::Sender",
+          "x": 81.672,
+          "y": 233.5,
+          "width": 91.344,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -37,20 +37,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 85.477,
-              "y": 84.0
+              "x": 81.672,
+              "y": 93.0
             },
             {
-              "x": 85.477,
-              "y": 109.0
+              "x": 81.672,
+              "y": 133.0
             },
             {
-              "x": 85.477,
-              "y": 134.0
-            },
-            {
-              "x": 85.477,
-              "y": 159.0
+              "x": 81.672,
+              "y": 193.0
             }
           ],
           "label": null,
@@ -66,18 +62,18 @@
       "clusters": [
         {
           "id": "A::B",
-          "x": 85.477,
-          "y": 201.0,
-          "width": 170.953,
-          "height": 134.0,
+          "x": 81.672,
+          "y": 220.5,
+          "width": 139.344,
+          "height": 155.0,
           "diff": -15.0,
-          "offset_y": 16.5,
+          "offset_y": 13.5,
           "title": "A::B",
           "title_label": {
-            "x": 85.477,
-            "y": 146.0,
-            "width": 28.16,
-            "height": 24.0
+            "x": 81.672,
+            "y": 153.5,
+            "width": 24.64,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -87,10 +83,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 170.953,
-        "max_y": 268.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 151.344,
+        "max_y": 298.0
       }
     }
   }

@@ -4,167 +4,101 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "t1",
-          "x": 286.16,
-          "y": 243.5,
-          "width": 80.64,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "ignored_dir",
+          "x": 402.0,
+          "y": 313.0,
+          "width": 376.0,
+          "height": 150.0,
+          "is_cluster": true
         },
         {
-          "id": "b1",
-          "x": 286.16,
-          "y": 372.5,
-          "width": 106.88,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "t2",
-          "x": 286.16,
-          "y": 80.0,
-          "width": 80.64,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "b2",
-          "x": 481.96,
-          "y": 70.0,
-          "width": 106.88,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "kept_dir",
+          "x": 397.0,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
+          "is_cluster": true
         },
         {
           "id": "outside1",
-          "x": 65.36,
-          "y": 308.0,
-          "width": 114.72,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 105.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "outside2",
-          "x": 65.36,
-          "y": 80.0,
-          "width": 114.72,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 341.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "outside3",
-          "x": 481.96,
-          "y": 308.0,
-          "width": 114.72,
-          "height": 54.0,
+          "x": 706.0,
+          "y": 105.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "outside4",
-          "x": 481.96,
-          "y": 204.0,
-          "width": 114.72,
-          "height": 54.0,
+          "x": 706.0,
+          "y": 319.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "kept_dir",
-          "x": 286.16,
-          "y": 308.0,
-          "width": 176.88,
-          "height": 258.0,
-          "is_cluster": true
+          "id": "t2",
+          "x": 314.0,
+          "y": 341.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         },
         {
-          "id": "ignored_dir",
-          "x": 368.52,
-          "y": 75.0,
-          "width": 391.6,
-          "height": 134.0,
-          "is_cluster": true
+          "id": "b2",
+          "x": 490.0,
+          "y": 341.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "t1",
+          "x": 397.0,
+          "y": 82.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b1",
+          "x": 397.0,
+          "y": 151.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
-        {
-          "id": "L_t1_b1_0",
-          "from": "t1",
-          "to": "b1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 286.16,
-              "y": 270.5
-            },
-            {
-              "x": 286.16,
-              "y": 308.0
-            },
-            {
-              "x": 286.16,
-              "y": 345.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "L_t2_b2_0",
-          "from": "t2",
-          "to": "b2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 326.48,
-              "y": 76.446
-            },
-            {
-              "x": 399.6,
-              "y": 70.0
-            },
-            {
-              "x": 428.52,
-              "y": 70.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
         {
           "id": "L_outside1_kept_dir_0",
           "from": "outside1",
           "to": "kept_dir",
           "from_cluster": null,
-          "to_cluster": null,
+          "to_cluster": "kept_dir",
           "points": [
             {
-              "x": 122.72,
-              "y": 308.0
+              "x": 164.0,
+              "y": 105.0
             },
             {
-              "x": 147.72,
-              "y": 308.0
-            },
-            {
-              "x": 172.72,
-              "y": 308.0
-            },
-            {
-              "x": 197.72,
-              "y": 308.0
+              "x": 297.0,
+              "y": 105.0
             }
           ],
           "label": null,
@@ -184,20 +118,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 122.72,
-              "y": 80.0
+              "x": 164.0,
+              "y": 341.5
             },
             {
-              "x": 147.72,
-              "y": 80.0
+              "x": 204.0,
+              "y": 341.5
             },
             {
-              "x": 172.72,
-              "y": 80.0
-            },
-            {
-              "x": 245.84,
-              "y": 80.0
+              "x": 238.0,
+              "y": 341.5
             }
           ],
           "label": null,
@@ -213,20 +143,16 @@
           "id": "L_kept_dir_outside3_0",
           "from": "kept_dir",
           "to": "outside3",
-          "from_cluster": null,
+          "from_cluster": "kept_dir",
           "to_cluster": null,
           "points": [
             {
-              "x": 374.6,
-              "y": 308.0
+              "x": 497.0,
+              "y": 105.0
             },
             {
-              "x": 399.6,
-              "y": 308.0
-            },
-            {
-              "x": 424.6,
-              "y": 308.0
+              "x": 630.0,
+              "y": 105.0
             }
           ],
           "label": null,
@@ -240,22 +166,68 @@
         },
         {
           "id": "L_ignored_dir_outside4_0",
-          "from": "t2",
+          "from": "ignored_dir",
           "to": "outside4",
           "from_cluster": "ignored_dir",
           "to_cluster": null,
           "points": [
             {
-              "x": 326.48,
-              "y": 87.464
+              "x": 590.0,
+              "y": 319.0
             },
             {
-              "x": 399.6,
-              "y": 101.0
+              "x": 630.0,
+              "y": 319.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_t2_b2_0",
+          "from": "t2",
+          "to": "b2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 390.0,
+              "y": 341.5
             },
             {
-              "x": 460.37,
-              "y": 177.0
+              "x": 414.0,
+              "y": 341.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_t1_b1_0",
+          "from": "t1",
+          "to": "b1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 397.0,
+              "y": 105.0
+            },
+            {
+              "x": 397.0,
+              "y": 129.0
             }
           ],
           "label": null,
@@ -271,18 +243,18 @@
       "clusters": [
         {
           "id": "ignored_dir",
-          "x": 368.52,
-          "y": 75.0,
-          "width": 391.6,
-          "height": 134.0,
+          "x": 402.0,
+          "y": 313.0,
+          "width": 376.0,
+          "height": 150.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 36.0,
           "title": "ignored_dir local TB external link",
           "title_label": {
-            "x": 368.52,
-            "y": 20.0,
-            "width": 216.48,
-            "height": 24.0
+            "x": 402.0,
+            "y": 258.0,
+            "width": 120.0,
+            "height": 40.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -292,18 +264,18 @@
         },
         {
           "id": "kept_dir",
-          "x": 286.16,
-          "y": 308.0,
-          "width": 176.88,
-          "height": 258.0,
+          "x": 397.0,
+          "y": 105.0,
+          "width": 200.0,
+          "height": 186.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "kept_dir local TB",
           "title_label": {
-            "x": 286.16,
-            "y": 191.0,
-            "width": 112.32,
-            "height": 24.0
+            "x": 397.0,
+            "y": 21.5,
+            "width": 98.28,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -313,10 +285,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 564.32,
-        "max_y": 437.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 782.0,
+        "max_y": 388.0
       }
     }
   }

@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "A",
-          "x": 96.883,
-          "y": 35.0,
-          "width": 177.766,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 34.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 96.883,
-          "y": 163.0,
-          "width": 177.76,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 180.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 96.883,
-          "y": 291.0,
-          "width": 69.6,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 326.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         }
       ],
@@ -37,23 +37,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 96.883,
-              "y": 62.0
+              "x": 88.0,
+              "y": 57.0
             },
             {
-              "x": 96.883,
-              "y": 99.0
-            },
-            {
-              "x": 96.883,
-              "y": 136.0
+              "x": 88.0,
+              "y": 158.0
             }
           ],
           "label": {
-            "x": 96.883,
-            "y": 99.0,
-            "width": 124.641,
-            "height": 24.0
+            "x": 87.531,
+            "y": 107.5,
+            "width": 109.063,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -71,23 +67,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 96.883,
-              "y": 190.0
+              "x": 88.0,
+              "y": 203.0
             },
             {
-              "x": 96.883,
-              "y": 227.0
-            },
-            {
-              "x": 96.883,
-              "y": 264.0
+              "x": 88.0,
+              "y": 304.0
             }
           ],
           "label": {
-            "x": 96.883,
-            "y": 227.0,
-            "width": 123.36,
-            "height": 24.0
+            "x": 87.97,
+            "y": 253.5,
+            "width": 107.94,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -100,10 +92,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 185.766,
-        "max_y": 318.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 164.0,
+        "max_y": 349.0
       }
     }
   }

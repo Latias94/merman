@@ -5,20 +5,20 @@
       "nodes": [
         {
           "id": "A",
-          "x": 77.119,
-          "y": 35.0,
-          "width": 138.238,
-          "height": 54.0,
+          "x": 92.1,
+          "y": 37.5,
+          "width": 160.2,
+          "height": 51.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 146.238,
-        "max_y": 62.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 172.2,
+        "max_y": 63.0
       }
     }
   }

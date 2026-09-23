@@ -5,60 +5,60 @@
       "nodes": [
         {
           "id": "allSides",
-          "x": 88.8,
-          "y": 35.0,
-          "width": 161.6,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "allSides2",
-          "x": 300.4,
-          "y": 35.0,
-          "width": 161.6,
-          "height": 54.0,
+          "x": 280.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "rbSides",
-          "x": 559.12,
-          "y": 35.0,
-          "width": 255.84,
-          "height": 54.0,
+          "x": 472.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ltSides",
-          "x": 848.4,
-          "y": 35.0,
-          "width": 222.72,
-          "height": 54.0,
+          "x": 664.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "lrSides",
-          "x": 1126.8,
-          "y": 35.0,
-          "width": 234.08,
-          "height": 54.0,
+          "x": 856.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "noSide",
-          "x": 1370.16,
-          "y": 35.0,
-          "width": 152.64,
-          "height": 54.0,
+          "x": 1048.0,
+          "y": 45.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 1446.48,
-        "max_y": 62.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 1124.0,
+        "max_y": 78.0
       }
     }
   }

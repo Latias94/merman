@@ -5,58 +5,58 @@
       "nodes": [
         {
           "id": "55",
-          "x": 398.64,
-          "y": 115.5,
-          "width": 33.92,
-          "height": 40.0,
+          "x": 128.0,
+          "y": 102.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "divider-id-1",
-          "x": 93.92,
-          "y": 115.5,
-          "width": 101.84,
-          "height": 140.0,
+          "x": 362.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
           "is_cluster": true
         },
         {
           "id": "divider-id-2",
-          "x": 245.76,
-          "y": 115.5,
-          "width": 101.84,
-          "height": 140.0,
+          "x": 596.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
           "is_cluster": true
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 398.64,
-          "y": 115.5,
-          "width": 133.76,
-          "height": 140.0,
+          "x": 128.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
           "is_cluster": true
         },
         {
           "id": "s2",
-          "x": 246.8,
-          "y": 115.5,
-          "width": 477.6,
-          "height": 215.0,
+          "x": 362.0,
+          "y": 90.5,
+          "width": 700.0,
+          "height": 157.0,
           "is_cluster": true
         },
         {
           "id": "s3",
-          "x": 93.92,
-          "y": 115.5,
-          "width": 31.84,
-          "height": 40.0,
+          "x": 362.0,
+          "y": 102.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "s4",
-          "x": 245.76,
-          "y": 115.5,
-          "width": 31.84,
-          "height": 40.0,
+          "x": 596.0,
+          "y": 102.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
@@ -64,18 +64,18 @@
       "clusters": [
         {
           "id": "divider-id-1",
-          "x": 93.92,
-          "y": 115.5,
-          "width": 101.84,
-          "height": 140.0,
-          "diff": -8.0,
+          "x": 362.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
+          "diff": 0.0,
           "offset_y": 0.0,
-          "title": "divider-id-1",
+          "title": "",
           "title_label": {
-            "x": 93.92,
-            "y": 58.5,
-            "width": 74.24,
-            "height": 24.0
+            "x": 362.0,
+            "y": 60.0,
+            "width": 0.0,
+            "height": 0.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -85,18 +85,18 @@
         },
         {
           "id": "divider-id-2",
-          "x": 245.76,
-          "y": 115.5,
-          "width": 101.84,
-          "height": 140.0,
-          "diff": -8.0,
+          "x": 596.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
+          "diff": 0.0,
           "offset_y": 0.0,
-          "title": "divider-id-2",
+          "title": "",
           "title_label": {
-            "x": 245.76,
-            "y": 58.5,
-            "width": 74.24,
-            "height": 24.0
+            "x": 596.0,
+            "y": 60.0,
+            "width": 0.0,
+            "height": 0.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -106,18 +106,18 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 398.64,
-          "y": 115.5,
-          "width": 133.76,
-          "height": 140.0,
-          "diff": -8.0,
+          "x": 128.0,
+          "y": 102.5,
+          "width": 184.0,
+          "height": 85.0,
+          "diff": 0.0,
           "offset_y": 0.0,
-          "title": "id-38dvt516gkfs-1",
+          "title": "",
           "title_label": {
-            "x": 398.64,
-            "y": 58.5,
-            "width": 125.76,
-            "height": 24.0
+            "x": 128.0,
+            "y": 60.0,
+            "width": 0.0,
+            "height": 0.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -127,18 +127,18 @@
         },
         {
           "id": "s2",
-          "x": 246.8,
-          "y": 115.5,
-          "width": 477.6,
-          "height": 215.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 362.0,
+          "y": 90.5,
+          "width": 700.0,
+          "height": 157.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "s2",
           "title_label": {
-            "x": 246.8,
-            "y": 21.0,
-            "width": 15.84,
-            "height": 24.0
+            "x": 362.0,
+            "y": 22.5,
+            "width": 13.86,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -148,10 +148,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 485.6,
-        "max_y": 223.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 712.0,
+        "max_y": 169.0
       }
     }
   }

@@ -5,24 +5,24 @@
       "nodes": [
         {
           "id": "State1",
-          "x": 108.0,
-          "y": 140.0,
-          "width": 62.08,
-          "height": 40.0,
+          "x": 111.5,
+          "y": 145.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "root_end",
-          "x": 108.0,
-          "y": 217.0,
+          "x": 111.5,
+          "y": 211.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "root_start",
-          "x": 108.0,
-          "y": 15.0,
+          "x": 111.5,
+          "y": 19.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
@@ -37,23 +37,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 108.0,
-              "y": 22.0
+              "x": 111.5,
+              "y": 26.0
             },
             {
-              "x": 108.0,
-              "y": 71.0
-            },
-            {
-              "x": 108.5,
-              "y": 120.5
+              "x": 111.5,
+              "y": 127.0
             }
           ],
           "label": {
-            "x": 108.0,
-            "y": 71.0,
-            "width": 200.0,
-            "height": 48.0
+            "x": 111.05,
+            "y": 76.5,
+            "width": 198.1,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -71,16 +67,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 108.5,
-              "y": 160.5
+              "x": 111.5,
+              "y": 164.0
             },
             {
-              "x": 108.0,
-              "y": 185.0
-            },
-            {
-              "x": 108.0,
-              "y": 210.0
+              "x": 111.5,
+              "y": 204.0
             }
           ],
           "label": null,
@@ -95,10 +87,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 208.0,
-        "max_y": 224.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 210.1,
+        "max_y": 218.0
       }
     }
   }

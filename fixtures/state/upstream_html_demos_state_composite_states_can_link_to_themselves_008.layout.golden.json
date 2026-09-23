@@ -5,42 +5,26 @@
       "nodes": [
         {
           "id": "Active",
-          "x": 67.785,
-          "y": 167.0,
-          "width": 119.57,
-          "height": 90.0,
+          "x": 153.2,
+          "y": 234.5,
+          "width": 184.0,
+          "height": 109.0,
           "is_cluster": true
         },
         {
-          "id": "Active---Active---1",
-          "x": 55.26,
-          "y": 262.05,
-          "width": 0.1,
-          "height": 0.1,
-          "is_cluster": false
-        },
-        {
-          "id": "Active---Active---2",
-          "x": 72.785,
-          "y": 336.15,
-          "width": 0.1,
-          "height": 0.1,
-          "is_cluster": false
-        },
-        {
           "id": "Idle",
-          "x": 72.785,
-          "y": 167.0,
-          "width": 39.04,
-          "height": 40.0,
+          "x": 153.2,
+          "y": 246.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "Inactive",
-          "x": 72.785,
-          "y": 28.0,
-          "width": 66.56,
-          "height": 40.0,
+          "x": 153.2,
+          "y": 30.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         }
       ],
@@ -53,27 +37,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 73.285,
-              "y": 48.5
+              "x": 153.2,
+              "y": 49.0
             },
             {
-              "x": 72.785,
-              "y": 85.0
+              "x": 153.2,
+              "y": 170.0
             },
             {
-              "x": 72.785,
-              "y": 122.0
-            },
-            {
-              "x": 73.285,
-              "y": 147.5
+              "x": 153.2,
+              "y": 228.0
             }
           ],
           "label": {
-            "x": 72.785,
-            "y": 85.0,
-            "width": 28.8,
-            "height": 24.0
+            "x": 152.8,
+            "y": 99.5,
+            "width": 25.2,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -87,31 +67,39 @@
           "id": "edge1",
           "from": "Active",
           "to": "Active",
-          "from_cluster": "state-Active-1",
-          "to_cluster": "state-Active-1",
+          "from_cluster": "Active",
+          "to_cluster": "Active",
           "points": [
             {
-              "x": 46.86,
-              "y": 212.0
+              "x": 125.2,
+              "y": 289.0
             },
             {
-              "x": 46.86,
-              "y": 252.5
+              "x": 125.2,
+              "y": 309.0
             },
             {
-              "x": 88.71,
-              "y": 252.5
+              "x": 41.2,
+              "y": 309.0
             },
             {
-              "x": 88.71,
-              "y": 212.0
+              "x": 41.2,
+              "y": 150.0
+            },
+            {
+              "x": 165.2,
+              "y": 150.0
+            },
+            {
+              "x": 165.2,
+              "y": 180.0
             }
           ],
           "label": {
-            "x": 67.785,
-            "y": 268.5,
-            "width": 28.8,
-            "height": 24.0
+            "x": 24.6,
+            "y": 234.5,
+            "width": 25.2,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -125,18 +113,18 @@
       "clusters": [
         {
           "id": "Active",
-          "x": 67.785,
-          "y": 167.0,
-          "width": 119.57,
-          "height": 90.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 153.2,
+          "y": 234.5,
+          "width": 184.0,
+          "height": 109.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "Active",
           "title_label": {
-            "x": 67.785,
-            "y": 135.0,
-            "width": 41.6,
-            "height": 24.0
+            "x": 153.2,
+            "y": 190.5,
+            "width": 36.4,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -146,10 +134,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 127.57,
-        "max_y": 336.2
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 245.2,
+        "max_y": 309.0
       }
     }
   }

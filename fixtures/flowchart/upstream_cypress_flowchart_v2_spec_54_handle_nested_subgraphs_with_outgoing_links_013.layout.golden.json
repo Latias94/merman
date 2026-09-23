@@ -4,36 +4,36 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "subcontainer-child",
-          "x": 170.52,
-          "y": 90.0,
-          "width": 175.04,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "subcontainer-sibling",
-          "x": 463.74,
-          "y": 90.0,
-          "width": 186.4,
-          "height": 54.0,
-          "is_cluster": false
+          "id": "subGraph1",
+          "x": 136.0,
+          "y": 146.0,
+          "width": 248.0,
+          "height": 268.0,
+          "is_cluster": true
         },
         {
           "id": "subcontainer",
-          "x": 170.52,
-          "y": 90.0,
-          "width": 250.04,
-          "height": 124.0,
+          "x": 136.0,
+          "y": 118.5,
+          "width": 200.0,
+          "height": 117.0,
           "is_cluster": true
         },
         {
-          "id": "subGraph1",
-          "x": 301.22,
-          "y": 90.0,
-          "width": 586.44,
-          "height": 164.0,
-          "is_cluster": true
+          "id": "subcontainer-sibling",
+          "x": 136.0,
+          "y": 233.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "subcontainer-child",
+          "x": 136.0,
+          "y": 130.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
@@ -45,20 +45,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 258.04,
-              "y": 90.0
+              "x": 136.0,
+              "y": 153.0
             },
             {
-              "x": 295.54,
-              "y": 90.0
+              "x": 136.0,
+              "y": 187.0
             },
             {
-              "x": 333.04,
-              "y": 90.0
-            },
-            {
-              "x": 370.54,
-              "y": 90.0
+              "x": 136.0,
+              "y": 211.0
             }
           ],
           "label": null,
@@ -74,39 +70,39 @@
       "clusters": [
         {
           "id": "subGraph1",
-          "x": 301.22,
-          "y": 90.0,
-          "width": 586.44,
-          "height": 164.0,
+          "x": 136.0,
+          "y": 146.0,
+          "width": 248.0,
+          "height": 268.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "main",
           "title_label": {
-            "x": 301.22,
-            "y": 20.0,
-            "width": 30.72,
-            "height": 24.0
+            "x": 136.0,
+            "y": 21.5,
+            "width": 26.88,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "LR",
+          "effective_dir": "TB",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "subcontainer",
-          "x": 170.52,
-          "y": 90.0,
-          "width": 250.04,
-          "height": 124.0,
+          "x": 136.0,
+          "y": 118.5,
+          "width": 200.0,
+          "height": 117.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "subcontainer",
           "title_label": {
-            "x": 170.52,
-            "y": 40.0,
-            "width": 80.16,
-            "height": 24.0
+            "x": 136.0,
+            "y": 69.5,
+            "width": 70.14,
+            "height": 19.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -116,10 +112,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 594.44,
-        "max_y": 172.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 260.0,
+        "max_y": 280.0
       }
     }
   }

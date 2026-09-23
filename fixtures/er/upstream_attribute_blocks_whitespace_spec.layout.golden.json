@@ -5,35 +5,35 @@
       "nodes": [
         {
           "id": "entity-BOOK-0",
-          "x": 73.08,
-          "y": 72.125,
-          "width": 130.16,
-          "height": 128.25,
+          "x": 72.07,
+          "y": 71.625,
+          "width": 120.14,
+          "height": 119.25,
           "is_cluster": false
         },
         {
           "id": "entity-EMPTY-1",
-          "x": 328.16,
-          "y": 72.125,
+          "x": 222.14,
+          "y": 71.625,
           "width": 100.0,
-          "height": 84.0,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "entity-SPACED-2",
-          "x": 663.84,
-          "y": 72.125,
-          "width": 291.36,
-          "height": 85.5,
+          "x": 445.86,
+          "y": 71.625,
+          "width": 267.44,
+          "height": 79.5,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 809.52,
-        "max_y": 136.25
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 579.58,
+        "max_y": 131.25
       }
     }
   }

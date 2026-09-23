@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "support",
-          "x": 85.72,
+          "x": 121.5,
           "y": 103.5,
-          "width": 147.44,
+          "width": 219.0,
           "height": 183.0,
           "is_cluster": true
         },
         {
           "id": "input",
-          "x": 85.72,
+          "x": 121.5,
           "y": 78.0,
-          "width": 99.44,
+          "width": 171.0,
           "height": 36.0,
           "is_cluster": false
         },
         {
           "id": "task",
-          "x": 85.72,
+          "x": 121.5,
           "y": 145.5,
-          "width": 72.42,
+          "width": 150.0,
           "height": 51.0,
           "is_cluster": false
         }
@@ -37,11 +37,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 85.72,
+              "x": 121.5,
               "y": 96.0
             },
             {
-              "x": 85.72,
+              "x": 121.5,
               "y": 120.0
             }
           ],
@@ -58,15 +58,15 @@
       "clusters": [
         {
           "id": "support",
-          "x": 85.72,
+          "x": 121.5,
           "y": 103.5,
-          "width": 147.44,
+          "width": 219.0,
           "height": 183.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "Support",
           "title_label": {
-            "x": 85.72,
+            "x": 121.5,
             "y": 21.5,
             "width": 44.52,
             "height": 19.0
@@ -81,7 +81,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 159.44,
+        "max_x": 231.0,
         "max_y": 195.0
       }
     }

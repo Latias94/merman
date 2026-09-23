@@ -5,34 +5,34 @@
       "nodes": [
         {
           "id": "C",
-          "x": 193.92,
-          "y": 115.5,
-          "width": 25.6,
-          "height": 40.0,
+          "x": 314.0,
+          "y": 126.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "Other",
-          "x": 69.56,
-          "y": 115.5,
-          "width": 53.12,
-          "height": 40.0,
+          "x": 104.0,
+          "y": 114.5,
+          "width": 136.0,
+          "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "Parent",
-          "x": 193.92,
-          "y": 115.5,
-          "width": 95.6,
-          "height": 140.0,
+          "x": 314.0,
+          "y": 114.5,
+          "width": 184.0,
+          "height": 109.0,
           "is_cluster": true
         },
         {
           "id": "PersonalizedCockpit",
-          "x": 142.36,
-          "y": 115.5,
-          "width": 268.72,
-          "height": 215.0,
+          "x": 221.0,
+          "y": 102.5,
+          "width": 418.0,
+          "height": 181.0,
           "is_cluster": true
         }
       ],
@@ -40,18 +40,18 @@
       "clusters": [
         {
           "id": "Parent",
-          "x": 193.92,
-          "y": 115.5,
-          "width": 95.6,
-          "height": 140.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 314.0,
+          "y": 114.5,
+          "width": 184.0,
+          "height": 109.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "Parent",
           "title_label": {
-            "x": 193.92,
-            "y": 58.5,
-            "width": 44.0,
-            "height": 24.0
+            "x": 314.0,
+            "y": 70.5,
+            "width": 38.5,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -61,18 +61,18 @@
         },
         {
           "id": "PersonalizedCockpit",
-          "x": 142.36,
-          "y": 115.5,
-          "width": 268.72,
-          "height": 215.0,
-          "diff": -8.0,
-          "offset_y": 20.0,
+          "x": 221.0,
+          "y": 102.5,
+          "width": 418.0,
+          "height": 181.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
           "title": "PersonalizedCockpit",
           "title_label": {
-            "x": 142.36,
-            "y": 21.0,
-            "width": 130.88,
-            "height": 24.0
+            "x": 221.0,
+            "y": 22.5,
+            "width": 114.52,
+            "height": 21.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -82,10 +82,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 276.72,
-        "max_y": 223.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 430.0,
+        "max_y": 193.0
       }
     }
   }

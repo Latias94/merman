@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "BaseShapes",
-          "x": 106.579,
-          "y": 174.0,
-          "width": 213.157,
-          "height": 348.0,
+          "x": 158.115,
+          "y": 116.5,
+          "width": 292.23,
+          "height": 209.0,
           "is_cluster": true
         },
         {
           "id": "Triangle",
-          "x": 106.579,
-          "y": 77.0,
-          "width": 76.953,
-          "height": 84.0,
+          "x": 71.172,
+          "y": 129.5,
+          "width": 70.344,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "Rectangle",
-          "x": 106.579,
-          "y": 241.0,
-          "width": 138.157,
-          "height": 144.0,
+          "x": 218.287,
+          "y": 129.5,
+          "width": 123.887,
+          "height": 135.0,
           "is_cluster": false
         }
       ],
@@ -32,18 +32,18 @@
       "clusters": [
         {
           "id": "BaseShapes",
-          "x": 106.579,
-          "y": 174.0,
-          "width": 213.157,
-          "height": 348.0,
+          "x": 158.115,
+          "y": 116.5,
+          "width": 292.23,
+          "height": 209.0,
           "diff": -15.0,
-          "offset_y": 16.5,
+          "offset_y": 13.5,
           "title": "BaseShapes",
           "title_label": {
-            "x": 106.579,
-            "y": 12.0,
-            "width": 74.24,
-            "height": 24.0
+            "x": 158.115,
+            "y": 22.5,
+            "width": 64.96,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -53,10 +53,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 213.157,
-        "max_y": 348.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 304.23,
+        "max_y": 221.0
       }
     }
   }

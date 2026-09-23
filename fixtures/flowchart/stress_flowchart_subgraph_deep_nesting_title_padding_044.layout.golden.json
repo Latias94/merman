@@ -4,68 +4,68 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "p1",
-          "x": 535.16,
-          "y": 351.5,
-          "width": 78.56,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "c1a",
-          "x": 366.8,
-          "y": 122.5,
-          "width": 88.16,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "c1b",
-          "x": 366.8,
-          "y": 428.5,
-          "width": 88.16,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "g1",
-          "x": 175.36,
-          "y": 339.0,
-          "width": 78.56,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "g2",
-          "x": 175.36,
-          "y": 518.0,
-          "width": 78.56,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "c2",
-          "x": 175.36,
-          "y": 428.5,
-          "width": 194.72,
-          "height": 358.0,
+          "id": "p",
+          "x": 362.0,
+          "y": 222.0,
+          "width": 700.0,
+          "height": 420.0,
           "is_cluster": true
         },
         {
           "id": "c1",
-          "x": 244.44,
-          "y": 351.5,
-          "width": 402.88,
-          "height": 612.0,
+          "x": 261.0,
+          "y": 234.0,
+          "width": 450.0,
+          "height": 348.0,
           "is_cluster": true
         },
         {
-          "id": "p",
-          "x": 308.72,
-          "y": 351.5,
-          "width": 601.44,
-          "height": 687.0,
+          "id": "p1",
+          "x": 612.0,
+          "y": 234.0,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "c2",
+          "x": 160.0,
+          "y": 211.5,
+          "width": 200.0,
+          "height": 207.0,
           "is_cluster": true
+        },
+        {
+          "id": "c1a",
+          "x": 386.0,
+          "y": 292.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "c1b",
+          "x": 386.0,
+          "y": 361.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "g1",
+          "x": 160.0,
+          "y": 199.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "g2",
+          "x": 160.0,
+          "y": 268.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
         }
       ],
       "edges": [
@@ -77,16 +77,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 366.8,
-              "y": 149.5
+              "x": 386.0,
+              "y": 315.0
             },
             {
-              "x": 366.8,
-              "y": 199.5
-            },
-            {
-              "x": 366.8,
-              "y": 401.5
+              "x": 386.0,
+              "y": 339.0
             }
           ],
           "label": null,
@@ -106,16 +102,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 175.36,
-              "y": 366.0
+              "x": 160.0,
+              "y": 222.0
             },
             {
-              "x": 175.36,
-              "y": 428.5
-            },
-            {
-              "x": 175.36,
-              "y": 491.0
+              "x": 160.0,
+              "y": 246.0
             }
           ],
           "label": null,
@@ -131,18 +123,18 @@
       "clusters": [
         {
           "id": "c1",
-          "x": 244.44,
-          "y": 351.5,
-          "width": 402.88,
-          "height": 612.0,
+          "x": 261.0,
+          "y": 234.0,
+          "width": 450.0,
+          "height": 348.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "child-1 title",
           "title_label": {
-            "x": 244.44,
-            "y": 57.5,
-            "width": 78.72,
-            "height": 24.0
+            "x": 261.0,
+            "y": 69.5,
+            "width": 68.88,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -152,18 +144,18 @@
         },
         {
           "id": "c2",
-          "x": 175.36,
-          "y": 428.5,
-          "width": 194.72,
-          "height": 358.0,
-          "diff": 15.08,
-          "offset_y": 20.0,
+          "x": 160.0,
+          "y": 211.5,
+          "width": 200.0,
+          "height": 207.0,
+          "diff": -4.0,
+          "offset_y": 36.0,
           "title": "grand child title with spaces",
           "title_label": {
-            "x": 175.36,
-            "y": 261.5,
-            "width": 186.72,
-            "height": 24.0
+            "x": 160.0,
+            "y": 128.0,
+            "width": 120.0,
+            "height": 40.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -173,18 +165,18 @@
         },
         {
           "id": "p",
-          "x": 308.72,
-          "y": 351.5,
-          "width": 601.44,
-          "height": 687.0,
+          "x": 362.0,
+          "y": 222.0,
+          "width": 700.0,
+          "height": 420.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "parent title",
           "title_label": {
-            "x": 308.72,
-            "y": 20.0,
-            "width": 76.16,
-            "height": 24.0
+            "x": 362.0,
+            "y": 21.5,
+            "width": 66.64,
+            "height": 19.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -194,10 +186,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 609.44,
-        "max_y": 695.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 712.0,
+        "max_y": 432.0
       }
     }
   }

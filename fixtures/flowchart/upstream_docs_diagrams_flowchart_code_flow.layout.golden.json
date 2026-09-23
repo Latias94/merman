@@ -5,978 +5,978 @@
       "nodes": [
         {
           "id": "Input",
-          "x": 8461.305,
-          "y": 35.0,
-          "width": 163.36,
-          "height": 54.0,
+          "x": 7997.124,
+          "y": 34.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "Detection",
-          "x": 8461.305,
-          "y": 191.32,
-          "width": 158.64,
-          "height": 158.64,
+          "x": 7997.124,
+          "y": 182.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "flowDetector",
-          "x": 8216.43,
-          "y": 359.64,
-          "width": 194.875,
-          "height": 78.0,
+          "x": 7699.499,
+          "y": 361.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "flowDetectorV2",
-          "x": 8461.305,
-          "y": 359.64,
-          "width": 194.875,
-          "height": 78.0,
+          "x": 7910.499,
+          "y": 361.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "elkDetector",
-          "x": 8706.18,
-          "y": 359.64,
-          "width": 194.875,
-          "height": 78.0,
+          "x": 8121.499,
+          "y": 361.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "DetectLegacy",
-          "x": 8216.43,
-          "y": 563.96,
-          "width": 182.64,
-          "height": 182.64,
+          "x": 7699.499,
+          "y": 580.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "DetectNew",
-          "x": 8461.305,
-          "y": 563.96,
-          "width": 165.68,
-          "height": 165.68,
+          "x": 7910.499,
+          "y": 580.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "DetectElk",
-          "x": 8706.18,
-          "y": 563.96,
-          "width": 143.6,
-          "height": 143.6,
+          "x": 8121.499,
+          "y": 580.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "LoadDiagram",
-          "x": 8461.305,
-          "y": 756.28,
-          "width": 167.36,
-          "height": 54.0,
+          "x": 7999.499,
+          "y": 809.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "flowDiagram",
-          "x": 8461.305,
-          "y": 872.28,
-          "width": 163.047,
-          "height": 78.0,
+          "x": 7999.499,
+          "y": 905.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "DiagramStructure",
-          "x": 8461.305,
-          "y": 1056.52,
-          "width": 190.48,
-          "height": 190.48,
+          "x": 7999.499,
+          "y": 1063.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "Parser",
-          "x": 867.4,
-          "y": 1240.76,
-          "width": 185.76,
-          "height": 54.0,
+          "x": 1444.759,
+          "y": 1299.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "Database",
-          "x": 3550.769,
-          "y": 1240.76,
-          "width": 178.24,
-          "height": 54.0,
+          "x": 5115.618,
+          "y": 1292.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "Renderer",
-          "x": 8461.305,
-          "y": 1240.76,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 7554.062,
+          "y": 1292.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "Styles",
-          "x": 8733.705,
-          "y": 1240.76,
-          "width": 184.8,
-          "height": 54.0,
+          "x": 7755.14,
+          "y": 1292.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "Init",
-          "x": 9507.861,
-          "y": 1240.76,
-          "width": 229.12,
-          "height": 54.0,
+          "x": 8412.469,
+          "y": 1292.5,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "flowParser",
-          "x": 465.878,
-          "y": 1368.76,
-          "width": 200.313,
-          "height": 78.0,
+          "x": 472.0,
+          "y": 1430.0,
+          "width": 154.781,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "RemoveWhitespace",
-          "x": 465.878,
-          "y": 1556.76,
-          "width": 240.0,
-          "height": 126.0,
+          "x": 472.0,
+          "y": 1880.5,
+          "width": 152.0,
+          "height": 129.0,
           "is_cluster": false
         },
         {
           "id": "flowJison",
-          "x": 465.878,
-          "y": 1763.16,
-          "width": 268.484,
-          "height": 78.0,
+          "x": 472.0,
+          "y": 2191.5,
+          "width": 214.422,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ParseGraph",
-          "x": 465.878,
-          "y": 1978.12,
-          "width": 209.44,
-          "height": 54.0,
+          "x": 472.0,
+          "y": 2517.5,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ParseVertices",
-          "x": 86.88,
-          "y": 2197.88,
-          "width": 157.76,
-          "height": 54.0,
+          "x": 88.0,
+          "y": 2650.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParseEdges",
-          "x": 285.52,
-          "y": 2197.88,
-          "width": 139.52,
-          "height": 54.0,
+          "x": 280.0,
+          "y": 2650.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParseSubgraphs",
-          "x": 488.8,
-          "y": 2197.88,
-          "width": 167.04,
-          "height": 54.0,
+          "x": 472.0,
+          "y": 2650.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParseClasses",
-          "x": 697.76,
-          "y": 2197.88,
-          "width": 150.88,
-          "height": 54.0,
+          "x": 664.0,
+          "y": 2650.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParseStyles",
-          "x": 896.16,
-          "y": 2197.88,
-          "width": 145.92,
-          "height": 54.0,
+          "x": 856.0,
+          "y": 2650.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "FlowDBClass",
-          "x": 3550.769,
-          "y": 1368.76,
-          "width": 149.922,
-          "height": 78.0,
+          "x": 5115.618,
+          "y": 1437.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "DBInit",
-          "x": 3325.829,
-          "y": 1556.76,
-          "width": 188.0,
-          "height": 150.0,
+          "x": 3006.8,
+          "y": 1649.5,
+          "width": 152.0,
+          "height": 129.0,
           "is_cluster": false
         },
         {
           "id": "DBMethods",
-          "x": 3325.829,
-          "y": 1763.16,
-          "width": 162.8,
-          "height": 162.8,
+          "x": 3006.8,
+          "y": 1880.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "addVertex",
-          "x": 1105.32,
-          "y": 1978.12,
-          "width": 260.0,
-          "height": 102.0,
+          "x": 1322.528,
+          "y": 2191.5,
+          "width": 152.0,
+          "height": 129.0,
           "is_cluster": false
         },
         {
           "id": "addLink",
-          "x": 1759.034,
-          "y": 1978.12,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 2037.04,
+          "y": 2139.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "addSingleLink",
-          "x": 2277.589,
-          "y": 1978.12,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 2232.18,
+          "y": 2191.5,
+          "width": 158.28,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "setDirection",
-          "x": 2542.229,
-          "y": 1978.12,
-          "width": 169.28,
-          "height": 54.0,
+          "x": 2427.32,
+          "y": 2128.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "addSubGraph",
-          "x": 2805.429,
-          "y": 1978.12,
-          "width": 257.12,
-          "height": 54.0,
+          "x": 2621.06,
+          "y": 2139.0,
+          "width": 155.48,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "addClass",
-          "x": 3074.469,
-          "y": 1978.12,
-          "width": 180.96,
-          "height": 54.0,
+          "x": 2814.8,
+          "y": 2128.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "setClass",
-          "x": 3325.829,
-          "y": 1978.12,
-          "width": 221.76,
-          "height": 54.0,
+          "x": 3006.8,
+          "y": 2139.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "setTooltip",
-          "x": 3591.029,
-          "y": 1978.12,
-          "width": 208.64,
-          "height": 54.0,
+          "x": 3198.8,
+          "y": 2139.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "setClickEvent",
-          "x": 3875.349,
-          "y": 1978.12,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 3390.8,
+          "y": 2139.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "setClickFun",
-          "x": 4185.349,
-          "y": 1978.12,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 3582.8,
+          "y": 2139.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "VertexProcess",
-          "x": 1105.32,
-          "y": 2197.88,
-          "width": 172.4,
-          "height": 172.4,
+          "x": 1322.528,
+          "y": 2482.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "CreateVertex",
-          "x": 686.56,
-          "y": 2406.52,
-          "width": 233.281,
-          "height": 102.0,
+          "x": 1048.0,
+          "y": 2692.5,
+          "width": 152.0,
+          "height": 129.0,
           "is_cluster": false
         },
         {
           "id": "SanitizeText",
-          "x": 970.16,
-          "y": 2406.52,
-          "width": 233.92,
-          "height": 54.0,
+          "x": 1256.09,
+          "y": 2650.5,
+          "width": 184.18,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParseMetadata",
-          "x": 1240.48,
-          "y": 2406.52,
-          "width": 206.719,
-          "height": 78.0,
+          "x": 1464.18,
+          "y": 2671.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "SetVertexProps",
-          "x": 1513.761,
-          "y": 2406.52,
-          "width": 239.844,
-          "height": 102.0,
+          "x": 1656.18,
+          "y": 2703.0,
+          "width": 152.0,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "EdgeProcess",
-          "x": 2277.589,
-          "y": 2197.88,
-          "width": 158.64,
-          "height": 158.64,
+          "x": 2232.18,
+          "y": 2482.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "CreateEdge",
-          "x": 1793.441,
-          "y": 2406.52,
-          "width": 219.516,
-          "height": 102.0,
+          "x": 1848.18,
+          "y": 2703.0,
+          "width": 152.0,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "ProcessLinkText",
-          "x": 2039.995,
-          "y": 2406.52,
-          "width": 173.594,
-          "height": 102.0,
+          "x": 2040.18,
+          "y": 2671.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "SetEdgeProps",
-          "x": 2277.589,
-          "y": 2406.52,
-          "width": 201.594,
-          "height": 78.0,
+          "x": 2232.18,
+          "y": 2671.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "GenerateEdgeId",
-          "x": 3368.925,
-          "y": 2406.52,
-          "width": 255.844,
-          "height": 78.0,
+          "x": 2424.18,
+          "y": 2671.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "ValidateEdgeLimit",
-          "x": 3638.769,
-          "y": 2406.52,
-          "width": 183.844,
-          "height": 78.0,
+          "x": 2616.18,
+          "y": 2661.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "GetData",
-          "x": 4426.069,
-          "y": 1978.12,
-          "width": 121.44,
-          "height": 54.0,
+          "x": 3774.8,
+          "y": 2233.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "CollectNodes",
-          "x": 3204.77,
-          "y": 2197.88,
-          "width": 252.64,
-          "height": 54.0,
+          "x": 3390.8,
+          "y": 2430.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "CollectEdges",
-          "x": 3498.29,
-          "y": 2197.88,
-          "width": 234.4,
-          "height": 54.0,
+          "x": 3582.8,
+          "y": 2430.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ProcessSubGraphs",
-          "x": 4426.069,
-          "y": 2197.88,
-          "width": 178.078,
-          "height": 102.0,
+          "x": 3774.8,
+          "y": 2440.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "AddNodeFromVertex",
-          "x": 4665.749,
-          "y": 2197.88,
-          "width": 201.281,
-          "height": 78.0,
+          "x": 3968.613,
+          "y": 2482.5,
+          "width": 155.625,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ProcessEdgeTypes",
-          "x": 4946.389,
-          "y": 2197.88,
-          "width": 260.0,
-          "height": 102.0,
+          "x": 4273.458,
+          "y": 2440.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         },
         {
           "id": "NodeCreation",
-          "x": 4665.749,
-          "y": 2406.52,
-          "width": 144.88,
-          "height": 144.88,
+          "x": 3968.613,
+          "y": 2713.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "FindExistingNode",
-          "x": 4253.073,
-          "y": 2608.28,
-          "width": 227.2,
-          "height": 54.0,
+          "x": 3667.842,
+          "y": 2892.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "CreateBaseNode",
-          "x": 4523.47,
-          "y": 2608.28,
-          "width": 213.594,
-          "height": 126.0,
+          "x": 3859.842,
+          "y": 2934.0,
+          "width": 152.0,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "GetCompiledStyles",
-          "x": 6174.909,
-          "y": 2608.28,
-          "width": 255.52,
-          "height": 54.0,
+          "x": 4077.382,
+          "y": 2881.5,
+          "width": 203.08,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "GetTypeFromVertex",
-          "x": 6474.909,
-          "y": 2608.28,
-          "width": 244.48,
-          "height": 54.0,
+          "x": 4315.633,
+          "y": 2881.5,
+          "width": 193.42,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "flowRendererV3",
-          "x": 8461.305,
-          "y": 1368.76,
-          "width": 242.719,
-          "height": 78.0,
+          "x": 7554.062,
+          "y": 1430.0,
+          "width": 152.0,
+          "height": 108.0,
           "is_cluster": false
         },
         {
           "id": "RenderInit",
-          "x": 8461.305,
-          "y": 1556.76,
-          "width": 209.922,
-          "height": 126.0,
+          "x": 7554.062,
+          "y": 1649.5,
+          "width": 153.938,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "GetLayoutData",
-          "x": 8461.305,
-          "y": 1763.16,
-          "width": 169.281,
-          "height": 78.0,
+          "x": 7554.062,
+          "y": 1880.5,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "SetupLayoutData",
-          "x": 8461.305,
-          "y": 1978.12,
-          "width": 216.0,
-          "height": 126.0,
+          "x": 7554.062,
+          "y": 2195.0,
+          "width": 152.0,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "CallRender",
-          "x": 8267.269,
-          "y": 2197.88,
-          "width": 224.64,
-          "height": 54.0,
+          "x": 7346.148,
+          "y": 2500.0,
+          "width": 153.38,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "SetupViewPort",
-          "x": 7546.669,
-          "y": 2406.52,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 6839.263,
+          "y": 2713.5,
+          "width": 194.68,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ProcessLinks",
-          "x": 7546.669,
-          "y": 2608.28,
-          "width": 221.922,
-          "height": 102.0,
+          "x": 6839.263,
+          "y": 2955.0,
+          "width": 152.0,
+          "height": 108.0,
           "is_cluster": false
         },
         {
           "id": "ShapeSystem",
-          "x": 8946.449,
-          "y": 2406.52,
-          "width": 190.078,
-          "height": 78.0,
+          "x": 7561.26,
+          "y": 2713.5,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ShapeFunctions",
-          "x": 8946.449,
-          "y": 2608.28,
-          "width": 158.64,
-          "height": 158.64,
+          "x": 7561.26,
+          "y": 2944.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "question",
-          "x": 7910.289,
-          "y": 2812.28,
-          "width": 239.04,
-          "height": 54.0,
+          "x": 7132.013,
+          "y": 3183.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "hexagon",
-          "x": 8197.089,
-          "y": 2812.28,
-          "width": 234.56,
-          "height": 54.0,
+          "x": 7324.013,
+          "y": 3183.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "rect_left_inv_arrow",
-          "x": 8494.369,
-          "y": 2812.28,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 7536.093,
+          "y": 3183.0,
+          "width": 192.16,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "lean_right",
-          "x": 8798.769,
-          "y": 2812.28,
-          "width": 248.8,
-          "height": 54.0,
+          "x": 7748.173,
+          "y": 3183.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "lean_left",
-          "x": 9094.129,
-          "y": 2812.28,
-          "width": 241.92,
-          "height": 54.0,
+          "x": 7940.173,
+          "y": 3183.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "insertPolygonShape",
-          "x": 9395.089,
-          "y": 2812.28,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 8152.113,
+          "y": 3183.0,
+          "width": 191.88,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "intersectPolygon",
-          "x": 9705.089,
-          "y": 2812.28,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 8370.763,
+          "y": 3183.0,
+          "width": 165.42,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "intersectRect",
-          "x": 9999.889,
-          "y": 2812.28,
-          "width": 229.6,
-          "height": 54.0,
+          "x": 8569.473,
+          "y": 3183.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "stylesTS",
-          "x": 8733.705,
-          "y": 1368.76,
-          "width": 180.484,
-          "height": 78.0,
+          "x": 7755.14,
+          "y": 1430.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "StyleOptions",
-          "x": 8733.705,
-          "y": 1556.76,
-          "width": 232.797,
-          "height": 126.0,
+          "x": 7755.14,
+          "y": 1649.5,
+          "width": 168.219,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "GenerateCSS",
-          "x": 8733.705,
-          "y": 1763.16,
-          "width": 246.563,
-          "height": 126.0,
+          "x": 7755.14,
+          "y": 1880.5,
+          "width": 152.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "GetIconStyles",
-          "x": 8733.705,
-          "y": 1978.12,
-          "width": 160.16,
-          "height": 54.0,
+          "x": 7755.14,
+          "y": 2128.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "TypeSystem",
-          "x": 1483.757,
-          "y": 1368.76,
-          "width": 168.641,
-          "height": 78.0,
+          "x": 1718.909,
+          "y": 1444.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "FlowVertex",
-          "x": 736.998,
-          "y": 1556.76,
-          "width": 202.24,
-          "height": 54.0,
+          "x": 1334.909,
+          "y": 1597.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "FlowEdge",
-          "x": 982.358,
-          "y": 1556.76,
-          "width": 188.48,
-          "height": 54.0,
+          "x": 1526.909,
+          "y": 1586.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "FlowClass",
-          "x": 1223.078,
-          "y": 1556.76,
-          "width": 192.96,
-          "height": 54.0,
+          "x": 1718.909,
+          "y": 1586.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "FlowSubGraph",
-          "x": 1478.918,
-          "y": 1556.76,
-          "width": 218.72,
-          "height": 54.0,
+          "x": 1910.909,
+          "y": 1597.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "FlowVertexTypeParam",
-          "x": 1744.435,
-          "y": 1556.76,
-          "width": 212.313,
-          "height": 78.0,
+          "x": 2109.55,
+          "y": 1597.0,
+          "width": 165.281,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "UtilityFunctions",
-          "x": 5900.189,
-          "y": 1978.12,
-          "width": 167.12,
-          "height": 167.12,
+          "x": 5234.461,
+          "y": 2191.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "lookUpDomId",
-          "x": 5209.429,
-          "y": 2197.88,
-          "width": 166.08,
-          "height": 54.0,
+          "x": 4465.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getClasses",
-          "x": 5412.309,
-          "y": 2197.88,
-          "width": 139.68,
-          "height": 54.0,
+          "x": 4657.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getDirection",
-          "x": 5607.669,
-          "y": 2197.88,
-          "width": 151.04,
-          "height": 54.0,
+          "x": 4849.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getVertices",
-          "x": 5806.469,
-          "y": 2197.88,
-          "width": 146.56,
-          "height": 54.0,
+          "x": 5041.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getEdges",
-          "x": 5993.909,
-          "y": 2197.88,
-          "width": 128.32,
-          "height": 54.0,
+          "x": 5233.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getSubGraphs",
-          "x": 6187.349,
-          "y": 2197.88,
-          "width": 158.56,
-          "height": 54.0,
+          "x": 5425.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "clear",
-          "x": 6367.909,
-          "y": 2197.88,
-          "width": 102.56,
-          "height": 54.0,
+          "x": 5617.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "defaultConfig",
-          "x": 6548.149,
-          "y": 2197.88,
-          "width": 157.92,
-          "height": 54.0,
+          "x": 5809.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "EventHandling",
-          "x": 7440.409,
-          "y": 2812.28,
-          "width": 149.36,
-          "height": 149.36,
+          "x": 6738.513,
+          "y": 3235.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "setupToolTips",
-          "x": 7179.769,
-          "y": 2975.96,
-          "width": 212.0,
-          "height": 54.0,
+          "x": 6617.733,
+          "y": 3403.5,
+          "width": 165.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "bindFunctions",
-          "x": 7440.409,
-          "y": 2975.96,
-          "width": 209.28,
-          "height": 54.0,
+          "x": 6821.543,
+          "y": 3403.5,
+          "width": 162.62,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "runFunc",
-          "x": 7725.049,
-          "y": 2975.96,
-          "width": 260.0,
-          "height": 78.0,
+          "x": 7041.313,
+          "y": 3414.0,
+          "width": 196.92,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "CommonDB",
-          "x": 7417.048,
-          "y": 1978.12,
-          "width": 212.0,
-          "height": 54.0,
+          "x": 6587.267,
+          "y": 2230.875,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "setAccTitle",
-          "x": 6750.549,
-          "y": 2197.88,
-          "width": 146.88,
-          "height": 54.0,
+          "x": 6001.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getAccTitle",
-          "x": 6947.429,
-          "y": 2197.88,
-          "width": 146.88,
-          "height": 54.0,
+          "x": 6193.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "setAccDescription",
-          "x": 7164.949,
-          "y": 2197.88,
-          "width": 188.16,
-          "height": 54.0,
+          "x": 6385.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getAccDescription",
-          "x": 7403.109,
-          "y": 2197.88,
-          "width": 188.16,
-          "height": 54.0,
+          "x": 6577.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "setDiagramTitle",
-          "x": 7635.989,
-          "y": 2197.88,
-          "width": 177.6,
-          "height": 54.0,
+          "x": 6769.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "getDiagramTitle",
-          "x": 7863.589,
-          "y": 2197.88,
-          "width": 177.6,
-          "height": 54.0,
+          "x": 6961.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "commonClear",
-          "x": 8053.669,
-          "y": 2197.88,
-          "width": 102.56,
-          "height": 54.0,
+          "x": 7153.458,
+          "y": 2419.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "FinalSVG",
-          "x": 7652.929,
-          "y": 2812.28,
-          "width": 175.68,
-          "height": 54.0,
+          "x": 6940.013,
+          "y": 3172.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "LayoutAlgorithm",
-          "x": 9334.52,
-          "y": 2197.88,
-          "width": 170.64,
-          "height": 170.64,
+          "x": 7868.135,
+          "y": 2482.5,
+          "width": 171.0,
+          "height": 171.0,
           "is_cluster": false
         },
         {
           "id": "Dagre",
-          "x": 9149.645,
-          "y": 2406.52,
-          "width": 116.313,
-          "height": 78.0,
+          "x": 7753.26,
+          "y": 2661.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "DagreWrapper",
-          "x": 9334.52,
-          "y": 2406.52,
-          "width": 153.438,
-          "height": 78.0,
+          "x": 7945.26,
+          "y": 2661.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "ELK",
-          "x": 9550.52,
-          "y": 2406.52,
-          "width": 178.563,
-          "height": 78.0,
+          "x": 8137.26,
+          "y": 2661.0,
+          "width": 152.0,
+          "height": 66.0,
           "is_cluster": false
         },
         {
           "id": "TestFiles",
-          "x": 7957.029,
-          "y": 1556.76,
-          "width": 127.84,
-          "height": 54.0,
+          "x": 5317.823,
+          "y": 1681.0,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "flowDbSpec",
-          "x": 7587.03,
-          "y": 1763.16,
-          "width": 157.44,
-          "height": 54.0,
+          "x": 5049.629,
+          "y": 1817.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "flowChartShapesSpec",
-          "x": 7826.79,
-          "y": 1763.16,
-          "width": 222.08,
-          "height": 54.0,
+          "x": 5252.539,
+          "y": 1817.5,
+          "width": 173.82,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ParserTests",
-          "x": 8087.268,
-          "y": 1763.16,
-          "width": 198.875,
+          "x": 5455.449,
+          "y": 1870.0,
+          "width": 152.0,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "ConfigSetup",
-          "x": 9507.861,
-          "y": 1368.76,
-          "width": 189.76,
-          "height": 54.0,
+          "x": 8412.469,
+          "y": 1448.9,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "FlowchartConfig",
-          "x": 8997.303,
-          "y": 1556.76,
-          "width": 194.4,
-          "height": 54.0,
+          "x": 7955.249,
+          "y": 1586.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "ArrowMarkers",
-          "x": 9245.143,
-          "y": 1556.76,
-          "width": 201.28,
-          "height": 54.0,
+          "x": 8149.059,
+          "y": 1586.5,
+          "width": 155.62,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "LayoutConfig",
-          "x": 9468.263,
-          "y": 1556.76,
-          "width": 144.96,
-          "height": 54.0,
+          "x": 8342.869,
+          "y": 1586.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "SetConfig",
-          "x": 9674.583,
-          "y": 1556.76,
-          "width": 167.68,
-          "height": 54.0,
+          "x": 8534.869,
+          "y": 1586.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         }
       ],
@@ -989,16 +989,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 62.0
+              "x": 7997.124,
+              "y": 57.0
             },
             {
-              "x": 8461.305,
-              "y": 87.0
-            },
-            {
-              "x": 8461.305,
-              "y": 112.0
+              "x": 7997.124,
+              "y": 97.0
             }
           ],
           "label": null,
@@ -1018,16 +1014,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8405.681,
-              "y": 215.016
+              "x": 7959.374,
+              "y": 268.0
             },
             {
-              "x": 8216.43,
-              "y": 295.64
+              "x": 7959.374,
+              "y": 288.0
             },
             {
-              "x": 8216.43,
-              "y": 320.64
+              "x": 7699.499,
+              "y": 288.0
+            },
+            {
+              "x": 7699.499,
+              "y": 328.0
             }
           ],
           "label": null,
@@ -1047,16 +1047,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 270.64
+              "x": 7997.124,
+              "y": 268.0
             },
             {
-              "x": 8461.305,
-              "y": 295.64
+              "x": 7997.124,
+              "y": 308.0
             },
             {
-              "x": 8461.305,
-              "y": 320.64
+              "x": 7910.499,
+              "y": 308.0
+            },
+            {
+              "x": 7910.499,
+              "y": 328.0
             }
           ],
           "label": null,
@@ -1076,16 +1080,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8516.928,
-              "y": 215.016
+              "x": 8034.874,
+              "y": 268.0
             },
             {
-              "x": 8706.18,
-              "y": 295.64
+              "x": 8034.874,
+              "y": 288.0
             },
             {
-              "x": 8706.18,
-              "y": 320.64
+              "x": 8121.499,
+              "y": 288.0
+            },
+            {
+              "x": 8121.499,
+              "y": 328.0
             }
           ],
           "label": null,
@@ -1105,23 +1113,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8216.43,
-              "y": 398.64
+              "x": 7699.499,
+              "y": 394.0
             },
             {
-              "x": 8216.43,
-              "y": 435.64
-            },
-            {
-              "x": 8216.43,
-              "y": 472.64
+              "x": 7699.499,
+              "y": 495.0
             }
           ],
           "label": {
-            "x": 8216.43,
-            "y": 435.64,
-            "width": 124.64,
-            "height": 24.0
+            "x": 7699.029,
+            "y": 444.5,
+            "width": 109.06,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1139,23 +1143,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 398.64
+              "x": 7910.499,
+              "y": 394.0
             },
             {
-              "x": 8461.305,
-              "y": 435.64
-            },
-            {
-              "x": 8461.305,
-              "y": 481.12
+              "x": 7910.499,
+              "y": 495.0
             }
           ],
           "label": {
-            "x": 8461.305,
-            "y": 435.64,
-            "width": 155.36,
-            "height": 24.0
+            "x": 7910.469,
+            "y": 444.5,
+            "width": 135.94,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1173,23 +1173,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8706.18,
-              "y": 398.64
+              "x": 8121.499,
+              "y": 394.0
             },
             {
-              "x": 8706.18,
-              "y": 435.64
-            },
-            {
-              "x": 8706.18,
-              "y": 492.16
+              "x": 8121.499,
+              "y": 495.0
             }
           ],
           "label": {
-            "x": 8706.18,
-            "y": 435.64,
-            "width": 180.8,
-            "height": 24.0
+            "x": 8121.099,
+            "y": 444.5,
+            "width": 158.2,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1207,23 +1203,27 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8216.43,
-              "y": 655.28
+              "x": 7699.499,
+              "y": 666.0
             },
             {
-              "x": 8216.43,
-              "y": 692.28
+              "x": 7699.499,
+              "y": 767.0
             },
             {
-              "x": 8377.625,
-              "y": 734.41
+              "x": 7966.499,
+              "y": 767.0
+            },
+            {
+              "x": 7966.499,
+              "y": 787.0
             }
           ],
           "label": {
-            "x": 8216.43,
-            "y": 692.28,
-            "width": 23.36,
-            "height": 24.0
+            "x": 7699.219,
+            "y": 716.5,
+            "width": 20.44,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1241,23 +1241,27 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 646.8
+              "x": 7910.499,
+              "y": 666.0
             },
             {
-              "x": 8461.305,
-              "y": 692.28
+              "x": 7910.499,
+              "y": 747.0
             },
             {
-              "x": 8461.305,
-              "y": 729.28
+              "x": 7999.499,
+              "y": 747.0
+            },
+            {
+              "x": 7999.499,
+              "y": 787.0
             }
           ],
           "label": {
-            "x": 8461.305,
-            "y": 692.28,
-            "width": 23.36,
-            "height": 24.0
+            "x": 7910.219,
+            "y": 716.5,
+            "width": 20.44,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1275,23 +1279,27 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8706.18,
-              "y": 635.76
+              "x": 8121.499,
+              "y": 666.0
             },
             {
-              "x": 8706.18,
-              "y": 692.28
+              "x": 8121.499,
+              "y": 747.0
             },
             {
-              "x": 8544.985,
-              "y": 734.41
+              "x": 8032.499,
+              "y": 747.0
+            },
+            {
+              "x": 8032.499,
+              "y": 787.0
             }
           ],
           "label": {
-            "x": 8706.18,
-            "y": 692.28,
-            "width": 23.36,
-            "height": 24.0
+            "x": 8121.219,
+            "y": 716.5,
+            "width": 20.44,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1309,16 +1317,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 783.28
+              "x": 7999.499,
+              "y": 832.0
             },
             {
-              "x": 8461.305,
-              "y": 808.28
-            },
-            {
-              "x": 8461.305,
-              "y": 833.28
+              "x": 7999.499,
+              "y": 872.0
             }
           ],
           "label": null,
@@ -1338,16 +1342,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 911.28
+              "x": 7999.499,
+              "y": 938.0
             },
             {
-              "x": 8461.305,
-              "y": 936.28
-            },
-            {
-              "x": 8461.305,
-              "y": 961.28
+              "x": 7999.499,
+              "y": 978.0
             }
           ],
           "label": null,
@@ -1367,16 +1367,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8367.549,
-              "y": 1058.005
+              "x": 7949.165,
+              "y": 1149.0
             },
             {
-              "x": 867.4,
-              "y": 1176.76
+              "x": 7949.165,
+              "y": 1169.0
             },
             {
-              "x": 867.4,
-              "y": 1213.76
+              "x": 1444.759,
+              "y": 1169.0
+            },
+            {
+              "x": 1444.759,
+              "y": 1277.0
             }
           ],
           "label": null,
@@ -1396,16 +1400,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8368.341,
-              "y": 1058.796
+              "x": 7974.332,
+              "y": 1149.0
             },
             {
-              "x": 3550.769,
-              "y": 1176.76
+              "x": 7974.332,
+              "y": 1189.0
             },
             {
-              "x": 3550.769,
-              "y": 1213.76
+              "x": 5115.618,
+              "y": 1189.0
+            },
+            {
+              "x": 5115.618,
+              "y": 1270.0
             }
           ],
           "label": null,
@@ -1425,16 +1433,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 1151.76
+              "x": 7999.499,
+              "y": 1149.0
             },
             {
-              "x": 8461.305,
-              "y": 1176.76
+              "x": 7999.499,
+              "y": 1209.0
             },
             {
-              "x": 8461.305,
-              "y": 1201.76
+              "x": 7554.062,
+              "y": 1209.0
+            },
+            {
+              "x": 7554.062,
+              "y": 1249.0
             }
           ],
           "label": null,
@@ -1454,16 +1466,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8527.379,
-              "y": 1085.686
+              "x": 8024.665,
+              "y": 1149.0
             },
             {
-              "x": 8733.705,
-              "y": 1176.76
+              "x": 8024.665,
+              "y": 1229.0
             },
             {
-              "x": 8733.705,
-              "y": 1213.76
+              "x": 7755.14,
+              "y": 1229.0
+            },
+            {
+              "x": 7755.14,
+              "y": 1270.0
             }
           ],
           "label": null,
@@ -1483,16 +1499,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8546.73,
-              "y": 1066.335
+              "x": 8049.832,
+              "y": 1149.0
             },
             {
-              "x": 9507.861,
-              "y": 1176.76
+              "x": 8049.832,
+              "y": 1169.0
             },
             {
-              "x": 9507.861,
-              "y": 1213.76
+              "x": 8412.469,
+              "y": 1169.0
+            },
+            {
+              "x": 8412.469,
+              "y": 1259.5
             }
           ],
           "label": null,
@@ -1512,16 +1532,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 774.52,
-              "y": 1255.564
+              "x": 1422.759,
+              "y": 1322.0
             },
             {
-              "x": 465.878,
-              "y": 1304.76
+              "x": 1422.759,
+              "y": 1356.0
             },
             {
-              "x": 465.878,
-              "y": 1329.76
+              "x": 472.0,
+              "y": 1356.0
+            },
+            {
+              "x": 472.0,
+              "y": 1397.0
             }
           ],
           "label": null,
@@ -1541,23 +1565,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 465.878,
-              "y": 1407.76
+              "x": 472.0,
+              "y": 1463.0
             },
             {
-              "x": 465.878,
-              "y": 1444.76
-            },
-            {
-              "x": 465.878,
-              "y": 1493.76
+              "x": 472.0,
+              "y": 1816.0
             }
           ],
           "label": {
-            "x": 465.878,
-            "y": 1444.76,
-            "width": 111.2,
-            "height": 24.0
+            "x": 471.65,
+            "y": 1649.5,
+            "width": 97.3,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -1575,16 +1595,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 465.878,
-              "y": 1619.76
+              "x": 472.0,
+              "y": 1945.0
             },
             {
-              "x": 465.878,
-              "y": 1656.76
-            },
-            {
-              "x": 465.878,
-              "y": 1724.16
+              "x": 472.0,
+              "y": 2158.5
             }
           ],
           "label": null,
@@ -1604,16 +1620,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 465.878,
-              "y": 1802.16
+              "x": 472.0,
+              "y": 2224.5
             },
             {
-              "x": 465.878,
-              "y": 1869.56
-            },
-            {
-              "x": 465.878,
-              "y": 1951.12
+              "x": 472.0,
+              "y": 2484.5
             }
           ],
           "label": null,
@@ -1633,16 +1645,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 371.618,
-              "y": 2005.12
+              "x": 428.0,
+              "y": 2550.5
             },
             {
-              "x": 86.88,
-              "y": 2086.68
+              "x": 428.0,
+              "y": 2588.0
             },
             {
-              "x": 86.88,
-              "y": 2170.88
+              "x": 88.0,
+              "y": 2588.0
+            },
+            {
+              "x": 88.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -1662,16 +1678,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 421.021,
-              "y": 2005.12
+              "x": 450.0,
+              "y": 2550.5
             },
             {
-              "x": 285.52,
-              "y": 2086.68
+              "x": 450.0,
+              "y": 2608.0
             },
             {
-              "x": 285.52,
-              "y": 2170.88
+              "x": 280.0,
+              "y": 2608.0
+            },
+            {
+              "x": 280.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -1691,16 +1711,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 471.579,
-              "y": 2005.12
+              "x": 472.0,
+              "y": 2550.5
             },
             {
-              "x": 488.8,
-              "y": 2086.68
-            },
-            {
-              "x": 488.8,
-              "y": 2170.88
+              "x": 472.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -1720,16 +1736,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 523.55,
-              "y": 2005.12
+              "x": 494.0,
+              "y": 2550.5
             },
             {
-              "x": 697.76,
-              "y": 2086.68
+              "x": 494.0,
+              "y": 2608.0
             },
             {
-              "x": 697.76,
-              "y": 2170.88
+              "x": 664.0,
+              "y": 2608.0
+            },
+            {
+              "x": 664.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -1749,16 +1769,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 570.598,
-              "y": 2004.541
+              "x": 516.0,
+              "y": 2550.5
             },
             {
-              "x": 896.16,
-              "y": 2086.68
+              "x": 516.0,
+              "y": 2588.0
             },
             {
-              "x": 896.16,
-              "y": 2170.88
+              "x": 856.0,
+              "y": 2588.0
+            },
+            {
+              "x": 856.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -1778,16 +1802,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3550.769,
-              "y": 1267.76
+              "x": 5115.618,
+              "y": 1315.0
             },
             {
-              "x": 3550.769,
-              "y": 1304.76
-            },
-            {
-              "x": 3550.769,
-              "y": 1329.76
+              "x": 5115.618,
+              "y": 1404.0
             }
           ],
           "label": null,
@@ -1807,16 +1827,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3475.808,
-              "y": 1394.087
+              "x": 5093.618,
+              "y": 1470.0
             },
             {
-              "x": 3325.829,
-              "y": 1444.76
+              "x": 5093.618,
+              "y": 1504.0
             },
             {
-              "x": 3325.829,
-              "y": 1481.76
+              "x": 3006.8,
+              "y": 1504.0
+            },
+            {
+              "x": 3006.8,
+              "y": 1585.0
             }
           ],
           "label": null,
@@ -1836,16 +1860,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3325.829,
-              "y": 1631.76
+              "x": 3006.8,
+              "y": 1714.0
             },
             {
-              "x": 3325.829,
-              "y": 1656.76
-            },
-            {
-              "x": 3325.829,
-              "y": 1681.76
+              "x": 3006.8,
+              "y": 1795.0
             }
           ],
           "label": null,
@@ -1865,16 +1885,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3248.151,
-              "y": 1766.882
+              "x": 2942.086,
+              "y": 1966.0
             },
             {
-              "x": 1105.32,
-              "y": 1869.56
+              "x": 2942.086,
+              "y": 1986.0
             },
             {
-              "x": 1105.32,
-              "y": 1927.12
+              "x": 1322.528,
+              "y": 1986.0
+            },
+            {
+              "x": 1322.528,
+              "y": 2127.0
             }
           ],
           "label": null,
@@ -1894,16 +1918,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3249.605,
-              "y": 1768.336
+              "x": 2952.871,
+              "y": 1966.0
             },
             {
-              "x": 1759.034,
-              "y": 1869.56
+              "x": 2952.871,
+              "y": 2006.0
             },
             {
-              "x": 1759.034,
-              "y": 1939.12
+              "x": 2037.04,
+              "y": 2006.0
+            },
+            {
+              "x": 2037.04,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -1923,16 +1951,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3251.93,
-              "y": 1770.661
+              "x": 2963.657,
+              "y": 1966.0
             },
             {
-              "x": 2277.589,
-              "y": 1869.56
+              "x": 2963.657,
+              "y": 2026.0
             },
             {
-              "x": 2277.589,
-              "y": 1939.12
+              "x": 2232.18,
+              "y": 2026.0
+            },
+            {
+              "x": 2232.18,
+              "y": 2158.5
             }
           ],
           "label": null,
@@ -1952,16 +1984,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3254.16,
-              "y": 1772.891
+              "x": 2974.443,
+              "y": 1966.0
             },
             {
-              "x": 2542.229,
-              "y": 1869.56
+              "x": 2974.443,
+              "y": 2046.0
             },
             {
-              "x": 2542.229,
-              "y": 1951.12
+              "x": 2427.32,
+              "y": 2046.0
+            },
+            {
+              "x": 2427.32,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -1981,16 +2017,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3258.247,
-              "y": 1776.978
+              "x": 2985.229,
+              "y": 1966.0
             },
             {
-              "x": 2805.429,
-              "y": 1869.56
+              "x": 2985.229,
+              "y": 2066.0
             },
             {
-              "x": 2805.429,
-              "y": 1951.12
+              "x": 2621.06,
+              "y": 2066.0
+            },
+            {
+              "x": 2621.06,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2010,16 +2050,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3268.638,
-              "y": 1787.369
+              "x": 2996.014,
+              "y": 1966.0
             },
             {
-              "x": 3074.469,
-              "y": 1869.56
+              "x": 2996.014,
+              "y": 2086.0
             },
             {
-              "x": 3074.469,
-              "y": 1951.12
+              "x": 2814.8,
+              "y": 2086.0
+            },
+            {
+              "x": 2814.8,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2039,16 +2083,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3325.829,
-              "y": 1844.56
+              "x": 3006.8,
+              "y": 1966.0
             },
             {
-              "x": 3325.829,
-              "y": 1869.56
-            },
-            {
-              "x": 3325.829,
-              "y": 1951.12
+              "x": 3006.8,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2068,16 +2108,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3383.922,
-              "y": 1786.467
+              "x": 3017.586,
+              "y": 1966.0
             },
             {
-              "x": 3591.029,
-              "y": 1869.56
+              "x": 3017.586,
+              "y": 2086.0
             },
             {
-              "x": 3591.029,
-              "y": 1951.12
+              "x": 3198.8,
+              "y": 2086.0
+            },
+            {
+              "x": 3198.8,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2097,16 +2141,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3394.025,
-              "y": 1776.364
+              "x": 3028.371,
+              "y": 1966.0
             },
             {
-              "x": 3875.349,
-              "y": 1869.56
+              "x": 3028.371,
+              "y": 2066.0
             },
             {
-              "x": 3875.349,
-              "y": 1939.12
+              "x": 3390.8,
+              "y": 2066.0
+            },
+            {
+              "x": 3390.8,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2126,16 +2174,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3398.263,
-              "y": 1772.127
+              "x": 3039.157,
+              "y": 1966.0
             },
             {
-              "x": 4185.349,
-              "y": 1869.56
+              "x": 3039.157,
+              "y": 2046.0
             },
             {
-              "x": 4185.349,
-              "y": 1939.12
+              "x": 3582.8,
+              "y": 2046.0
+            },
+            {
+              "x": 3582.8,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -2155,16 +2207,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1105.32,
-              "y": 2029.12
+              "x": 1322.528,
+              "y": 2256.0
             },
             {
-              "x": 1105.32,
-              "y": 2086.68
-            },
-            {
-              "x": 1105.32,
-              "y": 2111.68
+              "x": 1322.528,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2184,16 +2232,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1037.207,
-              "y": 2215.967
+              "x": 1277.228,
+              "y": 2568.0
             },
             {
-              "x": 686.56,
-              "y": 2309.08
+              "x": 1277.228,
+              "y": 2588.0
             },
             {
-              "x": 686.56,
-              "y": 2355.52
+              "x": 1048.0,
+              "y": 2588.0
+            },
+            {
+              "x": 1048.0,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2213,16 +2265,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1058.028,
-              "y": 2236.788
+              "x": 1307.428,
+              "y": 2568.0
             },
             {
-              "x": 970.16,
-              "y": 2309.08
+              "x": 1307.428,
+              "y": 2608.0
             },
             {
-              "x": 970.16,
-              "y": 2379.52
+              "x": 1256.09,
+              "y": 2608.0
+            },
+            {
+              "x": 1256.09,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2242,16 +2298,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1152.612,
-              "y": 2236.788
+              "x": 1337.628,
+              "y": 2568.0
             },
             {
-              "x": 1240.48,
-              "y": 2309.08
+              "x": 1337.628,
+              "y": 2608.0
             },
             {
-              "x": 1240.48,
-              "y": 2367.52
+              "x": 1464.18,
+              "y": 2608.0
+            },
+            {
+              "x": 1464.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2271,16 +2331,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1173.074,
-              "y": 2216.326
+              "x": 1367.828,
+              "y": 2568.0
             },
             {
-              "x": 1513.761,
-              "y": 2309.08
+              "x": 1367.828,
+              "y": 2588.0
             },
             {
-              "x": 1513.761,
-              "y": 2355.52
+              "x": 1656.18,
+              "y": 2588.0
+            },
+            {
+              "x": 1656.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2300,16 +2364,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2277.589,
-              "y": 2017.12
+              "x": 2232.18,
+              "y": 2224.5
             },
             {
-              "x": 2277.589,
-              "y": 2086.68
-            },
-            {
-              "x": 2277.589,
-              "y": 2118.56
+              "x": 2232.18,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2329,16 +2389,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2213.085,
-              "y": 2212.695
+              "x": 2181.847,
+              "y": 2568.0
             },
             {
-              "x": 1793.441,
-              "y": 2309.08
+              "x": 2181.847,
+              "y": 2588.0
             },
             {
-              "x": 1793.441,
-              "y": 2355.52
+              "x": 1848.18,
+              "y": 2588.0
+            },
+            {
+              "x": 1848.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2358,16 +2422,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2223.557,
-              "y": 2223.168
+              "x": 2207.013,
+              "y": 2568.0
             },
             {
-              "x": 2039.995,
-              "y": 2309.08
+              "x": 2207.013,
+              "y": 2608.0
             },
             {
-              "x": 2039.995,
-              "y": 2355.52
+              "x": 2040.18,
+              "y": 2608.0
+            },
+            {
+              "x": 2040.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2387,16 +2455,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2277.589,
-              "y": 2277.2
+              "x": 2232.18,
+              "y": 2568.0
             },
             {
-              "x": 2277.589,
-              "y": 2309.08
-            },
-            {
-              "x": 2277.589,
-              "y": 2367.52
+              "x": 2232.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2416,16 +2480,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2349.574,
-              "y": 2205.215
+              "x": 2257.347,
+              "y": 2568.0
             },
             {
-              "x": 3368.925,
-              "y": 2309.08
+              "x": 2257.347,
+              "y": 2608.0
             },
             {
-              "x": 3368.925,
-              "y": 2367.52
+              "x": 2424.18,
+              "y": 2608.0
+            },
+            {
+              "x": 2424.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2445,16 +2513,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 2350.919,
-              "y": 2203.871
+              "x": 2282.513,
+              "y": 2568.0
             },
             {
-              "x": 3638.769,
-              "y": 2309.08
+              "x": 2282.513,
+              "y": 2588.0
             },
             {
-              "x": 3638.769,
-              "y": 2367.52
+              "x": 2616.18,
+              "y": 2588.0
+            },
+            {
+              "x": 2616.18,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2474,16 +2546,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3400.051,
-              "y": 1770.338
+              "x": 3049.943,
+              "y": 1966.0
             },
             {
-              "x": 4426.069,
-              "y": 1869.56
+              "x": 3049.943,
+              "y": 2026.0
             },
             {
-              "x": 4426.069,
-              "y": 1951.12
+              "x": 3774.8,
+              "y": 2026.0
+            },
+            {
+              "x": 3774.8,
+              "y": 2211.0
             }
           ],
           "label": null,
@@ -2503,16 +2579,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4365.349,
-              "y": 1983.517
+              "x": 3730.8,
+              "y": 2256.0
             },
             {
-              "x": 3204.77,
-              "y": 2086.68
+              "x": 3730.8,
+              "y": 2297.0
             },
             {
-              "x": 3204.77,
-              "y": 2170.88
+              "x": 3390.8,
+              "y": 2297.0
+            },
+            {
+              "x": 3390.8,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2532,16 +2612,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4365.349,
-              "y": 1985.225
+              "x": 3752.8,
+              "y": 2256.0
             },
             {
-              "x": 3498.29,
-              "y": 2086.68
+              "x": 3752.8,
+              "y": 2317.0
             },
             {
-              "x": 3498.29,
-              "y": 2170.88
+              "x": 3582.8,
+              "y": 2317.0
+            },
+            {
+              "x": 3582.8,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2561,16 +2645,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4426.069,
-              "y": 2005.12
+              "x": 3774.8,
+              "y": 2256.0
             },
             {
-              "x": 4426.069,
-              "y": 2086.68
-            },
-            {
-              "x": 4426.069,
-              "y": 2146.88
+              "x": 3774.8,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2590,16 +2670,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4485.68,
-              "y": 2005.12
+              "x": 3796.8,
+              "y": 2256.0
             },
             {
-              "x": 4665.749,
-              "y": 2086.68
+              "x": 3796.8,
+              "y": 2317.0
             },
             {
-              "x": 4665.749,
-              "y": 2158.88
+              "x": 3968.613,
+              "y": 2317.0
+            },
+            {
+              "x": 3968.613,
+              "y": 2449.5
             }
           ],
           "label": null,
@@ -2619,16 +2703,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4486.789,
-              "y": 1990.789
+              "x": 3818.8,
+              "y": 2256.0
             },
             {
-              "x": 4946.389,
-              "y": 2086.68
+              "x": 3818.8,
+              "y": 2297.0
             },
             {
-              "x": 4946.389,
-              "y": 2146.88
+              "x": 4273.458,
+              "y": 2297.0
+            },
+            {
+              "x": 4273.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -2648,16 +2736,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4665.749,
-              "y": 2236.88
+              "x": 3968.613,
+              "y": 2515.5
             },
             {
-              "x": 4665.749,
-              "y": 2309.08
-            },
-            {
-              "x": 4665.749,
-              "y": 2334.08
+              "x": 3968.613,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -2677,16 +2761,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4607.146,
-              "y": 2420.357
+              "x": 3923.313,
+              "y": 2799.0
             },
             {
-              "x": 4253.073,
-              "y": 2503.96
+              "x": 3923.313,
+              "y": 2819.0
             },
             {
-              "x": 4253.073,
-              "y": 2581.28
+              "x": 3667.842,
+              "y": 2819.0
+            },
+            {
+              "x": 3667.842,
+              "y": 2859.0
             }
           ],
           "label": null,
@@ -2706,16 +2794,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4622.754,
-              "y": 2435.965
+              "x": 3953.513,
+              "y": 2799.0
             },
             {
-              "x": 4523.47,
-              "y": 2503.96
+              "x": 3953.513,
+              "y": 2839.0
             },
             {
-              "x": 4523.47,
-              "y": 2545.28
+              "x": 3859.842,
+              "y": 2839.0
+            },
+            {
+              "x": 3859.842,
+              "y": 2859.0
             }
           ],
           "label": null,
@@ -2735,16 +2827,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4733.795,
-              "y": 2410.913
+              "x": 3983.713,
+              "y": 2799.0
             },
             {
-              "x": 6174.909,
-              "y": 2503.96
+              "x": 3983.713,
+              "y": 2839.0
             },
             {
-              "x": 6174.909,
-              "y": 2581.28
+              "x": 4077.382,
+              "y": 2839.0
+            },
+            {
+              "x": 4077.382,
+              "y": 2859.0
             }
           ],
           "label": null,
@@ -2764,16 +2860,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4734.487,
-              "y": 2410.222
+              "x": 4013.913,
+              "y": 2799.0
             },
             {
-              "x": 6474.909,
-              "y": 2503.96
+              "x": 4013.913,
+              "y": 2819.0
             },
             {
-              "x": 6474.909,
-              "y": 2581.28
+              "x": 4315.633,
+              "y": 2819.0
+            },
+            {
+              "x": 4315.633,
+              "y": 2859.0
             }
           ],
           "label": null,
@@ -2793,16 +2893,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 1279.76
+              "x": 7554.062,
+              "y": 1336.0
             },
             {
-              "x": 8461.305,
-              "y": 1304.76
-            },
-            {
-              "x": 8461.305,
-              "y": 1329.76
+              "x": 7554.062,
+              "y": 1376.0
             }
           ],
           "label": null,
@@ -2822,16 +2918,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 1407.76
+              "x": 7554.062,
+              "y": 1484.0
             },
             {
-              "x": 8461.305,
-              "y": 1444.76
-            },
-            {
-              "x": 8461.305,
-              "y": 1493.76
+              "x": 7554.062,
+              "y": 1574.5
             }
           ],
           "label": null,
@@ -2851,16 +2943,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 1619.76
+              "x": 7554.062,
+              "y": 1724.5
             },
             {
-              "x": 8461.305,
-              "y": 1656.76
-            },
-            {
-              "x": 8461.305,
-              "y": 1724.16
+              "x": 7554.062,
+              "y": 1847.5
             }
           ],
           "label": null,
@@ -2880,16 +2968,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8461.305,
-              "y": 1802.16
+              "x": 7554.062,
+              "y": 1913.5
             },
             {
-              "x": 8461.305,
-              "y": 1869.56
-            },
-            {
-              "x": 8461.305,
-              "y": 1915.12
+              "x": 7554.062,
+              "y": 2120.0
             }
           ],
           "label": null,
@@ -2909,16 +2993,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8353.305,
-              "y": 2038.545
+              "x": 7532.062,
+              "y": 2270.0
             },
             {
-              "x": 8267.269,
-              "y": 2086.68
+              "x": 7532.062,
+              "y": 2297.0
             },
             {
-              "x": 8267.269,
-              "y": 2170.88
+              "x": 7346.148,
+              "y": 2297.0
+            },
+            {
+              "x": 7346.148,
+              "y": 2467.0
             }
           ],
           "label": null,
@@ -2938,16 +3026,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8154.949,
-              "y": 2215.213
+              "x": 7323.918,
+              "y": 2533.0
             },
             {
-              "x": 7546.669,
-              "y": 2309.08
+              "x": 7323.918,
+              "y": 2588.0
             },
             {
-              "x": 7546.669,
-              "y": 2367.52
+              "x": 6839.263,
+              "y": 2588.0
+            },
+            {
+              "x": 6839.263,
+              "y": 2680.5
             }
           ],
           "label": null,
@@ -2967,16 +3059,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7546.669,
-              "y": 2445.52
+              "x": 6839.263,
+              "y": 2746.5
             },
             {
-              "x": 7546.669,
-              "y": 2503.96
-            },
-            {
-              "x": 7546.669,
-              "y": 2557.28
+              "x": 6839.263,
+              "y": 2901.0
             }
           ],
           "label": null,
@@ -2996,16 +3084,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8379.589,
-              "y": 2216.27
+              "x": 7368.378,
+              "y": 2533.0
             },
             {
-              "x": 8946.449,
-              "y": 2309.08
+              "x": 7368.378,
+              "y": 2588.0
             },
             {
-              "x": 8946.449,
-              "y": 2367.52
+              "x": 7561.26,
+              "y": 2588.0
+            },
+            {
+              "x": 7561.26,
+              "y": 2680.5
             }
           ],
           "label": null,
@@ -3025,16 +3117,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8946.449,
-              "y": 2445.52
+              "x": 7561.26,
+              "y": 2746.5
             },
             {
-              "x": 8946.449,
-              "y": 2503.96
-            },
-            {
-              "x": 8946.449,
-              "y": 2528.96
+              "x": 7561.26,
+              "y": 2859.0
             }
           ],
           "label": null,
@@ -3054,16 +3142,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8874.385,
-              "y": 2615.535
+              "x": 7502.537,
+              "y": 3030.0
             },
             {
-              "x": 7910.289,
-              "y": 2712.6
+              "x": 7502.537,
+              "y": 3050.0
             },
             {
-              "x": 7910.289,
-              "y": 2785.28
+              "x": 7132.013,
+              "y": 3050.0
+            },
+            {
+              "x": 7132.013,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3083,16 +3175,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8876.822,
-              "y": 2617.973
+              "x": 7519.315,
+              "y": 3030.0
             },
             {
-              "x": 8197.089,
-              "y": 2712.6
+              "x": 7519.315,
+              "y": 3070.0
             },
             {
-              "x": 8197.089,
-              "y": 2785.28
+              "x": 7324.013,
+              "y": 3070.0
+            },
+            {
+              "x": 7324.013,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3112,16 +3208,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8882.001,
-              "y": 2623.152
+              "x": 7536.093,
+              "y": 3030.0
             },
             {
-              "x": 8494.369,
-              "y": 2712.6
-            },
-            {
-              "x": 8494.369,
-              "y": 2773.28
+              "x": 7536.093,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3141,16 +3233,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8899.965,
-              "y": 2641.116
+              "x": 7552.871,
+              "y": 3030.0
             },
             {
-              "x": 8798.769,
-              "y": 2712.6
+              "x": 7552.871,
+              "y": 3130.0
             },
             {
-              "x": 8798.769,
-              "y": 2785.28
+              "x": 7748.173,
+              "y": 3130.0
+            },
+            {
+              "x": 7748.173,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3170,16 +3266,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8992.933,
-              "y": 2641.116
+              "x": 7569.648,
+              "y": 3030.0
             },
             {
-              "x": 9094.129,
-              "y": 2712.6
+              "x": 7569.648,
+              "y": 3110.0
             },
             {
-              "x": 9094.129,
-              "y": 2785.28
+              "x": 7940.173,
+              "y": 3110.0
+            },
+            {
+              "x": 7940.173,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3199,16 +3299,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9010.805,
-              "y": 2623.244
+              "x": 7586.426,
+              "y": 3030.0
             },
             {
-              "x": 9395.089,
-              "y": 2712.6
+              "x": 7586.426,
+              "y": 3090.0
             },
             {
-              "x": 9395.089,
-              "y": 2773.28
+              "x": 8152.113,
+              "y": 3090.0
+            },
+            {
+              "x": 8152.113,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3228,16 +3332,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9016.181,
-              "y": 2617.869
+              "x": 7603.204,
+              "y": 3030.0
             },
             {
-              "x": 9705.089,
-              "y": 2712.6
+              "x": 7603.204,
+              "y": 3070.0
             },
             {
-              "x": 9705.089,
-              "y": 2773.28
+              "x": 8370.763,
+              "y": 3070.0
+            },
+            {
+              "x": 8370.763,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3257,16 +3365,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9018.622,
-              "y": 2615.427
+              "x": 7619.982,
+              "y": 3030.0
             },
             {
-              "x": 9999.889,
-              "y": 2712.6
+              "x": 7619.982,
+              "y": 3050.0
             },
             {
-              "x": 9999.889,
-              "y": 2785.28
+              "x": 8569.473,
+              "y": 3050.0
+            },
+            {
+              "x": 8569.473,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3286,16 +3398,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8733.705,
-              "y": 1267.76
+              "x": 7755.14,
+              "y": 1315.0
             },
             {
-              "x": 8733.705,
-              "y": 1304.76
-            },
-            {
-              "x": 8733.705,
-              "y": 1329.76
+              "x": 7755.14,
+              "y": 1397.0
             }
           ],
           "label": null,
@@ -3315,16 +3423,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8733.705,
-              "y": 1407.76
+              "x": 7755.14,
+              "y": 1463.0
             },
             {
-              "x": 8733.705,
-              "y": 1444.76
-            },
-            {
-              "x": 8733.705,
-              "y": 1493.76
+              "x": 7755.14,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3344,16 +3448,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8733.705,
-              "y": 1619.76
+              "x": 7755.14,
+              "y": 1735.0
             },
             {
-              "x": 8733.705,
-              "y": 1656.76
-            },
-            {
-              "x": 8733.705,
-              "y": 1700.16
+              "x": 7755.14,
+              "y": 1795.0
             }
           ],
           "label": null,
@@ -3373,16 +3473,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8733.705,
-              "y": 1826.16
+              "x": 7755.14,
+              "y": 1966.0
             },
             {
-              "x": 8733.705,
-              "y": 1869.56
-            },
-            {
-              "x": 8733.705,
-              "y": 1951.12
+              "x": 7755.14,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -3402,16 +3498,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 960.28,
-              "y": 1250.404
+              "x": 1466.759,
+              "y": 1322.0
             },
             {
-              "x": 1483.757,
-              "y": 1304.76
+              "x": 1466.759,
+              "y": 1356.0
             },
             {
-              "x": 1483.757,
-              "y": 1329.76
+              "x": 1718.909,
+              "y": 1356.0
+            },
+            {
+              "x": 1718.909,
+              "y": 1411.0
             }
           ],
           "label": null,
@@ -3431,16 +3531,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1399.436,
-              "y": 1377.342
+              "x": 1674.909,
+              "y": 1477.0
             },
             {
-              "x": 736.998,
-              "y": 1444.76
+              "x": 1674.909,
+              "y": 1504.0
             },
             {
-              "x": 736.998,
-              "y": 1529.76
+              "x": 1334.909,
+              "y": 1504.0
+            },
+            {
+              "x": 1334.909,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3460,16 +3564,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1399.436,
-              "y": 1381.541
+              "x": 1696.909,
+              "y": 1477.0
             },
             {
-              "x": 982.358,
-              "y": 1444.76
+              "x": 1696.909,
+              "y": 1524.0
             },
             {
-              "x": 982.358,
-              "y": 1529.76
+              "x": 1526.909,
+              "y": 1524.0
+            },
+            {
+              "x": 1526.909,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3489,16 +3597,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1399.436,
-              "y": 1393.343
+              "x": 1718.909,
+              "y": 1477.0
             },
             {
-              "x": 1223.078,
-              "y": 1444.76
-            },
-            {
-              "x": 1223.078,
-              "y": 1529.76
+              "x": 1718.909,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3518,16 +3622,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1481.274,
-              "y": 1407.76
+              "x": 1740.909,
+              "y": 1477.0
             },
             {
-              "x": 1478.918,
-              "y": 1444.76
+              "x": 1740.909,
+              "y": 1524.0
             },
             {
-              "x": 1478.918,
-              "y": 1529.76
+              "x": 1910.909,
+              "y": 1524.0
+            },
+            {
+              "x": 1910.909,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3547,16 +3655,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 1568.077,
-              "y": 1393.343
+              "x": 1762.909,
+              "y": 1477.0
             },
             {
-              "x": 1744.435,
-              "y": 1444.76
+              "x": 1762.909,
+              "y": 1504.0
             },
             {
-              "x": 1744.435,
-              "y": 1517.76
+              "x": 2109.55,
+              "y": 1504.0
+            },
+            {
+              "x": 2109.55,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -3576,16 +3688,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3403.998,
-              "y": 1766.391
+              "x": 3060.729,
+              "y": 1966.0
             },
             {
-              "x": 5900.189,
-              "y": 1869.56
+              "x": 3060.729,
+              "y": 2006.0
             },
             {
-              "x": 5900.189,
-              "y": 1894.56
+              "x": 5234.461,
+              "y": 2006.0
+            },
+            {
+              "x": 5234.461,
+              "y": 2106.0
             }
           ],
           "label": null,
@@ -3605,16 +3721,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5827.978,
-              "y": 1989.469
+              "x": 5175.739,
+              "y": 2277.0
             },
             {
-              "x": 5209.429,
-              "y": 2086.68
+              "x": 5175.739,
+              "y": 2297.0
             },
             {
-              "x": 5209.429,
-              "y": 2170.88
+              "x": 4465.458,
+              "y": 2297.0
+            },
+            {
+              "x": 4465.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3634,16 +3754,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5831.838,
-              "y": 1993.329
+              "x": 5192.517,
+              "y": 2277.0
             },
             {
-              "x": 5412.309,
-              "y": 2086.68
+              "x": 5192.517,
+              "y": 2317.0
             },
             {
-              "x": 5412.309,
-              "y": 2170.88
+              "x": 4657.458,
+              "y": 2317.0
+            },
+            {
+              "x": 4657.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3663,16 +3787,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5839.246,
-              "y": 2000.737
+              "x": 5209.294,
+              "y": 2277.0
             },
             {
-              "x": 5607.669,
-              "y": 2086.68
+              "x": 5209.294,
+              "y": 2337.0
             },
             {
-              "x": 5607.669,
-              "y": 2170.88
+              "x": 4849.458,
+              "y": 2337.0
+            },
+            {
+              "x": 4849.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3692,16 +3820,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5861.475,
-              "y": 2022.965
+              "x": 5226.072,
+              "y": 2277.0
             },
             {
-              "x": 5806.469,
-              "y": 2086.68
+              "x": 5226.072,
+              "y": 2357.0
             },
             {
-              "x": 5806.469,
-              "y": 2170.88
+              "x": 5041.458,
+              "y": 2357.0
+            },
+            {
+              "x": 5041.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3721,16 +3853,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5938.904,
-              "y": 2022.965
+              "x": 5242.85,
+              "y": 2277.0
             },
             {
-              "x": 5993.909,
-              "y": 2086.68
+              "x": 5242.85,
+              "y": 2377.0
             },
             {
-              "x": 5993.909,
-              "y": 2170.88
+              "x": 5233.458,
+              "y": 2377.0
+            },
+            {
+              "x": 5233.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3750,16 +3886,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5960.826,
-              "y": 2001.043
+              "x": 5259.628,
+              "y": 2277.0
             },
             {
-              "x": 6187.349,
-              "y": 2086.68
+              "x": 5259.628,
+              "y": 2337.0
             },
             {
-              "x": 6187.349,
-              "y": 2170.88
+              "x": 5425.458,
+              "y": 2337.0
+            },
+            {
+              "x": 5425.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3779,16 +3919,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5968.008,
-              "y": 1993.861
+              "x": 5276.406,
+              "y": 2277.0
             },
             {
-              "x": 6367.909,
-              "y": 2086.68
+              "x": 5276.406,
+              "y": 2317.0
             },
             {
-              "x": 6367.909,
-              "y": 2170.88
+              "x": 5617.458,
+              "y": 2317.0
+            },
+            {
+              "x": 5617.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3808,16 +3952,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 5971.759,
-              "y": 1990.111
+              "x": 5293.183,
+              "y": 2277.0
             },
             {
-              "x": 6548.149,
-              "y": 2086.68
+              "x": 5293.183,
+              "y": 2297.0
             },
             {
-              "x": 6548.149,
-              "y": 2170.88
+              "x": 5809.458,
+              "y": 2297.0
+            },
+            {
+              "x": 5809.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -3837,16 +3985,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7494.721,
-              "y": 2659.28
+              "x": 6817.263,
+              "y": 3009.0
             },
             {
-              "x": 7440.409,
-              "y": 2712.6
+              "x": 6817.263,
+              "y": 3050.0
             },
             {
-              "x": 7440.409,
-              "y": 2737.6
+              "x": 6738.513,
+              "y": 3050.0
+            },
+            {
+              "x": 6738.513,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -3866,16 +4018,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7386.389,
-              "y": 2832.94
+              "x": 6700.763,
+              "y": 3321.0
             },
             {
-              "x": 7179.769,
-              "y": 2911.96
+              "x": 6700.763,
+              "y": 3341.0
             },
             {
-              "x": 7179.769,
-              "y": 2948.96
+              "x": 6617.733,
+              "y": 3341.0
+            },
+            {
+              "x": 6617.733,
+              "y": 3381.0
             }
           ],
           "label": null,
@@ -3895,16 +4051,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7440.409,
-              "y": 2886.96
+              "x": 6738.513,
+              "y": 3321.0
             },
             {
-              "x": 7440.409,
-              "y": 2911.96
+              "x": 6738.513,
+              "y": 3361.0
             },
             {
-              "x": 7440.409,
-              "y": 2948.96
+              "x": 6821.543,
+              "y": 3361.0
+            },
+            {
+              "x": 6821.543,
+              "y": 3381.0
             }
           ],
           "label": null,
@@ -3924,16 +4084,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7495.72,
-              "y": 2831.65
+              "x": 6776.263,
+              "y": 3321.0
             },
             {
-              "x": 7725.049,
-              "y": 2911.96
+              "x": 6776.263,
+              "y": 3341.0
             },
             {
-              "x": 7725.049,
-              "y": 2936.96
+              "x": 7041.313,
+              "y": 3341.0
+            },
+            {
+              "x": 7041.313,
+              "y": 3381.0
             }
           ],
           "label": null,
@@ -3953,16 +4117,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3405.166,
-              "y": 1765.223
+              "x": 3071.514,
+              "y": 1966.0
             },
             {
-              "x": 7417.048,
-              "y": 1869.56
+              "x": 3071.514,
+              "y": 1986.0
             },
             {
-              "x": 7417.048,
-              "y": 1951.12
+              "x": 6587.267,
+              "y": 1986.0
+            },
+            {
+              "x": 6587.267,
+              "y": 2197.875
             }
           ],
           "label": null,
@@ -3982,16 +4150,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7311.048,
-              "y": 1995.385
+              "x": 6537.767,
+              "y": 2263.875
             },
             {
-              "x": 6750.549,
-              "y": 2086.68
+              "x": 6537.767,
+              "y": 2297.0
             },
             {
-              "x": 6750.549,
-              "y": 2170.88
+              "x": 6001.458,
+              "y": 2297.0
+            },
+            {
+              "x": 6001.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4011,16 +4183,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7311.048,
-              "y": 2002.624
+              "x": 6554.267,
+              "y": 2263.875
             },
             {
-              "x": 6947.429,
-              "y": 2086.68
+              "x": 6554.267,
+              "y": 2317.0
             },
             {
-              "x": 6947.429,
-              "y": 2170.88
+              "x": 6193.458,
+              "y": 2317.0
+            },
+            {
+              "x": 6193.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4040,16 +4216,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7354.349,
-              "y": 2005.12
+              "x": 6570.767,
+              "y": 2263.875
             },
             {
-              "x": 7164.949,
-              "y": 2086.68
+              "x": 6570.767,
+              "y": 2337.0
             },
             {
-              "x": 7164.949,
-              "y": 2170.88
+              "x": 6385.458,
+              "y": 2337.0
+            },
+            {
+              "x": 6385.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4069,16 +4249,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7413.582,
-              "y": 2005.12
+              "x": 6587.267,
+              "y": 2263.875
             },
             {
-              "x": 7403.109,
-              "y": 2086.68
+              "x": 6587.267,
+              "y": 2357.0
             },
             {
-              "x": 7403.109,
-              "y": 2170.88
+              "x": 6577.458,
+              "y": 2357.0
+            },
+            {
+              "x": 6577.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4098,16 +4282,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7471.501,
-              "y": 2005.12
+              "x": 6603.767,
+              "y": 2263.875
             },
             {
-              "x": 7635.989,
-              "y": 2086.68
+              "x": 6603.767,
+              "y": 2337.0
             },
             {
-              "x": 7635.989,
-              "y": 2170.88
+              "x": 6769.458,
+              "y": 2337.0
+            },
+            {
+              "x": 6769.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4127,16 +4315,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7523.048,
-              "y": 2003.89
+              "x": 6620.267,
+              "y": 2263.875
             },
             {
-              "x": 7863.589,
-              "y": 2086.68
+              "x": 6620.267,
+              "y": 2317.0
             },
             {
-              "x": 7863.589,
-              "y": 2170.88
+              "x": 6961.458,
+              "y": 2317.0
+            },
+            {
+              "x": 6961.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4156,16 +4348,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7523.048,
-              "y": 1996.196
+              "x": 6636.767,
+              "y": 2263.875
             },
             {
-              "x": 8053.669,
-              "y": 2086.68
+              "x": 6636.767,
+              "y": 2297.0
             },
             {
-              "x": 8053.669,
-              "y": 2170.88
+              "x": 7153.458,
+              "y": 2297.0
+            },
+            {
+              "x": 7153.458,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4185,16 +4381,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7598.618,
-              "y": 2659.28
+              "x": 6861.263,
+              "y": 3009.0
             },
             {
-              "x": 7652.929,
-              "y": 2712.6
+              "x": 6861.263,
+              "y": 3050.0
             },
             {
-              "x": 7652.929,
-              "y": 2785.28
+              "x": 6940.013,
+              "y": 3050.0
+            },
+            {
+              "x": 6940.013,
+              "y": 3150.0
             }
           ],
           "label": null,
@@ -4214,16 +4414,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8569.305,
-              "y": 1991.547
+              "x": 7576.062,
+              "y": 2270.0
             },
             {
-              "x": 9334.52,
-              "y": 2086.68
+              "x": 7576.062,
+              "y": 2297.0
             },
             {
-              "x": 9334.52,
-              "y": 2112.56
+              "x": 7868.135,
+              "y": 2297.0
+            },
+            {
+              "x": 7868.135,
+              "y": 2397.0
             }
           ],
           "label": null,
@@ -4243,16 +4447,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9281.244,
-              "y": 2229.925
+              "x": 7830.385,
+              "y": 2568.0
             },
             {
-              "x": 9149.645,
-              "y": 2309.08
+              "x": 7830.385,
+              "y": 2588.0
             },
             {
-              "x": 9149.645,
-              "y": 2367.52
+              "x": 7753.26,
+              "y": 2588.0
+            },
+            {
+              "x": 7753.26,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -4272,16 +4480,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9334.52,
-              "y": 2283.2
+              "x": 7868.135,
+              "y": 2568.0
             },
             {
-              "x": 9334.52,
-              "y": 2309.08
+              "x": 7868.135,
+              "y": 2608.0
             },
             {
-              "x": 9334.52,
-              "y": 2367.52
+              "x": 7945.26,
+              "y": 2608.0
+            },
+            {
+              "x": 7945.26,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -4301,16 +4513,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9390.843,
-              "y": 2226.876
+              "x": 7905.885,
+              "y": 2568.0
             },
             {
-              "x": 9550.52,
-              "y": 2309.08
+              "x": 7905.885,
+              "y": 2588.0
             },
             {
-              "x": 9550.52,
-              "y": 2367.52
+              "x": 8137.26,
+              "y": 2588.0
+            },
+            {
+              "x": 8137.26,
+              "y": 2628.0
             }
           ],
           "label": null,
@@ -4330,16 +4546,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 3625.73,
-              "y": 1370.053
+              "x": 5137.618,
+              "y": 1470.0
             },
             {
-              "x": 7957.029,
-              "y": 1444.76
+              "x": 5137.618,
+              "y": 1504.0
             },
             {
-              "x": 7957.029,
-              "y": 1529.76
+              "x": 5317.823,
+              "y": 1504.0
+            },
+            {
+              "x": 5317.823,
+              "y": 1658.5
             }
           ],
           "label": null,
@@ -4359,16 +4579,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7893.109,
-              "y": 1574.036
+              "x": 5284.823,
+              "y": 1703.5
             },
             {
-              "x": 7587.03,
-              "y": 1656.76
+              "x": 5284.823,
+              "y": 1755.0
             },
             {
-              "x": 7587.03,
-              "y": 1736.16
+              "x": 5049.629,
+              "y": 1755.0
+            },
+            {
+              "x": 5049.629,
+              "y": 1795.0
             }
           ],
           "label": null,
@@ -4388,16 +4612,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7921.865,
-              "y": 1583.76
+              "x": 5317.823,
+              "y": 1703.5
             },
             {
-              "x": 7826.79,
-              "y": 1656.76
+              "x": 5317.823,
+              "y": 1775.0
             },
             {
-              "x": 7826.79,
-              "y": 1736.16
+              "x": 5252.539,
+              "y": 1775.0
+            },
+            {
+              "x": 5252.539,
+              "y": 1795.0
             }
           ],
           "label": null,
@@ -4417,16 +4645,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 7992.194,
-              "y": 1583.76
+              "x": 5350.823,
+              "y": 1703.5
             },
             {
-              "x": 8087.268,
-              "y": 1656.76
+              "x": 5350.823,
+              "y": 1755.0
             },
             {
-              "x": 8087.268,
-              "y": 1688.16
+              "x": 5455.449,
+              "y": 1755.0
+            },
+            {
+              "x": 5455.449,
+              "y": 1795.0
             }
           ],
           "label": null,
@@ -4446,16 +4678,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9507.861,
-              "y": 1267.76
+              "x": 8412.469,
+              "y": 1325.5
             },
             {
-              "x": 9507.861,
-              "y": 1304.76
-            },
-            {
-              "x": 9507.861,
-              "y": 1341.76
+              "x": 8412.469,
+              "y": 1426.4
             }
           ],
           "label": null,
@@ -4475,16 +4703,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9412.981,
-              "y": 1382.884
+              "x": 8372.869,
+              "y": 1471.4
             },
             {
-              "x": 8997.303,
-              "y": 1444.76
+              "x": 8372.869,
+              "y": 1504.0
             },
             {
-              "x": 8997.303,
-              "y": 1529.76
+              "x": 7955.249,
+              "y": 1504.0
+            },
+            {
+              "x": 7955.249,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -4504,16 +4736,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9414.527,
-              "y": 1395.76
+              "x": 8399.269,
+              "y": 1471.4
             },
             {
-              "x": 9245.143,
-              "y": 1444.76
+              "x": 8399.269,
+              "y": 1524.0
             },
             {
-              "x": 9245.143,
-              "y": 1529.76
+              "x": 8149.059,
+              "y": 1524.0
+            },
+            {
+              "x": 8149.059,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -4533,16 +4769,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9493.793,
-              "y": 1395.76
+              "x": 8425.669,
+              "y": 1471.4
             },
             {
-              "x": 9468.263,
-              "y": 1444.76
+              "x": 8425.669,
+              "y": 1544.0
             },
             {
-              "x": 9468.263,
-              "y": 1529.76
+              "x": 8342.869,
+              "y": 1544.0
+            },
+            {
+              "x": 8342.869,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -4562,16 +4802,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 9567.091,
-              "y": 1395.76
+              "x": 8452.069,
+              "y": 1471.4
             },
             {
-              "x": 9674.583,
-              "y": 1444.76
+              "x": 8452.069,
+              "y": 1504.0
             },
             {
-              "x": 9674.583,
-              "y": 1529.76
+              "x": 8534.869,
+              "y": 1504.0
+            },
+            {
+              "x": 8534.869,
+              "y": 1564.0
             }
           ],
           "label": null,
@@ -4586,10 +4830,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 10114.689,
-        "max_y": 3014.96
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 8645.473,
+        "max_y": 3447.0
       }
     }
   }
