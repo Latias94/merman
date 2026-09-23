@@ -904,7 +904,7 @@ mod tests {
             .map(|family| family.diagram_type)
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 33);
         assert_eq!(capability_types.len(), capabilities.len());
         assert_eq!(capability_types, core_types);
         assert!(!capability_types.contains("error"));
