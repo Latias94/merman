@@ -869,6 +869,51 @@ Animal <|-- Duck
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
+    use base64::Engine as _;
+
+    let source = include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
+    let straight = render_class_svg_from_text(source);
+    let original = render_class_svg_from_text(&format!(
+        "---\nconfig:\n  elk:\n    straightenEdges: false\n---\n{source}"
+    ));
+    let edge_points = |svg: &str, edge_id: &str| {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(edge_id))
+            .expect("Class relation path");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(edge.attribute("data-points").unwrap())
+            .unwrap();
+        let points: Vec<merman_render::model::LayoutPoint> =
+            serde_json::from_slice(&decoded).unwrap();
+        points
+            .into_iter()
+            .map(|p| (p.x, p.y))
+            .collect::<Vec<_>>()
+    };
+
+    // Mermaid 12 moves the whole terminal channel onto the port row. Both source and
+    // target staircases occur in this graph; the endpoint coordinates must stay fixed.
+    for (edge_id, source_terminal) in [("id_B_D_4", true), ("id_A_C_2", false)] {
+        let mut before = edge_points(&original, edge_id);
+        let mut after = edge_points(&straight, edge_id);
+        assert_eq!(after.first(), before.first());
+        assert_eq!(after.last(), before.last());
+        assert_eq!(after.len() + 2, before.len(), "{edge_id}");
+        if !source_terminal {
+            before.reverse();
+            after.reverse();
+        }
+        assert!((before[0].1 - before[2].1).abs() > 0.01);
+        assert_eq!(after[0].1, after[1].1);
+        assert_eq!(after[0].1, after[2].1);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn class_svg_elk_layout_uses_shared_mermaid12_markers() {
     let svg = render_class_svg_from_text(
         r#"---

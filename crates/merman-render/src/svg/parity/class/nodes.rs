@@ -292,8 +292,8 @@ pub(super) fn render_class_elk_adapter_dom(
         .iter()
         .map(|cluster| (cluster.id.as_str(), cluster))
         .collect::<HashMap<_, _>>();
-    let edges_by_id = ctx
-        .layout
+    // Consume the prepared paint routes, including terminal straightening and label updates.
+    let edges_by_id = edge_ctx
         .edges
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
@@ -317,7 +317,7 @@ pub(super) fn render_class_elk_adapter_dom(
         });
     }
 
-    // `layout-elk@0.2.3` uses Mermaid's common layout painter. It inserts one root and four
+    // Mermaid 12 ELK uses the common layout painter. It inserts one root and four
     // sibling groups; ELK's post-paint z-order is edge paths, clusters, edge labels, nodes.
     let edges = root
         .edge_ids
