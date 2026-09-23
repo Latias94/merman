@@ -187,7 +187,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 | U13 | Public selection, authoring and exchange contract | public workflow audit, existing contract/CLI/SDK owners | U12 |
 | U1 | Reproducible visible contract | capability corpus, reference fixtures | U12 |
 | U2 | Ordinary rendering avoids unrequested assurance | render facade, family artifacts, SVG pipeline | U1 |
-| U3 | Optional embedded-font closure | manifests, assets, prepared text, profiles | U2 |
+| U3 | Host-font dependency boundary | manifests, theme admission, profiles | U2 |
 | U4 | One complete preset recipe | catalog, compiler, preset tests | U13, U1 |
 | U5 | Bounded composed glow and native observation | effects, State, export filter receipts | U2, U4 |
 | U6 | Cyberpunk Flowchart | Flowchart writers and marker/label tests | U5 |
@@ -261,19 +261,19 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 **Verification:** Selected byte-identical default fixtures remain identical; strict/negative pipeline tests pass; profiling shows the unconditional paths removed rather than merely renamed. U10 decides performance admission.
 
-### U3. Isolate embedded-font processing and align profiles
+### U3. Close the host-font dependency boundary
 
-**Goal:** Make the minimal SVG dependency boundary real across native and WASM builds.
+**Goal:** Make the minimal SVG dependency boundary real across native and WASM builds after retiring embedded theme-font processing.
 **Requirements:** R4, R5, R7; KTD2. **Dependencies:** U2.
-**Files:** `Cargo.toml`; `crates/merman/Cargo.toml`; `crates/merman-render/Cargo.toml`; `crates/merman-export/Cargo.toml`; `diagram_theme/assets.rs` and `text/prepared.rs` in the renderer; existing platform profile declarations; existing profile checks; new `crates/merman/tests/theme_font_capability.rs`.
-**Approach:** Move codec/font-parser/shaper implementation and concrete backend construction behind the single explicit capability. Keep complete-spec parsing available without decoding. Map each existing shipping profile deliberately, preserving claimed embedded-font behavior in profiles that opt in and accurately advertising its absence elsewhere. Let native export retain its backend's normal font use.
+**Files:** `Cargo.toml`; renderer/export manifests and profiles; theme asset admission; generated bindings and profile checks; `crates/merman-render/tests/theme_font_capability.rs`.
+**Approach:** Keep complete-spec parsing and font-family typography values in the wire contract, but remove the decoder, parser, shaping backend, font catalog lowering and optional Cargo feature from current artifacts. Native PNG/PDF backends retain their existing system-font handling. A resource-bearing recipe is rejected after ordinary input/resource limits are checked; it is never silently substituted.
 **Test scenarios:**
 
-- Minimal native/WASM SVG compiles with font-stack typography, full canvas and resource-free effects but without the font-processing dependency group.
-- An actual embedded-font request with the feature off fails deterministically through one-shot and reusable APIs; explicit font-family names do not fail.
-- With the feature on, valid font resources render and malformed/duplicate-table/over-budget fonts preserve their existing bounded errors and panic regressions.
+- Minimal native/WASM SVG compiles with font-stack typography, full canvas and resource-free effects without the retired font-processing dependency group.
+- A font-bearing recipe fails deterministically through one-shot and reusable APIs with an invalid-argument error, while explicit font-family names continue to work.
+- Generated capability/profile projections contain no embedded-font leaf or feature, and current bindings expose the same rejection contract.
 
-**Verification:** Exact profile closure checks demonstrate KTD2. Public feature errors and profiles agree across bindings. No bundled font resource is introduced.
+**Verification:** Exact profile closure checks demonstrate KTD2. Public feature errors and profiles agree across bindings. No bundled font resource is introduced. The former feature-on font tests remain only on `preserve/embedded-fonts-theme` as historical evidence.
 
 ### U4. Compile and export one complete preset recipe
 
