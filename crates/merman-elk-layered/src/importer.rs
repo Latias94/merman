@@ -3996,6 +3996,41 @@ mod tests {
     }
 
     #[test]
+    fn implicit_ports_have_directional_sides_before_preprocessing() {
+        for (direction, output_side, input_side) in [
+            (ElkDirection::Right, PortSide::East, PortSide::West),
+            (ElkDirection::Left, PortSide::West, PortSide::East),
+            (ElkDirection::Down, PortSide::South, PortSide::North),
+            (ElkDirection::Up, PortSide::North, PortSide::South),
+        ] {
+            let mut input = graph(
+                vec![node("A"), node("B")],
+                vec![edge("first", "A", "B"), edge("second", "A", "B")],
+            );
+            input.options.direction = direction;
+            let imported = import_graph(&input).unwrap();
+            let source = imported
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == "A")
+                .unwrap();
+            let target = imported
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == "B")
+                .unwrap();
+            assert_eq!(source.ports.len(), 2);
+            assert_eq!(target.ports.len(), 2);
+            for index in 0..2 {
+                assert_eq!(source.ports[index].side, output_side, "{direction:?}");
+                assert_eq!(target.ports[index].side, input_side, "{direction:?}");
+                assert_eq!(source.ports[index].outgoing_edges, vec![index]);
+                assert_eq!(target.ports[index].incoming_edges, vec![index]);
+            }
+        }
+    }
+
+    #[test]
     fn importer_keeps_dedicated_ports_when_node_port_constraints_are_side_fixed() {
         let mut a = node("A");
         a.port_constraints = Some(PortConstraints::FixedSide);

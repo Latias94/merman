@@ -109,3 +109,100 @@ fn flowchart_neo_animated_edges_keep_unoffset_markers() {
             .any(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id))
     );
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_diamond_departures_stay_on_the_routed_axis() {
+    use base64::Engine as _;
+    let svg = render_flowchart(include_str!("../../../fixtures/flowchart/basic.mmd"));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for id in ["L_B_C_0", "L_B_D_0"] {
+        let edge = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-id") == Some(id) && node.attribute("data-edge") == Some("true")
+            })
+            .unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(edge.attribute("data-points").unwrap())
+            .unwrap();
+        let points: Vec<serde_json::Value> = serde_json::from_slice(&decoded).unwrap();
+        assert_eq!(points.len(), 5);
+        assert_eq!(
+            points[0]["x"], points[1]["x"],
+            "orthogonal diamond departure"
+        );
+        let y = points[0]["y"].as_f64().unwrap();
+        assert!(
+            (y - 242.83326625823975).abs() < 1e-6,
+            "upstream outline attachment: {y}"
+        );
+        let path = edge.attribute("d").unwrap();
+        assert_eq!(
+            path.matches('Q').count(),
+            2,
+            "no diagonal terminal turn: {path}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_rounding_is_independent_of_theme_node_radius() {
+    let source = "flowchart TD\nA[Start] --> B{Choice}\nB -->|Yes| C[OK]\nB -->|No| D[Fail]\n";
+    let paths = |radius| {
+        let svg = render_flowchart(&format!(
+            "---\nconfig:\n  themeVariables:\n    radius: {radius}\n---\n{source}"
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .map(|node| node.attribute("d").unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(paths(5), paths(24));
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_line_hops_follow_elk_config_and_preserve_routes() {
+    let source = "flowchart TD\nA & B --> C & D\n";
+    let edges = |config: &str| {
+        let svg = render_flowchart(&format!("---\nconfig:\n{config}---\n{source}"));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .map(|node| {
+                (
+                    node.attribute("d").unwrap().to_owned(),
+                    node.attribute("data-points").unwrap().to_owned(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let swimlane_disabled = edges("  swimlane:\n    lineHops: false\n");
+    let elk_disabled = edges("  elk:\n    lineHops: false\n");
+    let elk_gap = edges("  elk:\n    lineHops: gap\n");
+    assert!(
+        swimlane_disabled.iter().any(|(path, _)| path.contains('A')),
+        "default ELK crossings have arcs"
+    );
+    assert!(elk_disabled.iter().all(|(path, _)| !path.contains('A')));
+    assert!(
+        elk_gap
+            .iter()
+            .any(|(path, _)| path.matches('M').count() > 1),
+        "gap splits the painted path"
+    );
+    for ((swimlane_disabled, elk_disabled), elk_gap) in
+        swimlane_disabled.iter().zip(&elk_disabled).zip(&elk_gap)
+    {
+        assert_eq!(
+            swimlane_disabled.1, elk_disabled.1,
+            "paint must preserve routed geometry"
+        );
+        assert_eq!(swimlane_disabled.1, elk_gap.1);
+    }
+}

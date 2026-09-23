@@ -74,11 +74,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
-    let presentation_policy = presentation_policy.unwrap_or_default();
+    // Mermaid's edge renderer passes a fixed radius of 5 to generateRoundedPath;
+    // the theme radius controls node corners. An explicit presentation may override it.
     let edge_corner_radius = presentation_policy
-        .edge_corner_radius
-        .unwrap_or(node_corner_radius)
+        .map(|policy| policy.edge_corner_radius.unwrap_or(node_corner_radius))
+        .unwrap_or(5.0)
         .max(0.0);
+    let presentation_policy = presentation_policy.unwrap_or_default();
     let edge_label_padding = presentation_policy.edge_label_padding.max(0.0);
     let compact_edge_corners = presentation_policy.compact_edge_corners;
 

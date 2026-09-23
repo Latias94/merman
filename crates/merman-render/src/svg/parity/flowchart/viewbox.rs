@@ -364,12 +364,13 @@ where
             }
         }
 
-        if ctx.swimlane_direction.is_some() {
+        if ctx.swimlane_direction.is_some() || ctx.uses_elk_adapter_dom {
             super::swimlane::apply_line_hops_to_edge_geometries(
                 edge_path_cache,
                 render_edges,
                 ctx.config,
                 ctx.work_meter,
+                ctx.uses_elk_adapter_dom,
             )?;
 
             // Line hops are a render-time replacement of the original path. Rebuild edge bounds

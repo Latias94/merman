@@ -308,13 +308,16 @@ fn attach_along_departure_axis(
     port_index: usize,
     step: isize,
 ) -> Option<crate::model::LayoutPoint> {
+    if ctx.layout_clusters_by_id.contains_key(node_id) {
+        return None;
+    }
     let port = points.get(port_index)?;
     let next_index = port_index.checked_add_signed(step)?;
     let next = points.get(next_index)?;
     let dx = next.x - port.x;
     let dy = next.y - port.y;
     const EPS: f64 = 1e-6;
-    if dx.abs() <= EPS && dy.abs() <= EPS {
+    if dx == 0.0 && dy == 0.0 {
         return None;
     }
     if dx.abs() > EPS && dy.abs() > EPS {
@@ -354,7 +357,7 @@ fn attach_along_departure_axis(
     if inside(&along(outer)) {
         return Some(port.clone());
     }
-    for _ in 0..48 {
+    for _ in 0..20 {
         let mid = (inner + outer) / 2.0;
         if inside(&along(mid)) {
             inner = mid;

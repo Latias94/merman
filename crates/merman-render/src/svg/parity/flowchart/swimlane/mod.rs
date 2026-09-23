@@ -165,12 +165,17 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     render_edges: &[Cow<'_, crate::flowchart::FlowEdge>],
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
+    uses_elk_adapter_dom: bool,
 ) -> Result<()> {
     use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
     let line_hops_value = effective_config
         .as_value()
-        .get("swimlane")
+        .get(if uses_elk_adapter_dom {
+            "elk"
+        } else {
+            "swimlane"
+        })
         .and_then(|value| value.get("lineHops"));
     if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
         return Ok(());
@@ -218,7 +223,11 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .map(|edge| LineHopEdge {
             id: edge.semantic.id.as_str(),
             points: &edge.points,
-            curve: edge.semantic.interpolate.as_deref(),
+            curve: if uses_elk_adapter_dom {
+                Some("rounded")
+            } else {
+                edge.semantic.interpolate.as_deref()
+            },
             arrow_type_start: edge.arrow_type_start,
             arrow_type_end: edge.arrow_type_end,
         })
@@ -366,6 +375,7 @@ mod tests {
             &render_edges,
             &merman_core::MermaidConfig::default(),
             &work_meter,
+            false,
         )
         .expect("apply line hops");
         assert_eq!(work_meter.used(), 17);
@@ -424,7 +434,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
 
-        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter)
+        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter, false)
             .expect("disabled line hops");
 
         assert_eq!(cache["horizontal"].geom.d, "M-10,0L10,0");
