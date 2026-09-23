@@ -8,7 +8,6 @@ use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
 mod cluster;
-pub(super) mod line_hops;
 
 pub(super) use cluster::render_swimlane_cluster;
 
@@ -167,7 +166,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     work_meter: &crate::resources::OperationWorkMeter,
     uses_elk_adapter_dom: bool,
 ) -> Result<()> {
-    use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+    use crate::svg::parity::line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
     let line_hops_value = effective_config
         .as_value()
@@ -233,7 +232,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         })
         .collect();
 
-    let paths = line_hops::process_edges_with_line_hops(
+    let paths = crate::svg::parity::line_hops::process_edges_with_line_hops(
         &edges,
         LineHopConfig {
             enabled: true,
@@ -248,7 +247,9 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             || !edges
                 .iter()
                 .find(|edge| edge.id == path.edge_id)
-                .is_some_and(|edge| line_hops::curve_supports_line_hops(edge.curve))
+                .is_some_and(|edge| {
+                    crate::svg::parity::line_hops::curve_supports_line_hops(edge.curve)
+                })
         {
             continue;
         }

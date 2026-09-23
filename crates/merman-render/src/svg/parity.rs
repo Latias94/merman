@@ -45,6 +45,7 @@ mod journey;
 mod kanban;
 mod label;
 mod layout_debug;
+mod line_hops;
 mod look_defs;
 mod markers;
 mod mindmap;

@@ -104,6 +104,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         diagram_id,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         elk_edge_paths: &layout.elk_edge_paths,
+        elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
         palette_size: state_palette_size(effective_config),
         hand_drawn_seed,
@@ -266,7 +267,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         out
     }
 
-    if !layout.uses_elk_adapter_dom {
+    if layout.uses_elk_adapter_dom {
+        ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
+    } else {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
     }
 
@@ -451,6 +454,99 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         );
     }
     root_document.complete(out)
+}
+
+fn prepare_state_line_hop_paths(
+    ctx: &StateRenderCtx<'_>,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<FxHashMap<String, String>> {
+    use crate::svg::parity::line_hops::{
+        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops,
+        process_edges_with_line_hops,
+    };
+
+    let line_hops_value = effective_config
+        .get("elk")
+        .and_then(|value| value.get("lineHops"));
+    if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
+        return Ok(FxHashMap::default());
+    }
+    let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
+        LineHopStyle::Gap
+    } else {
+        LineHopStyle::Arc
+    };
+
+    struct OwnedEdge<'a> {
+        id: &'a str,
+        points: Vec<crate::model::LayoutPoint>,
+        curve: Option<&'static str>,
+        arrow_type_end: Option<&'a str>,
+    }
+
+    let mut owned_edges = Vec::new();
+    for edge in ctx.edges {
+        if state_is_hidden(ctx, edge.start.as_str())
+            || state_is_hidden(ctx, edge.end.as_str())
+            || state_is_hidden(ctx, edge.id.as_str())
+        {
+            continue;
+        }
+        let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+            continue;
+        };
+        let geometry = state_edge_prepare_geometry(
+            ctx,
+            layout_edge,
+            Some(edge.arrow_type_end.as_str()),
+            0.0,
+            0.0,
+        );
+        let curve = if layout_edge.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        };
+        owned_edges.push(OwnedEdge {
+            id: edge.id.as_str(),
+            points: geometry.data_points,
+            curve: Some(curve),
+            arrow_type_end: Some(edge.arrow_type_end.as_str()),
+        });
+    }
+
+    let edges: Vec<_> = owned_edges
+        .iter()
+        .map(|edge| LineHopEdge {
+            id: edge.id,
+            points: &edge.points,
+            curve: edge.curve,
+            arrow_type_start: None,
+            arrow_type_end: edge.arrow_type_end,
+        })
+        .collect();
+    let paths = process_edges_with_line_hops(
+        &edges,
+        LineHopConfig {
+            enabled: true,
+            jump_radius: 6.0,
+            jump_style,
+        },
+        options.work_meter(),
+    )?;
+
+    Ok(paths
+        .into_iter()
+        .filter(|path| {
+            path.has_hops
+                && edges
+                    .iter()
+                    .find(|edge| edge.id == path.edge_id)
+                    .is_some_and(|edge| curve_supports_line_hops(edge.curve))
+        })
+        .map(|path| (path.edge_id.to_owned(), path.path))
+        .collect())
 }
 
 fn render_state_root(

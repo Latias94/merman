@@ -421,8 +421,8 @@ fn state_line_with_end_marker_offset_points(
     out
 }
 
-struct StatePreparedEdgeGeometry {
-    data_points: Vec<crate::model::LayoutPoint>,
+pub(super) struct StatePreparedEdgeGeometry {
+    pub(super) data_points: Vec<crate::model::LayoutPoint>,
     label_path_points: Vec<crate::model::LayoutPoint>,
     rendered_d: String,
     points_were_explicitly_updated: bool,
@@ -452,7 +452,7 @@ fn state_edge_finish_geometry(
     }
 }
 
-fn state_edge_prepare_geometry(
+pub(super) fn state_edge_prepare_geometry(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     arrow_type_end: Option<&str>,
@@ -552,17 +552,22 @@ fn write_state_edge_path(
     }
 
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+    let rendered_d = ctx
+        .elk_line_hop_paths
+        .get(edge_id)
+        .map(String::as_str)
+        .unwrap_or(geometry.rendered_d.as_str());
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style=""#,
-        geometry.rendered_d,
+        rendered_d,
         state_scoped_dom_id(ctx, edge_id),
         escape_xml_display(classes),
     );
     if state_data_look(ctx) == "neo"
-        && let Some(length) = super::super::svg_path_length_from_d(&geometry.rendered_d)
+        && let Some(length) = super::super::svg_path_length_from_d(rendered_d)
     {
         super::super::edge_path::write_neo_edge_mask(
             out,

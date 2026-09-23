@@ -12,47 +12,47 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
 // Kept in sync with Mermaid's `generateRoundedPath` radius.
-pub(in crate::svg::parity::flowchart) const ROUNDED_CORNER_RADIUS: f64 = 5.0;
+pub(in crate::svg::parity) const ROUNDED_CORNER_RADIUS: f64 = 5.0;
 const CORNER_EPSILON: f64 = 1e-5;
 const ENDPOINT_EPSILON: f64 = 1e-6;
 const MIN_JUMP_RADIUS: f64 = 1e-3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::svg::parity::flowchart) enum LineHopStyle {
+pub(in crate::svg::parity) enum LineHopStyle {
     Arc,
     Gap,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct LineHopConfig {
-    pub(in crate::svg::parity::flowchart) enabled: bool,
-    pub(in crate::svg::parity::flowchart) jump_radius: f64,
-    pub(in crate::svg::parity::flowchart) jump_style: LineHopStyle,
+pub(in crate::svg::parity) struct LineHopConfig {
+    pub(in crate::svg::parity) enabled: bool,
+    pub(in crate::svg::parity) jump_radius: f64,
+    pub(in crate::svg::parity) jump_style: LineHopStyle,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct LineHopEdge<'a> {
-    pub(in crate::svg::parity::flowchart) id: &'a str,
-    pub(in crate::svg::parity::flowchart) points: &'a [LayoutPoint],
-    pub(in crate::svg::parity::flowchart) curve: Option<&'a str>,
-    pub(in crate::svg::parity::flowchart) arrow_type_start: Option<&'a str>,
-    pub(in crate::svg::parity::flowchart) arrow_type_end: Option<&'a str>,
+pub(in crate::svg::parity) struct LineHopEdge<'a> {
+    pub(in crate::svg::parity) id: &'a str,
+    pub(in crate::svg::parity) points: &'a [LayoutPoint],
+    pub(in crate::svg::parity) curve: Option<&'a str>,
+    pub(in crate::svg::parity) arrow_type_start: Option<&'a str>,
+    pub(in crate::svg::parity) arrow_type_end: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::svg::parity::flowchart) struct LineHopCrossing<'a> {
-    pub(in crate::svg::parity::flowchart) jump_edge_id: &'a str,
-    pub(in crate::svg::parity::flowchart) other_edge_id: &'a str,
-    pub(in crate::svg::parity::flowchart) segment_index: usize,
-    pub(in crate::svg::parity::flowchart) t: f64,
-    pub(in crate::svg::parity::flowchart) point: LayoutPoint,
+pub(in crate::svg::parity) struct LineHopCrossing<'a> {
+    pub(in crate::svg::parity) jump_edge_id: &'a str,
+    pub(in crate::svg::parity) other_edge_id: &'a str,
+    pub(in crate::svg::parity) segment_index: usize,
+    pub(in crate::svg::parity) t: f64,
+    pub(in crate::svg::parity) point: LayoutPoint,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::svg::parity::flowchart) struct LineHopPath<'a> {
-    pub(in crate::svg::parity::flowchart) edge_id: &'a str,
-    pub(in crate::svg::parity::flowchart) path: String,
-    pub(in crate::svg::parity::flowchart) has_hops: bool,
+pub(in crate::svg::parity) struct LineHopPath<'a> {
+    pub(in crate::svg::parity) edge_id: &'a str,
+    pub(in crate::svg::parity) path: String,
+    pub(in crate::svg::parity) has_hops: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -155,7 +155,7 @@ fn path_emission_work_units(edges: &[LineHopEdge<'_>]) -> usize {
     })
 }
 
-pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
+pub(in crate::svg::parity) fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<LineHopCrossing<'a>>> {
@@ -285,7 +285,7 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
     Ok(crossings)
 }
 
-pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
+pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
     edges: &[LineHopEdge<'a>],
     config: LineHopConfig,
     work_meter: &OperationWorkMeter,
@@ -331,7 +331,7 @@ pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
         .collect())
 }
 
-pub(in crate::svg::parity::flowchart) fn curve_supports_line_hops(curve: Option<&str>) -> bool {
+pub(in crate::svg::parity) fn curve_supports_line_hops(curve: Option<&str>) -> bool {
     matches!(
         curve,
         None | Some("linear" | "rounded" | "step" | "stepBefore" | "stepAfter")
