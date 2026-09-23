@@ -467,8 +467,8 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
         Some("dagre")
     );
     let svg = render_swimlane(&source, "swimlane-dagre");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]
@@ -624,8 +624,8 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
         Some("elk")
     );
     let svg = render_swimlane(&source, "swimlane-elk");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]

@@ -43,6 +43,9 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
     let layout = merman::svg::LayoutOptions::headless_svg_defaults();
+    let environment = merman::SvgEnvironment::deterministic().with_resource_policy(
+        merman::svg::RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
 
     for path in fixtures {
         let name = path
@@ -76,12 +79,17 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             diagram_id: Some(merman::svg::sanitize_svg_id(&name)),
             ..Default::default()
         };
-        let renderer = merman::Renderer::new().with_engine(engine.clone());
+        let renderer = merman::Renderer::new()
+            .with_engine(engine.clone())
+            .with_resource_policy(merman_core::resources::InputResourcePolicy::for_profile(
+                merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+            ));
         let layout_json = match renderer
             .render(merman::RenderRequest::layout_json(
                 &input,
                 merman::OperationControl::new(),
                 merman::SvgRequest {
+                    environment: environment.clone(),
                     layout: layout.clone(),
                     options: svg_options.clone(),
                     ..Default::default()
@@ -104,6 +112,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
                 &input,
                 merman::OperationControl::new(),
                 merman::SvgRequest {
+                    environment: environment.clone(),
                     layout: layout.clone(),
                     options: svg_options,
                     ..Default::default()

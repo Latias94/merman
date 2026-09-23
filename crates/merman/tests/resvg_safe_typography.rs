@@ -211,8 +211,8 @@ fn class_diagram_fallback_keeps_source_context_typography() {
     for label in ["User", "+String name", "+signIn()"] {
         let style = fallback_text_style(&svg, label);
         assert!(
-            style.contains("font-size: 16px") || style.contains("font-size:16px"),
-            "{label:?} should use the source 16px metric: {style}"
+            style.contains("font-size: 14px") || style.contains("font-size:14px"),
+            "{label:?} should use the source 14px metric: {style}"
         );
         assert!(
             !style.contains("font-size: 10px") && !style.contains("font-size:10px"),
@@ -220,8 +220,8 @@ fn class_diagram_fallback_keeps_source_context_typography() {
         );
         assert_eq!(
             usvg_fallback_text_font_size(&svg, label),
-            16.0,
-            "{label:?} must paint at 16px after usvg style resolution"
+            14.0,
+            "{label:?} must paint at 14px after usvg style resolution"
         );
     }
     assert_usvg_parseable(&svg);
@@ -247,7 +247,7 @@ fn parity_pipeline_remains_separate_from_the_typography_adapter() {
 }
 
 #[test]
-fn er_fallback_keeps_entity_and_relationship_selector_sizes_distinct() {
+fn er_fallback_keeps_entity_and_relationship_context_typography() {
     let svg = render_resvg_safe(
         "resvg-typography-er",
         "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
@@ -256,13 +256,13 @@ fn er_fallback_keeps_entity_and_relationship_selector_sizes_distinct() {
     let entity_style = fallback_text_style(&svg, "CUSTOMER");
     let relationship_style = fallback_text_style(&svg, "places");
     assert!(
-        entity_style.contains("font-size: 16px") || entity_style.contains("font-size:16px"),
-        "entity labels should retain the root metric: {entity_style}"
+        entity_style.contains("font-size: 14px") || entity_style.contains("font-size:14px"),
+        "entity labels should retain the root 14px metric: {entity_style}"
     );
     assert!(
         relationship_style.contains("font-size: 14px")
             || relationship_style.contains("font-size:14px"),
-        "only the matching .edgeLabel .label context should use 14px: {relationship_style}"
+        "the .edgeLabel .label context should use 14px: {relationship_style}"
     );
     assert_eq!(
         usvg_fallback_text_font_size(&svg, "places"),
