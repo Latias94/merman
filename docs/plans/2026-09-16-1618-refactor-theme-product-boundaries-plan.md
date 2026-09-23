@@ -23,6 +23,15 @@ execution: code
 
 ## Product Contract
 
+### Implementation scope decision (2026-09-23)
+
+The current branch retires embedded theme-font processing instead of shipping it as an optional
+capability. The product contract keeps font-family names, typography values and host measurement,
+but rejects caller-supplied font bytes explicitly. The portable-font implementation and its
+qualification evidence remain on `preserve/embedded-fonts-theme` for historical comparison; they
+are not current acceptance requirements. Any plan row below that mentions an embedded-font artifact
+or backend is historical and is superseded by this decision.
+
 ### Summary
 
 Keep the useful typed theme model, rule precedence and family drawing ownership. Remove accidental coupling between ordinary SVG, embedded-font processing and target certification. Make the public preset the source of the actual visual recipe, then prove the rendered product through its public entrypoints. Review all 24 reference themes to establish shared identity, family-specific recipes and appropriate use; Cyberpunk is the first effect-rich sample, not the definition of the whole theme product.
@@ -91,7 +100,7 @@ Minimal native SVG resolves 104 to 126 unique dependency names, and minimal WASM
 
 ### Scope Boundaries
 
-The active tranche covers the all-24 portfolio/application review, the minimal runtime boundary, optional embedded-font capability, complete preset recipes, a bounded reusable glow implementation, three family consumers and final impact/delivery audit. Existing State shadows and all previously supported theme behavior remain regression obligations.
+The active tranche covers the all-24 portfolio/application review, the minimal host-font runtime boundary, complete preset recipes, a bounded reusable glow implementation, three family consumers and final impact/delivery audit. Existing State shadows and all previously supported theme behavior remain regression obligations.
 
 **Deferred to Follow-Up Work:** Remaining C7b family/value breadth, other reference themes, full C6b cross-target certification, C7c external-host guarantees, and unmeasured XY/Block micro-optimizations unrelated to measured bottlenecks. Their deferral does not excuse missing R1 behavior.
 
@@ -104,7 +113,7 @@ The active tranche covers the all-24 portfolio/application review, the minimal r
 ### Key Technical Decisions
 
 - KTD1. **Use complete specifications as the internal recipe boundary.** Change the catalog's simple-definition-only builder seam, not the public simple authoring language. Simple recipes reuse the materializer; complex recipes compose canvas/effects into the complete wire specification. Admit the final composition once through the existing policy owner. Compiler and exporter consume that same result. This realizes the addendum's existing complete-spec export design (R2).
-- KTD2. **Make embedded-font processing an explicit optional capability.** Use one `embedded-fonts` feature propagated through existing crates and package profiles, rather than a family of per-codec/per-effect features or a new font-service abstraction. It owns admitted font bytes, WOFF2 decoding, font metadata and native prepared shaping. Keep font references/typography values in the base contract. Existing PNG/PDF backends retain their ordinary system-font dependencies; those pre-existing export dependencies are not a reason to pull font machinery into SVG. Disabled capability accepts resource-free recipes and permits bounded lossless reading/forwarding of complete-spec data. Compilation rejects actual embedded-resource use with the existing capability-not-built diagnostic pattern, after input byte limits are checked; it never silently substitutes host fonts (R4, R5).
+- KTD2. **Retire embedded-font processing from the current product.** Keep font-family names and typography values in the base contract, use host measurement and existing system-font PNG/PDF handling, and reject caller-supplied font bytes after the ordinary input/resource limits are checked. Preserve the complete-spec wire shape so producers can exchange and receive a truthful unsupported-resource error. Do not add a decoder, shaping backend, font catalog, bundled replacement font, or optional Cargo feature to the current artifact profiles (R4, R5).
 - KTD3. **Separate rendering from requested certification by operation semantics.** Ordinary BestEffort SVG retains family application/residual reporting but does not promise native portability. Unobserved target admission is explicitly Unverified; add this state to the existing target-admission owner, whose current public enum has only Portable, HostDependent and Rejected. Keep the unpublished v1 wire field open and preserve unknown values; static support discovery stays conservative, and final-target observations come from the target/export owner. Strict target admission and native export explicitly finalize against their target. Move validation to the owner that consumes the promise, reuse observations within that immutable artifact, and invalidate them after mutation. Do not replace a missing observation with success or serialize internal prepared-label identifiers merely to scan them out again (R3, R5). Retain hashing where artifact/resource identity is required; removing every new dependency is not the goal.
 - KTD4. **Share a bounded effect lowering implementation and preserve drawing ownership.** Support the ordered zero-spread shadow composition needed by the pinned Cyberpunk recipes first. State migrates to the same implementation. The shared code owns effect sequence, inputs, color space and outward paint extent; each family supplies real terminal geometry, attachment point and clipping context. Extend existing exporter verification for the same semantics and remove its single-shadow/count assumptions. Do not generalize Node, Text, Edge and Marker behind a universal drawable trait (R1, R3, R10).
 - KTD5. **Let the public recipe drive product evidence.** Use `compile_preset` and export/import through real consumers. Keep C6 hand-built scenes as mechanism regressions, explicitly separate from public-preset oracles. Map reference CSS into typed semantics deliberately; define preview-owned background composition at the root canvas. Capability counts never substitute for visible terminals (R1, R8).
@@ -133,9 +142,7 @@ flowchart TB
 | Operation/profile | Embedded font processing | Target certification | Result promise |
 | --- | --- | --- | --- |
 | Minimal SVG, no font assets | Absent from dependency closure | Only if explicitly requested and available | Applied/residual facts; host-dependent text |
-| SVG plus embedded-fonts | Available for admitted caller assets | On request | Resource-backed text only where actually consumed |
 | PNG/PDF with system fonts | Existing backend font handling | Required for the export's declared policy | Actual native target result |
-| PNG/PDF plus embedded-fonts | Admitted explicit resources | Required for the export's declared policy | Same resources and target output bound together |
 | Private qualification/candidate tools | Exact tested artifact capabilities | Required for promoted cells | Evidence scoped to that recipe/profile/host |
 
 ```mermaid
@@ -159,7 +166,7 @@ For zero-area lines, marker tips, text glyph bounds and foreignObject text, use 
 
 U12 establishes portfolio and application boundaries; U13 resolves public selection, authoring and exchange contracts before U4/U9; U1 then locks the representative visible contract before any oracle changes. U2 and U3 establish the cost boundary; U4 and U5 establish reusable recipe/effect semantics. U6–U8 deliver independent family tranches. U9 verifies public product/transport behavior, U10 admits measured cost, and U11 produces the final candidate.
 
-The feature name in KTD2 is a concrete starting choice; implementation may improve private module placement without introducing new capability combinations. No new third-party dependency is planned for glow, canvas or typed-style consumers. A genuinely necessary new dependency requires an owner/profile and measured cost rationale before adoption.
+KTD2 is a product boundary decision; no font capability combination is part of the current profile matrix. No new third-party dependency is planned for glow, canvas or typed-style consumers. A genuinely necessary new dependency requires an owner/profile and measured cost rationale before adoption.
 
 The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. Its browser audit used Mermaid 11.12.1 and a reused CLI, while Merman targets 11.17.2; it is diagnostic evidence, not current-source parity certification. U1 rebuilds a reproducible comparison with recorded engine/font versions and separates source-backed style expectations from layout differences.
 
@@ -378,7 +385,7 @@ The reference checkout is pinned at `a021cbce37fc0b07a9f4791c28e983101ea06f2d`. 
 
 - Covers AE1–AE4. Fresh installed consumers export/import/render and explain unsupported or unknown profile/admission values consistently.
 - Covers AE5/AE6. Switching families updates design scope without changing selection; semantic reply/cardinality/task-state distinctions and later-series styling remain correct.
-- The feature-disabled profile and the embedded-font profile advertise their actual different capabilities.
+- A resource-free profile renders with host fonts; a font-bearing recipe is rejected with a stable invalid-argument error and is never silently substituted.
 - Qualified cells reject recipe/profile/source mismatch and cannot reuse the historical a5 palette-only receipt for the new recipe.
 - Web public-entry tests assert the exported Cyberpunk background colors, gradient positions/radii and layer order alongside visible glow; field/type checks alone do not qualify the scene.
 
@@ -444,7 +451,7 @@ For unmeasured cold start, memory and themed/native workloads, U1 records the wo
 
 ### Deferred Implementation Questions
 
-- Exact module placement for the optional font backend: resolve in U3 from dependency direction; retain KTD2's single capability and base contract.
+- Font backend placement is closed by KTD2: no current font decoder or shaping backend is required.
 - Native PDF filter lowering and browser/native color-space tolerance: establish in U1/U5 with the existing backend. If a required R1 effect cannot be represented, report the blocker; do not substitute a blank or flattened effect and call it equivalent.
 - Residual package growth attributable to changed toolchains, dependencies and mainline work: U10 must measure it. No current percentage constitutes an accepted budget increase.
 
