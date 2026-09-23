@@ -200,7 +200,7 @@ fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
         assert_eq!(actual, expected);
         assert_eq!(
             actual.diagrams[0].syntax.effective_layout.as_deref(),
-            Some("dagre")
+            Some("elk")
         );
     }
 }
@@ -407,8 +407,8 @@ fn analysis_facts_project_canonical_effective_layout() {
                 })),
             )),
             "classDiagram\nclass A\n",
-            "class",
-            "dagre",
+            "classDiagram",
+            "elk",
         ),
     ];
 
