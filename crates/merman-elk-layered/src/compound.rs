@@ -1284,18 +1284,25 @@ fn parent_dummy_port_side(
     parent_size: LSize,
     direction: ElkDirection,
 ) -> (PortConstraints, PortSide) {
-    if !parent_constraints.is_side_fixed() || port.side != PortSide::Undefined {
+    if !parent_constraints.is_side_fixed() {
         return (parent_constraints, port.side);
     }
 
+    // A sibling external dummy can fix the compound node after this port received a directional
+    // default side. Recompute the unlinked port from its current geometry so ELK's side choice is
+    // not pinned to that stale default.
     let side = calc_port_side(port, parent_size, direction);
     if side != PortSide::Undefined {
         return (parent_constraints, side);
     }
 
+    if port.side != PortSide::Undefined {
+        return (parent_constraints, port.side);
+    }
+
     // ELK creates missing child dummies before `setSidesOfPortsToSidesOfDummyNodes` fixes the
-    // parent node constraints. If a sibling dummy already fixed this node in the Rust model, keep
-    // this still-undefined port on the original free-constraints path so net flow can choose a side.
+    // parent node constraints. If no geometry or explicit side is available, keep this port on the
+    // original free-constraints path so net flow can choose a side.
     (PortConstraints::Free, PortSide::Undefined)
 }
 
