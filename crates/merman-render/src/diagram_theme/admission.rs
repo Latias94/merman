@@ -281,16 +281,14 @@ impl Default for FontSourcePolicy {
 #[non_exhaustive]
 pub enum HostMeasurementFallback {
     AcceptHostDependent,
-    NativeCatalog,
 }
 
 impl HostMeasurementFallback {
-    pub const ALL: &'static [Self] = &[Self::AcceptHostDependent, Self::NativeCatalog];
+    pub const ALL: &'static [Self] = &[Self::AcceptHostDependent];
 
     pub const fn id(self) -> &'static str {
         match self {
             Self::AcceptHostDependent => "accept-host-dependent",
-            Self::NativeCatalog => "native-catalog",
         }
     }
 }
@@ -314,12 +312,6 @@ impl HostMeasurementFallbackPolicy {
         let priority = priority.into_iter().collect::<Vec<_>>();
         reject_duplicate_fallbacks(&priority)?;
         Ok(Self { priority })
-    }
-
-    pub fn portable_catalog_only() -> Self {
-        Self {
-            priority: vec![HostMeasurementFallback::NativeCatalog],
-        }
     }
 
     pub fn priority(&self) -> impl ExactSizeIterator<Item = HostMeasurementFallback> + '_ {
@@ -743,20 +735,6 @@ mod tests {
         HostMeasurementFallbackPolicy::new(values.iter().copied()).unwrap()
     }
 
-    #[cfg(feature = "embedded-fonts")]
-    fn custom_catalog() -> FontCatalog {
-        let bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        super::super::assets::FontCatalogSpec::new([super::super::assets::FontAssetSpec::new(
-            "excalifont",
-            bytes,
-        )])
-        .compile(&super::super::ThemeResourcePolicy::interactive())
-        .unwrap()
-    }
-
     fn resolve(
         admission: &ThemeAdmissionPolicy,
         requirements: &ThemeRequirements,
@@ -765,10 +743,7 @@ mod tests {
         resolve_theme_admission(
             admission,
             &FontSourcePolicy::default(),
-            &fallback_policy(&[
-                HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::AcceptHostDependent,
-            ]),
+            &fallback_policy(&[HostMeasurementFallback::AcceptHostDependent]),
             ThemePortabilityRequirement::BestEffort,
             requirements,
             &catalog,
@@ -825,11 +800,11 @@ mod tests {
         );
         assert_eq!(
             HostMeasurementFallbackPolicy::new([
-                HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::NativeCatalog,
+                HostMeasurementFallback::AcceptHostDependent,
+                HostMeasurementFallback::AcceptHostDependent
             ]),
             Err(ThemeAdmissionError::DuplicateMeasurementFallback(
-                HostMeasurementFallback::NativeCatalog
+                HostMeasurementFallback::AcceptHostDependent
             ))
         );
     }
@@ -867,43 +842,6 @@ mod tests {
                 assert_eq!(actual, expected);
             }
         }
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    #[test]
-    fn accept_host_dependent_remains_reachable_in_best_effort_mode() {
-        let policy = ThemeAdmissionPolicy::permissive();
-        let resolved = resolve_theme_admission(
-            &policy,
-            &FontSourcePolicy::default(),
-            &fallback_policy(&[
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::NativeCatalog,
-            ]),
-            ThemePortabilityRequirement::BestEffort,
-            &ThemeRequirements::default(),
-            &custom_catalog(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            resolved.measurement_fallback_policy().first(),
-            Some(HostMeasurementFallback::AcceptHostDependent)
-        );
-        assert_eq!(
-            resolved
-                .measurement_fallback_policy()
-                .priority()
-                .collect::<Vec<_>>(),
-            vec![
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::NativeCatalog,
-            ]
-        );
-        assert_eq!(
-            resolved.portability_requirement(),
-            ThemePortabilityRequirement::BestEffort
-        );
     }
 
     #[test]
@@ -974,14 +912,13 @@ mod tests {
             vec![FontSource::Embedded]
         );
         assert_eq!(
-            fallback_policy(&[
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::NativeCatalog,
-            ])
-            .restrict_with(&fallback_policy(&[HostMeasurementFallback::NativeCatalog]))
-            .priority()
-            .collect::<Vec<_>>(),
-            vec![HostMeasurementFallback::NativeCatalog]
+            fallback_policy(&[HostMeasurementFallback::AcceptHostDependent,])
+                .restrict_with(&fallback_policy(&[
+                    HostMeasurementFallback::AcceptHostDependent
+                ]))
+                .priority()
+                .collect::<Vec<_>>(),
+            vec![HostMeasurementFallback::AcceptHostDependent]
         );
         assert_eq!(
             ThemePortabilityRequirement::BestEffort
@@ -1020,7 +957,7 @@ mod tests {
             resolve_theme_admission(
                 &policy,
                 &FontSourcePolicy::embedded_only(),
-                &HostMeasurementFallbackPolicy::portable_catalog_only(),
+                &HostMeasurementFallbackPolicy::default(),
                 ThemePortabilityRequirement::RequirePortable,
                 &denied_source,
                 &system_catalog,

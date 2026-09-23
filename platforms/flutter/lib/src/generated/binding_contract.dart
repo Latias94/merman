@@ -142,12 +142,6 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     id: "editor",
     implicationIds: <String>{},
   ),
-  "embedded-fonts": MermanBindingCapabilitySpec(
-    id: "embedded-fonts",
-    implicationIds: <String>{
-      "svg",
-    },
-  ),
   "icons": MermanBindingCapabilitySpec(
     id: "icons",
     implicationIds: <String>{},

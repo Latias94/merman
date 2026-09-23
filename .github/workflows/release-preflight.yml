@@ -199,33 +199,23 @@ jobs:
       - name: Verify native ABI projections
         run: cargo run --locked -p xtask -- verify-native-abi
 
-      - name: Test theme authoring and embedded-font capability boundaries
+      - name: Test theme authoring and font resource boundaries
         shell: bash
         run: |
           cargo test --locked -p merman-ffi --no-default-features \
             --features svg --test c_consumer_smoke
           cargo test --locked -p merman-render --no-default-features \
             --test theme_font_capability --test flowchart_node_effects
-          cargo test --locked -p merman-render --no-default-features \
-            --features embedded-fonts --test theme_font_capability --test diagram_theme_test \
-            --test flowchart_node_effects --test state_svg_test --test sequence_svg_test
           cargo test --locked -p merman-bindings-core --no-default-features \
-            --features svg --lib embedded_font
-          cargo test --locked -p merman-bindings-core --no-default-features \
-            --features svg,embedded-fonts --lib embedded_font
+            --features svg --lib
           cargo test --locked -p merman --no-default-features --features svg \
             --test theme_font_capability --test flowchart_edge_label_theme
-          cargo test --locked -p merman-cli --no-default-features \
-            --features svg,merman-bindings-core/embedded-fonts --bin merman-cli \
-            cli_font_capability_is_not_widened
           cargo test --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib
-          cargo test --locked -p merman-export --no-default-features \
-            --features png,jpeg,pdf,embedded-fonts --lib
 
-      - name: Test native theme font consumers
+      - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,png,pdf,layout-cytoscape,embedded-fonts \
+          cargo test --locked -p merman --no-default-features --features svg,png,pdf,layout-cytoscape \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 
@@ -245,11 +235,11 @@ jobs:
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --test legacy_projection_retirement
 
-      - name: Test KTD17 theme route cutover authorization
+      - name: Test preset qualification and legacy projection retirement
         run: |
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
             --no-default-features --features png,layout-cytoscape \
-            --test route_cutover_runtime --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
+            --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
             --no-default-features --test theme_support_discovery_test --cargo-quiet
 

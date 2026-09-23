@@ -751,12 +751,12 @@ fn descriptor_implications_are_closed_automatically() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn embedded_fonts_are_rejected_by_the_artifact_before_decoding_even_when_unified() {
+fn embedded_fonts_are_rejected_before_decoding() {
     const CONTRACT: ValidatedArtifactContract =
         ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::Svg])
             .materialize();
-    // Keep the WOFF2 magic valid but omit the body: capability rejection precedes decoding.
+    // Retired font resources are rejected without invoking a decoder.
     let spec = serde_json::json!({"assets":{"fonts":[{"id":"caller-font","format":"woff2","data_base64":"d09GMg=="}]}});
     let selections = [
         serde_json::json!({"spec": spec}),
@@ -781,11 +781,13 @@ fn embedded_fonts_are_rejected_by_the_artifact_before_decoding_even_when_unified
         for error in [once, overlay, constructor] {
             assert_eq!(
                 error.kind(),
-                crate::BindingErrorKind::MissingCapability,
+                crate::BindingErrorKind::Generic,
                 "{}",
                 error.message()
             );
-            assert_eq!(error.capability_id(), Some("embedded-fonts"));
+            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+            assert_eq!(error.capability_id(), None);
+            assert!(error.message().contains("font resources are not supported"));
         }
     }
     assert!(
@@ -827,16 +829,14 @@ fn embedded_fonts_are_rejected_by_the_artifact_before_decoding_even_when_unified
     }
 
     // Fine-grained theme ceilings belong to the compiler, not ordinary render resource options.
-    let compiler = merman::svg::DiagramThemeCompiler::new()
-        .with_embedded_fonts_allowed(false)
-        .with_resource_policy(
-            merman::svg::ThemeResourcePolicy::interactive()
-                .with_limit(
-                    merman::svg::ThemeResourceLimitId::MaxFontAssetCompressedBytes,
-                    1,
-                )
-                .unwrap(),
-        );
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::interactive()
+            .with_limit(
+                merman::svg::ThemeResourceLimitId::MaxFontAssetCompressedBytes,
+                1,
+            )
+            .unwrap(),
+    );
     let error = crate::compile_theme_selection_json_with(&compiler,
         br#"{"spec":{"assets":{"fonts":[{"id":"caller-font","format":"woff2","data_base64":"d09GMg=="}]}}}"#,
     ).unwrap_err();
@@ -855,19 +855,4 @@ fn resource_free_font_stack_remains_available_without_embedded_fonts() {
         .create_engine(options)
         .expect("font-family names do not require font bytes");
     assert!(engine.render_svg(b"flowchart LR\nA --> B").is_ok());
-}
-
-#[cfg(all(feature = "svg", feature = "embedded-fonts"))]
-#[test]
-fn embedded_font_capability_is_explicitly_discoverable() {
-    const CONTRACT: ValidatedArtifactContract =
-        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
-            .with_operations(&[OperationKey::Svg])
-            .with_supplemental_capabilities(&[CapabilityKey::EmbeddedFonts])
-            .materialize();
-    assert!(
-        CONTRACT
-            .runtime_capabilities()
-            .has_capability("embedded-fonts")
-    );
 }

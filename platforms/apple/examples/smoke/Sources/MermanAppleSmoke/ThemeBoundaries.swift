@@ -110,15 +110,11 @@ func verifyThemePaintAndFontBoundaries(client: Merman) throws {
         }
     }
 
-    let catalog = try JSONSerialization.jsonObject(with: Data(client.runtimeCatalogJson().utf8)) as! [String: Any]
-    let capabilities = catalog["capabilities"] as! [String: Any]
-    try requireBoundary(!(capabilities["capability_ids"] as! [String]).contains("embedded-fonts"),
-                        "default Apple artifact unexpectedly advertises embedded fonts")
     let missingFamily = "MermanSmokeMissingFontA17C92"
     let families = CTFontManagerCopyAvailableFontFamilyNames() as! [String]
     try requireBoundary(!families.contains(missingFamily), "missing-font fixture is installed on this host")
     let fontSpec: [String: Any] = ["typography": ["default": ["font_stack": [missingFamily, "sans-serif"]]]]
-    // Valid WOFF2 magic without a body proves capability admission precedes font decoding.
+    // Even a font header must be rejected before font resource decoding.
     let assetSpec: [String: Any] = ["assets": ["fonts": [[
         "id": "caller-font", "format": "woff2", "data_base64": "d09GMg==",
     ]]]]
@@ -140,21 +136,23 @@ func verifyThemePaintAndFontBoundaries(client: Merman) throws {
             for operation in operations {
                 do {
                     let svg = try operation()
-                    try requireBoundary(name == "family-only", "font asset bypassed capability admission")
+                    try requireBoundary(name == "family-only", "unsupported font asset was accepted")
                     try requireBoundary(svg.contains(missingFamily) && svg.contains("sans-serif")
                                         && !svg.contains("@font-face") && !svg.contains("data:font"),
                                         "font names must survive without embedding or silently substituting a font")
                 } catch let error as MermanError {
                     switch error {
-                    case let .Binding(_, _, kind, capabilityId, _, _, _, _, _, _):
-                        try requireBoundary(name == "font-asset" && kind == .missingCapability
-                                            && capabilityId == "embedded-fonts", "wrong font admission error")
+                    case let .Binding(_, codeName, kind, capabilityId, _, _, _, _, _, message):
+                        try requireBoundary(name == "font-asset" && kind == .generic
+                                            && codeName == "MERMAN_INVALID_ARGUMENT" && capabilityId == nil
+                                            && message.contains("invalid theme: embedded theme font resources are not supported"),
+                                            "wrong font resource rejection error")
                     }
                 }
             }
         }
     }
-    print("Apple theme boundaries passed: 10 Class cases, 2 strict Clear rejections, 6 missing-family renders, 6 font capability rejections")
+    print("Apple theme boundaries passed: 10 Class cases, 2 strict Clear rejections, 6 missing-family renders, 6 unsupported font resource rejections")
     print("Apple boundary artifacts: \(output.path)")
 }
 

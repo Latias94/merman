@@ -1151,21 +1151,7 @@ fn edge_glow_rejects_generated_ancestor_filter_and_geometry_overrides() {
     }
 }
 
-#[cfg(feature = "embedded-fonts")]
-fn text_glow_theme(targets: &[ThemeTarget]) -> DiagramTheme {
-    text_glow_theme_with_rules(targets, ThemeRuleSet::default())
-}
-
-#[cfg(feature = "embedded-fonts")]
-fn text_glow_theme_with_rules(targets: &[ThemeTarget], rules: ThemeRuleSet) -> DiagramTheme {
-    text_glow_theme_for(targets, rules, true)
-}
-
-fn text_glow_theme_for(
-    targets: &[ThemeTarget],
-    rules: ThemeRuleSet,
-    native_fonts: bool,
-) -> DiagramTheme {
+fn text_glow_theme_for(targets: &[ThemeTarget], rules: ThemeRuleSet) -> DiagramTheme {
     let graph = EffectGraph::new(
         "label-glow",
         [EffectPrimitive::DropShadow {
@@ -1185,76 +1171,15 @@ fn text_glow_theme_for(
             .with_binding(EffectBinding::new(*target, "label-glow").unwrap())
             .unwrap();
     }
-    use merman_render::diagram_theme::{
-        FontAssetSpec, FontCatalogSpec, FontStack, ThemeAssets, ThemeTextStyle, TypographySpec,
-    };
-    let mut spec = DiagramThemeSpec::new()
+    let spec = DiagramThemeSpec::new()
         .with_styles(rules)
         .with_effects(effects);
-    if native_fonts {
-        spec = spec
-            .with_typography(TypographySpec::default().with_family_style(
-                merman_render::DiagramFamilyId::FLOWCHART,
-                ThemeTextStyle::default().with_font_stack(FontStack::single("Excalifont").unwrap()),
-            ))
-            .with_assets(
-                ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
-                    FontAssetSpec::new(
-                        "excalifont",
-                        include_bytes!(
-                            "../../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-                        ),
-                    ),
-                ])),
-            );
-    }
     DiagramThemeCompiler::new().compile(spec).unwrap()
 }
 
 #[test]
-#[cfg(feature = "embedded-fonts")]
-fn native_label_glow_filters_text_without_its_background_or_shapes() {
-    let theme = text_glow_theme(&[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel]);
-    let rendered = render(
-        "flowchart LR\nA[Alpha] -->|Advance| B{Beta}",
-        &theme,
-        "classic",
-        true,
-    )
-    .unwrap();
-    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let filtered: Vec<_> = xml
-        .descendants()
-        .filter(|node| node.attribute("filter").is_some())
-        .collect();
-    assert_eq!(filtered.len(), 3);
-    for terminal in filtered {
-        assert!(terminal.has_tag_name("g"));
-        assert!(terminal.descendants().any(|node| node.has_tag_name("text")));
-        assert!(!terminal.descendants().any(|node| {
-            matches!(
-                node.tag_name().name(),
-                "rect" | "polygon" | "circle" | "path" | "foreignObject"
-            )
-        }));
-        let id = terminal
-            .attribute("filter")
-            .unwrap()
-            .strip_prefix("url(#")
-            .unwrap()
-            .strip_suffix(')')
-            .unwrap();
-        let filter = xml
-            .descendants()
-            .find(|node| node.attribute("id") == Some(id))
-            .unwrap();
-        assert_eq!(filter.attribute("filterUnits"), Some("userSpaceOnUse"));
-    }
-}
-
-#[test]
 fn html_node_glow_filters_only_plain_label_content() {
-    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default(), false);
+    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default());
     let source = "flowchart LR\nsubgraph Group\nA[Alpha] --> B(Round) --> C{Diamond} --> D((Circle)) --> E(((Double)))\nF[\"<span>Two</span><br/>Rows\"]\nend";
     let rendered = render_with_html_labels(source, &theme, "classic", true, true).unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -1286,7 +1211,7 @@ fn html_node_glow_does_not_admit_rich_or_unbounded_source_content() {
         ThemeRuleSet::default(),
         ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::NodeLabel, clear)),
     ] {
-        let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], rules, false);
+        let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], rules);
         for source in [
             "flowchart LR\nA[\"<span style='background:red'>Alpha</span>\"]",
             "flowchart LR\nA[\"<b>Alpha</b>\"]",
@@ -1319,8 +1244,8 @@ fn html_node_glow_does_not_admit_rich_or_unbounded_source_content() {
 
 #[test]
 fn html_node_glow_does_not_inherit_sibling_cluster_styles() {
-    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default(), false);
-    let plain = text_glow_theme_for(&[], ThemeRuleSet::default(), false);
+    let theme = text_glow_theme_for(&[ThemeTarget::NodeLabel], ThemeRuleSet::default());
+    let plain = text_glow_theme_for(&[], ThemeRuleSet::default());
     for source in [
         "flowchart LR\nsubgraph Group\nA[Alpha]\nend\nclass Group image-shape",
         "flowchart LR\nsubgraph Group\nA[Alpha]\nend\nclass Group huge\nclassDef huge font-size:80px",
@@ -1377,7 +1302,7 @@ fn html_edge_label_glow_keeps_the_composited_background_outside_the_filter() {
                     merman_render::diagram_theme::CanvasPaint::solid("#00ff00").unwrap(),
                 ),
             ));
-        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules, false);
+        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules);
         for (background, alpha) in [
             ("#ff0000", 1.0),
             ("rgba(255,0,0,0.4)", 0.7),
@@ -1439,7 +1364,7 @@ fn html_edge_label_effect_and_clear_reject_unbounded_background_or_text() {
         ThemeRuleSet::default(),
         ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::EdgeLabel, clear)),
     ] {
-        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules, false);
+        let theme = text_glow_theme_for(&[ThemeTarget::EdgeLabel], rules);
         for source in [
             "flowchart LR\nA -->|<b>Advance</b>| B",
             "flowchart LR\nA -->|<span style='background:red'>Advance</span>| B",
@@ -1467,7 +1392,6 @@ fn html_edge_label_effect_and_clear_reject_unbounded_background_or_text() {
     let theme = text_glow_theme_for(
         &[ThemeTarget::EdgeLabel],
         ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::EdgeLabel, clear)),
-        false,
     );
     let rendered = render_with_html_labels(
         "flowchart LR\nA -->|Advance| B",
@@ -1482,10 +1406,7 @@ fn html_edge_label_effect_and_clear_reject_unbounded_background_or_text() {
 
 #[test]
 fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
-    for (native_fonts, html_labels) in [(false, false), (true, false), (false, true)] {
-        if native_fonts && !cfg!(feature = "embedded-fonts") {
-            continue;
-        }
+    for html_labels in [false, true] {
         let targets = &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel];
         let mut clear = ThemeStylePatch::default();
         clear.effects.effect = Specified::Clear;
@@ -1495,7 +1416,6 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
                 ThemeRule::new(ThemeTarget::NodeLabel, clear)
                     .with_ordinal(OrdinalSelector::Exact(1)),
             ),
-            native_fonts,
         );
         let rendered = render_with_html_labels(
             "flowchart LR\nsubgraph Group\nA[Alpha] -->|Advance| B[Beta]\nend",
@@ -1565,12 +1485,12 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
             );
         }
 
-        let plain = text_glow_theme_for(&[], ThemeRuleSet::default(), native_fonts);
+        let plain = text_glow_theme_for(&[], ThemeRuleSet::default());
         let source = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
         let plain = render_with_html_labels(source, &plain, "classic", true, html_labels).unwrap();
         let glow = render_with_html_labels(
             source,
-            &text_glow_theme_for(targets, ThemeRuleSet::default(), native_fonts),
+            &text_glow_theme_for(targets, ThemeRuleSet::default()),
             "classic",
             true,
             html_labels,
@@ -1609,14 +1529,10 @@ fn label_glow_clear_preserves_other_terminals_and_nested_viewport() {
 
 #[test]
 fn native_label_glow_rejects_unmeasured_structural_styles() {
-    for native_fonts in [false, true] {
-        if native_fonts && !cfg!(feature = "embedded-fonts") {
-            continue;
-        }
+    {
         let theme = text_glow_theme_for(
             &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
             ThemeRuleSet::default(),
-            native_fonts,
         );
         for declaration in ["font-weight:800", "stroke-width:20px", "transform:scale(2)"] {
             let source = format!(
@@ -1639,14 +1555,10 @@ fn native_label_glow_rejects_unmeasured_structural_styles() {
 
 #[test]
 fn native_label_glow_keeps_shape_only_source_strokes_separate() {
-    for native_fonts in [false, true] {
-        if native_fonts && !cfg!(feature = "embedded-fonts") {
-            continue;
-        }
+    {
         let theme = text_glow_theme_for(
             &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
             ThemeRuleSet::default(),
-            native_fonts,
         );
         let rendered = render("flowchart LR\nA[Alpha] -->|Advance| B[Beta]\nstyle A stroke-width:4px\nlinkStyle 0 stroke-width:3px", &theme, "classic", true).unwrap();
         let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -1664,7 +1576,6 @@ fn ordinary_native_label_glow_uses_prepared_host_metrics_without_font_assets() {
     let theme = text_glow_theme_for(
         &[ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel],
         ThemeRuleSet::default(),
-        false,
     );
     for source in [
         "flowchart LR\nA[Alpha] -->|Advance| B[Beta]",
@@ -1685,20 +1596,6 @@ fn ordinary_native_label_glow_uses_prepared_host_metrics_without_font_assets() {
             )));
         }
     }
-}
-
-#[test]
-#[cfg(feature = "embedded-fonts")]
-fn special_node_label_placement_keeps_its_effect_residual() {
-    let theme = text_glow_theme(&[ThemeTarget::NodeLabel]);
-    let source = "flowchart LR\nA[/Alpha/]";
-    assert!(render(source, &theme, "classic", true).is_err());
-    let rendered = render(source, &theme, "classic", false).unwrap();
-    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
-    assert!(
-        !xml.descendants()
-            .any(|node| node.attribute("filter").is_some())
-    );
 }
 
 #[test]

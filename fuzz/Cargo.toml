@@ -8,11 +8,10 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
-base64 = "0.22.1"
 libfuzzer-sys = "0.4"
 merman = { path = "../crates/merman", default-features = false, features = ["svg", "layout-cytoscape", "layout-elk", "math"] }
 merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
-merman-render = { path = "../crates/merman-render", default-features = false, features = ["fuzzing"] }
+merman-render = { path = "../crates/merman-render", default-features = false }
 roxmltree = "0.21.1"
 tree-sitter = "=0.26.12"
 tree-sitter-mermaid = { path = "../distribution/tree-sitter-mermaid" }
@@ -45,20 +44,6 @@ bench = false
 [[bin]]
 name = "ffi_api"
 path = "fuzz_targets/ffi_api.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "theme_font_asset"
-path = "fuzz_targets/theme_font_asset.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "theme_text_layout"
-path = "fuzz_targets/theme_text_layout.rs"
 test = false
 doc = false
 bench = false

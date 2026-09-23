@@ -1,4 +1,4 @@
-//! Resource-free themes do not require the embedded-font capability.
+//! Theme typography accepts font names and rejects embedded font resources.
 
 use merman_render::diagram_theme::{
     DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogError, FontCatalogSpec,
@@ -6,13 +6,12 @@ use merman_render::diagram_theme::{
     theme_preset_descriptors,
 };
 
-#[cfg(not(feature = "embedded-fonts"))]
 #[test]
-fn embedded_font_bytes_require_the_explicit_capability() {
+fn embedded_font_bytes_are_rejected() {
     let result = DiagramThemeCompiler::new().compile(embedded_theme());
     assert!(
         result.is_err(),
-        "feature-disabled compilation must not decode embedded fonts"
+        "theme compilation must reject embedded font resources"
     );
     assert!(matches!(
         result,
@@ -32,21 +31,8 @@ fn embedded_theme() -> DiagramThemeSpec {
 }
 
 #[test]
-fn artifact_policy_cannot_be_widened_by_an_enabled_dependency() {
-    let compiler = DiagramThemeCompiler::new()
-        .with_embedded_fonts_allowed(false)
-        .with_embedded_fonts_allowed(true);
-    assert!(matches!(
-        compiler.compile(embedded_theme()),
-        Err(ThemeCompileError::FontCatalog(
-            FontCatalogError::EmbeddedFontsUnavailable
-        ))
-    ));
-}
-
-#[test]
 fn named_fonts_and_public_presets_do_not_require_embedded_bytes() {
-    let compiler = DiagramThemeCompiler::new().with_embedded_fonts_allowed(false);
+    let compiler = DiagramThemeCompiler::new();
     compiler
         .compile(
             DiagramThemeSpec::new().with_typography(
@@ -60,13 +46,4 @@ fn named_fonts_and_public_presets_do_not_require_embedded_bytes() {
     for preset in theme_preset_descriptors() {
         compiler.compile_preset(preset.preset()).unwrap();
     }
-}
-
-#[cfg(feature = "embedded-fonts")]
-#[test]
-fn enabled_capability_keeps_the_native_font_catalog_available() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(embedded_theme())
-        .unwrap();
-    assert!(!theme.font_catalog().faces().is_empty());
 }

@@ -470,29 +470,19 @@ jobs:
             --no-default-features --test legacy_projection_retirement \
             --cargo-quiet
 
-      - name: Test theme authoring and embedded-font capability boundaries
+      - name: Test theme authoring and font resource boundaries
         shell: bash
         run: |
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features svg --test c_consumer_smoke
           cargo nextest run --locked -p merman-render --no-default-features \
             --test theme_font_capability --test flowchart_node_effects --cargo-quiet
-          cargo nextest run --locked -p merman-render --no-default-features \
-            --features embedded-fonts --test theme_font_capability --test diagram_theme_test \
-            --test flowchart_node_effects --test state_svg_test --test sequence_svg_test --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg --lib -E 'test(embedded_fonts_are_rejected) | test(resource_free_font_stack)' --cargo-quiet
-          cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg,embedded-fonts --lib -E 'test(embedded_font)' --cargo-quiet
+            --features svg --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
           cargo nextest run --locked -p merman --no-default-features --features svg \
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features \
-            --features svg,merman-bindings-core/embedded-fonts --bin merman-cli \
-            -E 'test(cli_font_capability_is_not_widened)' --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib --cargo-quiet
-          cargo nextest run --locked -p merman-export --no-default-features \
-            --features png,jpeg,pdf,embedded-fonts --lib --cargo-quiet
 
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -518,24 +508,18 @@ jobs:
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
-      - name: Test C6 cells, route-cutover authorization, and native export smoke
+      - name: Test preset qualification and legacy projection retirement
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked \
             -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
             --lib --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png --test c6_runtime --test preset_qualification \
+            --no-default-features --features png --test preset_qualification \
             --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
             --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
             --no-default-features --test theme_support_discovery_test --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,layout-cytoscape --test route_cutover_runtime \
-            --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,jpeg,pdf --test native_export_smoke \
-            --cargo-quiet
 
       - name: Test optimized theme evidence and qualification rejection
         if: matrix.parity
@@ -554,7 +538,7 @@ jobs:
         if: matrix.parity
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features svg,png,pdf,layout-cytoscape,embedded-fonts --test theme_authoring \
+            --no-default-features --features svg,png,pdf,layout-cytoscape --test theme_authoring \
             --test theme_flowchart_markers --test theme_flowchart_geometry \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
             --test render_operation --test theme_composed_effects --cargo-quiet

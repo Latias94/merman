@@ -3,10 +3,6 @@ use merman_render::diagram_theme::{
     ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
     TypographySpec, theme_preset_descriptors,
 };
-#[cfg(feature = "embedded-fonts")]
-use merman_render::diagram_theme::{
-    FontAssetSpec, FontCatalogSpec, TextLayoutCapability, ThemeAssets,
-};
 
 #[test]
 fn theme_catalog_contains_only_visual_presets() {
@@ -79,32 +75,6 @@ fn built_in_presets_compile_without_selecting_layout_or_look() {
         DiagramThemeCompiler::new()
             .compile_preset(descriptor.preset())
             .expect("built-in theme preset should compile");
-    }
-}
-
-#[test]
-#[cfg(feature = "embedded-fonts")]
-fn custom_catalog_implies_prepared_text_capabilities() {
-    let bytes = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-    ));
-    let spec = DiagramThemeSpec::new().with_assets(ThemeAssets::default().with_font_catalog(
-        FontCatalogSpec::new([FontAssetSpec::new("excalifont", bytes)]),
-    ));
-    let theme = DiagramThemeCompiler::new()
-        .compile(spec)
-        .expect("custom catalog theme should compile");
-
-    for capability in [
-        TextLayoutCapability::CatalogBinding,
-        TextLayoutCapability::UnicodeClusterFallback,
-        TextLayoutCapability::OpenTypeShaping,
-    ] {
-        assert!(
-            theme.report().requires_text_capability(capability),
-            "custom catalog must require {capability}"
-        );
     }
 }
 

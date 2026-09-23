@@ -178,7 +178,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             (
                 "analysis",
                 "ascii",
-                "embedded-fonts",
                 "jpeg",
                 "layout-cytoscape",
                 "layout-elk",

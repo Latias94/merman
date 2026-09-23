@@ -853,63 +853,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "embedded-fonts")]
-    #[test]
-    fn theme_portability_strict_policy_accepts_native_svg_with_embedded_font_evidence() {
-        let options = crate::common::parse_options(
-            br#"{
-            "environment": {"theme_portability": "require-portable"},
-            "site_config": {"htmlLabels": false, "themeVariables": {"fontFamily": "Excalifont"}},
-            "svg": {"pipeline": "resvg-safe"}
-        }"#,
-        )
-        .expect("strict binding options");
-        let mut config =
-            compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
-                .expect("strict binding policy compiles");
-        assert_eq!(
-            config.environment.theme_portability_requirement(),
-            merman::svg::ThemePortabilityRequirement::RequirePortable
-        );
-        let font_catalog = merman::svg::FontCatalogSpec::new([merman::svg::FontAssetSpec::new(
-            "strict-binding-font",
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-            )),
-        )])
-        .with_available_sources([merman::svg::FontSource::Embedded])
-        .with_embedding_requirement(merman::svg::FontEmbeddingRequirement::FullFont);
-        config.theme = Some(
-            merman::svg::DiagramThemeCompiler::new()
-                .compile(
-                    merman::svg::DiagramThemeSpec::new()
-                        .with_assets(
-                            merman::svg::ThemeAssets::default().with_font_catalog(font_catalog),
-                        )
-                        .with_canvas(merman::svg::CanvasSpec::solid("#f7f3e8").expect("canvas")),
-                )
-                .expect("embedded-font theme"),
-        );
-        let plan = config.materialize(&crate::BindingEngineServices::new());
-        let output = plan
-            .renderer
-            .render(plan.request(
-                std::str::from_utf8(PORTABILITY_SOURCE).expect("source"),
-                merman::RenderTarget::Svg(plan.svg.clone()),
-                OperationControl::new(),
-            ))
-            .expect("strict native text SVG passes real target admission");
-        let RenderOutput::Svg(Some(output)) = output else {
-            panic!("expected SVG output");
-        };
-        assert_eq!(
-            output.admission().status(),
-            merman::TargetAdmissionStatus::Portable
-        );
-        assert!(output.svg().contains("@font-face"));
-    }
-
     #[test]
     fn theme_evaluation_limits_keep_resource_status_for_render_outputs() {
         let error = classify_render_error(

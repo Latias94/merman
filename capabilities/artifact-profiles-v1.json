@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0fb024801c"
+    "digest": "sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781"
   },
   "profiles": [
     {
@@ -80,7 +80,7 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
           "pdf", "png", "svg"
         ],
         "target": {
@@ -93,11 +93,11 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
@@ -143,7 +143,7 @@
         "profile": "dist",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "embedded-fonts", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
           "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
@@ -164,13 +164,13 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "embedded-fonts", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
           "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "embedded-fonts", "icons", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
           "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
@@ -376,7 +376,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "editor", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
         ],
         "target": {
@@ -389,12 +389,12 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "editor", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
           "math", "pdf", "png", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "editor", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
           "math", "pdf", "png", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
@@ -459,7 +459,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
           "pdf", "png", "svg"
         ],
         "target": {
@@ -472,11 +472,11 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
@@ -660,7 +660,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
@@ -673,11 +673,11 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "embedded-fonts", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
@@ -943,7 +943,6 @@
         "features": [
           "analysis",
           "ascii", "editor",
-          "embedded-fonts",
           "layout-cytoscape",
           "layout-elk",
           "math",
@@ -964,7 +963,6 @@
         "capabilities": [
           "analysis",
           "ascii", "editor",
-          "embedded-fonts",
           "layout-cytoscape",
           "layout-elk",
           "math",
@@ -973,7 +971,6 @@
         "runtime_ids": [
           "analysis",
           "ascii", "editor",
-          "embedded-fonts",
           "layout-cytoscape",
           "layout-elk",
           "math",

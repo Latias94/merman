@@ -115,8 +115,8 @@ silently choosing a different result.
 
 The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
 labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
-dependencies. Analysis, editor APIs, terminal output, binary export, embedded font processing,
-ambient system adapters, and ELK remain opt-in.
+dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters,
+and ELK remain opt-in. Theme font resources are not supported.
 
 Cargo features select capabilities and output backends, not Mermaid diagram families. Every
 parser-capable build retains the same language catalog.
@@ -129,11 +129,9 @@ parser-capable build retains the same language catalog.
 | Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
-| Caller-supplied theme font bytes and native shaping | Add `embedded-fonts` |
 
-Font-family names, resource-free theme recipes, canvas layers, and supported SVG effects do not
-require `embedded-fonts`. The feature enables font parsing and shaping; it bundles no fonts.
-Compiling actual embedded font resources without it returns a capability error.
+Themes select font-family names and typography values. Browsers and native export backends resolve
+host fonts. Caller-supplied font bytes in theme recipes are rejected; no fonts are bundled.
 
 The [capability guide] documents feature forwarding, artifact profiles, system adapters, and
 resource policy. Parser-only applications can depend on `merman-core` directly. Applications that

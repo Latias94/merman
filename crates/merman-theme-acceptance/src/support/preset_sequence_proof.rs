@@ -112,16 +112,10 @@ pub(super) fn verify(
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
     let observed = sealed_svg_receipt(&artifact)?;
     check_labels(observed, palette)?;
-    let proof = prove_sequence_svg(
-        contract,
-        &[merman_theme_fixtures::ReferenceThemeMechanism::ThemeVariables],
-        "preset-sequence-svg-v1",
-        artifact,
-    )?;
-    let (raster, _) = prove_sequence_png_with_raster(
+    let proof = prove_sequence_svg(contract, &artifact)?;
+    let raster = prove_sequence_png_with_raster(
         contract,
         &proof,
-        "preset-sequence-png-v1",
         C6TargetArtifact::new(TargetArtifactView::from_raster_output(png)),
         png.plan(),
     )?;

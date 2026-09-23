@@ -43,8 +43,7 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
 };
-#[cfg(all(feature = "embedded-fonts", not(feature = "fuzzing")))]
-pub(crate) use prepared::NativeTextLayoutBackend;
+
 #[cfg(test)]
 pub(crate) use prepared::TextByteRange;
 pub(crate) use prepared::{
@@ -56,17 +55,11 @@ pub(crate) use prepared::{
     merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
     resolve_css_font_weight, text_projection_layout_error,
 };
-#[cfg(feature = "fuzzing")]
-#[doc(hidden)]
-pub use prepared::{
-    NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest, PreparedTextFuzzProbe,
-    PreparedTextWrap, TextLayoutDirection,
-};
+
 pub(crate) use prepared::{
     PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
-    PreparedTextLabelProvenance,
 };
-#[cfg(not(feature = "fuzzing"))]
+
 pub(crate) use prepared::{PrepareCatalogRequest, PrepareTextRequest, PreparedTextWrap};
 pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 pub(crate) use visible_style::VisibleTextStyleFacts;

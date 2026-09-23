@@ -1205,11 +1205,8 @@ impl ValidatedArtifactContract {
                 .checkpoint_at(OperationPhase::Admission)
                 .map_err(BindingError::cancelled)?;
             self.admit_operation(operation)?;
-            let compiler = merman::svg::DiagramThemeCompiler::new()
-                .with_resource_policy(theme_resources)
-                .with_embedded_fonts_allowed(
-                    self.exposes_capability(crate::CapabilityKey::EmbeddedFonts),
-                );
+            let compiler =
+                merman::svg::DiagramThemeCompiler::new().with_resource_policy(theme_resources);
             return Ok(PreparedOneShotExecution::ThemeAuthoring {
                 operation,
                 runtime_policy_id: engine.runtime_policy_id(),

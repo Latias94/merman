@@ -699,8 +699,6 @@ mod tests {
         ThemeCompileValidationError, ThemeRule, ThemeRuleSet, ThemeTarget, ThemeVariant,
         TypographySpec,
     };
-    #[cfg(feature = "embedded-fonts")]
-    use crate::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeAssets};
 
     fn compile(spec: DiagramThemeSpec) -> super::super::ThemeRecipeFingerprint {
         DiagramThemeCompiler::new()
@@ -2297,65 +2295,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "embedded-fonts")]
-    #[test]
-    fn font_resources_change_only_their_owned_identity() {
-        let latin = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        let cjk = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Xiaolai-Regular-CJK-Test.woff2"
-        ));
-        let compile_asset =
-            |id: &str, bytes: &[u8]| {
-                DiagramThemeCompiler::new()
-                    .compile(DiagramThemeSpec::new().with_assets(
-                        ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
-                            FontAssetSpec::new(id, bytes),
-                        ])),
-                    ))
-                    .expect("valid font catalog fixture")
-            };
-
-        let latin_a = compile_asset("fixture-a", latin);
-        let latin_b = compile_asset("fixture-b", latin);
-        let cjk_a = compile_asset("fixture-a", cjk);
-
-        assert_eq!(
-            latin_a.font_catalog().assets()[0].fingerprint(),
-            latin_b.font_catalog().assets()[0].fingerprint(),
-            "asset ids are catalog metadata, not font-byte identity"
-        );
-        assert_ne!(
-            latin_a.report().font_catalog_fingerprint(),
-            latin_b.report().font_catalog_fingerprint(),
-            "catalog metadata must affect catalog identity"
-        );
-        assert_ne!(
-            latin_a.recipe_fingerprint(),
-            latin_b.recipe_fingerprint(),
-            "catalog identity must affect recipe identity"
-        );
-
-        assert_ne!(
-            latin_a.font_catalog().assets()[0].fingerprint(),
-            cjk_a.font_catalog().assets()[0].fingerprint(),
-            "font bytes must affect asset identity"
-        );
-        assert_ne!(
-            latin_a.report().font_catalog_fingerprint(),
-            cjk_a.report().font_catalog_fingerprint(),
-            "asset identity must affect catalog identity"
-        );
-        assert_ne!(
-            latin_a.recipe_fingerprint(),
-            cjk_a.recipe_fingerprint(),
-            "catalog resources retained by a recipe must affect recipe identity"
-        );
-    }
-
     #[test]
     fn requirements_change_only_their_owned_identity() {
         let left = DiagramThemeCompiler::new()
@@ -2420,15 +2359,6 @@ mod tests {
         let requirements = DiagramThemeSpec::new().with_requirements(
             ThemeRequirements::new().with_required_capabilities([ThemeCapability::Opacity]),
         );
-        #[cfg(feature = "embedded-fonts")]
-        let font_bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        #[cfg(feature = "embedded-fonts")]
-        let assets = DiagramThemeSpec::new().with_assets(ThemeAssets::default().with_font_catalog(
-            FontCatalogSpec::new([FontAssetSpec::new("excalifont", font_bytes)]),
-        ));
 
         for (name, spec) in [
             ("mermaid", mermaid),
@@ -2437,8 +2367,6 @@ mod tests {
             ("canvas", canvas),
             ("effects", effects),
             ("requirements", requirements),
-            #[cfg(feature = "embedded-fonts")]
-            ("assets", assets),
         ] {
             assert_ne!(
                 baseline,

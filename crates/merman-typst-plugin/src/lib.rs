@@ -47,8 +47,6 @@ const TYPST_OPERATIONS: &[OperationKey] = &[
     OperationKey::Svg,
 ];
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "embedded-fonts")]
-    CapabilityKey::EmbeddedFonts,
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
@@ -583,10 +581,7 @@ mod tests {
             cfg!(feature = "analysis")
         );
         assert_eq!(projected.has_operation("svg"), cfg!(feature = "svg"));
-        assert_eq!(
-            projected.has_capability("embedded-fonts"),
-            cfg!(feature = "embedded-fonts")
-        );
+        assert!(!projected.has_capability("embedded-fonts"));
         assert_eq!(
             projected.has_operation("materialize-theme-json"),
             cfg!(feature = "svg")

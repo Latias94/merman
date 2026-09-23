@@ -258,8 +258,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
       }
     }
 
-    // SVG availability does not imply optional font decoding or math rendering.
-    assert.ok(!engine.runtimeCatalog.capabilities.capability_ids.includes("embedded-fonts"));
+    // SVG availability does not imply math rendering; theme font resources are unsupported.
     assert.ok(!engine.runtimeCatalog.capabilities.capability_ids.includes("math"));
     const checkMissingCapability = (capabilityId) => (error) => {
       assert.ok(error instanceof module.MermanOperationError);
@@ -276,7 +275,14 @@ export async function runThemeAuthoringSmoke(module, engine) {
       { schema_version: 1, kind: "complete_spec", complete_spec: fontSpec },
     ]) {
       const options = { optionsJson: JSON.stringify({ theme }) };
-      const check = checkMissingCapability("embedded-fonts");
+      const check = (error) => {
+        assert.ok(error instanceof module.MermanOperationError);
+        assert.equal(error.kind, "generic");
+        assert.match(error.message, /invalid theme: embedded theme font resources are not supported/);
+        assert.equal(error.codeName, "MERMAN_INVALID_ARGUMENT");
+        assert.ok(error.capabilityId == null);
+        return true;
+      };
       await assert.rejects(engine.renderSvg(SOURCES.flowchart, options), check);
       assert.throws(() => engine.renderSvgSync(SOURCES.flowchart, options), check);
       await assert.rejects(module.createNodeEngine({ bindingOptions: { theme } }), check);

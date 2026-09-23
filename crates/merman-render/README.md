@@ -18,6 +18,7 @@ Direct use is reserved for Merman maintainers and advanced integrations that del
 - `FamilyRenderArtifact`, which keeps one matching built-in semantic/layout pair opaque and projects layout JSON or consuming SVG output.
 - `LayoutOptions::headless_svg_defaults()` for editor/export use cases.
 - Text measurement hooks through `TextMeasurer`.
+- Theme typography through named font families, font sizes, and font weights. Font files remain host-owned; embedded theme font resources are rejected.
 - Math rendering hooks through `MathRenderer`.
 - Shared Root Viewport policy for computed sizing, accessibility chrome, and root SVG emission.
 - `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.

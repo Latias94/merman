@@ -10,8 +10,7 @@ use crate::diagram_theme::{
 use crate::math::{ConfiguredMathBackend, MathRenderer};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
-#[cfg(feature = "embedded-fonts")]
-use crate::text::NativeTextLayoutBackend;
+
 use crate::text::{
     DeterministicTextMeasurer, PrepareCatalogRequest, PreparedTextLayout,
     PreparedTextLayoutBuilder, PreparedTextLayoutReport, TextLayoutBackend, TextLayoutError,
@@ -1659,11 +1658,8 @@ fn default_math_backend() -> Option<ConfiguredMathBackend> {
 }
 
 fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
-    HostMeasurementFallbackPolicy::new([
-        HostMeasurementFallback::NativeCatalog,
-        HostMeasurementFallback::AcceptHostDependent,
-    ])
-    .expect("static theme measurement fallback policy")
+    HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
+        .expect("static theme measurement fallback policy")
 }
 
 /// Immutable render services and the policy used to capture one operation context.
@@ -1685,46 +1681,22 @@ pub struct RenderEnvironment {
 }
 
 #[derive(Clone)]
-enum ConfiguredTextLayoutBackend {
-    #[cfg(feature = "embedded-fonts")]
-    BuiltinNative(NativeTextLayoutBackend),
-    External(Arc<dyn TextLayoutBackend>),
-}
+struct ConfiguredTextLayoutBackend(Arc<dyn TextLayoutBackend>);
 
 impl ConfiguredTextLayoutBackend {
     fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
-        match self {
-            #[cfg(feature = "embedded-fonts")]
-            Self::BuiltinNative(backend) => backend.identity(),
-            Self::External(backend) => backend.identity(),
-        }
+        self.0.identity()
     }
 
     fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
-        match self {
-            #[cfg(feature = "embedded-fonts")]
-            Self::BuiltinNative(backend) => backend.capabilities(),
-            Self::External(backend) => backend.capabilities(),
-        }
+        self.0.capabilities()
     }
 
     fn prepare_catalog(
         &self,
         request: &PrepareCatalogRequest,
     ) -> Result<crate::text::PreparedTextLayoutResponse, TextLayoutError> {
-        match self {
-            #[cfg(feature = "embedded-fonts")]
-            Self::BuiltinNative(backend) => backend.prepare_catalog(request),
-            Self::External(backend) => backend.prepare_catalog(request),
-        }
-    }
-
-    const fn is_builtin_native(&self) -> bool {
-        match self {
-            #[cfg(feature = "embedded-fonts")]
-            Self::BuiltinNative(_) => true,
-            Self::External(_) => false,
-        }
+        self.0.prepare_catalog(request)
     }
 }
 
@@ -1733,7 +1705,6 @@ impl fmt::Debug for ConfiguredTextLayoutBackend {
         formatter
             .debug_struct("ConfiguredTextLayoutBackend")
             .field("identity", self.identity())
-            .field("builtin_native", &self.is_builtin_native())
             .finish()
     }
 }
@@ -1774,11 +1745,7 @@ impl RenderEnvironment {
     pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::deterministic(),
-            #[cfg(feature = "embedded-fonts")]
-            text_layout_backend: Some(ConfiguredTextLayoutBackend::BuiltinNative(
-                NativeTextLayoutBackend::default(),
-            )),
-            #[cfg(not(feature = "embedded-fonts"))]
+
             text_layout_backend: None,
             capability_policy: RenderCapabilityPolicy::unrestricted(),
             math_backend: default_math_backend(),
@@ -1809,9 +1776,9 @@ impl RenderEnvironment {
     /// Installs the provisional catalog preparation backend used by custom-font themes.
     ///
     /// The external backend contract remains crate-private until its C4b assurance boundary is
-    /// complete. Production environments use the built-in operation-local `rustybuzz` backend.
+    /// complete. Ordinary text measurement uses the configured host `TextMeasurer`.
     pub(crate) fn with_text_layout_backend(mut self, backend: Arc<dyn TextLayoutBackend>) -> Self {
-        self.text_layout_backend = Some(ConfiguredTextLayoutBackend::External(backend));
+        self.text_layout_backend = Some(ConfiguredTextLayoutBackend(backend));
         self
     }
 
@@ -2120,33 +2087,18 @@ impl RenderEnvironment {
 
         match backend.prepare_catalog(&request) {
             Ok(response) => {
-                if backend.is_builtin_native() {
-                    match builder.admit_portable_response(
-                        backend.identity(),
-                        backend.capabilities(),
-                        response,
-                        None,
-                    ) {
-                        Ok(()) => {}
-                        Err(error) => {
-                            builder.record_catalog_failure();
-                            terminal_error = Some(error);
-                        }
-                    }
-                } else {
-                    let deferred = response.clone();
-                    let mut probe = PreparedTextLayoutBuilder::new(request.clone());
-                    match probe.admit_host_dependent_response(
-                        backend.identity(),
-                        backend.capabilities(),
-                        response,
-                        ThemePortabilityRequirement::BestEffort,
-                    ) {
-                        Ok(()) => deferred_host_response = Some(deferred),
-                        Err(error) => {
-                            builder.record_catalog_failure();
-                            terminal_error = Some(error);
-                        }
+                let deferred = response.clone();
+                let mut probe = PreparedTextLayoutBuilder::new(request.clone());
+                match probe.admit_host_dependent_response(
+                    backend.identity(),
+                    backend.capabilities(),
+                    response,
+                    ThemePortabilityRequirement::BestEffort,
+                ) {
+                    Ok(()) => deferred_host_response = Some(deferred),
+                    Err(error) => {
+                        builder.record_catalog_failure();
+                        terminal_error = Some(error);
                     }
                 }
             }
@@ -2158,32 +2110,6 @@ impl RenderEnvironment {
 
         for fallback in fallback_policy.priority() {
             match fallback {
-                #[cfg(not(feature = "embedded-fonts"))]
-                HostMeasurementFallback::NativeCatalog => {}
-                #[cfg(feature = "embedded-fonts")]
-                HostMeasurementFallback::NativeCatalog => {
-                    let native = NativeTextLayoutBackend::default();
-                    if builder.has_backend(native.identity()) {
-                        continue;
-                    }
-                    match native.prepare_catalog(&request) {
-                        Ok(response) => {
-                            if let Err(error) = builder.admit_portable_response(
-                                native.identity(),
-                                native.capabilities(),
-                                response,
-                                Some(HostMeasurementFallback::NativeCatalog),
-                            ) {
-                                builder.record_catalog_failure();
-                                terminal_error = Some(error);
-                            }
-                        }
-                        Err(error) => {
-                            builder.record_catalog_failure();
-                            terminal_error = Some(error);
-                        }
-                    }
-                }
                 HostMeasurementFallback::AcceptHostDependent => {
                     let Some(response) = deferred_host_response.take() else {
                         continue;
@@ -4193,210 +4119,6 @@ mod tests {
         assert_eq!(released_report.layout_work_units(), 0);
     }
 
-    #[cfg(feature = "embedded-fonts")]
-    fn embedded_font_theme() -> DiagramTheme {
-        let bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        let catalog =
-            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
-                "excalifont",
-                bytes,
-            )]);
-        let spec = crate::diagram_theme::DiagramThemeSpec::new()
-            .with_assets(crate::diagram_theme::ThemeAssets::default().with_font_catalog(catalog));
-
-        crate::diagram_theme::DiagramThemeCompiler::new()
-            .compile(spec)
-            .expect("embedded font theme should compile")
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    fn resource_rich_theme() -> DiagramTheme {
-        let bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        let catalog =
-            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
-                "excalifont",
-                bytes,
-            )])
-            .with_alias("Sketch", "Excalifont")
-            .with_generic_family(
-                crate::diagram_theme::GenericFontFamily::Cursive,
-                "Excalifont",
-            );
-        let graph = crate::diagram_theme::EffectGraph::new(
-            "resource-check",
-            [
-                crate::diagram_theme::EffectPrimitive::DropShadow {
-                    input: crate::diagram_theme::EffectInput::SourceGraphic,
-                    offset_x: 6.0,
-                    offset_y: -5.0,
-                    blur_radius: 4.0,
-                    spread: 2.0,
-                    color: crate::diagram_theme::ThemeColorValue::parse("#00000080")
-                        .expect("valid shadow color"),
-                },
-                crate::diagram_theme::EffectPrimitive::GaussianBlur {
-                    input: crate::diagram_theme::EffectInput::SourceGraphic,
-                    std_deviation: 7.0,
-                },
-                crate::diagram_theme::EffectPrimitive::Turbulence {
-                    input: crate::diagram_theme::EffectInput::SourceGraphic,
-                    base_frequency_x: 0.02,
-                    base_frequency_y: 0.03,
-                    octaves: 3,
-                    seed: 7,
-                },
-                crate::diagram_theme::EffectPrimitive::Displacement {
-                    input: crate::diagram_theme::EffectInput::SourceGraphic,
-                    map_input: crate::diagram_theme::EffectInput::SourceGraphic,
-                    scale: 9.0,
-                },
-            ],
-        )
-        .expect("valid resource-check effect graph");
-        let effects = crate::diagram_theme::DiagramEffectSet::default()
-            .with_graph(graph)
-            .expect("unique effect graph")
-            .with_binding(
-                crate::diagram_theme::EffectBinding::new(
-                    crate::diagram_theme::ThemeTarget::Node,
-                    "resource-check",
-                )
-                .expect("valid effect binding"),
-            )
-            .expect("unique effect binding");
-        let spec = crate::diagram_theme::DiagramThemeSpec::new()
-            .with_assets(crate::diagram_theme::ThemeAssets::default().with_font_catalog(catalog))
-            .with_effects(effects);
-
-        crate::diagram_theme::DiagramThemeCompiler::new()
-            .with_resource_policy(
-                crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input(),
-            )
-            .compile(spec)
-            .expect("resource-rich font theme should compile under the wide policy")
-    }
-
-    #[derive(Default)]
-    #[cfg(feature = "embedded-fonts")]
-    struct PrepareMustNotRunBackend {
-        native: crate::text::NativeTextLayoutBackend,
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    impl crate::text::TextLayoutBackend for PrepareMustNotRunBackend {
-        fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
-            self.native.identity()
-        }
-
-        fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
-            self.native.capabilities()
-        }
-
-        fn prepare_catalog(
-            &self,
-            _request: &crate::text::PrepareCatalogRequest,
-        ) -> Result<crate::text::PreparedTextLayoutResponse, crate::text::TextLayoutError> {
-            panic!("retained resources must be rejected before text preparation")
-        }
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    struct CachedPreparedBackend {
-        identity: crate::text::TextLayoutBackendIdentity,
-        capabilities: crate::text::TextLayoutCapabilities,
-        response: crate::text::PreparedTextLayoutResponse,
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    impl crate::text::TextLayoutBackend for CachedPreparedBackend {
-        fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
-            &self.identity
-        }
-
-        fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
-            self.capabilities
-        }
-
-        fn prepare_catalog(
-            &self,
-            _request: &crate::text::PrepareCatalogRequest,
-        ) -> Result<crate::text::PreparedTextLayoutResponse, crate::text::TextLayoutError> {
-            Ok(self.response.clone())
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn themed_session_rejects_a_font_policy_without_an_allowed_intersection() {
-        let environment_theme = embedded_font_theme();
-        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
-            .compile_preset(crate::diagram_theme::ThemePreset::OneDark)
-            .expect("one-dark theme should compile");
-        let environment = RenderEnvironment::deterministic()
-            .with_font_catalog(environment_theme.font_catalog().clone())
-            .with_font_source_policy(FontSourcePolicy::embedded_only());
-
-        let error = match environment.begin_session_with_theme(&theme) {
-            Ok(_) => panic!("embedded-only hosts must not silently re-enable system fonts"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error,
-            RenderEnvironmentError::ThemeAdmission(
-                crate::diagram_theme::ThemeAdmissionError::EmptyFontSourceIntersection,
-            )
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn themed_session_intersects_environment_and_compiled_theme_policies() {
-        let theme = embedded_font_theme();
-        let environment = RenderEnvironment::deterministic()
-            .with_font_source_policy(FontSourcePolicy::system_then_embedded());
-
-        let session = environment
-            .begin_session_with_theme(&theme)
-            .expect("embedded source remains available to the themed session");
-        assert_eq!(
-            session.theme_recipe_fingerprint(),
-            Some(theme.recipe_fingerprint())
-        );
-        assert_eq!(session.theme_recipe_report(), Some(theme.report()));
-        assert_eq!(
-            session.font_catalog().fingerprint(),
-            theme.font_catalog().fingerprint()
-        );
-        assert_eq!(
-            session.font_source_policy().priority().collect::<Vec<_>>(),
-            vec![crate::diagram_theme::FontSource::Embedded]
-        );
-        assert!(session.prepared_text_layout().is_some());
-        assert!(session.text_layout_error().is_none());
-
-        let report = session.report();
-        assert_eq!(
-            report.theme_recipe_fingerprint(),
-            Some(theme.recipe_fingerprint())
-        );
-        assert_eq!(report.theme_recipe_report(), Some(theme.report()));
-        assert_eq!(
-            report.font_catalog_fingerprint(),
-            theme.font_catalog().fingerprint()
-        );
-        assert_eq!(
-            report.font_source_policy().priority().collect::<Vec<_>>(),
-            vec![crate::diagram_theme::FontSource::Embedded]
-        );
-        assert!(report.used_trusted_theme_lanes().allowed().next().is_none());
-    }
-
     #[test]
     fn deterministic_session_rejects_unauthorized_trusted_theme_lane() {
         let session = RenderEnvironment::deterministic()
@@ -4528,139 +4250,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn unthemed_session_preserves_environment_font_resources() {
-        let environment_theme = embedded_font_theme();
-        let catalog = environment_theme.font_catalog().clone();
-        let policy = FontSourcePolicy::embedded_only();
-        let environment = RenderEnvironment::deterministic()
-            .with_font_catalog(catalog.clone())
-            .with_font_source_policy(policy.clone());
-
-        let session = environment.begin_session().expect("begin render session");
-        assert_eq!(session.theme_recipe_fingerprint(), None);
-        assert_eq!(session.theme_recipe_report(), None);
-        assert_eq!(session.font_catalog().fingerprint(), catalog.fingerprint());
-        assert_eq!(session.font_source_policy(), &policy);
-        let prepared = session
-            .prepared_text_layout()
-            .expect("custom environment catalog should be prepared once");
-        assert_eq!(prepared.catalog_fingerprint(), catalog.fingerprint());
-        assert!(session.text_layout_error().is_none());
-
-        let metrics = session
-            .text_measurer(TextMeasurementPhase::Layout)
-            .measure("prepared", &TextStyle::default());
-        assert!(metrics.width.is_finite() && metrics.width > 0.0);
-        assert_eq!(
-            session.text_measurement_report().entries()[0]
-                .provenance()
-                .source,
-            TextMeasurementSource::Profile
-        );
-
-        let report = session.report();
-        assert_eq!(report.theme_recipe_fingerprint(), None);
-        assert_eq!(report.theme_recipe_report(), None);
-        assert_eq!(report.font_catalog_fingerprint(), catalog.fingerprint());
-        assert_eq!(report.font_source_policy(), &policy);
-        assert_eq!(
-            report
-                .prepared_text_layout()
-                .expect("report should freeze the prepared layout")
-                .catalog_fingerprint(),
-            catalog.fingerprint()
-        );
-        assert!(report.text_layout_failure().is_none());
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn unthemed_session_revalidates_custom_font_catalog_before_text_preparation() {
-        let catalog = embedded_font_theme().font_catalog().clone();
-        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
-            .expect("valid zero-font-asset ceiling");
-        let environment = RenderEnvironment::deterministic()
-            .with_font_catalog(catalog)
-            .with_theme_resource_ceiling(ceiling)
-            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
-
-        let resource = match environment.begin_session() {
-            Err(RenderEnvironmentError::ThemeResource(resource)) => resource,
-            Ok(_) => panic!("the host ceiling must reject the retained custom font catalog"),
-            Err(error) => panic!("unexpected environment error: {error:?}"),
-        };
-        assert_eq!(
-            resource.phase,
-            crate::diagram_theme::ThemeResourceLimitPhase::FontCatalog
-        );
-        assert_eq!(resource.limit, "max_font_assets");
-        assert_eq!(resource.actual, 1);
-        assert_eq!(resource.max, 0);
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn cancelled_control_preempts_retained_resource_validation_and_text_preparation() {
-        let catalog = embedded_font_theme().font_catalog().clone();
-        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
-            .expect("valid zero-font-asset ceiling");
-        let environment = RenderEnvironment::deterministic()
-            .with_font_catalog(catalog)
-            .with_theme_resource_ceiling(ceiling)
-            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
-        let control = OperationControl::new();
-        control.cancel();
-
-        let error = match environment.begin_session_with_control(control) {
-            Err(error) => error,
-            Ok(_) => panic!("cancelled control must preempt session preparation"),
-        };
-
-        let RenderEnvironmentError::Cancelled(cancelled) = error else {
-            panic!("expected structured cancellation, got {error:?}");
-        };
-        assert_eq!(cancelled.phase, OperationPhase::Layout);
-        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn expired_deadline_preempts_themed_resource_validation_and_text_preparation() {
-        let theme = resource_rich_theme();
-        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
-            .expect("valid zero-font-asset ceiling");
-        let environment = RenderEnvironment::deterministic()
-            .with_theme_resource_ceiling(ceiling)
-            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
-        let operation_context = RuntimePolicy::deterministic()
-            .begin_operation()
-            .expect("deterministic operation context");
-        let control = OperationControl::new().with_deadline(std::time::Duration::ZERO);
-
-        let error = match environment.begin_session_with_theme_in_context(
-            &theme,
-            operation_context,
-            control,
-        ) {
-            Err(error) => error,
-            Ok(_) => panic!("expired deadline must preempt themed session preparation"),
-        };
-
-        let RenderEnvironmentError::Cancelled(cancelled) = error else {
-            panic!("expected structured deadline cancellation, got {error:?}");
-        };
-        assert_eq!(cancelled.phase, OperationPhase::Layout);
-        assert_eq!(
-            cancelled.reason,
-            merman_core::CancelReason::DeadlineExceeded
-        );
-    }
-
-    #[test]
     fn session_theme_resources_meet_the_host_ceiling_and_compiled_restriction() {
         let limit = crate::diagram_theme::ThemeResourceLimitId::MaxEffectFilterRegionMagnitude;
         let policy_with_limit = |value| {
@@ -4718,357 +4307,6 @@ mod tests {
             &crate::diagram_theme::ThemeResourcePolicy::interactive(),
             "the default host theme-resource ceiling must remain interactive"
         );
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn themed_session_revalidates_retained_font_resources_before_text_preparation() {
-        let theme = resource_rich_theme();
-        let catalog = theme.font_catalog();
-        let asset = &catalog.assets()[0];
-        let compressed_bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ))
-        .len();
-        let table_count = catalog
-            .faces()
-            .iter()
-            .map(crate::diagram_theme::FontFaceMetadata::table_count)
-            .sum::<usize>();
-        let cases = [
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssetCompressedBytes,
-                compressed_bytes.saturating_sub(1),
-                Some(compressed_bytes),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssetDecodedBytes,
-                asset.canonical_bytes().len().saturating_sub(1),
-                Some(asset.canonical_bytes().len()),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontCatalogDecodedBytes,
-                asset.canonical_bytes().len().saturating_sub(1),
-                Some(asset.canonical_bytes().len()),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets,
-                0,
-                Some(1),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontFaces,
-                0,
-                Some(catalog.faces().len()),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontTables,
-                table_count.saturating_sub(1),
-                Some(table_count),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontAliases,
-                1,
-                Some(2),
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
-                1,
-                None,
-            ),
-        ];
-
-        for (limit, maximum, expected_actual) in cases {
-            assert_theme_resource_rejected_before_text_preparation(
-                &theme,
-                limit,
-                maximum,
-                expected_actual,
-            );
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn themed_session_revalidates_retained_effect_resources_before_text_preparation() {
-        let theme = resource_rich_theme();
-        let cases = [
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectGraphs,
-                0,
-                1,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
-                3,
-                4,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectBindings,
-                0,
-                1,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectOffsetMagnitude,
-                5,
-                6,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectBlurMagnitude,
-                6,
-                7,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectDisplacementScale,
-                8,
-                9,
-            ),
-            (
-                crate::diagram_theme::ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
-                2,
-                3,
-            ),
-        ];
-
-        for (limit, maximum, expected_actual) in cases {
-            assert_theme_resource_rejected_before_text_preparation(
-                &theme,
-                limit,
-                maximum,
-                Some(expected_actual),
-            );
-        }
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    fn assert_theme_resource_rejected_before_text_preparation(
-        theme: &DiagramTheme,
-        limit: crate::diagram_theme::ThemeResourceLimitId,
-        maximum: usize,
-        expected_actual: Option<usize>,
-    ) {
-        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(limit, maximum)
-            .expect("valid narrow retained-resource ceiling");
-        let environment = RenderEnvironment::deterministic()
-            .with_theme_resource_ceiling(ceiling)
-            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
-
-        let resource = match environment.begin_session_with_theme(theme) {
-            Err(RenderEnvironmentError::ThemeResource(resource)) => resource,
-            Ok(_) => panic!(
-                "the narrow host must reject retained resource {}",
-                limit.as_str()
-            ),
-            Err(error) => panic!("unexpected error for {}: {error:?}", limit.as_str()),
-        };
-        assert_eq!(resource.limit, limit.as_str());
-        assert_eq!(resource.max, maximum);
-        if let Some(expected_actual) = expected_actual {
-            assert_eq!(resource.actual, expected_actual);
-        } else {
-            assert!(resource.actual > maximum);
-        }
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    fn mismatched_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {
-        let requested = embedded_font_theme().font_catalog().clone();
-        let other_bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Xiaolai-Regular-CJK-Test.woff2"
-        ));
-        let other =
-            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
-                "xiaolai",
-                other_bytes,
-            )])
-            .compile(&crate::diagram_theme::ThemeResourcePolicy::interactive())
-            .expect("other fixture catalog should compile");
-        let native = crate::text::NativeTextLayoutBackend::default();
-        let response = native
-            .prepare_catalog(&crate::text::PrepareCatalogRequest::new(
-                other,
-                crate::diagram_theme::FontSourcePolicy::embedded_only(),
-            ))
-            .expect("other catalog should prepare");
-        let cached = CachedPreparedBackend {
-            identity: response.backend().clone(),
-            capabilities: response.capabilities(),
-            response,
-        };
-
-        (requested, cached)
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    fn matching_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {
-        let requested = embedded_font_theme().font_catalog().clone();
-        let native = crate::text::NativeTextLayoutBackend::default();
-        let response = native
-            .prepare_catalog(&crate::text::PrepareCatalogRequest::new(
-                requested.clone(),
-                crate::diagram_theme::FontSourcePolicy::embedded_only(),
-            ))
-            .expect("fixture catalog should prepare");
-        let cached = CachedPreparedBackend {
-            identity: response.backend().clone(),
-            capabilities: response.capabilities(),
-            response,
-        };
-
-        (requested, cached)
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn invalid_host_catalog_binding_falls_back_to_the_native_catalog() {
-        let (requested, cached) = mismatched_catalog_backend();
-
-        let session = RenderEnvironment::deterministic()
-            .with_font_catalog(requested)
-            .with_text_layout_backend(Arc::new(cached))
-            .begin_session()
-            .expect("runtime operation capture remains available for diagnostics");
-
-        let layout = session
-            .prepared_text_layout()
-            .expect("the allowed native fallback should retain the requested catalog");
-        let request = crate::text::PrepareTextRequest::new(
-            "fallback",
-            crate::diagram_theme::ThemeTextStyle::default().with_font_stack(
-                crate::diagram_theme::FontStack::single("Excalifont")
-                    .expect("fixture family is valid"),
-            ),
-        );
-        layout
-            .prepare_text(&request)
-            .expect("the native fallback should prepare the label");
-        let report = layout.report();
-        assert!(report.face_count() > 0);
-        assert_eq!(
-            report.used_fallbacks(),
-            &[HostMeasurementFallback::NativeCatalog]
-        );
-        assert_eq!(report.fallback_count(), 1);
-        assert_eq!(
-            report.used_font_sources(),
-            &[crate::diagram_theme::FontSource::Embedded]
-        );
-        assert!(!report.is_host_dependent());
-        assert!(session.text_layout_error().is_none());
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn external_prepared_backend_is_host_dependent_only_after_actual_use() {
-        let (requested, cached) = matching_catalog_backend();
-        let session = RenderEnvironment::deterministic()
-            .with_font_catalog(requested)
-            .with_text_layout_backend(Arc::new(cached))
-            .with_theme_measurement_fallbacks(
-                HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
-                    .expect("single fallback is valid"),
-            )
-            .begin_session()
-            .expect("host-dependent session should begin under best effort");
-        let layout = session
-            .prepared_text_layout()
-            .expect("external catalog response should be retained");
-
-        let unused = layout.report();
-        assert!(unused.used_font_sources().is_empty());
-        assert!(!unused.is_host_dependent());
-
-        layout
-            .prepare_text(&crate::text::PrepareTextRequest::new(
-                "host",
-                crate::diagram_theme::ThemeTextStyle::default().with_font_stack(
-                    crate::diagram_theme::FontStack::single("Excalifont")
-                        .expect("fixture family is valid"),
-                ),
-            ))
-            .expect("external prepared backend should serve the label");
-        let used = layout.report();
-        assert_eq!(
-            used.used_font_sources(),
-            &[crate::diagram_theme::FontSource::Embedded]
-        );
-        assert!(used.is_host_dependent());
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn portable_sessions_reject_external_prepared_backends() {
-        let (requested, cached) = matching_catalog_backend();
-        let session = RenderEnvironment::deterministic()
-            .with_font_catalog(requested)
-            .with_text_layout_backend(Arc::new(cached))
-            .with_theme_measurement_fallbacks(
-                HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
-                    .expect("single fallback is valid"),
-            )
-            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-            .begin_session()
-            .expect("runtime capture remains available for diagnostics");
-
-        assert!(session.prepared_text_layout().is_none());
-        assert_eq!(
-            session.text_layout_error(),
-            Some(&crate::text::TextLayoutError::HostDependentNotPortable)
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn invalid_host_catalog_binding_is_retained_when_fallbacks_are_disabled() {
-        let (requested, cached) = mismatched_catalog_backend();
-        let session = RenderEnvironment::deterministic()
-            .with_font_catalog(requested)
-            .with_text_layout_backend(Arc::new(cached))
-            .with_theme_measurement_fallbacks(HostMeasurementFallbackPolicy::default())
-            .begin_session()
-            .expect("runtime operation capture remains available for diagnostics");
-
-        assert!(session.prepared_text_layout().is_none());
-        assert_eq!(
-            session.text_layout_error(),
-            Some(&crate::text::TextLayoutError::CatalogFingerprintMismatch)
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "embedded-fonts")]
-    fn custom_catalog_does_not_hijack_the_legacy_host_measurer() {
-        let catalog = embedded_font_theme().font_catalog().clone();
-        let host_calls = Arc::new(AtomicUsize::new(0));
-        let fallback_calls = Arc::new(AtomicUsize::new(0));
-        let policy = host_policy(
-            HostOutcome::Measured(metrics(999.0)),
-            &host_calls,
-            &fallback_calls,
-        );
-        let session = RenderEnvironment::deterministic()
-            .with_font_catalog(catalog)
-            .with_text_measurement_policy(policy)
-            .begin_session()
-            .expect("begin custom catalog session");
-
-        let measured = session
-            .text_measurer(TextMeasurementPhase::Layout)
-            .measure("portable", &TextStyle::default());
-        assert_eq!(measured.width, 999.0);
-        assert_eq!(host_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
-        assert!(session.prepared_text_layout().is_some());
-        let report = session.text_measurement_report();
-        assert_eq!(report.entries().len(), 1);
-        assert_eq!(
-            report.entries()[0].provenance().source,
-            TextMeasurementSource::Host
-        );
-        assert_eq!(report.entries()[0].provenance().fallback_reason, None);
     }
 
     #[cfg(feature = "math")]

@@ -327,10 +327,8 @@ Modified exports do not inherit the built-in preset's catalog identity, design c
 qualification. Distribution, downloading, caching, and update policy belong to the host.
 
 A saved recipe is not automatically self-contained. A font-stack name does not embed a font;
-include host font requirements, and state which font resources are actually carried by the recipe.
-Preserve applicable attribution when redistributing assets. Do not assume a recipient has your host
-fonts or that its artifact supports embedded fonts. Missing-resource and cross-platform font
-journeys remain part of the pre-release audit. Merman does not add a theme registry, remote loading,
+document the required host fonts. Caller-supplied font bytes in recipes are rejected. Do not assume
+a recipient has your host fonts or that text layout is identical across hosts. Merman does not add a theme registry, remote loading,
 or automatic font installation as part of this contract.
 
 ### Sequence control surfaces

@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0fb024801c`
+Semantic digest: `sha256:67006b703e99cc3e132c86118185f608d036a113c571c9dccd59369a78a23781`
 
 ## Public Leaves
 
@@ -11,7 +11,6 @@ Semantic digest: `sha256:dcb6183d07d53e3105f3653c2a0c018bdb47aa3b0cdb28beac520b0
 | `analysis` | `Api` | `native`, `web`, `typst` | none | Expose diagnostics and semantic analysis APIs. |
 | `ascii` | `Output` | `native`, `web` | none | Render supported Mermaid semantics as terminal text. |
 | `editor` | `Api` | `native`, `web` | none | Expose parser-backed editor intelligence APIs. |
-| `embedded-fonts` | `Engine` | `native`, `web`, `typst` | `svg` | Decode caller-supplied theme font resources and prepare native text layout. |
 | `icons` | `Tool` | `native` | none | Compile CLI local Iconify pack loading. |
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |

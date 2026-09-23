@@ -9,8 +9,6 @@ use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
 use super::typography::FontStack;
 
 const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
-#[cfg(feature = "embedded-fonts")]
-mod embedded;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -67,19 +65,6 @@ pub enum FontEmbeddingPermissions {
     PreviewAndPrint,
     Restricted,
     Unknown,
-}
-
-impl FontEmbeddingPermissions {
-    #[cfg(feature = "embedded-fonts")]
-    const fn id(self) -> &'static str {
-        match self {
-            Self::Installable => "installable",
-            Self::Editable => "editable",
-            Self::PreviewAndPrint => "preview-and-print",
-            Self::Restricted => "restricted",
-            Self::Unknown => "unknown",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -220,16 +205,7 @@ impl FontCatalogSpec {
     /// Later theme compilers use the same operation; constructing a spec never grants a larger
     /// budget than the policy selected by the host.
     pub fn compile(self, resources: &ThemeResourcePolicy) -> Result<FontCatalog, FontCatalogError> {
-        self.compile_with_embedded_fonts_allowed(resources, cfg!(feature = "embedded-fonts"))
-    }
-
-    /// Applies the artifact capability policy even when Cargo has unified optional features.
-    pub(crate) fn compile_with_embedded_fonts_allowed(
-        self,
-        resources: &ThemeResourcePolicy,
-        allowed: bool,
-    ) -> Result<FontCatalog, FontCatalogError> {
-        compile_font_catalog(self, resources, allowed)
+        compile_font_catalog(self, resources)
     }
 }
 
@@ -553,7 +529,6 @@ impl FontCatalog {
 fn compile_font_catalog(
     spec: FontCatalogSpec,
     resources: &ThemeResourcePolicy,
-    embedded_fonts_allowed: bool,
 ) -> Result<FontCatalog, FontCatalogError> {
     resources.check_font_asset_count(spec.assets.len())?;
     let total_input_bytes = spec
@@ -579,11 +554,6 @@ fn compile_font_catalog(
     }
     if !spec.available_sources.contains(&FontSource::Embedded) {
         return Err(FontCatalogError::EmbeddedSourceRequired);
-    }
-
-    if embedded_fonts_allowed && cfg!(feature = "embedded-fonts") {
-        #[cfg(feature = "embedded-fonts")]
-        return embedded::compile(spec, resources);
     }
 
     // Apply limits that can be checked without a font parser before rejecting the capability.
@@ -641,7 +611,7 @@ pub enum FontCatalogError {
     ResourceLimit(#[from] ThemeResourceLimitExceeded),
     #[error(transparent)]
     Admission(#[from] ThemeAdmissionError),
-    #[error("embedded font assets are unavailable in this artifact")]
+    #[error("embedded theme font resources are not supported")]
     EmbeddedFontsUnavailable,
     #[error("font catalog must contain at least one custom asset")]
     EmptyCatalog,
@@ -730,9 +700,8 @@ mod tests {
         ));
     }
 
-    #[cfg(not(feature = "embedded-fonts"))]
     #[test]
-    fn custom_font_assets_require_the_embedded_fonts_capability() {
+    fn custom_font_assets_are_not_supported() {
         for bytes in [b"wOF2", b"OTTO", b"ttcf", &[0, 1, 0, 0]] {
             let spec = FontCatalogSpec::new([FontAssetSpec::new("font", bytes)]);
             assert!(matches!(
@@ -740,20 +709,6 @@ mod tests {
                 Err(FontCatalogError::EmbeddedFontsUnavailable)
             ));
         }
-    }
-
-    #[test]
-    fn artifact_policy_can_reject_embedded_fonts_independently_of_cargo_features() {
-        let spec = FontCatalogSpec::new([FontAssetSpec::new("font", b"wOF2")]);
-        assert!(matches!(
-            spec.compile_with_embedded_fonts_allowed(&ThemeResourcePolicy::interactive(), false),
-            Err(FontCatalogError::EmbeddedFontsUnavailable)
-        ));
-        assert!(matches!(
-            FontCatalogSpec::new([])
-                .compile_with_embedded_fonts_allowed(&ThemeResourcePolicy::interactive(), false),
-            Err(FontCatalogError::EmptyCatalog)
-        ));
     }
 
     #[test]
@@ -799,9 +754,7 @@ mod tests {
             let policy = ThemeResourcePolicy::interactive()
                 .with_limit(limit, 0)
                 .unwrap();
-            let error = spec
-                .compile_with_embedded_fonts_allowed(&policy, false)
-                .unwrap_err();
+            let error = spec.compile(&policy).unwrap_err();
             assert!(
                 matches!(error, FontCatalogError::ResourceLimit(ThemeResourceLimitExceeded { limit, .. }) if limit == expected),
                 "expected {expected}, got {error}"

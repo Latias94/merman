@@ -67,19 +67,15 @@ profiles because npm package identity is its capability-selection mechanism.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 
-## Embedded Font Processing
+## Theme Typography
 
-The `embedded-fonts` leaf admits caller-supplied theme font bytes and enables decoding and
-native prepared text layout. It does not bundle fonts. Font-family names and resource-free
-recipes remain available without it; complete-spec wire data can still be read and forwarded.
-A font-resource compilation request without this capability returns `missing-capability`
-with capability ID `embedded-fonts`, after input resource admission.
+Themes retain font-family names, sizes, weights, spacing, canvas layers and effects. Font bytes
+and native theme shaping are outside the current product. No artifact or Cargo feature enables
+embedded theme font processing; resource-bearing recipes fail explicitly instead of silently
+substituting system fonts. Native PNG/PDF backends retain their existing system-font handling.
 
-The complete `cli-release`, `c-abi-native`, `rust-all`, `rust-native-sdk`,
-`rust-bindings-core-native-sdk`, and `web-full` profiles opt in. Basic and static SVG,
-`web-render`, Typst, Node, and the default Android/Apple/Python/Flutter native packages do not.
-Their runtime catalogs describe this distinction; custom source builds can select the leaf.
-Native PNG/PDF backends retain their ordinary system-font dependencies independently.
+The former implementation is preserved on the local `preserve/embedded-fonts-theme` branch at
+`dfe54f279`. Its portable-font qualifications are historical and do not describe current artifacts.
 
 ## Admitting A Public Leaf
 

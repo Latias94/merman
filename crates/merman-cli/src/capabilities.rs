@@ -206,11 +206,9 @@ pub(crate) fn write_compiled_capabilities(
 
 #[cfg(feature = "svg")]
 fn theme_preset_catalog_document() -> ThemePresetCatalogDocument {
-    let compiler = merman::svg::DiagramThemeCompiler::new()
-        .with_resource_policy(merman::svg::ThemeResourcePolicy::for_profile(
-            merman::svg::CLI_DEFAULT_RESOURCE_PROFILE,
-        ))
-        .with_embedded_fonts_allowed(cfg!(feature = "embedded-fonts"));
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
+    );
     ThemePresetCatalogDocument {
         schema_version: merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
         presets: merman::svg::describe_theme_presets(&compiler),
@@ -367,7 +365,6 @@ fn compiled_capability_ids() -> Vec<&'static str> {
 
     include_capability!("analysis", "analysis");
     include_capability!("ascii", "ascii");
-    include_capability!("embedded-fonts", "embedded-fonts");
     include_capability!("icons", "icons");
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");

@@ -24,7 +24,6 @@ merman-analysis.workspace = true
 merman-bindings-core = { workspace = true, features = [
     "analysis",
     "ascii",
-    "embedded-fonts",
     "jpeg",
     "layout-cytoscape",
     "layout-elk",

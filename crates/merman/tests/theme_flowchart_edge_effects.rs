@@ -115,22 +115,8 @@ fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
 
 #[test]
 fn text_only_glow_survives_native_png_and_pdf() {
-    use merman::svg::{
-        FontAssetSpec, FontCatalogSpec, FontStack, ThemeAssets, ThemeTextStyle, TypographySpec,
-    };
-    for (native_fonts, html_labels) in [(false, false), (true, false), (false, true)] {
-        if native_fonts && !cfg!(feature = "embedded-fonts") {
-            continue;
-        }
-        let mut spec = DiagramThemeSpec::new();
-        if native_fonts {
-            spec = spec.with_typography(TypographySpec::default().with_family_style(
-                merman::DiagramFamilyId::FLOWCHART,
-                ThemeTextStyle::default().with_font_stack(FontStack::single("Excalifont").unwrap()),
-            )).with_assets(ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
-                FontAssetSpec::new("excalifont", include_bytes!("../../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2")),
-            ])));
-        }
+    for html_labels in [false, true] {
+        let spec = DiagramThemeSpec::new();
         let effects = DiagramEffectSet::default()
             .with_graph(
                 EffectGraph::new(
@@ -183,7 +169,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                         .with_theme(theme.clone()),
                 )
                 .unwrap_or_else(|error| {
-                    panic!("native_fonts={native_fonts}, html_labels={html_labels}, body={body}: {error:?}")
+                    panic!("html_labels={html_labels}, body={body}: {error:?}")
                 })
             else {
                 panic!("document required")
@@ -199,7 +185,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 ] {
                     assert!(
                         !admission.reasons().contains(&reason),
-                        "native_fonts={native_fonts}, html_labels={html_labels}: {admission:?}"
+                        "html_labels={html_labels}: {admission:?}"
                     );
                 }
             };
@@ -222,7 +208,7 @@ fn text_only_glow_survives_native_png_and_pdf() {
                 pixels[..info.buffer_size()]
                     .chunks_exact(4)
                     .any(|p| p[3] > 0 && p[0] > p[2] && p[2] > p[1]),
-                "native_fonts={native_fonts}, html_labels={html_labels}: text glow must reach PNG pixels"
+                "html_labels={html_labels}: text glow must reach PNG pixels"
             );
             #[cfg(feature = "pdf")]
             {

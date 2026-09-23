@@ -67,8 +67,6 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     OperationKey::ValidationJson,
 ];
 const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "embedded-fonts")]
-    CapabilityKey::EmbeddedFonts,
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
@@ -1523,10 +1521,7 @@ mod tests {
             !cfg!(feature = "ascii")
         );
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
-        assert_eq!(
-            capabilities.has_capability("embedded-fonts"),
-            cfg!(feature = "embedded-fonts")
-        );
+        assert!(!capabilities.has_capability("embedded-fonts"));
         #[cfg(feature = "svg")]
         {
             assert_eq!(

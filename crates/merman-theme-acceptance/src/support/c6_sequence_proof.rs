@@ -1,29 +1,15 @@
-use std::collections::BTreeMap;
-
 use merman_export::RasterPlan;
 use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
-use merman_theme_fixtures::ReferenceThemeMechanism;
 #[cfg(test)]
 use sha2::Digest as _;
 
-use crate::observation::C6ObservedMechanismDisposition;
-
 use super::{
-    BrutalistSequenceFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
-    C6RasterImage, C6TargetArtifact, artifact_observation::sealed_svg_receipt,
-    decode_bounded_png_artifact, parse_c6_hex_rgb,
+    C6ProofError, C6ProofResult, C6RasterImage, C6TargetArtifact,
+    artifact_observation::sealed_svg_receipt, decode_bounded_png_artifact, parse_c6_hex_rgb,
 };
 
 #[path = "c6_sequence_proof/role_text.rs"]
 mod role_text;
-
-const BRUTALIST_CELL_MECHANISMS: [ReferenceThemeMechanism; 1] =
-    [ReferenceThemeMechanism::ThemeVariables];
-// PNG contributes only the mechanisms independently observed by its color ROIs.
-const PNG_INDEPENDENT_MECHANISMS: [ReferenceThemeMechanism; 2] = [
-    ReferenceThemeMechanism::StrokeStyling,
-    ReferenceThemeMechanism::ThemeVariables,
-];
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SequenceRectProofStyle<'a> {
@@ -63,8 +49,6 @@ pub(crate) struct SequenceRoleTextProofContract<'a> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct SequenceSvgProof {
-    mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    target_proof: C6BoundTargetProof,
     view_box: [f64; 4],
     actor_fill_region: [f64; 4],
     lifeline_stroke_region: Option<[f64; 4]>,
@@ -72,113 +56,13 @@ pub(crate) struct SequenceSvgProof {
     message_stroke_region: [f64; 4],
 }
 
-impl SequenceSvgProof {
-    pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
-        self.target_proof.clone()
-    }
-}
-
-pub(crate) type BrutalistSequenceSvgProof = SequenceSvgProof;
-
-pub(super) fn prove_brutalist_sequence_svg(
-    contract: &BrutalistSequenceFixtureContract<'_>,
-    artifact: C6TargetArtifact<'_>,
-) -> C6ProofResult<BrutalistSequenceSvgProof> {
-    prove_sequence_svg(
-        brutalist_contract(contract),
-        &BRUTALIST_CELL_MECHANISMS,
-        "brutalist-sequence-standalone-svg-v1",
-        artifact,
-    )
-}
-
-pub(super) fn prove_brutalist_sequence_png(
-    contract: &BrutalistSequenceFixtureContract<'_>,
-    svg_proof: &BrutalistSequenceSvgProof,
-    artifact: C6TargetArtifact<'_>,
-    plan: RasterPlan,
-) -> C6ProofResult<C6BoundTargetProof> {
-    prove_sequence_png(
-        brutalist_contract(contract),
-        svg_proof,
-        "brutalist-sequence-png-v1",
-        artifact,
-        plan,
-    )
-}
-
-fn brutalist_contract<'a>(
-    contract: &'a BrutalistSequenceFixtureContract<'a>,
-) -> SequenceProofContract<'a> {
-    let actor = SequenceRectProofStyle {
-        fill: contract.actor_fill(),
-        stroke: contract.stroke(),
-    };
-    SequenceProofContract {
-        actor,
-        actor_rect_count: 2,
-        require_actor_man: true,
-        lifeline: None,
-        message_stroke: contract.stroke(),
-        message_line_counts: [1, 2],
-        message_text_count: 3,
-        note: Some(SequenceRectProofStyle {
-            fill: contract.note_fill(),
-            stroke: contract.stroke(),
-        }),
-        activation: Some(actor),
-        font_family: None,
-    }
-}
-
 pub(crate) fn prove_sequence_svg(
     contract: SequenceProofContract<'_>,
-    cell_mechanisms: &[ReferenceThemeMechanism],
-    semantic_assertion_id: &'static str,
-    artifact: C6TargetArtifact<'_>,
+    artifact: &C6TargetArtifact<'_>,
 ) -> C6ProofResult<SequenceSvgProof> {
-    prove_sequence_svg_internal(
-        contract,
-        None,
-        cell_mechanisms,
-        semantic_assertion_id,
-        artifact,
-    )
-}
-
-pub(crate) fn prove_sequence_svg_with_role_text(
-    contract: SequenceProofContract<'_>,
-    role_text: SequenceRoleTextProofContract<'_>,
-    cell_mechanisms: &[ReferenceThemeMechanism],
-    semantic_assertion_id: &'static str,
-    artifact: C6TargetArtifact<'_>,
-) -> C6ProofResult<SequenceSvgProof> {
-    prove_sequence_svg_internal(
-        contract,
-        Some(role_text),
-        cell_mechanisms,
-        semantic_assertion_id,
-        artifact,
-    )
-}
-
-fn prove_sequence_svg_internal(
-    contract: SequenceProofContract<'_>,
-    role_text: Option<SequenceRoleTextProofContract<'_>>,
-    cell_mechanisms: &[ReferenceThemeMechanism],
-    semantic_assertion_id: &'static str,
-    artifact: C6TargetArtifact<'_>,
-) -> C6ProofResult<SequenceSvgProof> {
-    let mechanisms = applied_mechanisms(cell_mechanisms);
-    let receipt = sealed_svg_receipt(&artifact)?;
-    let geometry = check_sequence_svg_internal(contract, role_text, receipt)?;
-    let (_, target_proof) =
-        artifact.check_with(semantic_assertion_id, mechanisms.clone(), |_| {
-            Ok::<(), C6ProofError>(())
-        })?;
+    let receipt = sealed_svg_receipt(artifact)?;
+    let geometry = check_sequence_svg_internal(contract, None, receipt)?;
     Ok(SequenceSvgProof {
-        mechanisms,
-        target_proof,
         view_box: geometry.view_box,
         actor_fill_region: geometry.actor_fill_region,
         lifeline_stroke_region: geometry.lifeline_stroke_region,
@@ -366,7 +250,7 @@ fn prove_terminal_surfaces<'a>(
     c6_ensure!(
         "sequence-svg-note",
         notes.len() == 1,
-        "Brutalist Sequence requires one terminal note rect; got {}",
+        "Sequence requires one terminal note rect; got {}",
         notes.len()
     );
     let activations = receipt
@@ -382,7 +266,7 @@ fn prove_terminal_surfaces<'a>(
     c6_ensure!(
         "sequence-svg-activation",
         activations.len() == 1,
-        "Brutalist Sequence requires one terminal activation rect; got {}",
+        "Sequence requires one terminal activation rect; got {}",
         activations.len()
     );
 
@@ -428,92 +312,54 @@ fn prove_terminal_surfaces<'a>(
     })
 }
 
-pub(crate) fn prove_sequence_png(
-    contract: SequenceProofContract<'_>,
-    svg_proof: &SequenceSvgProof,
-    semantic_assertion_id: &'static str,
-    artifact: C6TargetArtifact<'_>,
-    plan: RasterPlan,
-) -> C6ProofResult<C6BoundTargetProof> {
-    prove_sequence_png_with_raster(contract, svg_proof, semantic_assertion_id, artifact, plan)
-        .map(|(_, proof)| proof)
-}
-
 pub(crate) fn prove_sequence_png_with_raster(
     contract: SequenceProofContract<'_>,
     svg_proof: &SequenceSvgProof,
-    semantic_assertion_id: &'static str,
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
-) -> C6ProofResult<(C6RasterImage, C6BoundTargetProof)> {
-    let mechanisms = sequence_png_mechanisms(&svg_proof.mechanisms)?;
-    artifact.check_with(semantic_assertion_id, mechanisms, |bytes| {
-        let raster = decode_bounded_png_artifact(bytes, plan)?;
+) -> C6ProofResult<C6RasterImage> {
+    let bytes = artifact.bytes();
+    let raster = decode_bounded_png_artifact(bytes, plan)?;
+    prove_roi_color(
+        &raster,
+        svg_proof.view_box,
+        svg_proof.actor_fill_region,
+        parse_c6_hex_rgb(contract.actor.fill)?,
+        24,
+        "sequence-png-actor-fill",
+    )?;
+    if let Some(lifeline) = contract.lifeline {
         prove_roi_color(
             &raster,
             svg_proof.view_box,
-            svg_proof.actor_fill_region,
-            parse_c6_hex_rgb(contract.actor.fill)?,
-            24,
-            "sequence-png-actor-fill",
-        )?;
-        if let Some(lifeline) = contract.lifeline {
-            prove_roi_color(
-                &raster,
-                svg_proof.view_box,
-                required_region(
-                    svg_proof.lifeline_stroke_region,
-                    "sequence-png-lifeline-stroke",
-                )?,
-                parse_c6_hex_rgb(lifeline.stroke)?,
-                4,
+            required_region(
+                svg_proof.lifeline_stroke_region,
                 "sequence-png-lifeline-stroke",
-            )?;
-        }
-        if let Some(note) = contract.note {
-            prove_roi_color(
-                &raster,
-                svg_proof.view_box,
-                required_region(svg_proof.note_fill_region, "sequence-png-note-fill")?,
-                parse_c6_hex_rgb(note.fill)?,
-                24,
-                "sequence-png-note-fill",
-            )?;
-        }
+            )?,
+            parse_c6_hex_rgb(lifeline.stroke)?,
+            4,
+            "sequence-png-lifeline-stroke",
+        )?;
+    }
+    if let Some(note) = contract.note {
         prove_roi_color(
             &raster,
             svg_proof.view_box,
-            svg_proof.message_stroke_region,
-            parse_c6_hex_rgb(contract.message_stroke)?,
-            4,
-            "sequence-png-message-stroke",
+            required_region(svg_proof.note_fill_region, "sequence-png-note-fill")?,
+            parse_c6_hex_rgb(note.fill)?,
+            24,
+            "sequence-png-note-fill",
         )?;
-        Ok(raster)
-    })
-}
-
-fn sequence_png_mechanisms(
-    svg_mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-) -> C6ProofResult<BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>> {
-    let mut mechanisms = BTreeMap::new();
-    for mechanism in PNG_INDEPENDENT_MECHANISMS {
-        let Some(disposition) = svg_mechanisms.get(&mechanism).copied() else {
-            continue;
-        };
-        c6_ensure!(
-            "sequence-png-mechanisms",
-            disposition == C6ObservedMechanismDisposition::Applied,
-            "Sequence PNG cannot report `{}` from a non-Applied SVG mechanism",
-            mechanism.id()
-        );
-        mechanisms.insert(mechanism, disposition);
     }
-    c6_ensure!(
-        "sequence-png-mechanisms",
-        !mechanisms.is_empty(),
-        "Sequence PNG has no target-local mechanism independently covered by its raster ROIs"
-    );
-    Ok(mechanisms)
+    prove_roi_color(
+        &raster,
+        svg_proof.view_box,
+        svg_proof.message_stroke_region,
+        parse_c6_hex_rgb(contract.message_stroke)?,
+        4,
+        "sequence-png-message-stroke",
+    )?;
+    Ok(raster)
 }
 
 fn required_region(region: Option<[f64; 4]>, stage: &'static str) -> C6ProofResult<[f64; 4]> {
@@ -538,16 +384,6 @@ fn prove_roi_color(
         "Sequence PNG ROI retained {count} matching pixels, expected at least {minimum_pixels}; global={global_count}, region={region:?}, viewBox={view_box:?}"
     );
     Ok(())
-}
-
-fn applied_mechanisms(
-    cell_mechanisms: &[ReferenceThemeMechanism],
-) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-    cell_mechanisms
-        .iter()
-        .copied()
-        .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
-        .collect()
 }
 
 fn require_stylesheet_property(
@@ -790,42 +626,6 @@ mod tests {
         assert!(visible_lifeline_region(&receipt, &lines).is_err());
     }
 
-    #[test]
-    fn sequence_png_mechanisms_exclude_unobserved_font_and_canvas_claims() {
-        let svg_mechanisms = applied_mechanisms(&[
-            ReferenceThemeMechanism::CanvasSolid,
-            ReferenceThemeMechanism::FontStack,
-            ReferenceThemeMechanism::StrokeStyling,
-            ReferenceThemeMechanism::ThemeVariables,
-        ]);
-
-        assert_eq!(
-            sequence_png_mechanisms(&svg_mechanisms).unwrap(),
-            applied_mechanisms(&[
-                ReferenceThemeMechanism::StrokeStyling,
-                ReferenceThemeMechanism::ThemeVariables,
-            ])
-        );
-    }
-
-    #[test]
-    fn sequence_png_mechanisms_reject_unproved_or_non_applied_claims() {
-        let font_only = applied_mechanisms(&[ReferenceThemeMechanism::FontStack]);
-        assert!(sequence_png_mechanisms(&font_only).is_err());
-
-        let non_applied = BTreeMap::from([
-            (
-                ReferenceThemeMechanism::StrokeStyling,
-                C6ObservedMechanismDisposition::Residual,
-            ),
-            (
-                ReferenceThemeMechanism::ThemeVariables,
-                C6ObservedMechanismDisposition::Applied,
-            ),
-        ]);
-        assert!(sequence_png_mechanisms(&non_applied).is_err());
-    }
-
     const SPOTLESS_CONTRACT: SequenceProofContract<'static> = SequenceProofContract {
         actor: SequenceRectProofStyle {
             fill: "#f5f1e8",
@@ -842,7 +642,7 @@ mod tests {
         message_text_count: 3,
         note: None,
         activation: None,
-        font_family: Some("Excalifont"),
+        font_family: Some("sans-serif"),
     };
     const CYBERPUNK_CONTRACT: SequenceProofContract<'static> = SequenceProofContract {
         actor: SequenceRectProofStyle {
@@ -866,7 +666,7 @@ mod tests {
             fill: "#0f172a",
             stroke: "#22d3ee",
         }),
-        font_family: Some("Excalifont"),
+        font_family: Some("sans-serif"),
     };
     const CYBERPUNK_ROLE_TEXT: SequenceRoleTextProofContract<'static> =
         SequenceRoleTextProofContract {
@@ -915,7 +715,7 @@ mod tests {
     #[test]
     fn spotless_sequence_terminal_contract_rejects_role_font_mutation() {
         let svg = spotless_proof_svg().replacen(
-            r#"class="loopText" style="font-family:&quot;Excalifont&quot;""#,
+            r#"class="loopText" style="font-family:&quot;sans-serif&quot;""#,
             r#"class="loopText" style="font-family:Inter""#,
             1,
         );
@@ -923,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn spotless_sequence_terminal_contract_rejects_missing_lifeline_or_font_seal() {
+    fn spotless_sequence_terminal_contract_rejects_missing_lifeline() {
         let svg = spotless_proof_svg();
         let missing_lifeline = svg.replacen(
             r#"<line class="actor-line" data-et="life-line" x1="60" y1="40" x2="60" y2="200"/>"#,
@@ -931,9 +731,6 @@ mod tests {
             1,
         );
         assert!(check_sequence_svg(SPOTLESS_CONTRACT, missing_lifeline.as_bytes()).is_err());
-
-        let missing_font_seal = svg.replacen(" data-merman-typed-fonts=\"v1\"", "", 1);
-        assert!(check_sequence_svg(SPOTLESS_CONTRACT, missing_font_seal.as_bytes()).is_err());
     }
 
     #[test]
@@ -985,7 +782,7 @@ mod tests {
     fn cyberpunk_sequence_role_contract_rejects_missing_occurrence() {
         let svg = cyberpunk_role_proof_svg();
         let missing_message = svg.replacen(
-            r#"<text class="messageText" style="font-family:&quot;Excalifont&quot;">Breach</text>"#,
+            r#"<text class="messageText" style="font-family:&quot;sans-serif&quot;">Breach</text>"#,
             "",
             1,
         );
@@ -1037,7 +834,7 @@ mod tests {
 
     fn spotless_proof_svg() -> String {
         r##"<svg xmlns="http://www.w3.org/2000/svg" id="seq" viewBox="0 0 320 240">
-<style data-merman-typed-fonts="v1">@font-face{font-family:"Excalifont";src:url(data:font/ttf;base64,AA==)}</style>
+
 <style>#seq .actor{fill:#f5f1e8;stroke:#2c2416;}#seq .actor-line{stroke:#2c2416;stroke-width:2px;}#seq .messageLine0,#seq .messageLine1{stroke:#2c2416;}</style>
 <rect class="actor actor-top" x="220" y="10" width="80" height="30"/><rect class="actor actor-bottom" x="220" y="200" width="80" height="30"/>
 <g class="actor-man"><circle cx="60" cy="20" r="5"/></g>
@@ -1046,28 +843,28 @@ mod tests {
 <line class="messageLine1" data-et="message" x1="260" y1="150" x2="60" y2="150" marker-end="url(#seq-arrowhead)"/>
 <line class="messageLine1" data-et="message" x1="260" y1="180" x2="60" y2="180" marker-end="url(#seq-arrowhead)"/>
 <rect class="note" x="100" y="90" width="120" height="30"/><rect class="activation0" x="255" y="55" width="10" height="120"/>
-<text class="actor" style="font-family:&quot;Excalifont&quot;">User</text><text class="actor" style="font-family:&quot;Excalifont&quot;">Service</text><text class="actor" style="font-family:&quot;Excalifont&quot;">User</text><text class="actor" style="font-family:&quot;Excalifont&quot;">Service</text>
-<text class="messageText" style="font-family:&quot;Excalifont&quot;">Submit request</text><text class="messageText" style="font-family:&quot;Excalifont&quot;">Processing</text><text class="messageText" style="font-family:&quot;Excalifont&quot;">Complete</text>
-<text class="noteText" style="font-family:&quot;Excalifont&quot;">Request accepted</text><text class="loopText" style="font-family:&quot;Excalifont&quot;">Poll status</text>
+<text class="actor" style="font-family:&quot;sans-serif&quot;">User</text><text class="actor" style="font-family:&quot;sans-serif&quot;">Service</text><text class="actor" style="font-family:&quot;sans-serif&quot;">User</text><text class="actor" style="font-family:&quot;sans-serif&quot;">Service</text>
+<text class="messageText" style="font-family:&quot;sans-serif&quot;">Submit request</text><text class="messageText" style="font-family:&quot;sans-serif&quot;">Processing</text><text class="messageText" style="font-family:&quot;sans-serif&quot;">Complete</text>
+<text class="noteText" style="font-family:&quot;sans-serif&quot;">Request accepted</text><text class="loopText" style="font-family:&quot;sans-serif&quot;">Poll status</text>
 </svg>"##
             .to_string()
     }
 
     fn cyberpunk_role_proof_svg() -> String {
         r##"<svg xmlns="http://www.w3.org/2000/svg" id="seq" viewBox="0 0 360 340">
-<style data-merman-typed-fonts="v1">@font-face{font-family:"Excalifont";src:url(data:font/ttf;base64,AA==)}</style>
+
 <rect data-merman-theme-canvas="base" x="0" y="0" width="360" height="340" fill="#020617"/>
 <style>#seq .actor{fill:#22d3ee;stroke:#e0f2fe;}#seq .actor-line{stroke:#22d3ee;stroke-width:2px;}#seq .messageLine0,#seq .messageLine1{stroke:#22d3ee;}#seq .note{fill:#0f172a;stroke:#22d3ee;}#seq .activation0,#seq .activation1,#seq .activation2{fill:#0f172a;stroke:#22d3ee;}#seq .labelBox{fill:#0f172a;stroke:#22d3ee;}#seq text.actor,#seq text.actor>tspan,#seq text.text,#seq text.text>tspan{fill:#020617;}#seq .messageText,#seq .messageText>tspan{fill:#e0f2fe;}#seq .noteText,#seq .noteText>tspan{fill:#e0f2fe;}#seq .loopText,#seq .loopText>tspan,#seq .sectionTitle,#seq .sectionTitle>tspan,#seq .labelText,#seq .labelText>tspan{fill:#e0f2fe;}</style>
-<g><rect class="actor actor-top" name="Operator" x="10" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;Excalifont&quot;">Operator</text></g>
-<g><rect class="actor actor-bottom" name="Operator" x="10" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;Excalifont&quot;">Operator</text></g>
-<g><rect class="actor actor-top" name="Console" x="230" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;Excalifont&quot;">Console</text></g>
-<g><rect class="actor actor-bottom" name="Console" x="230" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;Excalifont&quot;">Console</text></g>
+<g><rect class="actor actor-top" name="Operator" x="10" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Operator</text></g>
+<g><rect class="actor actor-bottom" name="Operator" x="10" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Operator</text></g>
+<g><rect class="actor actor-top" name="Console" x="230" y="10" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Console</text></g>
+<g><rect class="actor actor-bottom" name="Console" x="230" y="290" width="120" height="40"/><text class="actor" style="font-family:&quot;sans-serif&quot;">Console</text></g>
 <line class="actor-line" data-et="life-line" x1="70" y1="50" x2="70" y2="290"/><line class="actor-line" data-et="life-line" x1="290" y1="50" x2="290" y2="290"/>
 <g><rect class="activation0" x="285" y="90" width="10" height="150"/></g>
-<g data-et="note" data-id="i2"><rect class="note" x="80" y="120" width="200" height="40"/><text class="noteText" style="font-family:&quot;Excalifont&quot;">Access granted</text></g>
-<g data-et="control-structure" data-id="i5"><polygon class="labelBox" points="60,170 120,170 120,200 60,200"/><text class="labelText" style="font-family:&quot;Excalifont&quot;">loop</text><text class="loopText" style="font-family:&quot;Excalifont&quot;"><tspan>[Trace]</tspan></text></g>
-<g><text class="messageText" style="font-family:&quot;Excalifont&quot;">Breach</text><line class="messageLine0" data-et="message" data-id="i0" x1="70" y1="90" x2="290" y2="90" marker-end="url(#seq-arrowhead)"/></g>
-<g><text class="messageText" style="font-family:&quot;Excalifont&quot;">Scan</text><line class="messageLine1" data-et="message" data-id="i4" x1="290" y1="250" x2="70" y2="250" marker-end="url(#seq-arrowhead)"/></g>
+<g data-et="note" data-id="i2"><rect class="note" x="80" y="120" width="200" height="40"/><text class="noteText" style="font-family:&quot;sans-serif&quot;">Access granted</text></g>
+<g data-et="control-structure" data-id="i5"><polygon class="labelBox" points="60,170 120,170 120,200 60,200"/><text class="labelText" style="font-family:&quot;sans-serif&quot;">loop</text><text class="loopText" style="font-family:&quot;sans-serif&quot;"><tspan>[Trace]</tspan></text></g>
+<g><text class="messageText" style="font-family:&quot;sans-serif&quot;">Breach</text><line class="messageLine0" data-et="message" data-id="i0" x1="70" y1="90" x2="290" y2="90" marker-end="url(#seq-arrowhead)"/></g>
+<g><text class="messageText" style="font-family:&quot;sans-serif&quot;">Scan</text><line class="messageLine1" data-et="message" data-id="i4" x1="290" y1="250" x2="70" y2="250" marker-end="url(#seq-arrowhead)"/></g>
 </svg>"##
             .to_string()
     }

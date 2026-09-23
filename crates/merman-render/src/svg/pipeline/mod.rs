@@ -2,13 +2,13 @@ mod builtin;
 mod context;
 mod embedding;
 mod final_validation;
-mod font_embedding;
 mod policy;
 mod prepared_text;
 mod preset;
 mod resource_closure;
 mod standalone;
 mod static_validation;
+mod text_tracking;
 
 pub(crate) use builtin::set_root_background_color;
 pub(crate) use builtin::util::{
@@ -26,12 +26,12 @@ pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsP
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_with_controls};
-pub(crate) use font_embedding::SvgFontSeal;
 pub use policy::SvgOutputPolicy;
 pub(crate) use prepared_text::partition_prepared_text_label_ids;
 pub use preset::SvgPipelinePreset;
 pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 pub use standalone::{StandaloneSvgArtifact, StandaloneSvgTerminalStatus};
+pub(crate) use text_tracking::SvgFontSeal;
 
 pub(crate) fn is_css_value_attribute(name: &str) -> bool {
     matches!(
@@ -118,8 +118,7 @@ pub trait SvgPostprocessor: Send + Sync {
 /// The inner string cannot be constructed directly. Custom postprocessors operate on an SVG draft
 /// before finalization and therefore cannot claim this type. Structural resources are limited to
 /// same-document fragments, ordinary image elements require approved, syntactically valid inline
-/// raster data URLs, `feImage` accepts either form, and renderer-owned full-font data URLs require
-/// an exact prepared-text embedding plan.
+/// raster data URLs, and `feImage` accepts either form. Theme font resources are not embedded.
 ///
 /// ```compile_fail
 /// use merman_render::svg::ResvgCompatibleSvg;
@@ -297,22 +296,6 @@ impl ResvgCompatibleSvg {
         } else {
             PreparedTextEvidenceLease::default()
         };
-        if let Some(mut plan) = font_embedding::SvgFontEmbeddingPlan::for_prepared_text(
-            &self.font_catalog,
-            self.prepared_text_evidence.entries(),
-            &self.svg,
-        ) {
-            let embedded = plan.inject(&self.svg, execution)?;
-            let terminal = final_validation::validate_resvg_compatible_svg_with_font_plan(
-                &embedded,
-                execution.resource_policy(),
-                &plan,
-            )?;
-            self.reference_plan = terminal.reference_plan.clone();
-            self.resource_closure = terminal.resource_closure.clone();
-            self.finalization_report.refresh_terminal(&terminal);
-            self.svg = embedded;
-        }
         if self.prepared_text_evidence.is_empty() {
             self.prepared_text_svg = None;
             self.prepared_text_terminal_receipt = None;
@@ -1136,63 +1119,6 @@ mod tests {
         assert_eq!(artifact.selected_pipeline(), SvgPipelinePreset::Parity);
         assert!(artifact.finalization_report().is_some());
         assert!(artifact.text_fonts_are_self_contained());
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    #[test]
-    fn sealed_svg_retains_and_fingerprints_the_authorized_font_catalog() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
-        let default_session = render_session();
-        let font_bytes = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
-        ));
-        let custom_catalog =
-            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
-                "excalifont",
-                font_bytes,
-            )])
-            .compile(&crate::diagram_theme::ThemeResourcePolicy::interactive())
-            .unwrap();
-        let custom_session = crate::environment::RenderEnvironment::deterministic()
-            .with_font_catalog(custom_catalog.clone())
-            .begin_session()
-            .unwrap();
-
-        let default_svg = finalize_resvg_svg(svg, &default_session).unwrap();
-        let custom_svg = finalize_resvg_svg(svg, &custom_session).unwrap();
-
-        assert_eq!(
-            custom_svg.finalization_report().preset(),
-            SvgPipelinePreset::ResvgSafe
-        );
-        assert!(
-            custom_svg
-                .finalization_report()
-                .postprocessor_names()
-                .is_empty()
-        );
-        assert!(
-            custom_svg
-                .finalization_report()
-                .resource_closure()
-                .is_closed()
-        );
-        assert_eq!(
-            custom_svg.finalization_report().reference_plan(),
-            custom_svg.reference_plan()
-        );
-
-        assert_eq!(default_svg.as_str(), custom_svg.as_str());
-        assert_ne!(
-            default_svg.resource_fingerprint(),
-            custom_svg.resource_fingerprint()
-        );
-        assert_eq!(
-            custom_svg.font_catalog().fingerprint(),
-            custom_catalog.fingerprint()
-        );
-        assert!(custom_svg.resource_closure().is_closed());
     }
 
     #[test]

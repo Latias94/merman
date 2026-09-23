@@ -14,19 +14,9 @@ use super::typography::Specified;
 use super::{ThemeCompileValidationError, ThemeRecipeFingerprint, ThemeRecipeReport};
 
 /// Resource-bounded compiler for one complete typed theme recipe.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagramThemeCompiler {
     resources: ThemeResourcePolicy,
-    embedded_fonts_allowed: bool,
-}
-
-impl Default for DiagramThemeCompiler {
-    fn default() -> Self {
-        Self {
-            resources: ThemeResourcePolicy::default(),
-            embedded_fonts_allowed: cfg!(feature = "embedded-fonts"),
-        }
-    }
 }
 
 impl DiagramThemeCompiler {
@@ -36,14 +26,6 @@ impl DiagramThemeCompiler {
 
     pub fn with_resource_policy(mut self, resources: ThemeResourcePolicy) -> Self {
         self.resources = resources;
-        self
-    }
-
-    /// Restricts embedded font processing to the calling artifact's capability contract.
-    ///
-    /// Enabling this policy cannot enable code omitted by Cargo's `embedded-fonts` feature.
-    pub fn with_embedded_fonts_allowed(mut self, allowed: bool) -> Self {
-        self.embedded_fonts_allowed &= allowed;
         self
     }
 
@@ -84,10 +66,7 @@ impl DiagramThemeCompiler {
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
         self.validate_spec(&spec)?;
         let catalog = match spec.assets().font_catalog() {
-            Some(catalog) => catalog.clone().compile_with_embedded_fonts_allowed(
-                &self.resources,
-                self.embedded_fonts_allowed,
-            )?,
+            Some(catalog) => catalog.clone().compile(&self.resources)?,
             None => FontCatalog::system_fonts(),
         };
         let inferred_capabilities = infer_required_capabilities(&spec);

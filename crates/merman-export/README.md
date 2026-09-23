@@ -24,11 +24,9 @@ The crate has no default features. Enable only the formats the application emits
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 
-`embedded-fonts` is an independent opt-in capability for caller-supplied theme font assets.
-It forwards to `merman-render/embedded-fonts` only when an output format enables the renderer;
-it does not enable an output format by itself. PNG, JPEG, and PDF remain usable with host system
-fonts without enabling WOFF2 decoding. No font files are bundled. When using the `merman` facade,
-select its `embedded-fonts` feature alongside the required output format.
+PNG, JPEG, and PDF use the existing backend system-font handling. Themes can select font-family
+names and typography values, but caller-supplied theme font files and native theme shaping are not
+supported. No font files are bundled.
 
 ## First Export
 

@@ -934,13 +934,6 @@ def check_case(
     if not tree_sitter_allowed:
         forbidden.update(TREE_SITTER_FORBIDDEN_PACKAGES)
 
-    if "embedded-fonts" not in case.recipe.features:
-        for owner in ("merman", "merman-render", "merman-bindings-core"):
-            if "embedded-fonts" in closure.features_by_package.get(owner, ()):
-                failures.append(
-                    f"unrequested embedded-fonts capability enabled by {owner}"
-                )
-
     overlaps = sorted(required & forbidden)
     if overlaps:
         failures.append(

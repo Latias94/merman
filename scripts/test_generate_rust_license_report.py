@@ -27,7 +27,6 @@ WEB_PROFILE_FEATURES = {
         "analysis",
         "ascii",
         "editor",
-        "embedded-fonts",
         "layout-cytoscape",
         "layout-elk",
         "math",
@@ -460,7 +459,7 @@ def write_web_profile_fixture(root: Path) -> dict[str, object]:
     manifest.parent.mkdir(parents=True)
     manifest.write_text(
         '[package]\nname = "merman-wasm"\nversion = "0.1.0"\n'
-        "[features]\nanalysis = []\nascii = []\neditor = []\nembedded-fonts = []\n"
+        "[features]\nanalysis = []\nascii = []\neditor = []\n"
         'layout-cytoscape = []\nlayout-elk = []\nmath = []\nsvg = []\n',
         encoding="utf-8",
     )

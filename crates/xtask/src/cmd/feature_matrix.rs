@@ -46,17 +46,17 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-cli", &[]),
     ("merman-core", &["operation-deadlines", "test-support"]),
     ("merman-editor-core", &[]),
-    ("merman-export", &["embedded-fonts"]),
+    ("merman-export", &[]),
     ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
-    ("merman-render", &["fuzzing"]),
+    ("merman-render", &[]),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     ("merman-uniffi", &["binding-generation", "native-runtime"]),
     ("merman-wasm", &[]),
     ("roughr-merman", &["host-random", "legacy-compat"]),
 ];
-const SVG_ENGINE_FEATURES: &[&str] = &["embedded-fonts", "layout-cytoscape", "layout-elk", "math"];
+const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math"];
 const RETIRED_BINDING_RUNTIME_FEATURES: &[&str] =
     &["system-clock", "system-random", "system-timezone"];
 const BINDINGS_CORE_NATIVE_RUNTIME_EDGES: &[&str] = &[
@@ -101,22 +101,11 @@ struct FeatureForwardingContract {
 
 const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
     FeatureForwardingContract {
-        package: "merman",
-        dependency: "merman-export",
-        features: &["embedded-fonts"],
-    },
-    FeatureForwardingContract {
-        package: "merman-export",
-        dependency: "merman-render",
-        features: &["embedded-fonts"],
-    },
-    FeatureForwardingContract {
         package: "merman-android-jni",
         dependency: "merman-bindings-core",
         features: &[
             "analysis",
             "ascii",
-            "embedded-fonts",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -131,7 +120,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         dependency: "merman",
         features: &[
             "ascii",
-            "embedded-fonts",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -146,7 +134,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         dependency: "merman",
         features: &[
             "ascii",
-            "embedded-fonts",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -166,7 +153,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
-            "embedded-fonts",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -182,7 +168,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
-            "embedded-fonts",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -198,7 +183,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
-            "embedded-fonts",
             "layout-cytoscape",
             "layout-elk",
             "math",
@@ -208,13 +192,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
     FeatureForwardingContract {
         package: "merman-typst-plugin",
         dependency: "merman-bindings-core",
-        features: &[
-            "analysis",
-            "embedded-fonts",
-            "layout-cytoscape",
-            "layout-elk",
-            "svg",
-        ],
+        features: &["analysis", "layout-cytoscape", "layout-elk", "svg"],
     },
     FeatureForwardingContract {
         package: "merman-rustdoc",
@@ -1254,7 +1232,6 @@ mod tests {
     const CLI_RELEASE_FEATURES: &[&str] = &[
         "analysis",
         "ascii",
-        "embedded-fonts",
         "icons",
         "jpeg",
         "layout-cytoscape",
@@ -1277,7 +1254,6 @@ mod tests {
     const CLI_DEFAULT_FEATURES: &[&str] = &[
         "analysis",
         "ascii",
-        "embedded-fonts",
         "icons",
         "jpeg",
         "layout-cytoscape",
@@ -1677,12 +1653,25 @@ mod tests {
     }
 
     #[test]
+    fn public_feature_allowlist_rejects_retired_font_features() {
+        for (name, extras) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
+            let graph = graph(vec![package(
+                name,
+                &[("default", &[]), ("embedded-fonts", &[])],
+            )]);
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(error.to_string().contains("embedded-fonts"), "{error}");
+        }
+    }
+
+    #[test]
     fn public_feature_allowlist_still_rejects_unknown_features() {
         let graph = graph(vec![package(
             "merman-render",
             &[
                 ("default", &[]),
-                ("fuzzing", &[]),
                 ("internal-theme-acceptance", &[]),
                 ("internal-theme-acceptance-typo", &[]),
             ],

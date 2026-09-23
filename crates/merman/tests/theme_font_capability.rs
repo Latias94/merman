@@ -7,7 +7,7 @@ use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
 
 #[test]
 fn resource_free_cyberpunk_renders_through_the_public_facade() {
-    let compiler = DiagramThemeCompiler::new().with_embedded_fonts_allowed(false);
+    let compiler = DiagramThemeCompiler::new();
     let theme = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
     let RenderOutput::Svg(Some(output)) = Renderer::new()
         .render(

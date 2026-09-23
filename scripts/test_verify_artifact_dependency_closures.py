@@ -643,23 +643,6 @@ class CargoMetadataParserTests(unittest.TestCase):
         self.assertEqual(closure.features_by_package["app"], {"one", "two"})
 
 class ClaimTests(unittest.TestCase):
-    def test_embedded_font_feature_cannot_leak_into_a_profile_that_omits_it(self) -> None:
-        closure = parse_cargo_metadata(
-            metadata_document(
-                "fixture",
-                {"fixture": (), "merman-render": ("embedded-fonts",)},
-                edges={"fixture": ("merman-render",)},
-            ),
-            root_package="fixture",
-        )
-        failures, _ = check_case(case(), closure)
-        self.assertIn(
-            "unrequested embedded-fonts capability enabled by merman-render", failures
-        )
-        opted_in = case(loaded_recipe=recipe("fixture", features=("embedded-fonts",)))
-        failures, _ = check_case(opted_in, closure)
-        self.assertEqual(failures, [])
-
     def test_native_binding_claim_rejects_tooling_and_application_dependencies(
         self,
     ) -> None:

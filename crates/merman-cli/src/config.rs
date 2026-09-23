@@ -448,9 +448,7 @@ fn renderer_from_config(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let compiler = DiagramThemeCompiler::new()
-        .with_resource_policy(theme_resources)
-        .with_embedded_fonts_allowed(cfg!(feature = "embedded-fonts"));
+    let compiler = DiagramThemeCompiler::new().with_resource_policy(theme_resources);
     let selected_theme = render
         .theme
         .map(|input| input.compile(&compiler))
@@ -501,9 +499,9 @@ pub(crate) fn ascii_renderer_for_resolved(
 mod tests {
     use super::*;
 
-    #[cfg(all(feature = "svg", not(feature = "embedded-fonts")))]
+    #[cfg(feature = "svg")]
     #[test]
-    fn cli_font_capability_is_not_widened_by_dependency_features() {
+    fn cli_rejects_embedded_font_resources() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("theme.json");
         std::fs::write(&path, r#"{"spec":{"assets":{"fonts":[{"id":"caller","format":"woff2","data_base64":"d09GMg=="}]}}}"#).unwrap();
@@ -518,11 +516,11 @@ mod tests {
             &default_resources(),
         )
         .err()
-        .expect("CLI without its own font capability must reject font bytes");
+        .expect("CLI must reject retired theme font resources");
         assert!(
             error
                 .to_string()
-                .contains("embedded theme fonts are not enabled"),
+                .contains("embedded theme font resources are not supported"),
             "{error}"
         );
     }

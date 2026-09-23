@@ -98,8 +98,6 @@ macro_rules! native_sdk_artifact_contract {
             $crate::OperationKey::ValidationJson,
         ];
         const SUPPLEMENTAL_CAPABILITIES: &[$crate::CapabilityKey] = &[
-            #[cfg(feature = "embedded-fonts")]
-            $crate::CapabilityKey::EmbeddedFonts,
             #[cfg(feature = "layout-cytoscape")]
             $crate::CapabilityKey::LayoutCytoscape,
             #[cfg(feature = "layout-elk")]

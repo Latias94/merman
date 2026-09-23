@@ -16,11 +16,8 @@ use super::builtin::css_sanitize::{
     CssValidationError, validate_resvg_css_declaration_list_with_checkpoints,
     validate_resvg_css_stylesheet_with_checkpoints,
 };
-use super::font_embedding::{
-    SvgFontEmbeddingPlan, SvgFontSeal, SvgTextContentTracker, TYPED_FONT_STYLE_ATTRIBUTE,
-    TYPED_FONT_STYLE_VERSION, stylesheet_contains_font_face,
-};
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
+use super::text_tracking::{SvgFontSeal, SvgTextContentTracker};
 use super::{SvgPostprocessExecution, SvgReferencePlan, checkpoint_loop};
 
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
@@ -472,21 +469,12 @@ pub(crate) fn validate_resvg_compatible_svg(
     svg: &str,
     limits: RenderResourcePolicy,
 ) -> Result<TerminalSvgValidation> {
-    validate_resvg_compatible_svg_inner(svg, limits, None)
-}
-
-pub(super) fn validate_resvg_compatible_svg_with_font_plan(
-    svg: &str,
-    limits: RenderResourcePolicy,
-    font_plan: &SvgFontEmbeddingPlan,
-) -> Result<TerminalSvgValidation> {
-    validate_resvg_compatible_svg_inner(svg, limits, Some(font_plan))
+    validate_resvg_compatible_svg_inner(svg, limits)
 }
 
 fn validate_resvg_compatible_svg_inner(
     svg: &str,
     limits: RenderResourcePolicy,
-    font_plan: Option<&SvgFontEmbeddingPlan>,
 ) -> Result<TerminalSvgValidation> {
     let mut checkpoint = || Ok(());
     validate_well_formed_svg_with_checkpoint(svg, limits, &mut checkpoint)?;
@@ -498,7 +486,6 @@ fn validate_resvg_compatible_svg_inner(
                 .check_svg_structure(elements, tree_depth)
                 .map_err(Into::into)
         },
-        font_plan,
     )
 }
 
@@ -523,7 +510,6 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
         svg,
         &mut checkpoint,
         &mut check_structure,
-        None,
     )
 }
 
@@ -540,7 +526,6 @@ fn validate_resvg_compatible_svg_after_xml(
                 .check_svg_structure(elements, tree_depth)
                 .map_err(Into::into)
         },
-        None,
     )
 }
 
@@ -601,14 +586,12 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-    font_plan: Option<&SvgFontEmbeddingPlan>,
 ) -> Result<TerminalSvgValidation> {
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
     let mut root_seen = false;
     let mut root_closed = false;
     let mut style_text = None::<OpenStyle>;
-    let mut typed_font_style_seen = false;
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
@@ -641,12 +624,6 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                         validation_error("terminal SVG text elements cannot be tracked")
                     })?;
                 let opens_style = validated.is_style;
-                let typed_font_style = validated.is_typed_font_style;
-                if typed_font_style && depth != 1 {
-                    return Err(validation_error(
-                        "renderer-owned typed font stylesheet must be a direct child of the SVG root",
-                    ));
-                }
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -657,15 +634,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 }
                 depth += 1;
                 if opens_style {
-                    if typed_font_style && typed_font_style_seen {
-                        return Err(validation_error(
-                            "terminal SVG contains more than one renderer-owned typed font stylesheet",
-                        ));
-                    }
-                    style_text = Some(OpenStyle {
-                        css: String::new(),
-                        typed_font_style,
-                    });
+                    style_text = Some(OpenStyle { css: String::new() });
                 }
                 reference_stack.push(reference_nodes.len() - 1);
             }
@@ -685,25 +654,13 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     checkpoint,
                 )?;
                 let empty_style = validated.is_style;
-                let typed_font_style = validated.is_typed_font_style;
-                if typed_font_style && depth != 1 {
-                    return Err(validation_error(
-                        "renderer-owned typed font stylesheet must be a direct child of the SVG root",
-                    ));
-                }
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
                     validated,
                 );
                 if empty_style {
-                    validate_terminal_style(
-                        "",
-                        typed_font_style,
-                        font_plan,
-                        &mut typed_font_style_seen,
-                        checkpoint,
-                    )?;
+                    validate_style_text("", checkpoint)?;
                 }
                 if is_root {
                     root_seen = true;
@@ -721,13 +678,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                             "a <style> element contains nested XML elements",
                         ));
                     }
-                    validate_terminal_style(
-                        &style.css,
-                        style.typed_font_style,
-                        font_plan,
-                        &mut typed_font_style_seen,
-                        checkpoint,
-                    )?;
+                    validate_style_text(&style.css, checkpoint)?;
                     resource_closure
                         .observe_stylesheet_urls(&style.css)
                         .map_err(validation_error)?;
@@ -816,11 +767,6 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     if !root_closed || depth != 0 || style_text.is_some() {
         return Err(validation_error("the SVG root is not closed"));
     }
-    if font_plan.is_some() && !typed_font_style_seen {
-        return Err(validation_error(
-            "renderer-owned typed font plan has no matching terminal stylesheet",
-        ));
-    }
     checkpoint()?;
     let reference_plan =
         match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint) {
@@ -837,9 +783,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     )?;
     let resource_closure = resource_closure.finish().map_err(validation_error)?;
     let text_elements = text_content.text_element_count();
-    let font_seal = if let Some(plan) = font_plan {
-        plan.seal(text_elements)?
-    } else if text_elements == 0 {
+    let font_seal = if text_elements == 0 {
         SvgFontSeal::not_required()
     } else {
         SvgFontSeal::unsealed(text_elements)
@@ -854,7 +798,6 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
 
 struct OpenStyle {
     css: String,
-    typed_font_style: bool,
 }
 
 #[derive(Debug)]
@@ -884,7 +827,6 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 
 struct ValidatedElement {
     is_style: bool,
-    is_typed_font_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
     use_id: Option<String>,
@@ -983,10 +925,7 @@ fn validate_element_after_xml(
         ));
     }
 
-    let is_style = is_svg_element && element_name.eq_ignore_ascii_case("style");
     let mut reference_attributes = ReferenceAttributes::new(element_name, is_svg_element);
-    let mut is_typed_font_style = false;
-    let mut style_has_non_marker_attribute = false;
     let mut root_width_seen = false;
     let mut root_height_seen = false;
     // The caller already validated this immutable element, including lexical and expanded
@@ -1012,11 +951,6 @@ fn validate_element_after_xml(
             &attribute_namespace,
             ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE.as_bytes()
         );
-        let is_typed_font_marker =
-            is_unbound_attribute && qualified_name == TYPED_FONT_STYLE_ATTRIBUTE;
-        if is_style && !is_typed_font_marker {
-            style_has_non_marker_attribute = true;
-        }
         let consumes_namespace = usvg_consumes_attribute_namespace(attribute_namespace);
         checkpoint()?;
         if !consumes_namespace? {
@@ -1025,18 +959,10 @@ fn validate_element_after_xml(
         let semantic_name = xml_name(local_name.as_ref());
         checkpoint()?;
         let semantic_name = semantic_name?;
-        if is_typed_font_marker {
-            if !is_style {
-                return Err(validation_error(format!(
-                    "renderer-owned typed font marker is not allowed on <{element_name}>"
-                )));
-            }
-            if value.as_ref() != TYPED_FONT_STYLE_VERSION {
-                return Err(validation_error(
-                    "renderer-owned typed font marker has an unsupported version",
-                ));
-            }
-            is_typed_font_style = true;
+        if is_unbound_attribute && qualified_name == "data-merman-typed-fonts" {
+            return Err(validation_error(
+                "embedded theme font resources are not supported",
+            ));
         }
         let violates_contract =
             parsed_attribute_violates_resvg_contract(element_name, qualified_name, &value);
@@ -1093,14 +1019,7 @@ fn validate_element_after_xml(
     if let Some(error) = reference_attributes.marker_error.take() {
         return Err(error);
     }
-    if is_typed_font_style && style_has_non_marker_attribute {
-        return Err(validation_error(
-            "renderer-owned typed font stylesheet may only carry its fixed marker and namespace declarations",
-        ));
-    }
-
-    let mut validated = reference_attributes.finish();
-    validated.is_typed_font_style = is_typed_font_style;
+    let validated = reference_attributes.finish();
     if let Some(id) = &validated.parsed_id {
         resource_closure.observe_fragment_id(id);
     }
@@ -1269,7 +1188,6 @@ impl<'a> ReferenceAttributes<'a> {
         }
         ValidatedElement {
             is_style: self.is_svg_element && self.element_name.eq_ignore_ascii_case("style"),
-            is_typed_font_style: false,
             is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
             may_repeat_per_element: self.is_svg_element
                 && matches!(self.element_name, "filter" | "mask" | "clipPath"),
@@ -1771,42 +1689,6 @@ fn validate_style_text(css: &str, checkpoint: &mut impl FnMut() -> Result<()>) -
         }
         Err(CssValidationError::Checkpoint(error)) => Err(error),
     }
-}
-
-fn validate_terminal_style(
-    css: &str,
-    typed_font_style: bool,
-    font_plan: Option<&SvgFontEmbeddingPlan>,
-    typed_font_style_seen: &mut bool,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-) -> Result<()> {
-    if !typed_font_style {
-        checkpoint()?;
-        if font_plan.is_some() && stylesheet_contains_font_face(css) {
-            checkpoint()?;
-            return Err(validation_error(
-                "terminal SVG contains an unplanned @font-face rule",
-            ));
-        }
-        checkpoint()?;
-        return validate_style_text(css, checkpoint);
-    }
-    if *typed_font_style_seen {
-        return Err(validation_error(
-            "terminal SVG contains more than one renderer-owned typed font stylesheet",
-        ));
-    }
-    let Some(font_plan) = font_plan else {
-        return Err(validation_error(
-            "renderer-owned typed font stylesheet has no active embedding plan",
-        ));
-    };
-    checkpoint()?;
-    let validation = font_plan.validate_typed_style(css);
-    checkpoint()?;
-    validation.map_err(|error| validation_error(error.to_string()))?;
-    *typed_font_style_seen = true;
-    Ok(())
 }
 
 fn resolve_xml_reference_value(reference: &BytesRef<'_>) -> std::result::Result<char, String> {

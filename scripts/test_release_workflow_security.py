@@ -309,12 +309,12 @@ jobs:
                     "--lib preset_qualification::", command,
                 )
 
-    def test_theme_authoring_and_font_boundaries_run_in_ci_and_preflight(self) -> None:
+    def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner in (("ci.yml", "cargo nextest run"),
                              ("release-preflight.yml", "cargo test")):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
-                    "      - name: Test theme authoring and embedded-font capability boundaries\n", 1,
+                    "      - name: Test theme authoring and font resource boundaries\n", 1,
                 )[1].split("\n      - name:", 1)[0]
                 self.assertNotIn("continue-on-error", step)
                 self.assertNotIn("if:", step)
@@ -330,19 +330,19 @@ jobs:
                     "--test theme_font_capability --test flowchart_node_effects", command,
                 )
                 self.assertIn(
-                    f"{runner} --locked -p merman-render --no-default-features "
-                    "--features embedded-fonts --test theme_font_capability", command,
+                    f"{runner} --locked -p merman-bindings-core --no-default-features "
+                    "--features svg --lib", command,
                 )
-                self.assertIn(
-                    f"{runner} --locked -p merman-cli --no-default-features "
-                    "--features svg,merman-bindings-core/embedded-fonts --bin merman-cli", command,
-                )
-                self.assertIn("cli_font_capability_is_not_widened", command)
-                for features in ("svg", "svg,embedded-fonts"):
-                    self.assertIn(
-                        f"{runner} --locked -p merman-bindings-core --no-default-features "
-                        f"--features {features} --lib", command,
-                    )
+                self.assertNotIn("embedded-fonts", command)
+
+    def test_retired_portable_font_gates_are_not_release_requirements(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                text = read(WORKFLOW_ROOT / name)
+                for retired in ("c6_runtime", "route_cutover_runtime", "native_export_smoke"):
+                    self.assertNotIn(f"--test {retired}", text)
+                self.assertIn("--test preset_qualification", text)
+                self.assertIn("--test legacy_projection_retirement", text)
 
     def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):

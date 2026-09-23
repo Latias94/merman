@@ -176,10 +176,7 @@ impl BindingEngine {
     ) -> Result<Self, BindingError> {
         #[cfg(feature = "svg")]
         let theme_compiler = merman::svg::DiagramThemeCompiler::new()
-            .with_resource_policy(base_options.theme_resource_policy().clone())
-            .with_embedded_fonts_allowed(
-                artifact_contract.exposes_capability(crate::CapabilityKey::EmbeddedFonts),
-            );
+            .with_resource_policy(base_options.theme_resource_policy().clone());
         #[cfg(feature = "svg")]
         let base_theme = crate::theme::compile_theme_with(&theme_compiler, options.theme.as_ref())?;
         #[cfg(feature = "svg")]
@@ -253,11 +250,7 @@ impl BindingEngine {
                     common::BindingThemeOverlay::Clear => None,
                     common::BindingThemeOverlay::Replace => {
                         let compiler = merman::svg::DiagramThemeCompiler::new()
-                            .with_resource_policy(theme_resources.clone())
-                            .with_embedded_fonts_allowed(
-                                self.artifact_contract
-                                    .exposes_capability(crate::CapabilityKey::EmbeddedFonts),
-                            );
+                            .with_resource_policy(theme_resources.clone());
                         crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?
                     }
                 };
@@ -1044,11 +1037,8 @@ impl BindingOperationConfigs {
         let analysis =
             common::artifact_analysis_options(options)?.with_runtime_policy(runtime_policy.clone());
         #[cfg(feature = "svg")]
-        let theme_compiler = merman::svg::DiagramThemeCompiler::new()
-            .with_resource_policy(theme_resources.clone())
-            .with_embedded_fonts_allowed(
-                artifact_contract.exposes_capability(crate::CapabilityKey::EmbeddedFonts),
-            );
+        let theme_compiler =
+            merman::svg::DiagramThemeCompiler::new().with_resource_policy(theme_resources.clone());
         #[cfg(feature = "svg")]
         let render = crate::render::RenderOperationConfig::compile(
             options,

@@ -5,8 +5,6 @@
 //! a catalog is prepared once, its fingerprint is attested by the backend, and all subsequent
 //! measurements use the retained catalog rather than rediscovering a CSS font family.
 
-#[cfg(feature = "embedded-fonts")]
-use super::{TextMeasurer, WrapMode, split_html_br_lines};
 use super::{TextMetrics, TextStyle};
 use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontFaceMetadata, FontSource,
@@ -22,13 +20,6 @@ use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use unicode_segmentation::UnicodeSegmentation;
-
-#[cfg(feature = "embedded-fonts")]
-mod native;
-#[cfg(feature = "embedded-fonts")]
-pub use native::NativeTextLayoutBackend;
-#[cfg(feature = "embedded-fonts")]
-use native::{NativeCatalogTextMeasurer, parse_features, parse_variations};
 
 /// Version of the native/host catalog preparation contract.
 pub const TEXT_LAYOUT_CONTRACT_VERSION: u32 = 1;
@@ -1280,40 +1271,6 @@ impl PrepareTextRequest {
         }
         self.language = Some(Arc::from(language));
         Ok(self)
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    pub(crate) fn with_features(
-        mut self,
-        features: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Result<Self, TextLayoutError> {
-        self.features = parse_features(features)?;
-        Ok(self)
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    pub(crate) fn with_variations(
-        mut self,
-        variations: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Result<Self, TextLayoutError> {
-        self.variations = parse_variations(variations)?;
-        Ok(self)
-    }
-
-    #[cfg(feature = "fuzzing")]
-    #[doc(hidden)]
-    pub fn for_fuzz_probe(
-        text: impl Into<String>,
-        typography: ThemeTextStyle,
-        direction: TextLayoutDirection,
-        features: impl IntoIterator<Item = impl Into<String>>,
-        variations: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Result<Self, String> {
-        Self::new(text, typography)
-            .with_direction(direction)
-            .with_features(features)
-            .and_then(|request| request.with_variations(variations))
-            .map_err(|error| error.to_string())
     }
 
     pub fn with_wrap(mut self, wrap: PreparedTextWrap) -> Self {
@@ -2852,67 +2809,6 @@ impl PreparedText {
     }
 }
 
-/// Geometry summary exposed only to the dedicated text-layout fuzz harness.
-#[cfg(feature = "fuzzing")]
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct PreparedTextFuzzProbe {
-    metrics: TextMetrics,
-    raw_width_px: Option<f64>,
-    bbox_width_px: f64,
-    bbox_height_px: f64,
-    vertical_extents: PreparedTextVerticalExtents,
-}
-
-#[cfg(feature = "fuzzing")]
-impl PreparedTextFuzzProbe {
-    pub const fn metrics(self) -> TextMetrics {
-        self.metrics
-    }
-
-    pub const fn raw_width_px(self) -> Option<f64> {
-        self.raw_width_px
-    }
-
-    pub const fn bbox_width_px(self) -> f64 {
-        self.bbox_width_px
-    }
-
-    pub const fn bbox_height_px(self) -> f64 {
-        self.bbox_height_px
-    }
-
-    pub const fn vertical_extents_px(self) -> (f64, f64) {
-        (
-            self.vertical_extents.top_px(),
-            self.vertical_extents.bottom_px(),
-        )
-    }
-}
-
-fn classify_prepared_text_fuzz_probe<T>(
-    result: Result<T, TextLayoutError>,
-) -> Result<Option<T>, String> {
-    match result {
-        Ok(probe) => Ok(Some(probe)),
-        Err(TextLayoutError::GlyphUnavailable) => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-#[cfg(feature = "fuzzing")]
-impl NativeTextLayoutBackend {
-    /// Runs the fuzz-only probe while treating a missing catalog glyph as an expected input case.
-    #[doc(hidden)]
-    pub fn prepare_text_probe_for_fuzz(
-        &self,
-        catalog_request: &PrepareCatalogRequest,
-        text_request: &PrepareTextRequest,
-    ) -> Result<Option<PreparedTextFuzzProbe>, String> {
-        classify_prepared_text_fuzz_probe(self.prepare_text_probe(catalog_request, text_request))
-    }
-}
-
 #[derive(Clone, Copy)]
 struct PreparedTextLineSummary {
     computed_length_px: f64,
@@ -3463,8 +3359,7 @@ struct PreparedTextLayoutCandidate {
     face_keys: Arc<[PreparedTextFaceKey]>,
     session_token: TextLayoutSessionToken,
     session: Arc<dyn PreparedTextBackendSession>,
-    #[cfg(feature = "embedded-fonts")]
-    native_session: Option<Arc<NativeCatalogTextMeasurer>>,
+
     fallback: Option<HostMeasurementFallback>,
     host_dependent: bool,
     evidence_provenance: PreparedTextLabelProvenance,
@@ -3507,8 +3402,6 @@ pub struct PreparedTextLayoutResponse {
     face_evidence: TextLayoutFaceEvidence,
     session_token: TextLayoutSessionToken,
     session: Arc<dyn PreparedTextBackendSession>,
-    #[cfg(feature = "embedded-fonts")]
-    native_session: Option<Arc<NativeCatalogTextMeasurer>>,
 }
 
 impl PreparedTextLayoutResponse {
@@ -3532,15 +3425,7 @@ impl PreparedTextLayoutResponse {
             face_evidence,
             session_token,
             session,
-            #[cfg(feature = "embedded-fonts")]
-            native_session: None,
         })
-    }
-
-    #[cfg(feature = "embedded-fonts")]
-    fn with_native_session(mut self, session: Arc<NativeCatalogTextMeasurer>) -> Self {
-        self.native_session = Some(session);
-        self
     }
 
     pub const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
@@ -3756,8 +3641,7 @@ impl PreparedTextLayoutBuilder {
             face_keys,
             session_token: response.session_token,
             session: response.session,
-            #[cfg(feature = "embedded-fonts")]
-            native_session: response.native_session,
+
             fallback,
             host_dependent,
             evidence_provenance,
@@ -4144,16 +4028,7 @@ impl PreparedTextLayoutCandidate {
             projection,
             request_digest,
         )?;
-        #[cfg(feature = "embedded-fonts")]
-        let response = if let (Some(native), Some(work_meter)) = (&self.native_session, work_meter)
-        {
-            let (response, _) = native
-                .prepare_structured_text_attempt_with_work_meter(&backend_request, work_meter);
-            response?
-        } else {
-            self.session.prepare_text(&backend_request)?
-        };
-        #[cfg(not(feature = "embedded-fonts"))]
+
         let response = self.session.prepare_text(&backend_request)?;
         self.admit_text_response(
             catalog,
@@ -4812,18 +4687,6 @@ mod tests {
                 usize::MAX,
             ),
             usize::MAX
-        );
-    }
-
-    #[test]
-    fn fuzz_probe_skips_only_glyph_unavailable() {
-        assert_eq!(
-            classify_prepared_text_fuzz_probe::<()>(Err(TextLayoutError::GlyphUnavailable)),
-            Ok(None)
-        );
-        assert!(
-            classify_prepared_text_fuzz_probe::<()>(Err(TextLayoutError::InvalidPreparedText))
-                .is_err()
         );
     }
 

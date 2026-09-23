@@ -19,7 +19,7 @@ pub(super) fn prove_native_role_text(
         receipt.has_native_text()
             && !receipt.has_foreign_object()
             && !receipt.has_prepared_tokens(),
-        "Brutalist Sequence did not retain terminal native SVG text"
+        "Sequence did not retain terminal native SVG text"
     );
 
     let Some(font_family) = font_family else {
@@ -63,30 +63,6 @@ pub(super) fn prove_native_role_text(
         }
     }
 
-    let typed_font_styles = receipt
-        .stylesheets()
-        .iter()
-        .filter(|stylesheet| stylesheet.typed_font_marker() && stylesheet.parse_valid())
-        .collect::<Vec<_>>();
-    c6_ensure!(
-        "sequence-svg-font",
-        typed_font_styles.len() == 1
-            && typed_font_styles[0].font_faces().iter().any(|font_face| {
-                let family = font_face
-                    .declarations()
-                    .iter()
-                    .find(|declaration| declaration.property() == "font-family")
-                    .map(|declaration| declaration.value());
-                let source = font_face
-                    .declarations()
-                    .iter()
-                    .find(|declaration| declaration.property() == "src")
-                    .map(|declaration| declaration.value());
-                family.is_some_and(|value| value.contains(font_family))
-                    && source.is_some_and(|value| value.contains("data:font/"))
-            }),
-        "Sequence standalone SVG lacks its sealed embedded `{font_family}` font face"
-    );
     Ok(())
 }
 

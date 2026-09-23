@@ -37,19 +37,6 @@ pub(crate) fn has_ancestor_class(
     false
 }
 
-pub(crate) fn style_number(element: &SvgElementObservation, property: &str) -> Option<f64> {
-    element
-        .style_value(property)
-        .and_then(|value| value.strip_suffix("px").unwrap_or(value).parse().ok())
-        .filter(|value: &f64| value.is_finite())
-}
-
-pub(crate) fn numeric_attribute(element: &SvgElementObservation, name: &str) -> Option<f64> {
-    element
-        .numeric_attribute(name)
-        .filter(|value| value.is_finite())
-}
-
 pub(crate) fn subtree_style_value<'a>(
     receipt: &'a SvgArtifactReceipt,
     element: &'a SvgElementObservation,
@@ -58,28 +45,6 @@ pub(crate) fn subtree_style_value<'a>(
     std::iter::once(element)
         .chain(receipt.descendants_of(element.index()))
         .find_map(|candidate| candidate.style_value(property))
-}
-
-pub(crate) fn subtree_style_number(
-    receipt: &SvgArtifactReceipt,
-    element: &SvgElementObservation,
-    property: &str,
-) -> Option<f64> {
-    subtree_style_value(receipt, element, property)
-        .and_then(|value| value.strip_suffix("px").unwrap_or(value).parse().ok())
-        .filter(|value: &f64| value.is_finite())
-}
-
-pub(crate) fn subtree_style_contains(
-    receipt: &SvgArtifactReceipt,
-    element: &SvgElementObservation,
-    property: &str,
-    expected: &str,
-) -> bool {
-    std::iter::once(element)
-        .chain(receipt.descendants_of(element.index()))
-        .filter_map(|candidate| candidate.style_value(property))
-        .any(|value| value.contains(expected))
 }
 
 pub(crate) fn descendant_text(element: &SvgElementObservation) -> &str {
@@ -98,8 +63,4 @@ pub(crate) fn percent_value(value: &str) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite())
-}
-
-pub(crate) fn approx_eq(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6
 }

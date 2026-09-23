@@ -14,38 +14,19 @@ description = "Private runtime acceptance harness for Merman theme evidence."
 default = ["png", "jpeg", "pdf", "layout-cytoscape"]
 png = ["dep:image", "dep:png", "merman/png", "merman-export/png"]
 jpeg = ["merman/jpeg", "merman-export/jpeg"]
-pdf = ["dep:lopdf", "merman/pdf", "merman-export/pdf"]
+pdf = ["merman/pdf", "merman-export/pdf"]
 layout-cytoscape = ["merman/layout-cytoscape", "merman-render/layout-cytoscape"]
 
 [dependencies]
-merman = { workspace = true, features = ["svg", "embedded-fonts"] }
+merman = { workspace = true, features = ["svg"] }
 merman-export.workspace = true
 merman-render.workspace = true
-merman-theme-fixtures = { path = "../merman-theme-fixtures" }
 image = { workspace = true, optional = true }
-lopdf = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
 roxmltree.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-data-encoding.workspace = true
-flate2.workspace = true
-tempfile = "3.27.0"
-
-[[test]]
-name = "c6_runtime"
-required-features = ["png"]
-
-[[test]]
-name = "route_cutover_runtime"
-required-features = ["png", "layout-cytoscape"]
-
-[[test]]
-name = "native_export_smoke"
-required-features = ["png", "jpeg", "pdf"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }
