@@ -175,7 +175,14 @@ pub(super) fn layout(
             layer_layer: settings.graph.ranksep,
             ..Default::default()
         },
-        options: crate::elk_options::layout_options(config),
+        options: {
+            let mut options = crate::elk_options::layout_options(config);
+            // Mermaid's State ELK root leaves considerModelOrder unset, so ELK uses its NONE
+            // default. The shared projection defaults to NodesAndEdges for flowchart parity.
+            options.layered.consider_model_order = false;
+            options.layered.model_order = elk::ModelOrderStrategy::None;
+            options
+        },
     };
     crate::elk_hierarchy::apply_to_graph(&mut graph, work)?;
     let placed = elk::layout_with_operation_seed_and_work_control(&graph, operation_seed, work)
