@@ -407,12 +407,15 @@ pub(super) fn render_flowchart_svg_model(
     drop(_g_viewbox);
     let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
+    let css_presentation_policy = presentation_policy
+        .filter(|_| crate::config::config_diagram_look(effective_config_value).is_neo());
     let mut css = flowchart_css(
         diagram_id,
         diagram_type,
         effective_config_value,
         &font_family,
         font_size,
+        css_presentation_policy,
         emit,
     )?;
     let class_defs_css = options.materialize_counted_svg_component(

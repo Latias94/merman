@@ -274,6 +274,7 @@ AUTHOR }|..|{ GENRE : "  "
 
 #[test]
 fn er_svg_row_fills_follow_optional_theme_colors() {
+    let row_re = Regex::new(r#"<g[^>]*class="row-rect-(?:odd|even)"[^>]*>(.*?)</g>"#).unwrap();
     for (variables, expected_fills) in [
         (serde_json::json!({}), vec![]),
         (
@@ -287,7 +288,6 @@ fn er_svg_row_fills_follow_optional_theme_colors() {
             "%%{{init: {config}}}%%\nerDiagram\n BOOK {{\n string title\n int pages\n }}\n"
         );
         let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
-        let row_re = Regex::new(r#"<g[^>]*class="row-rect-(?:odd|even)"[^>]*>(.*?)</g>"#).unwrap();
         let rows = row_re.captures_iter(&svg).collect::<Vec<_>>();
         assert_eq!(rows.len(), 2);
         for (index, row) in rows.iter().enumerate() {

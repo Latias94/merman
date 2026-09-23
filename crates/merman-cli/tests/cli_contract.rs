@@ -575,8 +575,12 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
     assert_eq!(profile_first.stdout, config_first.stdout);
     let svg = String::from_utf8(profile_first.stdout).expect("stdout should be utf8");
     assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    let rendered_dom = svg
+        .split_once("</style>")
+        .map(|(_, dom)| dom)
+        .expect("SVG should contain a style block");
     assert!(
-        !svg.contains(r#"data-look="neo""#),
+        !rendered_dom.contains(r#"data-look="neo""#),
         "explicit Mermaid look should override the profile default: {svg}"
     );
     assert!(

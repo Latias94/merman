@@ -8,6 +8,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
+    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
     emit: FlowchartEmitCheckpoint<'_>,
 ) -> Result<String> {
     flowchart_css_for_id(
@@ -16,6 +17,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_css(
         effective_config,
         font_family,
         font_size,
+        presentation_policy,
         &|| emit.checkpoint(),
     )
 }
@@ -26,6 +28,7 @@ fn flowchart_css_for_id(
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
+    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
     checkpoint: &dyn Fn() -> Result<()>,
 ) -> Result<String> {
     let theme = PresentationTheme::new(effective_config).node_diagram();
@@ -178,12 +181,22 @@ fn flowchart_css_for_id(
     );
     crate::svg::parity::css::write_mermaid_common_neo_css(&mut out, id, effective_config);
     checkpoint()?;
+    // This edge paint belongs to the typed Merman presentation policy; Mermaid's ordinary Neo
+    // look keeps the common stylesheet unchanged.
     let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut out,
         id,
         &crate::config::config_root_font_family_css(effective_config),
     );
     checkpoint()?;
+    if presentation_policy.is_some() {
+        let _ = write!(
+            &mut out,
+            r#"#{} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}"#,
+            id
+        );
+        checkpoint()?;
+    }
 
     Ok(out)
 }
@@ -310,6 +323,7 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
+            None,
             &|| Ok(()),
         )
         .expect("valid khroma color");
@@ -331,10 +345,47 @@ mod tests {
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
+            None,
             &|| Ok(()),
         )
         .expect_err("unsupported khroma color must fail");
 
         assert!(error.to_string().contains("not-a-css-color"));
+    }
+
+    #[test]
+    fn profile_policy_adds_neo_edge_line_style() {
+        let css = flowchart_css_for_id(
+            "profile_neo",
+            "flowchart-v2",
+            &json!({"look": "neo"}),
+            "\"trebuchet ms\",verdana,arial,sans-serif",
+            16.0,
+            Some(crate::presentation::FlowchartPresentationPolicy::default()),
+            &|| Ok(()),
+        )
+        .expect("valid profile CSS");
+
+        assert!(css.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ));
+    }
+
+    #[test]
+    fn ordinary_neo_without_profile_keeps_mermaid_common_css_only() {
+        let css = flowchart_css_for_id(
+            "ordinary_neo",
+            "flowchart-v2",
+            &json!({"look": "neo"}),
+            "\"trebuchet ms\",verdana,arial,sans-serif",
+            16.0,
+            None,
+            &|| Ok(()),
+        )
+        .expect("valid Mermaid CSS");
+
+        assert!(!css.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ));
     }
 }
