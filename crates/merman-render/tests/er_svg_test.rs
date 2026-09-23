@@ -82,7 +82,7 @@ fn er_svg_renders_entities_and_relationships() {
     let edge_style_pattern = if cfg!(feature = "layout-elk") {
         r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="stroke-dasharray: [^"]*; stroke-dashoffset: 0;fill:none;;;fill:none"[^>]*>"#
     } else {
-        r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="undefined;;;undefined"[^>]*>"#
+        r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="stroke-dasharray: [^"]*; stroke-dashoffset: 0;undefined;;;undefined"[^>]*>"#
     };
     assert!(
         Regex::new(edge_style_pattern)

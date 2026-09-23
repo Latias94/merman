@@ -224,7 +224,7 @@ fn sequence_look_matrix_covers_css_theme_consumption() {
 
     assert!(
         svg.contains(
-            r#"#look-sequence .labelBox{stroke:#9370DB;fill:#ECECFF;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#
+            r#"#look-sequence .labelBox{stroke:#28253D;fill:#ffffff;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#
         ),
         "sequence should consume look=neo through presentation CSS/theme paths: {svg}"
     );
