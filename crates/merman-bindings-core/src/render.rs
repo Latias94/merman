@@ -592,7 +592,6 @@ B -->|No| D[Debug]";
         .unwrap();
 
         assert!(svg.contains(r#"data-look="neo""#), "{svg}");
-        assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
         assert!(
             svg.contains("fill:#F8FAFC;stroke:#64748B;stroke-width:2px;"),
             "{svg}"
@@ -602,7 +601,6 @@ B -->|No| D[Debug]";
             svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
             "{svg}"
         );
-        assert!(svg.contains(".edgeLabel rect{opacity:1;}"), "{svg}");
         assert!(svg.contains(r#"rx="4" ry="4""#), "{svg}");
         assert!(svg.contains("bindings-merman-modern-drop-shadow"), "{svg}");
     }

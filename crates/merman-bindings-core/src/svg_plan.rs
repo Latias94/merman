@@ -188,7 +188,11 @@ mod tests {
                 "diagram_type": "flowchart-v2",
                 "presentation_profile_id": null,
                 "presentation_aspects": [],
-                "required_capability_ids": [],
+                "required_capability_ids": if cfg!(feature = "layout-elk") {
+                    serde_json::json!(["layout-elk"])
+                } else {
+                    serde_json::json!([])
+                },
                 "missing_capability_ids": [],
                 "ready": true,
             })
@@ -327,7 +331,11 @@ mod tests {
 
         assert_eq!(
             value["required_capability_ids"],
-            serde_json::json!(["math"])
+            if cfg!(feature = "layout-elk") {
+                serde_json::json!(["layout-elk", "math"])
+            } else {
+                serde_json::json!(["math"])
+            }
         );
         assert_eq!(value["missing_capability_ids"], serde_json::json!(["math"]));
         assert_eq!(value["ready"], false);
