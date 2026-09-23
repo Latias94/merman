@@ -4,8 +4,9 @@ This document defines the admitted `classDiagram` parser, model, Dagre/ELK layou
 
 ## Baseline
 
-Upstream baseline: Mermaid `11.16.1` at
-`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
+Selected upstream baseline: Mermaid `12.0.0` at
+`98a0945418c76238f15df2afaddbba4272656c3b`. Historical fixture comments retain their
+original collection versions.
 
 ## Supported (current)
 
@@ -69,6 +70,23 @@ Upstream baseline: Mermaid `11.16.1` at
   order are part of the contract.
 - `stress_class_many_relations_labels_020` is the signed semantic-label canary; nested namespaces
   are additionally covered by `stress_class_nested_namespaces_cross_edges_008`.
+
+### Mermaid 12 ELK paint routes
+
+The default Class renderer consumes the routes prepared by the common ELK paint pass.
+`straightenTerminalJogs` in the pinned `layout-algorithms/elk/render.ts` moves a short
+terminal channel onto the existing port row only when this introduces no extra crossings.
+The SVG painter must use those prepared edges, including repositioned terminal labels;
+reloading edges from the layout would silently discard the pass. Explicit
+`elk.straightenEdges: false` preserves the original channels.
+
+`class_svg_elk_paints_straightened_terminal_channels_without_moving_ports` covers both
+source and target staircases in `stress_class_many_relations_labels_020`, checks unchanged
+ports, and distinguishes the opt-out. The eight signed label residuals for that canary
+cover browser measurement only after this routing correction. `shapeUtil.ts` uses
+`getBBox()` and `getBoundingClientRect()` for Class text; their width differences propagate
+through ELK node placement, channel lengths, label anchors, and Neo dash masks. Label text,
+style, markers, CSS, edge identity, and route topology remain checked.
 
 ## Remaining Gaps
 
