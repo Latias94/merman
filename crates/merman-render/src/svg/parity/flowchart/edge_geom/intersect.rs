@@ -297,10 +297,9 @@ fn intersect_line(
     q1: crate::model::LayoutPoint,
     q2: crate::model::LayoutPoint,
 ) -> Option<crate::model::LayoutPoint> {
-    // Port of Mermaid `intersect-line.js` (11.12.2).
-    //
-    // This does segment intersection with a "denom/2" offset rounding that materially affects
-    // flowchart endpoints and thus SVG `viewBox`/`max-width` parity.
+    // Mermaid 12 `rendering-elements/intersect/intersect-line.js` uses floating-point
+    // division without the Graphics Gems integer-rounding bias. That old bias moves
+    // an attachment off its ray and creates a spurious terminal bend.
     let a1 = p2.y - p1.y;
     let b1 = p1.x - p2.x;
     let c1 = p2.x * p1.y - p1.x * p2.y;
@@ -323,65 +322,8 @@ fn intersect_line(
     let r1 = a2 * p1.x + b2 * p1.y + c2;
     let r2 = a2 * p2.x + b2 * p2.y + c2;
 
-    // Match Mermaid@11.12.2 `intersect-line.js`: the side test is an exact `!== 0` guard.
-    // Keep this exact check so our segment intersection matches upstream for collinear and
-    // endpoint cases (flowing into strict SVG `data-points` parity).
-    if r1 != 0.0 && r2 != 0.0 && same_sign(r1, r2) {
-        return None;
-    }
-
-    let denom = a1 * b2 - a2 * b1;
-    if denom == 0.0 {
-        return None;
-    }
-
-    let offset = (denom / 2.0).abs();
-
-    let mut num = b1 * c2 - b2 * c1;
-    let x = if num < 0.0 {
-        (num - offset) / denom
-    } else {
-        (num + offset) / denom
-    };
-
-    num = a2 * c1 - a1 * c2;
-    let y = if num < 0.0 {
-        (num - offset) / denom
-    } else {
-        (num + offset) / denom
-    };
-
-    Some(crate::model::LayoutPoint { x, y })
-}
-
-fn intersect_line_mermaid_buggy_second_side(
-    p1: crate::model::LayoutPoint,
-    p2: crate::model::LayoutPoint,
-    q1: crate::model::LayoutPoint,
-    q2: crate::model::LayoutPoint,
-) -> Option<crate::model::LayoutPoint> {
-    let a1 = p2.y - p1.y;
-    let b1 = p1.x - p2.x;
-    let c1 = p2.x * p1.y - p1.x * p2.y;
-
-    let r3 = a1 * q1.x + b1 * q1.y + c1;
-    let r4 = a1 * q2.x + b1 * q2.y + c1;
-
-    fn same_sign(r1: f64, r2: f64) -> bool {
-        r1 * r2 > 0.0
-    }
-
-    if r3 != 0.0 && r4 != 0.0 && same_sign(r3, r4) {
-        return None;
-    }
-
-    let a2 = q2.y - q1.y;
-    let b2 = q1.x - q2.x;
-    let c2 = q2.x * q1.y - q1.x * q2.y;
-
-    let r1 = a2 * p1.x + b2 * p1.y + c2;
-    let r2 = a2 * p2.x + b2 * p2.y + c2;
-
+    // Preserve the pinned source's asymmetric second-side test, including its
+    // acceptance of an intersection beyond the query segment.
     let epsilon = 1e-6;
     if r1.abs() < epsilon && r2.abs() < epsilon && same_sign(r1, r2) {
         return None;
@@ -392,23 +334,10 @@ fn intersect_line_mermaid_buggy_second_side(
         return None;
     }
 
-    let offset = (denom / 2.0).abs();
-
-    let mut num = b1 * c2 - b2 * c1;
-    let x = if num < 0.0 {
-        (num - offset) / denom
-    } else {
-        (num + offset) / denom
-    };
-
-    num = a2 * c1 - a1 * c2;
-    let y = if num < 0.0 {
-        (num - offset) / denom
-    } else {
-        (num + offset) / denom
-    };
-
-    Some(crate::model::LayoutPoint { x, y })
+    Some(crate::model::LayoutPoint {
+        x: (b1 * c2 - b2 * c1) / denom,
+        y: (a2 * c1 - a1 * c2) / denom,
+    })
 }
 
 fn intersect_polygon(
@@ -416,7 +345,7 @@ fn intersect_polygon(
     poly_points: &[crate::model::LayoutPoint],
     point: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    // Port of Mermaid `intersect-polygon.js` (11.12.2).
+    // Port of Mermaid 12 `rendering-elements/intersect/intersect-polygon.js`.
     let x1 = node.x;
     let y1 = node.y;
 
@@ -493,60 +422,8 @@ fn intersect_polygon_hourglass(
         },
     ];
 
-    let x1 = node.x;
-    let y1 = node.y;
-
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    for p in &poly_points {
-        min_x = min_x.min(p.x);
-        min_y = min_y.min(p.y);
-    }
-
-    let left = x1 - node.width / 2.0 - min_x;
-    let top = y1 - node.height / 2.0 - min_y;
-
-    let mut intersections: Vec<crate::model::LayoutPoint> = Vec::new();
-    for i in 0..poly_points.len() {
-        let p1 = &poly_points[i];
-        let p2 = &poly_points[if i + 1 < poly_points.len() { i + 1 } else { 0 }];
-        let q1 = crate::model::LayoutPoint {
-            x: left + p1.x,
-            y: top + p1.y,
-        };
-        let q2 = crate::model::LayoutPoint {
-            x: left + p2.x,
-            y: top + p2.y,
-        };
-        if let Some(inter) = intersect_line_mermaid_buggy_second_side(
-            crate::model::LayoutPoint { x: x1, y: y1 },
-            point.clone(),
-            q1,
-            q2,
-        ) {
-            intersections.push(inter);
-        }
-    }
-
-    if intersections.is_empty() {
-        return crate::model::LayoutPoint { x: x1, y: y1 };
-    }
-
-    if intersections.len() > 1 {
-        intersections.sort_by(|p, q| {
-            let pdx = p.x - point.x;
-            let pdy = p.y - point.y;
-            let qdx = q.x - point.x;
-            let qdy = q.y - point.y;
-            let dist_p = (pdx * pdx + pdy * pdy).sqrt();
-            let dist_q = (qdx * qdx + qdy * qdy).sqrt();
-            dist_p
-                .partial_cmp(&dist_q)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-    }
-
-    intersections[0].clone()
+    // `hourglass.ts` uses the same polygon intersection as other shapes.
+    intersect_polygon(node, &poly_points, point)
 }
 
 fn folder_tab_height_from_total_height(total_height: f64) -> f64 {
@@ -1779,5 +1656,71 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             .map(|pts| intersect_polygon(node, &pts, point))
             .unwrap_or_else(|| intersect_rect(node, point)),
         _ => intersect_rect(node, point),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BoundaryNode, intersect_line, intersect_polygon_hourglass};
+    use crate::model::LayoutPoint;
+
+    fn point(x: f64, y: f64) -> LayoutPoint {
+        LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn mermaid12_line_intersection_preserves_axis_in_every_quadrant() {
+        for (x, y) in [(4.0, 6.0), (-4.0, 6.0), (4.0, -6.0), (-4.0, -6.0)] {
+            for reverse in [false, true] {
+                let (left, right) = if reverse {
+                    (x + 2.0, x - 2.0)
+                } else {
+                    (x - 2.0, x + 2.0)
+                };
+                let intersection = intersect_line(
+                    point(x, y - 3.0),
+                    point(x, y + 3.0),
+                    point(left, y),
+                    point(right, y),
+                )
+                .expect("perpendicular segments intersect");
+                assert_eq!((intersection.x, intersection.y), (x, y));
+            }
+        }
+    }
+
+    #[test]
+    fn mermaid12_line_intersection_keeps_pinned_second_side_semantics() {
+        let intersection = intersect_line(
+            point(0.0, 0.0),
+            point(1.0, 0.0),
+            point(2.0, -1.0),
+            point(2.0, 1.0),
+        )
+        .expect("the pinned source accepts intersections beyond the query segment");
+        assert_eq!((intersection.x, intersection.y), (2.0, 0.0));
+        assert!(
+            intersect_line(
+                point(0.0, 0.0),
+                point(1.0, 0.0),
+                point(2.0, 1.0),
+                point(2.0, 2.0),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn mermaid12_hourglass_uses_unbiased_polygon_intersection() {
+        let node = BoundaryNode {
+            x: 10.0,
+            y: 20.0,
+            width: 30.0,
+            height: 30.0,
+        };
+        for (query_y, expected_y) in [(50.0, 35.0), (-10.0, 5.0)] {
+            let intersection = intersect_polygon_hourglass(&node, &point(10.0, query_y));
+            assert_eq!((intersection.x, intersection.y), (10.0, expected_y));
+        }
     }
 }
