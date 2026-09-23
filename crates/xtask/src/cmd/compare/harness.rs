@@ -926,9 +926,8 @@ pub(crate) struct CompareFixtureInput<'a> {
 
 #[derive(Debug)]
 pub(crate) enum CompareFixtureResult {
-    Skipped {
-        reason: String,
-    },
+    #[cfg(test)]
+    Skipped { reason: String },
     Rendered {
         render_evidence: ObservedRenderEvidence,
         local_svg: String,
@@ -1603,6 +1602,7 @@ where
 
         let failure_start = failures.len();
         match outcome {
+            #[cfg(test)]
             CompareFixtureResult::Skipped { reason } => {
                 evidence.skipped_fixtures += 1;
                 notes.push(format!("skipped {stem}: {reason}"));
@@ -1700,6 +1700,13 @@ where
     }
 
     failures.extend(evidence.gate_failures(run.diagram, run.check_dom));
+    // Candidate collection is diagnostic even when no registered label fixture was selected.
+    if std::env::var_os("MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES").is_some() {
+        failures.push(
+            "semantic label residual candidate collection is review_required and cannot admit a comparison"
+                .to_string(),
+        );
+    }
     evidence.write_report(&mut report);
     write_report(state, &mut report, &compare_paths, &run, &failures, &notes);
     let accepted_browser_text_layout_residuals = notes
@@ -2616,8 +2623,11 @@ mod tests {
             "stress_class_svg_font_size_px_string_precedence_026",
             svgdom::DomMode::Parity,
         );
-        assert!(!neighbor.normalizes_browser_text_wrapping());
-        assert_eq!(note, None);
+        assert!(neighbor.normalizes_browser_text_wrapping());
+        assert!(
+            note.expect("neighbor browser text residual note")
+                .contains("font measurement")
+        );
     }
 
     #[test]
@@ -2906,7 +2916,7 @@ mod tests {
             .join(format!("{FIXTURE}.svg"));
         let upstream = fs::read_to_string(&upstream_path).expect("signed C4 SVG should exist");
         let local = upstream.replacen(
-            r#"x="501" y="650.9805393218994""#,
+            r#"x="503.5" y="688.7998428344727""#,
             r#"x="593.9486587427764" y="842""#,
             1,
         );

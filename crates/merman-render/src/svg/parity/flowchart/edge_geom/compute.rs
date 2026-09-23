@@ -333,20 +333,11 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let rounded_corner_mask =
         (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
 
-    let mut line_data = if is_rounded {
+    let line_data = if is_rounded {
         rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
     } else {
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
-    if !missing_section {
-        maybe_collapse_degenerate_subgraph_edge_route(
-            ctx,
-            edge,
-            points_for_data_points,
-            &mut line_data,
-        );
-    }
-
     let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,

@@ -791,19 +791,20 @@ impl<'input> Lexer<'input> {
         &mut self,
         keyword_start: usize,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        // Match Mermaid's flowchart parser behavior: it consumes a single "SPACE" token after the
-        // `subgraph` keyword, while any additional whitespace becomes part of the subgraph header
-        // token (`textNoTags`). This affects whether `FlowDB.addSubGraph(...)` decides to auto-generate
-        // a `subGraphN` id.
+        // Mermaid's current flowchart parser treats all horizontal whitespace after the
+        // `subgraph` keyword as a separator. Extra spaces therefore do not become part of the
+        // header token and must not force an otherwise named subgraph onto an auto-generated id.
         //
         // Example:
-        // - `subgraph main`   -> header text has no whitespace, id stays `main`
-        // - `subgraph  main`  -> header text begins with whitespace, id becomes `subGraphN`
+        // - `subgraph main`   -> id stays `main`
+        // - `subgraph  main`  -> id also stays `main`
         let rest = &self.input[self.pos..];
         if rest.starts_with('\n') || rest.starts_with("\r\n") || rest.starts_with(';') {
             return None;
         }
-        if let Some(ch) = rest.chars().next()
+        while let Some(ch) = self.input[self.pos..].chars().next()
+            && ch != '\n'
+            && ch != '\r'
             && is_ecmascript_trim_char(ch)
         {
             self.pos += ch.len_utf8();

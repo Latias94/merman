@@ -2,24 +2,6 @@
 
 use super::*;
 
-pub(in crate::svg::parity) fn flowchart_is_strict_descendant(
-    parent: &FxHashMap<&str, &str>,
-    node_id: &str,
-    cluster_id: &str,
-) -> bool {
-    if node_id == cluster_id {
-        return false;
-    }
-    let mut cur: Option<&str> = Some(node_id);
-    while let Some(id) = cur {
-        if id == cluster_id {
-            return true;
-        }
-        cur = parent.get(id).copied();
-    }
-    false
-}
-
 pub(in crate::svg::parity) fn flowchart_effective_parent<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     id: &str,

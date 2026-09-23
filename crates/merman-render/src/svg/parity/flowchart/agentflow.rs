@@ -30,6 +30,10 @@ fn container_slot(ordinal: usize, palette_len: usize) -> usize {
     (KINDS.len() + ordinal % palette_len.saturating_sub(KINDS.len()).max(1)) % palette_len
 }
 
+pub(super) fn flowchart_palette_len(config: &Value) -> usize {
+    palette(config).len()
+}
+
 pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
     let colors = palette(ctx.config.as_value());
     let ordinal = ctx.model.subgraph_color_ordinal(id)?;

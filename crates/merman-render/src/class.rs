@@ -108,12 +108,22 @@ pub(crate) fn class_layout_work_units(
     )
 }
 
+pub(crate) fn class_member_display_text(
+    member: &merman_core::models::class_diagram::ClassMember,
+) -> String {
+    let text = member.display_text.trim();
+    if member.member_type == "attribute"
+        && let Some((name, value_type)) = text.split_once(':')
+    {
+        return format!("{}:{}", name.trim_end(), value_type.trim_start());
+    }
+    text.to_string()
+}
+
 pub(crate) fn class_member_create_text_input(
     member: &merman_core::models::class_diagram::ClassMember,
 ) -> String {
-    member
-        .display_text
-        .trim()
+    class_member_display_text(member)
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
@@ -1565,7 +1575,7 @@ fn class_box_dimensions(
             let mut t = if use_html_labels {
                 class_member_create_text_input(row)
             } else {
-                decode_entities_minimal(row.display_text.trim())
+                decode_entities_minimal(class_member_display_text(row).as_str())
             };
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();

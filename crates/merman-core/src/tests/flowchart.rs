@@ -2530,6 +2530,48 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
 }
 
 #[test]
+fn parse_diagram_flowchart_subgraph_id_ignores_repeated_separator_whitespace() {
+    let engine = Engine::new();
+    let text = "graph TD;subgraph  Outer;A-->B;end;";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["subgraphs"],
+        json!([{
+            "id": "Outer",
+            "nodes": ["B", "A"],
+            "title": "Outer",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }])
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_subgraph_trailing_spaces_before_newline_stays_empty() {
+    let engine = Engine::new();
+    let text = "graph TD;subgraph   \nA-->B\nend;";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["subgraphs"],
+        json!([{
+            "id": "subGraph0",
+            "nodes": ["B", "A"],
+            "title": "",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }])
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
     let engine = Engine::new();
     let text = "graph TD;subgraph ide1[one];A-->B;end;";

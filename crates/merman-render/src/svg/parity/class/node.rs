@@ -44,6 +44,15 @@ pub(super) struct ClassNodeRenderState<'a> {
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
+pub(super) struct ClassNodeShellContext<'a> {
+    pub diagram_id: SvgDiagramId<'a>,
+    pub emit: ClassEmitCheckpoint<'a>,
+    pub look: &'a str,
+    pub security_level_loose: bool,
+    pub color_index: Option<usize>,
+    pub palette_size: usize,
+}
+
 pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
     pub node_style_attr: &'a str,
@@ -165,12 +174,7 @@ pub(super) fn render_class_node_shell_open(
     out: &mut String,
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
-    diagram_id: SvgDiagramId<'_>,
-    emit: ClassEmitCheckpoint<'_>,
-    look: &str,
-    security_level_loose: bool,
-    color_index: Option<usize>,
-    palette_size: usize,
+    ctx: &ClassNodeShellContext<'_>,
 ) -> crate::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -179,21 +183,21 @@ pub(super) fn render_class_node_shell_open(
     let href = link.and_then(|href| {
         prepare_mermaid_navigation_href(
             href,
-            MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+            MermaidNavigationSecurity::from_security_level_loose(ctx.security_level_loose),
         )
     });
     let have_callback = node.have_callback;
 
     if link.is_some() {
         out.push_str(r#"<a data-look=""#);
-        super::super::util::escape_attr_into(out, look);
+        super::super::util::escape_attr_into(out, ctx.look);
         out.push('"');
         if let Some(href) = href.as_ref() {
             out.push_str(r#" xlink:href=""#);
             out.push_str(href.as_serialized_str());
             out.push('"');
         }
-        if security_level_loose
+        if ctx.security_level_loose
             && let Some(target) = node
                 .link_target
                 .as_deref()
@@ -215,24 +219,24 @@ pub(super) fn render_class_node_shell_open(
     }
 
     out.push_str(r#"<g class=""#);
-    if look == "handDrawn" {
+    if ctx.look == "handDrawn" {
         out.push_str("rough-node ");
     } else {
         out.push_str("node ");
     }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
-    let _ = write!(out, "{diagram_id}");
-    emit.checkpoint()?;
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
     out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
     if link.is_none() {
         out.push_str(r#" data-look=""#);
-        super::super::util::escape_attr_into(out, look);
+        super::super::util::escape_attr_into(out, ctx.look);
         out.push('"');
     }
-    write_class_color_slot(out, color_index, palette_size);
+    write_class_color_slot(out, ctx.color_index, ctx.palette_size);
     if has_tooltip {
         out.push_str(r#" title=""#);
         super::super::util::escape_attr_into(out, tooltip);
@@ -859,7 +863,8 @@ pub(super) fn render_class_svg_node_body(
     {
         let mut y_offset = 0.0;
         for m in &node.members {
-            let mut text = decode_entities_minimal(m.display_text.trim());
+            let mut text =
+                decode_entities_minimal(crate::class::class_member_display_text(m).as_str());
             if text.starts_with('\\') {
                 text = text.trim_start_matches('\\').to_string();
             }

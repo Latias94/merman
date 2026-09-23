@@ -3,21 +3,21 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "65556504ee5df1c0a6e714f5347f01f5bd56bfb0e03c642613e71d0d12b192da"
+    "sha256": "5a77f613f2d1f380ddaa5d9bab5e8111adb2cd833f319462a916694bebf10e28"
   },
   "release": {
     "id": "mermaid",
     "role": "core",
     "package": "mermaid",
-    "version": "11.17.2",
-    "declaredRange": "11.17.2",
-    "integrity": "sha512-V6K3C8EBdEsPFZXSKMJe6ppQOENxuHARr9GvHX4hh47lAbhMRD9qf4oEK7LoaRQxULMa80/qt5gHO73aCleBBg==",
-    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
-    "installedContentSha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
+    "version": "12.0.0",
+    "declaredRange": "12.0.0",
+    "integrity": "sha512-/wQXC9iBxoGV8p3erbvaXs9h77VyLDBH6GdayVjj3hEcSQhFU4N1WUhUppotCEqlIxI2pRMwjwBSwTB1MfZBgQ==",
+    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.0.0.tgz",
+    "installedContentSha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@11.17.2",
-      "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+      "reference": "mermaid@12.0.0",
+      "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
       "checkoutPath": "repo-ref/mermaid",
       "packagePath": "packages/mermaid"
     },
@@ -35,15 +35,15 @@
     "id": "mermaid-parser",
     "role": "parser",
     "package": "@mermaid-js/parser",
-    "version": "1.2.1",
-    "declaredRange": "^1.2.1",
-    "integrity": "sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==",
-    "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-1.2.1.tgz",
-    "installedContentSha256": "04ce4799e856599a1ba4958277a4688dbea67d2740b378adc06eee7ccc7f5480",
+    "version": "2.0.0",
+    "declaredRange": "^2.0.0",
+    "integrity": "sha512-K8BeapFUfrfxbRAUQAG5oBOCwo1+bNWzaVnPxTCutkfrTBn6T/j91FIhqxWJ32SUeQ9T3iy1zcmPZ5ROZEvDrg==",
+    "tarballUrl": "https://registry.npmjs.org/@mermaid-js/parser/-/parser-2.0.0.tgz",
+    "installedContentSha256": "b85266a34cf617beac1b4352534e2042016e4c685945b7681b512cecbadf5f9e",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "@mermaid-js/parser@1.2.1",
-      "commit": "293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4",
+      "reference": "@mermaid-js/parser@2.0.0",
+      "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
       "checkoutPath": null,
       "packagePath": "packages/parser"
     },
@@ -57,15 +57,15 @@
     "id": "dompurify",
     "role": "sanitizer",
     "package": "dompurify",
-    "version": "3.4.13",
-    "declaredRange": "3.4.13",
-    "integrity": "sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==",
-    "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.13.tgz",
-    "installedContentSha256": "a873824ba1bf4ff7496065bd5c6f16b1af691229972775609a3f0d9febb13121",
+    "version": "3.4.15",
+    "declaredRange": "3.4.15",
+    "integrity": "sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==",
+    "tarballUrl": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.15.tgz",
+    "installedContentSha256": "ee228fb1c76dfea3b0c4009da14aea40c203797c23b330271dbf5820712c86f4",
     "source": {
       "repository": "https://github.com/cure53/DOMPurify.git",
-      "reference": "3.4.13",
-      "commit": "3067f774676975de12306effd6db6ad7a9a8c17f",
+      "reference": "3.4.15",
+      "commit": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5",
       "checkoutPath": "repo-ref/dompurify",
       "packagePath": "."
     },
@@ -78,17 +78,17 @@
   "builtinRegistry": {
     "diagrams": {
       "sourcePath": "packages/mermaid/src/diagram-api/diagram-orchestration.ts",
-      "sourceSha256": "fc8567cff9aaf78539c825601d143af844b417fb73013481a2bb58537b0a67d5",
+      "sourceSha256": "8cf1d4425574bb5d1096e31659d6e334e5dad2695c0b16ba01ddc7801da18a8f",
       "ids": [
         "error",
         "---",
         "flowchart-elk",
         "mindmap",
         "architecture",
+        "agentflow",
         "c4",
         "kanban",
         "classDiagram",
-        "class",
         "er",
         "gantt",
         "info",
@@ -97,11 +97,9 @@
         "sequence",
         "swimlane",
         "flowchart-v2",
-        "flowchart",
         "timeline",
         "gitGraph",
         "stateDiagram",
-        "state",
         "journey",
         "quadrantChart",
         "sankey",
@@ -119,16 +117,24 @@
         "railroadPeg",
         "venn",
         "wardley",
-        "cynefin"
+        "cynefin",
+        "usecase"
       ]
     },
     "layouts": {
       "sourcePath": "packages/mermaid/src/rendering-util/render.ts",
-      "sourceSha256": "3f43ae973bfd76f37d37e9fe883bdc9169ffa624415199f476b12d840fe2a484",
+      "sourceSha256": "9d900493575ce1dd9c834c6ea56d37a2e21b70818be8dcb2b175373330ee1cf2",
       "ids": [
         "dagre",
         "swimlane",
-        "cose-bilkent"
+        "cose-bilkent",
+        "elk",
+        "elk.stress",
+        "elk.force",
+        "elk.mrtree",
+        "elk.sporeOverlap",
+        "elk.box",
+        "elk.rectpacking"
       ]
     }
   },
@@ -139,11 +145,11 @@
         "id": "mermaid-zenuml-plugin",
         "role": "external-diagram",
         "package": "@mermaid-js/mermaid-zenuml",
-        "version": "0.2.3",
-        "declaredRange": "0.2.3",
-        "integrity": "sha512-RGBtgL6fc+5Y2Jm9odOH9HRJ80BP4l6atBYnAK5bBzEowF0PU3UtvZRRcbFxImPGPuLIzqZq31ur8lVO0AoF3Q==",
-        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-zenuml/-/mermaid-zenuml-0.2.3.tgz",
-        "installedContentSha256": "f636a054062e78b0039ff74ebc64990b8c401ada4988ba7c21ac53db7d6ef788",
+        "version": "1.0.1",
+        "declaredRange": "1.0.1",
+        "integrity": "sha512-O5DiRODoFVNgugOVloxcDXmd+bXe/sbGlDh3onnzuE4EWtgTWwaAlWuPPOXbU9QESsztnD4Gtnu7dr+tYLFE0A==",
+        "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-zenuml/-/mermaid-zenuml-1.0.1.tgz",
+        "installedContentSha256": "ea3c34acd4c9e0afaad89620f64c3f2e9bbf5b65a3dbcef62d33c9741f3e58b3",
         "runtimeRegistration": {
           "moduleId": "zenuml",
           "diagramAliases": [
@@ -155,8 +161,8 @@
         },
         "source": {
           "repository": "https://github.com/mermaid-js/mermaid.git",
-          "reference": "@mermaid-js/mermaid-zenuml@0.2.3",
-          "commit": "41646dfd43ac83f001b03c70605feb036afae46d",
+          "reference": "@mermaid-js/mermaid-zenuml@1.0.1",
+          "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
           "checkoutPath": null,
           "packagePath": "packages/mermaid-zenuml"
         },
@@ -191,50 +197,14 @@
   ],
   "externalLayouts": [
     {
-      "id": "layout-elk",
-      "role": "external-layout",
-      "package": "@mermaid-js/layout-elk",
-      "version": "0.2.3",
-      "declaredRange": "^0.2.0",
-      "integrity": "sha512-m46RVGfvKK1PSMdAFGDz2nksI4jusEkFxvf0lb48bYWmqLQxZpjtpruiw29MbOy9rlWJtuMf9EzG9fAF8CVZbg==",
-      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-elk/-/layout-elk-0.2.3.tgz",
-      "installedContentSha256": "349aeec48d73d55f621e1b0d8178b42f1277759d734b9d480b420f4f03139868",
-      "runtimeRegistration": {
-        "moduleId": "elk",
-        "diagramAliases": [],
-        "layoutIds": [
-          "elk",
-          "elk.force",
-          "elk.mrtree",
-          "elk.sporeOverlap",
-          "elk.stress"
-        ],
-        "sourcePath": "packages/mermaid-layout-elk/src/layouts.ts",
-        "sourceSha256": "c372e6a43464995d88375e202880a51477121b3e587f1f10fb92e384ce7b3740"
-      },
-      "source": {
-        "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "@mermaid-js/layout-elk@0.2.3",
-        "commit": "293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4",
-        "checkoutPath": null,
-        "packagePath": "packages/mermaid-layout-elk"
-      },
-      "requiredSurfaces": [
-        "playground",
-        "reference-cli",
-        "compare",
-        "benchmark"
-      ]
-    },
-    {
       "id": "layout-tidy-tree",
       "role": "external-layout",
       "package": "@mermaid-js/layout-tidy-tree",
-      "version": "0.2.2",
-      "declaredRange": "^0.2.0",
-      "integrity": "sha512-8RmjDXjKJBxqTS1mICStm8zWRM45fSzs0SOrkp28+KsOGS2YEMFMVTwwRU8CsC6M1L+pDYZVjf1m9AC1c9Wndg==",
-      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-tidy-tree/-/layout-tidy-tree-0.2.2.tgz",
-      "installedContentSha256": "6f4f0a36e2b7b5bbf0f889c9140d1eaa7c3a43ccf8b7d3b385bf0154608796c2",
+      "version": "1.0.1",
+      "declaredRange": "1.0.1",
+      "integrity": "sha512-suZgFgQQHYuAxiEiNVgPJwOoXi/keXV6DghCL3rT4K9DmX7xYQ2XZI2suiBVs/fj1gn/OoXIWB2DFSmeY7trvw==",
+      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/layout-tidy-tree/-/layout-tidy-tree-1.0.1.tgz",
+      "installedContentSha256": "a84b5d1ad8acb5f9a3dfe595080f797311fc990375fe72a6b97657233e5036aa",
       "runtimeRegistration": {
         "moduleId": "tidy-tree",
         "diagramAliases": [],
@@ -246,8 +216,8 @@
       },
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "@mermaid-js/layout-tidy-tree@0.2.2",
-        "commit": "f4bf04b5db8bed603e40ed3d5ce5228d6b07754e",
+        "reference": "@mermaid-js/layout-tidy-tree@1.0.1",
+        "commit": "a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6",
         "checkoutPath": null,
         "packagePath": "packages/mermaid-layout-tidy-tree"
       },
@@ -267,15 +237,15 @@
       "id": "mermaid-cli",
       "role": "reference-cli",
       "package": "@mermaid-js/mermaid-cli",
-      "version": "11.16.0",
-      "declaredRange": "11.16.0",
-      "integrity": "sha512-0InK2nbVIMtzVzCugmdvPkAuvS6wRUqU6Utntff1n8c7lgfRZAdhKY6PSKvcIK9nFmuOUzAgB5+x/XWcroZ7Zg==",
-      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.16.0.tgz",
-      "installedContentSha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632",
+      "version": "11.17.0",
+      "declaredRange": "11.17.0",
+      "integrity": "sha512-pxF8rmheBb1gabIN4GFDCNWzIUsOzcEsSp7H5CQoL7gv7X8U8r6FFKtdMzEmZMeHmziNAq2B7J7LG+CDSfIg9w==",
+      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.17.0.tgz",
+      "installedContentSha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid-cli.git",
-        "reference": "11.16.0",
-        "commit": "a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae",
+        "reference": "11.17.0",
+        "commit": "0f792feed2fb69ab010c4149f733ede1871f706f",
         "checkoutPath": null,
         "packagePath": "."
       },
@@ -285,8 +255,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "packageLockSha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "packageJsonSha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
+    "packageLockSha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [
@@ -367,12 +337,6 @@
       },
       {
         "workspace": "tools/mermaid-cli",
-        "package": "fsevents@2.3.3",
-        "action": "ignored",
-        "reason": "Optional native watcher; no runtime artifact is required."
-      },
-      {
-        "workspace": "tools/mermaid-cli",
         "package": "puppeteer@25.6.0",
         "action": "ignored",
         "reason": "CI and local parity commands provide an audited browser executable."
@@ -381,11 +345,13 @@
   },
   "featureDecision": {
     "addCargoFeature": false,
-    "reason": "DOMPurify is a source-aligned behavior dependency for the Rust sanitizer and a transitive browser/reference dependency; it adds no Cargo dependency or target feature.",
+    "reason": "Mermaid 12 uses the existing layout-elk feature and complete-svg-elk product aggregate as the normal default. Explicit no-default-feature builds retain the documented no-ELK fallback and exclude the EPL-2.0 ELK closure. No additional per-algorithm Cargo feature is introduced. DOMPurify remains a source-aligned Rust sanitizer behavior and browser/reference dependency.",
     "evidence": [
+      "docs/FEATURES.md",
       "docs/release/PACKAGE_SURFACES.md",
       "docs/release/WASM_SIZE_BUDGETS.json",
-      "cargo tree -e normal -p merman-core",
+      "crates/merman/Cargo.toml",
+      "crates/merman-render/Cargo.toml",
       "crates/merman-core/src/generated/dompurify_defaults.rs",
       "docs/adr/0024-dompurify-default-allowlists-and-generation.md",
       "tools/upstreams/MERMAID_SELECTION_DECISION.json"
