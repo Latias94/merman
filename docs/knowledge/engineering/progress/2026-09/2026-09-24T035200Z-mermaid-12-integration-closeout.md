@@ -529,6 +529,36 @@ admit regenerated routing snapshots before the remaining family-level cause revi
 
 Commits `11aec36fb` and `d9c74c3a3` align actor popup placement with Mermaid 12 `drawPopup`: mirror mode selects footer actor rectData, classic/Neo and collection/queue/database heights follow the draw order, radii follow actor type and look, long-link widths use actor-font measurements, and root bounds include the same panel geometry. Focused popup/order/palette tests pass 3/3; the complete `sequence_svg_test` passes 56/56 (one feature-gated test skipped), and `merman-render` Clippy passes with `-D warnings`.
 
+
+# Final Web rebuild and packaging verification
+
+After the renderer, ELK shared-property, sequence popup, and CLI packaging fixes, all five
+browser WASM profiles were rebuilt from the current source with the pinned `wasm-size` profile
+and `wasm-opt` pipeline. The package group was assembled and its input manifests were verified;
+TypeScript contract generation checked 35 WASM exports, 45 runtime bindings, and five package
+entries. Runtime smoke rendered all 37 registered diagram families for every package, and DOM
+safety smoke passed.
+
+The current measured Web artifacts are:
+
+| Profile | Raw bytes | Stripped bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: | ---: |
+| analysis | 3,544,491 | 3,544,268 | 1,413,098 | 1,089,462 |
+| ASCII | 5,104,406 | 5,104,183 | 1,927,647 | 1,469,075 |
+| editor | 3,658,011 | 3,657,788 | 1,458,179 | 1,119,888 |
+| full | 12,959,005 | 12,958,782 | 4,866,624 | 3,606,264 |
+| render | 10,997,717 | 10,997,494 | 4,196,074 | 3,116,821 |
+
+The complete `full` and `render` profiles remain below their compressed limits. `analysis`
+exceeds gzip/Brotli by 38,098/39,462 bytes and `editor` by 8,179/19,888 bytes. These are
+unchanged slim-profile budget blockers; no threshold was raised and no sanitizer was added.
+
+The CLI default ELK migration is now coherent across the Cargo manifest, feature matrix,
+installation contract, process matrix, license-scope test, and CLI README. The default and
+`cli-release` closures both include the EPL-2.0 ELK and RaTeX/font material, while explicit
+no-default-feature builds remain available. The installation, process-matrix, feature-matrix,
+license, legal-projection, Web build, package, and smoke checks pass at this boundary.
+
 # Open gates
 
 The transferred provider/brace batch and source-compatible model-order correction are
