@@ -787,14 +787,16 @@ fn node_render_dimensions(
 
         // Flowchart v2 triangle (Extract).
         "tri" | "extract" | "triangle" => {
-            let w = text_w + p;
+            // Mermaid's triangle keeps the full horizontal label padding before deriving
+            // its equilateral height. The same width feeds both layout and SVG geometry.
+            let w = text_w + 2.0 * p;
             let h = w + text_h;
             (h, h)
         }
 
         // Flowchart v2 flipped triangle (Manual file).
         "manual-file" | "flipped-triangle" | "flip-tri" => {
-            let w = text_w + p;
+            let w = text_w + 2.0 * p;
             let h = w + text_h;
             (h, h)
         }
@@ -1876,6 +1878,14 @@ mod render_dimension_tests {
         let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
         assert_eq!(cylinder_w, 124.0);
         assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+        assert_eq!(
+            node_render_dimensions(Some("triangle"), metrics(), 15.0, true),
+            (150.0, 150.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("flipped-triangle"), metrics(), 15.0, true),
+            (150.0, 150.0)
+        );
     }
 
     #[test]

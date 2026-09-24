@@ -25,7 +25,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
         common.node_styles,
     );
     let p = ctx.node_padding;
-    let w = metrics.width + p;
+    let w = metrics.width + 2.0 * p;
     let h = (w + metrics.height).max(1.0);
     let pts = vec![
         (0.0, -h),
