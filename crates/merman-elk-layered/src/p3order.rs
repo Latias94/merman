@@ -538,6 +538,63 @@ fn port_side_order(side: PortSide) -> u8 {
     }
 }
 
+// elkjs 0.9.3's GWT Arrays sort uses insertion sort below seven elements, then
+// alternating merge buffers. Model-order comparators cache relations, including a
+// fallback that returns Less for an unseen pair in either direction. Preserve the
+// exact comparison schedule for both node and port sorting; Rust's sort_by is not
+// interchangeable here. Source: elk-worker.js insertionSort/mergeSort_0/merge_1.
+fn sort_model_order(
+    order: &mut [usize],
+    mut compare: impl FnMut(usize, usize) -> Result<Ordering, WorkError>,
+) -> Result<(), WorkError> {
+    fn merge_sort(
+        source: &mut [usize],
+        destination: &mut [usize],
+        compare: &mut impl FnMut(usize, usize) -> Result<Ordering, WorkError>,
+    ) -> Result<(), WorkError> {
+        if destination.len() < 7 {
+            for index in 1..destination.len() {
+                let mut current = index;
+                while current > 0
+                    && compare(destination[current - 1], destination[current])? == Ordering::Greater
+                {
+                    destination.swap(current - 1, current);
+                    current -= 1;
+                }
+            }
+            return Ok(());
+        }
+
+        let middle = destination.len() / 2;
+        let (source_left, source_right) = source.split_at_mut(middle);
+        let (destination_left, destination_right) = destination.split_at_mut(middle);
+        merge_sort(destination_left, source_left, compare)?;
+        merge_sort(destination_right, source_right, compare)?;
+        if compare(source[middle - 1], source[middle])? != Ordering::Greater {
+            destination.copy_from_slice(source);
+            return Ok(());
+        }
+
+        let mut left = 0;
+        let mut right = middle;
+        for item in destination {
+            if right >= source.len()
+                || (left < middle && compare(source[left], source[right])? != Ordering::Greater)
+            {
+                *item = source[left];
+                left += 1;
+            } else {
+                *item = source[right];
+                right += 1;
+            }
+        }
+        Ok(())
+    }
+
+    let mut source = order.to_vec();
+    merge_sort(&mut source, order, &mut compare)
+}
+
 fn sorted_ports_by_model_order(
     graph: &LGraph,
     node: usize,
@@ -557,28 +614,20 @@ fn sorted_ports_by_model_order(
         target_node_model_order,
         graph.options.consider_model_order_port_model_order,
     );
-    let mut failure = None;
-    order.sort_by(|left, right| {
-        if failure.is_some() {
-            return Ordering::Equal;
-        }
+    sort_model_order(&mut order, |left, right| {
         let units = model_order_relation_work(
-            *left,
-            *right,
+            left,
+            right,
             &comparator.bigger_than,
             &comparator.smaller_than,
         )
         .and_then(|units| checked_add(units, previous_layer.len()));
-        if let Err(error) = units.and_then(|units| {
-            work.check(units)?;
-            work.charge(units)
-        }) {
-            failure = Some(error);
-            return Ordering::Equal;
-        }
-        comparator.compare(*left, *right)
-    });
-    failure.map_or(Ok(order), Err)
+        let units = units?;
+        work.check(units)?;
+        work.charge(units)?;
+        Ok(comparator.compare(left, right))
+    })?;
+    Ok(order)
 }
 
 fn sorted_nodes_by_model_order(
@@ -594,21 +643,17 @@ fn sorted_nodes_by_model_order(
         previous_layer,
         graph.options.consider_model_order_strategy,
     );
-    let mut failure = None;
-    order.sort_by(|left, right| {
-        if failure.is_some() {
-            return Ordering::Equal;
-        }
+    sort_model_order(&mut order, |left, right| {
         let units = model_order_relation_work(
-            *left,
-            *right,
+            left,
+            right,
             &comparator.bigger_than,
             &comparator.smaller_than,
         )
         .and_then(|units| {
-            let first = &graph.layerless_nodes[*left];
-            let second = &graph.layerless_nodes[*right];
-            let source_ports = last_previous_layer_source_port(graph, *left)
+            let first = &graph.layerless_nodes[left];
+            let second = &graph.layerless_nodes[right];
+            let source_ports = last_previous_layer_source_port(graph, left)
                 .map_or(0, |port| graph.layerless_nodes[port.node].ports.len());
             checked_sum([
                 units,
@@ -618,16 +663,12 @@ fn sorted_nodes_by_model_order(
                 source_ports,
             ])
         });
-        if let Err(error) = units.and_then(|units| {
-            work.check(units)?;
-            work.charge(units)
-        }) {
-            failure = Some(error);
-            return Ordering::Equal;
-        }
-        comparator.compare(*left, *right)
-    });
-    failure.map_or(Ok(order), Err)
+        let units = units?;
+        work.check(units)?;
+        work.charge(units)?;
+        Ok(comparator.compare(left, right))
+    })?;
+    Ok(order)
 }
 
 // The comparator updates a transitive relation only when a pair is not already cached. Bound
@@ -1390,6 +1431,163 @@ mod tests {
             thickness: 0.0,
             original_opposite_port: None,
             compound_segment: None,
+        }
+    }
+
+    #[test]
+    fn model_order_sort_matches_pinned_worker_comparison_schedule() {
+        // Extracted insertionSort/mergeSort_0/merge_1 from elkjs 0.9.3, including
+        // the seven-element merge boundary and the already-ordered fast path.
+        let cases: &[(&[usize], &[usize], &[(usize, usize)])] = &[
+            (&[], &[], &[]),
+            (&[0], &[0], &[]),
+            (&[2, 1, 0], &[0, 1, 2], &[(2, 1), (2, 0), (1, 0)]),
+            (
+                &[6, 5, 4, 3, 2, 1, 0],
+                &[0, 1, 2, 3, 4, 5, 6],
+                &[
+                    (6, 5),
+                    (6, 4),
+                    (5, 4),
+                    (3, 2),
+                    (3, 1),
+                    (2, 1),
+                    (3, 0),
+                    (2, 0),
+                    (1, 0),
+                    (6, 0),
+                    (4, 0),
+                    (4, 1),
+                    (4, 2),
+                    (4, 3),
+                ],
+            ),
+            (
+                &[0, 1, 2, 3, 4, 5, 6],
+                &[0, 1, 2, 3, 4, 5, 6],
+                &[(0, 1), (1, 2), (3, 4), (4, 5), (5, 6), (2, 3)],
+            ),
+        ];
+        for &(input, expected, expected_calls) in cases {
+            let mut order = input.to_vec();
+            let mut calls = Vec::new();
+            sort_model_order(&mut order, |left, right| {
+                calls.push((left, right));
+                Ok(left.cmp(&right))
+            })
+            .unwrap();
+            assert_eq!(order, expected, "input={input:?}");
+            assert_eq!(calls, expected_calls, "input={input:?}");
+        }
+    }
+
+    #[test]
+    fn model_order_sort_preserves_equal_keys_across_recursive_merges() {
+        let keys = [2, 1, 2, 0, 1, 0, 2, 1, 2, 0, 1, 0, 2, 1];
+        let mut order = (0..keys.len()).collect::<Vec<_>>();
+        sort_model_order(&mut order, |left, right| Ok(keys[left].cmp(&keys[right]))).unwrap();
+        assert_eq!(order, [3, 5, 9, 11, 1, 4, 7, 10, 13, 0, 2, 6, 8, 12]);
+    }
+
+    #[test]
+    fn model_order_sort_stops_at_comparator_work_error() {
+        let mut order = [2, 1, 0];
+        let mut calls = Vec::new();
+        let result = sort_model_order(&mut order, |left, right| {
+            calls.push((left, right));
+            if calls.len() == 2 {
+                Err(WorkError::ArithmeticOverflow)
+            } else {
+                Ok(left.cmp(&right))
+            }
+        });
+        assert_eq!(result, Err(WorkError::ArithmeticOverflow));
+        assert_eq!(calls, [(2, 1), (2, 0)]);
+    }
+
+    #[test]
+    fn model_order_sort_preserves_source_stateful_port_fallback() {
+        for length in [2, 6, 7, 14] {
+            let mut graph = LGraph::new("root", LayeredOptions::default());
+            graph
+                .layerless_nodes
+                .push(LNode::new("parent", 0.0, 0.0, None));
+            for _ in 0..length {
+                graph
+                    .add_port(0, PortType::Input, PortSide::West, LPoint::default())
+                    .unwrap();
+            }
+            let target_orders = HashMap::new();
+            let mut comparator = ModelOrderPortComparator::new(
+                &graph,
+                0,
+                &[],
+                OrderingStrategy::NodesAndEdges,
+                &target_orders,
+                false,
+            );
+            let mut order = (0..length).collect::<Vec<_>>();
+            sort_model_order(
+                &mut order,
+                |left, right| Ok(comparator.compare(left, right)),
+            )
+            .unwrap();
+            assert_eq!(order, (0..length).collect::<Vec<_>>());
+            // The first source comparison records port 0 < port 1. Reversing
+            // the first call (as Rust sort_by can do) records the opposite.
+            assert!(comparator.smaller_than[&0].contains(&1));
+            assert!(comparator.bigger_than[&1].contains(&0));
+        }
+    }
+
+    #[test]
+    fn compound_self_loop_keeps_input_ports_in_source_model_order() {
+        let mut parent = node("Active");
+        parent.width = 0.0;
+        parent.height = 0.0;
+        parent.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
+        let mut child = node("Idle");
+        child.parent = Some("Active".to_string());
+        let mut graph = graph(
+            vec![parent, child, node("Inactive")],
+            vec![
+                edge("edge0", "Inactive", "Idle"),
+                edge("edge1", "Active", "Active"),
+            ],
+        );
+        crate::pipeline::execute_ported_compound_processors_until(
+            &mut graph,
+            crate::pipeline::LayeredPhase::P3NodeOrdering,
+        )
+        .unwrap();
+        let loop_edge = graph.edges.iter().find(|edge| edge.id == "edge1").unwrap();
+        let parent_index = loop_edge.target.node;
+        let parent = &graph.layerless_nodes[parent_index];
+        let cross_edge = graph
+            .edges
+            .iter()
+            .find(|edge| edge.id == "edge0" && edge.target.node == parent_index)
+            .unwrap();
+        assert_eq!(parent.ports[loop_edge.source.port].side, PortSide::East);
+        assert_eq!(parent.ports[loop_edge.target.port].side, PortSide::West);
+        assert_eq!(parent.ports[cross_edge.target.port].side, PortSide::West);
+        assert!(loop_edge.target.port < cross_edge.target.port);
+        // Reordering must also keep each child external port's origin linked
+        // to its corresponding parent port, including detached self-loop ports.
+        let child = parent.nested_graph.as_ref().unwrap();
+        for (index, port) in parent.ports.iter().enumerate() {
+            let dummy = port.port_dummy.as_ref().unwrap();
+            let origin = child.layerless_nodes[dummy.node]
+                .origin_port
+                .as_ref()
+                .unwrap();
+            assert_eq!(
+                origin.port,
+                PortRef {
+                    node: parent_index,
+                    port: index
+                }
+            );
         }
     }
 
