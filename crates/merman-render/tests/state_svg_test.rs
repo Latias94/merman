@@ -99,6 +99,64 @@ note right of Idle : seeded note"#;
 }
 
 #[test]
+fn state_svg_default_min_node_width_reaches_leaf_foreign_object() {
+    let svg = render_state_svg_from_text("stateDiagram-v2\nA\n");
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    let width = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .find(|node| node.descendants().any(|child| child.text() == Some("A")))
+        .and_then(|node| node.attribute("width"))
+        .expect("leaf label foreignObject")
+        .parse::<f64>()
+        .expect("numeric leaf label width");
+    assert_eq!(
+        width, 120.0,
+        "default state.minNodeWidth must size the label box"
+    );
+}
+
+#[test]
+fn state_svg_explicit_zero_min_node_width_keeps_natural_leaf_width() {
+    let svg = render_state_svg_from_text(
+        "%%{init: {\"state\": {\"minNodeWidth\": 0}}}%%\nstateDiagram-v2\nA\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    let width = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .find(|node| node.descendants().any(|child| child.text() == Some("A")))
+        .and_then(|node| node.attribute("width"))
+        .expect("leaf label foreignObject")
+        .parse::<f64>()
+        .expect("numeric leaf label width");
+    assert!(
+        width > 0.0 && width < 120.0,
+        "explicit zero must disable the default minimum: {width}"
+    );
+}
+
+#[test]
+fn state_svg_cross_composite_default_min_width_reaches_all_leaf_labels() {
+    let source =
+        include_str!("../../../fixtures/state/stress_state_cross_composite_transitions_007.mmd");
+    let svg = render_state_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+
+    for label in ["InnerA", "Deep", "After"] {
+        let width = document
+            .descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+            .find(|node| node.descendants().any(|child| child.text() == Some(label)))
+            .and_then(|node| node.attribute("width"))
+            .expect("leaf label foreignObject")
+            .parse::<f64>()
+            .expect("numeric leaf label width");
+        assert_eq!(width, 120.0, "default state.minNodeWidth must size {label}");
+    }
+}
+
+#[test]
 fn state_svg_uses_label_presence_and_source_owned_end_state_paints() {
     for look in ["classic", "neo"] {
         let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({

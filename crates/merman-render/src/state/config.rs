@@ -15,6 +15,8 @@ const DEFAULT_STATE_NODE_SPACING: f64 = 50.0;
 const DEFAULT_STATE_RANK_SPACING: f64 = 50.0;
 const DEFAULT_STATE_PADDING: f64 = 8.0;
 const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
+// Mermaid state defaults set minNodeWidth to 120 in config.schema.yaml.
+const DEFAULT_STATE_LABEL_MIN_WIDTH: f64 = 120.0;
 const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
 const DEFAULT_STATE_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
 
@@ -147,7 +149,7 @@ impl<'a> StateConfigView<'a> {
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
-            label_min_width: self.state_compat_f64("minNodeWidth").unwrap_or(0.0),
+            label_min_width: self.state_label_min_width(),
             text_style: self.text_style(),
         }
     }
@@ -166,6 +168,7 @@ impl<'a> StateConfigView<'a> {
                 .unwrap_or(0.0),
             html_labels,
             html_label_wrapping_width: self.html_label_wrapping_width(),
+            label_min_width: self.state_label_min_width(),
             state_padding: self.state_padding(),
             security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
             text_style: self.text_style(),
@@ -201,6 +204,12 @@ impl<'a> StateConfigView<'a> {
             font_weight: None,
             font_style: None,
         }
+    }
+
+    pub(crate) fn state_label_min_width(&self) -> f64 {
+        self.state_compat_f64("minNodeWidth")
+            .unwrap_or(DEFAULT_STATE_LABEL_MIN_WIDTH)
+            .max(0.0)
     }
 
     pub(crate) fn html_label_wrapping_width(&self) -> f64 {
@@ -266,6 +275,7 @@ pub(crate) struct StateRenderSettings {
     pub(crate) hand_drawn_seed: f64,
     pub(crate) html_labels: bool,
     pub(crate) html_label_wrapping_width: f64,
+    pub(crate) label_min_width: f64,
     pub(crate) state_padding: f64,
     pub(crate) security_level_loose: bool,
     pub(crate) text_style: TextStyle,
@@ -398,6 +408,22 @@ mod tests {
             Some("Root Sans")
         );
         assert_eq!(settings.text_style.font_size, 24.0);
+    }
+
+    #[test]
+    fn state_min_node_width_uses_mermaid_default_but_preserves_explicit_zero() {
+        assert_eq!(
+            StateConfigView::new(&json!({})).state_label_min_width(),
+            120.0
+        );
+        assert_eq!(
+            StateConfigView::new(&json!({"state": {"minNodeWidth": 0}})).state_label_min_width(),
+            0.0
+        );
+        assert_eq!(
+            StateConfigView::new(&json!({"state": {"minNodeWidth": 132}})).state_label_min_width(),
+            132.0
+        );
     }
 
     #[test]

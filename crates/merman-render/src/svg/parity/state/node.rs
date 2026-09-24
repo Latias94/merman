@@ -1,4 +1,18 @@
 use super::*;
+
+fn state_leaf_label_width(
+    node: &StateSvgNode,
+    ctx: &StateRenderCtx<'_>,
+    label: &str,
+    measured_width: f64,
+) -> f64 {
+    let width = measured_width.max(0.0);
+    if matches!(node.shape.as_str(), "rect" | "note") && !label.is_empty() {
+        width.max(node.min_width.unwrap_or(ctx.label_min_width).max(0.0))
+    } else {
+        width
+    }
+}
 use merman_core::svg_security::{
     MermaidNavigationSecurity, normalize_mermaid_tooltip_attribute, prepare_mermaid_navigation_href,
 };
@@ -278,7 +292,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
             let rough_start = timing.start();
             let key = StateRoughCacheKey {
@@ -529,7 +543,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
 
             let mut link_open = String::new();
