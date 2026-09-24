@@ -803,8 +803,10 @@ fn node_render_dimensions(
 
         // Flowchart v2 sloped rectangle (Manual input).
         "manual-input" | "sloped-rectangle" | "sl-rect" => {
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
             (w, (1.5 * h).max(0.0))
         }
 
@@ -1917,6 +1919,14 @@ mod render_dimension_tests {
         assert_eq!(
             node_render_dimensions(Some("document"), metrics(), 15.0, true),
             (132.0, 65.99218419904648)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("sloped-rectangle"), metrics(), 15.0, false),
+            (130.0, 75.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("sloped-rectangle"), metrics(), 15.0, true),
+            (132.0, 66.0)
         );
     }
 

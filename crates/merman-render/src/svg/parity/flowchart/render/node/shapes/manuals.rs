@@ -101,8 +101,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
         common.node_styles,
     );
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(1.0);
-    let h = (metrics.height + 2.0 * p).max(1.0);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(1.0);
+    let h = (metrics.height + 2.0 * padding_y).max(1.0);
     let x = -w / 2.0;
     let y = -h / 2.0;
     let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
