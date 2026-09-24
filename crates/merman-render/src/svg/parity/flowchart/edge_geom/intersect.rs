@@ -71,7 +71,8 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
     matches!(
         layout_shape,
         Some(
-            "circle"
+            "anchor"
+                | "circle"
                 | "circ"
                 | "diamond"
                 | "diam"
@@ -1617,7 +1618,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
     }
 
     match layout_shape {
-        Some("circle" | "circ") => intersect_circle(node, point),
+        Some("anchor" | "circle" | "circ") => intersect_circle(node, point),
         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),

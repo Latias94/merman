@@ -29,7 +29,8 @@ pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
 };
 pub(super) use line_with_offset::{
-    arrow_types_for_edge, collapse_short_terminal_marker_stub, line_with_offset_for_edge_type,
+    arrow_types_for_edge, collapse_short_terminal_marker_stub, ensure_elk_marker_segment_lengths,
+    line_with_offset_for_edge_type,
     rounded_line_with_marker_offsets_for_edge_type,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};

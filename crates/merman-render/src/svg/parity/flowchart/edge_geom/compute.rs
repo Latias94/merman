@@ -69,6 +69,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
                 points_after_intersect,
             );
         }
+        ensure_elk_marker_segment_lengths(
+            points_after_intersect,
+            edge.edge_type.as_deref(),
+            boundary_for_node(ctx, &edge.from, origin_x, origin_y),
+            boundary_for_node(ctx, &edge.to, origin_x, origin_y),
+        );
     } else if base_points.len() >= 3 {
         // The semantic edge keeps its original source/target, while explicit-direction cluster
         // extraction can rebind the Graphlib layout edge to a surviving cluster node. Mermaid
@@ -270,23 +276,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             x: point.x + ctx.tx - origin_x,
             y: point.y + ctx.ty - origin_y,
         }));
-    }
-
-    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
-    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
-    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
-    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
-    // after clipping (but keep cluster-adjacent edges as-is: Mermaid uses straight segments there).
-    if is_basis && points_for_render.len() == 2 && interpolate != "linear" && !is_cluster_edge {
-        let a = &points_for_render[0];
-        let b = &points_for_render[1];
-        points_for_render.insert(
-            1,
-            crate::model::LayoutPoint {
-                x: (a.x + b.x) / 2.0,
-                y: (a.y + b.y) / 2.0,
-            },
-        );
     }
 
     let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render

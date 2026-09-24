@@ -88,6 +88,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn basis_two_points_stays_linear_like_d3() {
+        let points = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 10.0, y: 4.0 },
+        ];
+        let (path, _, _) = curve_path_d_and_bounds(&points, "basis", 5.0, false, None);
+        assert_eq!(path, "M0,0L10,4");
+    }
+
+    #[test]
     fn bump_axes_match_d3_reference_paths() {
         let points = vec![
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },

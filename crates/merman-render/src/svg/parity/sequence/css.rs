@@ -15,6 +15,13 @@ pub(super) fn sequence_css(
         effective_config,
         &["themeVariables", "fontSize"],
     )
+    .map(|value| {
+        if value.parse::<f64>().is_ok() {
+            format!("{value}px")
+        } else {
+            value
+        }
+    })
     .unwrap_or_else(|| "16px".to_string());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
@@ -24,10 +31,7 @@ pub(super) fn sequence_css(
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
-        id,
-        font,
-        font_size_css,
-        text_color
+        id, font, font_size_css, text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -55,10 +59,7 @@ pub(super) fn sequence_css(
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        id,
-        font,
-        font_size_css,
-        id
+        id, font, font_size_css, id
     );
 
     // Sequence styles.
@@ -242,7 +243,7 @@ mod tests {
 
     #[test]
     fn sequence_css_keeps_theme_font_size_independent_of_runtime_text_size() {
-        for size in ["14px", "1.25em"] {
+        for size in ["14px", "1.25em", "14"] {
             let css = sequence_css(
                 "seq",
                 &json!({
@@ -252,7 +253,8 @@ mod tests {
                 }),
             );
 
-            assert_eq!(css.matches(&format!("font-size:{size};")).count(), 2);
+            let expected = if size == "14" { "14px" } else { size };
+            assert_eq!(css.matches(&format!("font-size:{expected};")).count(), 2);
             assert!(!css.contains("font-size:22px;"));
             assert!(!css.contains("font-size:18px;"));
         }
