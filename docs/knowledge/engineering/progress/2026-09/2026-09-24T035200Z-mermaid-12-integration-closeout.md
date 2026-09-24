@@ -605,6 +605,18 @@ also passed: `cargo test --workspace --doc` completed all supported doctests, wi
 four existing `roughr` examples marked ignored. `cargo fmt --all --check` and `git diff --check`
 are clean.
 
+The complete strict verifier was rerun with serial Cargo jobs and reduced test debug info. Its
+117-build feature matrix, generated contracts, alignment evidence, 14 artifact closures,
+third-party license and legal projections all passed. Workspace nextest passed all 8,693 tests
+with 7 skipped; all supported workspace doctests passed, with four existing `roughr` examples
+ignored. The final SVG DOM comparison stage remains blocking: Flowchart has 52 distinct DOM
+mismatches and 34 stale local text-layout receipts, State has 11 DOM mismatches, and Sequence
+has 25 DOM mismatches plus four stale receipts. The reports cover 1,153, 285, and 321 rendered
+fixtures respectively. The first Flowchart blockers are source geometry differences in rounded
+cluster/edge paths and shape outlines, not browser text residuals. No receipt was refreshed and
+the parity gate remains strict. The verifier stopped at Flowchart, so later family parity
+commands were not reached in this strict run.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
