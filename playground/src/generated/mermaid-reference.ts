@@ -2,31 +2,25 @@
 // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.
 
 export const MERMAID_REFERENCE_BUNDLE_SCHEMA_VERSION = 6 as const;
-export const MERMAID_JS_VERSION = "11.17.2" as const;
-export const MERMAID_PARSER_VERSION = "1.2.1" as const;
-export const MERMAID_ZENUML_VERSION = "0.2.3" as const;
+export const MERMAID_JS_VERSION = "12.0.0" as const;
+export const MERMAID_PARSER_VERSION = "2.0.0" as const;
+export const MERMAID_ZENUML_VERSION = "1.0.1" as const;
 export const ZENUML_CORE_VERSION = "3.50.1" as const;
-export const MERMAID_LAYOUT_ELK_VERSION = "0.2.3" as const;
-export const MERMAID_LAYOUT_TIDY_TREE_VERSION = "0.2.2" as const;
-export const MERMAID_REFERENCE_CLI_VERSION = "11.16.0" as const;
+export const MERMAID_LAYOUT_ELK_VERSION = null;
+export const MERMAID_LAYOUT_TIDY_TREE_VERSION = "1.0.1" as const;
+export const MERMAID_REFERENCE_CLI_VERSION = "11.17.0" as const;
 export const MERMAID_SOURCE_COMMIT =
-  "dcb694ddb58dc5ad3502e7e903cac05fd812eac3" as const;
+  "98a0945418c76238f15df2afaddbba4272656c3b" as const;
 export const MERMAID_EXTERNAL_DIAGRAM_MODULE_IDS = [
   "zenuml"
 ] as const;
 export const MERMAID_LAYOUT_MODULE_IDS = [
-  "elk",
   "tidy-tree"
 ] as const;
 export const MERMAID_EXTERNAL_DIAGRAM_ALIAS_TO_MODULE = {
   "zenuml": "zenuml"
 } as const;
 export const MERMAID_LAYOUT_ID_TO_MODULE = {
-  "elk": "elk",
-  "elk.force": "elk",
-  "elk.mrtree": "elk",
-  "elk.sporeOverlap": "elk",
-  "elk.stress": "elk",
   "tidy-tree": "tidy-tree"
 } as const;
 export type MermaidExternalDiagramModuleId =

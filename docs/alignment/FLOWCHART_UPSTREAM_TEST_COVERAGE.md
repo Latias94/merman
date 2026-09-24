@@ -208,7 +208,9 @@ Dedicated Flowchart ELK lane:
   `fixtures/flowchart/upstream_docs_layouts_how_to_use_001.mmd`, with semantic/layout goldens and
   `fixtures/upstream-svgs/flowchart/upstream_docs_layouts_how_to_use_001.svg`. It is validated
   through `compare-flowchart-svgs --filter upstream_docs_layouts_how_to_use_001 --check-dom
-  --dom-mode parity --dom-decimals 3 --force-elk-fixture`.
+  --dom-mode parity --dom-decimals 3`.
+  Mermaid 12 default and explicit ELK fixtures use the ordinary comparison gate; the historical
+  Cypress collection list records source coverage and does not limit SVG comparison admission.
 - Duplicate layout bodies are kept as exact-call fixtures for upstream traceability. Use
   `cargo run -p xtask -- audit-flowchart-elk-parity-coverage` for the current exact-call and
   unique-body mapping.

@@ -235,10 +235,10 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.13`
+- Version: `3.4.15`
 - Source: <https://github.com/cure53/DOMPurify.git>
-- Source ref: `3.4.13`
-- Source commit: `3067f774676975de12306effd6db6ad7a9a8c17f`
+- Source ref: `3.4.15`
+- Source commit: `1d7460c4f8a27be825c11b1c9d346d79db32c1e5`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License expression: `(Apache-2.0 OR MPL-2.0)`
@@ -365,10 +365,10 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.17.2`
+- Version: `12.0.0`
 - Source: <https://github.com/mermaid-js/mermaid.git>
-- Source ref: `mermaid@11.17.2`
-- Source commit: `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
+- Source ref: `mermaid@12.0.0`
+- Source commit: `98a0945418c76238f15df2afaddbba4272656c3b`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`

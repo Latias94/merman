@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
+    "package_lock_sha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,32 +44,32 @@
   "fixtures": {
     "basic_ir": {
       "input_sha256": "0b80631185c18e748face0ab265a682c087b1d61db1a14df0c5c3fb867ce9b02",
-      "svg_sha256": "1d19dc330f108297e78b46c459c4e0246f8277e1fcdb97a394d4150464b02e17",
+      "svg_sha256": "47b4921049ab0ccedaf3d6ad66dfaea289b076d9f1dbed07bd70153c4fbde623",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005": {
       "input_sha256": "c8142568715ebf200f666cde4c417b423cb33b1311a2d99c136a0f6899b2fc2c",
-      "svg_sha256": "e4326d059caacecfce2a3aef0370cca0b5ad6efe25a87040bbaedb93513f9758",
+      "svg_sha256": "0f0b0bde1d381bacc3397039b7719712fe95512a32d3685f33e6be9edaa15a1d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_a_simple_rule_001": {
       "input_sha256": "e241058f6560da1df452c12c75e7f6b3162a8c6f981a4aa66433d76d1b005be5",
-      "svg_sha256": "80277fc43064600aade68442aecab4850f23926663257a71d89bd85664664041",
+      "svg_sha256": "1382d8dfd29740cf3042fa8b5783600f25fae9034a46b0f6130de6b17828c791",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004": {
       "input_sha256": "e2098d1350d543800407724288b206b9498ea21c8d9e7b3737205e8637c6d625",
-      "svg_sha256": "ccf2644a2f5d79a570b1d43a13d3dbe31751dc95891e37ee00baa9170864f72a",
+      "svg_sha256": "e20fffa08d27a851903eb1c904e1a4204b00a7f52913c82ef440518f7bd84209",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003": {
       "input_sha256": "49fa95465763fd3d8e36acd42c523710b1828c8f73077febdb83803d10fcfaad",
-      "svg_sha256": "47ce7793fed0ce7e920bc0d073b32ab84b563ecb0de5302e3358e613ddc2f259",
+      "svg_sha256": "2042f8ebb7b246559daa0d3cb52258d0fdff553e909246440ce969e39a56f56f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_railroad_spec_renders_sequences_and_choices_002": {
       "input_sha256": "39bdbe5fc825bd6ca1787a57974c5780d415df238928a737d1465207dfac1f17",
-      "svg_sha256": "5ba640a4a2886cff2e4daa38415ecb2f943f3768b487a304998d469eeaaa620b",
+      "svg_sha256": "52a89d053795c0a5a5ce71be729c1fb7f4b6b08e5b65fa4eed04228e93c746d6",
       "renderer_profile": "mmdc-default"
     }
   },

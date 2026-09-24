@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
+    "package_lock_sha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,22 +44,22 @@
   "fixtures": {
     "basic": {
       "input_sha256": "f097b5f4f46cda2da21b954c9ff4097e1e14ae7064ecdee2c2cec2d3c1f08e6b",
-      "svg_sha256": "40305633ea8147ace8ddba54c33e6da1a2a56d0b4bd3b2762410a23ac1757804",
+      "svg_sha256": "e1b2061d51c67afa9d61595612fa18a9a430340e1af6f96f2d28a46e4d0d0d3c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_024": {
       "input_sha256": "76fd510b6693194ba0339c9d980c81417ec9eb099fb26cbb54e7b03dd7f194ce",
-      "svg_sha256": "f8e310fcf905703fd98813a77299fa8828ae3894314b5580eeea850c91eb82ae",
+      "svg_sha256": "f3d98389ff70794405ac96651e11302146740f54df7c1fd90d8bab1492c406f7",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_030": {
       "input_sha256": "8d3563652b4cf6e549f4e9d9803fe7b6c704579cca49e9a7396a224f1b2f87e0",
-      "svg_sha256": "7c0a62962e1bc6a655135e8e02dfe904bf4336325ff67873069280c7c5455520",
+      "svg_sha256": "1b3e92640f7eb9a4404df0a0900c7d81246f421b69220653ec0e7c6930dbff38",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_v2_spec_024": {
       "input_sha256": "3523f6d7544be322caee5c5cb630e79a56791cd292cc42fa140f479a65ab4873",
-      "svg_sha256": "0a54419c1078a9d96af61e762a07b81e05ae8d243ee432bac2202eb342d2c809",
+      "svg_sha256": "8e227ee8802e62904a7be3da7f6bd030c35aec2debf68496cd8896716d3a1d3c",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     }
   },

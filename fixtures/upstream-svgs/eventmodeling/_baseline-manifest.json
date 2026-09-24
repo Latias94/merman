@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
+    "package_lock_sha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,52 +44,52 @@
   "fixtures": {
     "upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002": {
       "input_sha256": "4fa469993691159bb1177fbf51c353208099984fed8524fa7cfaaccbda234843",
-      "svg_sha256": "c1e7eecb3fb7de68af8da453735ffdf687e9ae6ff9edc7a4d4ceed9004ff179e",
+      "svg_sha256": "091524f39a1e1c6064df6ecb9d68c2d57e59c51b26cc39321517c3c67f4bce7b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_eventmodeling_spec_renders_a_state_view_pattern_001": {
       "input_sha256": "4a3476697c346dd1761b96ff99e052fe1b3fc188e01cb59d97325618615d351d",
-      "svg_sha256": "954388fc080d375147e6d439224dbb8373357611352aa0dad5760a4da03b8b48",
+      "svg_sha256": "8afa102d8014ae0542a95c504a23a060e04e5247f60464c43e7ba40f4e85b0b4",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_eventmodeling_spec_renders_a_translation_pattern_003": {
       "input_sha256": "5f173b75c8fd3176639595ac607892946ee7529c557b5574dfa7251736b645d4",
-      "svg_sha256": "b5b1078b18eddb28300ac99950faa3856a244bb9fec236df809ef86cddaeaf8e",
+      "svg_sha256": "7144199e651b8bcbcf730db7b47ee7d075442120768ec6a42c6884cb98979d6f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004": {
       "input_sha256": "544dd3d3df331679ee12ec0ccc31f8b185bfadb8f8903402859b4c2677251da5",
-      "svg_sha256": "011a014322b519da15465c8efeabbe80a650bdb471b87adbc42cc84be57adae3",
+      "svg_sha256": "6c65f02bbfcef0f01174346acbabeef0c65c9d09b8c27bee441cd83fe59d64c7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006": {
       "input_sha256": "4782b875dc20caa43c7da63626e22700119d2a5e4cf466197d334e97cad4acb2",
-      "svg_sha256": "9f764a6b9b6e2cb93b968aebf5a951ba2de11bc7273bfc7787374221bf68ec5e",
+      "svg_sha256": "a65d0ee9e56e786a4563a595aa8d20d39d49d3257a0ebe01d94fcea777d033c0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005": {
       "input_sha256": "9ea6c0c02ff1d547eea368e1f36c76e309b1f76231a5058b16651b17a3b01e7e",
-      "svg_sha256": "d8db7adef56a08f98ea4ce5afddb9f9810d91b1a915b0f181a5a53bc88871012",
+      "svg_sha256": "722e4537877e0eb68a7e042ce92ab78ae1d6382e55d45747b4dac637758c2ff7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_eventmodeling_minimum": {
       "input_sha256": "2bcc1dbb84cbc06630732871f89a593fb555bd04df1b56f781c7542c922d8fee",
-      "svg_sha256": "e1fb95d018992c96a6a8e6d978fb65e312e17dfda4933517a7625489b4aae14a",
+      "svg_sha256": "ee2b7bb940a626573b1fa4f58b0a5998b76544710839f742de3840a37b367927",
       "renderer_profile": "mmdc-default"
     },
     "upstream_parser_eventmodeling_full_syntax_spec": {
       "input_sha256": "e94a3d7d90012b57b3af697ee27108b2c3bc159367a2ce886213049b7696c7a8",
-      "svg_sha256": "a45e5fd06f867fbba14f3876700198f5e874cd5d144c766db12aaaa9fb0080a8",
+      "svg_sha256": "4cf31ccb3d3e5563d403c14ea8a042d0a567e84f4fe9bd1d4b7641dca749bfa9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_parser_eventmodeling_qualified_names_spec": {
       "input_sha256": "ffcc826f2b8cba6c050266b3321600db3a5a7e1f5144ccee38581f42eda75114",
-      "svg_sha256": "57eafeff3c8afd455b81e898cabee7669e1acfb5e5813c496f1b2adcf56b11eb",
+      "svg_sha256": "7f21f39e4485183d77156afd9003a3d12dffef6ed03fa61cb8f2b5c00d4f2340",
       "renderer_profile": "mmdc-default"
     },
     "upstream_parser_eventmodeling_resetframe_spec": {
       "input_sha256": "e7fc2bcc6d13ebdd11636e018d5b380377d9ff856d91cb8ecf90f45c1bc227f6",
-      "svg_sha256": "a82def0ad790804d9c97bce2d4655bc8aa4de0441d11435f1ccf485e548b8752",
+      "svg_sha256": "bebce05b14cdcfb1393b8f64e7c1268790699596b964738e6f1d47eddbd80958",
       "renderer_profile": "mmdc-default"
     }
   },

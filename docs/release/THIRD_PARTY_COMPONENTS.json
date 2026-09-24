@@ -398,11 +398,11 @@
     {
       "id": "dompurify",
       "name": "DOMPurify",
-      "version": "3.4.13",
+      "version": "3.4.15",
       "source": {
         "repository": "https://github.com/cure53/DOMPurify.git",
-        "ref": "3.4.13",
-        "commit": "3067f774676975de12306effd6db6ad7a9a8c17f",
+        "ref": "3.4.15",
+        "commit": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5",
         "path": "."
       },
       "relationships": ["generated", "translated"],
@@ -413,7 +413,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/dompurify/LICENSE",
           "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/3067f774676975de12306effd6db6ad7a9a8c17f/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/1d7460c4f8a27be825c11b1c9d346d79db32c1e5/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -627,11 +627,11 @@
     {
       "id": "mermaid",
       "name": "Mermaid",
-      "version": "11.17.2",
+      "version": "12.0.0",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "ref": "mermaid@11.17.2",
-        "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+        "ref": "mermaid@12.0.0",
+        "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
         "path": "packages/mermaid"
       },
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
@@ -646,7 +646,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
           "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
-          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/dcb694ddb58dc5ad3502e7e903cac05fd812eac3/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/98a0945418c76238f15df2afaddbba4272656c3b/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }

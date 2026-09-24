@@ -1,4 +1,4 @@
-# Class Diagram Upstream Test Coverage (Mermaid@11.17.2)
+# Class Diagram Upstream Test Coverage (Mermaid@12.0.0)
 
 This document tracks which upstream Mermaid `classDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.17.2`.
+Scope: Mermaid tag `@12.0.0` at commit `98a0945418c76238f15df2afaddbba4272656c3b`.
 
 ## External regression cases
 
@@ -232,7 +232,7 @@ Imported (parity-gated with upstream SVG baselines):
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
 
-Rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.17.2` and still deferred
+Historical Mermaid 11 evidence: rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.17.2` and still deferred
 because the upstream renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`

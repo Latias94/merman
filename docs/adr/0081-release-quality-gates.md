@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted; updated 2026-08-31 for Mermaid `@11.17.2`, ADR-0050, ADR-0062, and ADR-0086.
+Accepted; updated 2026-09-24 for Mermaid `@12.0.0`, ADR-0050, ADR-0062, ADR-0086, and ADR-0090.
 
 ## Context
 
-`merman` is a 1:1 re-implementation of Mermaid with a pinned upstream baseline (see ADR-0014).
+`merman` is a 1:1 re-implementation of Mermaid with the active pinned upstream baseline in ADR-0090.
 For publishing a stable crate release, we need a clear, automatable definition of “good enough”
 parity that:
 

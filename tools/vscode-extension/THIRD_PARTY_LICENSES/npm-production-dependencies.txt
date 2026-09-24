@@ -104,9 +104,9 @@ software or this license, under any kind of legal claim._**
 
 The following npm packages may be included in this product:
 
- - vscode-jsonrpc@9.0.1
- - vscode-languageclient@10.1.0
- - vscode-languageserver-protocol@3.18.2
+ - vscode-jsonrpc@9.0.0
+ - vscode-languageclient@10.0.1
+ - vscode-languageserver-protocol@3.18.1
  - vscode-languageserver-textdocument@1.0.13
  - vscode-languageserver-types@3.18.0
 
@@ -128,7 +128,7 @@ THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 The following npm package may be included in this product:
 
- - brace-expansion@5.0.9
+ - brace-expansion@5.0.6
 
 This package contains the following license:
 

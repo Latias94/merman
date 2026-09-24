@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
+    "package_lock_sha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,42 +44,42 @@
   "fixtures": {
     "upstream_cypress_venn_handdrawn_custom_styles_018": {
       "input_sha256": "567ca43bb5831f07711d9d41bad5b0d4a2f9258b367a4e035e1791c2a904e339",
-      "svg_sha256": "c9458127f2eaf76a0c31db999dbf2605b5e43f7ea08375b5e04937e4964fa4a6",
+      "svg_sha256": "2e81ee574e545c0140e79f7d862c38bd96cbcdcff80c3fb7a50be99045b3f656",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_handdrawn_three_set_title_015": {
       "input_sha256": "7590d23264ae0388cff9b5cc6705d46fbfe1a07059a7d0a0f5a83853f81c20a5",
-      "svg_sha256": "4f809711d32658e03a29aca41f895cc2f9c7b9e767f67f54e18f3a7af8066f3d",
+      "svg_sha256": "c632696f71bbc896b6e1f461ccca1475d842fb21f38739e0f947570f9adbf017",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_handdrawn_two_set_014": {
       "input_sha256": "7a32e907225567352604410c43e3508399adfc59f036c8f352858c91036d3368",
-      "svg_sha256": "cc59b48c7dd3fc83adfb51a955b275618a28dc55da681c9461abcd99460d230e",
+      "svg_sha256": "fe078da5e56ca832845d33f933474c86a34a1db2caf55b62540c3b1352596336",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_13_should_render_a_complex_venn_with_labels_text_nodes_and_style_013": {
       "input_sha256": "bfe35ef2e145a7c0ea0f2fec3d9dd51a6f70a03137da95a7e7ff0a4d0505c86b",
-      "svg_sha256": "8380da42d47cde8626c86ca33dda091c875d967b3bf930f2fd84e722f9fa9772",
+      "svg_sha256": "f9f8cf818eaedb9a6f25ed1d6d86f1cac3b6c743470a9b3c7a3b5ef86d1b640b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_16_should_render_a_venn_diagram_with_a_3_set_union_without_expli_016": {
       "input_sha256": "9637022055e89a7518b9c3fd91c4ff0df68ff9b1bce87ecb307dca13867a842d",
-      "svg_sha256": "a022de8325b3e447b75c53c7d4e33eb6ee5ce7bc337e520ebfc7facb8168c266",
+      "svg_sha256": "6b19cdd0ffda3117ec4dacc61b38bbd9d3873aea9212a54ce55a9141dda29b64",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_17_should_render_a_venn_diagram_with_partial_pairwise_subsets_017": {
       "input_sha256": "d6fbabcbaad2788ba45e0c93d26e88f02a0378c66ebfdf483ea119b8be090be9",
-      "svg_sha256": "f1204a675e68fb3d2398f32b22da902bdc5128ddfc53ddc13d168e9120f8335f",
+      "svg_sha256": "9a515d45e7d590d9902b53870ada9db6e6f948ae3888369a94c69c271f57342a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_2_should_render_a_three_set_venn_diagram_002": {
       "input_sha256": "243ffea9ccc5dc2c7a35dbc20029035602a1ec3842ba7475bac0b7a95288314b",
-      "svg_sha256": "cc1fa256778af6190b544f8ec1a0e6a7a11cbd5b929f30c083b8e71a3d361496",
+      "svg_sha256": "c20d75598cc80e07ab702dd91aaccea0c064a06f3f025f9a0971d64537aaf0a6",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_8_should_render_a_venn_diagram_with_string_identifiers_008": {
       "input_sha256": "60748d039d25f1c8b8a9a831e567e1329c6b7ac2c60be209acbc1b9cf96fcabd",
-      "svg_sha256": "a59e61c2c630a9971e8324d4630a6ef4227473ce22f9b97286832bd902fe8e32",
+      "svg_sha256": "0fd0e365e17536cfd9d7dfcca3d476f9f2d4ffb3338f60f8b9cdf11bce70e2f7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_9_should_render_with_dark_theme_009": {
@@ -89,17 +89,17 @@
     },
     "upstream_docs_venn_labels_and_sizes_002": {
       "input_sha256": "dbe2e15b8822e28a45210626bc600ead36dd030635490449f24091d953008c18",
-      "svg_sha256": "d7aca24246ea0bad178e739827bb23750bdfbef93f31acbedf5219077072fdef",
+      "svg_sha256": "19a6eb249d05a9929cda2c0cce6684455cc5f60e238e5f82ecaf8f10f0180adf",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_venn_team_overlap_001": {
       "input_sha256": "7e1f629a073676a8e78837478b7c4351f087e557dd39b9ea1d7ecd0afd9f72ce",
-      "svg_sha256": "db89e18975b0554933a4586528dc880d95c87e4a6f46244eae3c471e31fa4c06",
+      "svg_sha256": "ce5100ecd1a89219043d524cc1e486543af2d35a729f0d1d490e5ee78d356501",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_venn_text_nodes_and_style_003": {
       "input_sha256": "ac6de7c7813c6c4454972305ae734176395f3dc5b0be2c4ada601bd25815455d",
-      "svg_sha256": "9c86af997fc92885ce59cac2368822e7872854440919949aabf4fad57d231a49",
+      "svg_sha256": "0077723e20b4779c90224123c43b4ffc6c16640dfce7ecd49aa29d977003a68b",
       "renderer_profile": "mmdc-default"
     }
   },

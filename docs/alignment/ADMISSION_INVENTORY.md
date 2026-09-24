@@ -1,7 +1,7 @@
 # Diagram Admission Inventory
 
 Status: Active
-Baseline: Mermaid `@11.17.2`
+Baseline: Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
 Last reviewed: 2026-08-31
 
 The admission consistency checks live in `crates/xtask/src/cmd/admission.rs`.
@@ -34,13 +34,13 @@ Current consumers:
   semantic/layout golden presence, upstream SVG manifests, and compare-command presence for
   primary diagrams.
 - Default-config parity is orthogonal to diagram admission. `xtask verify-default-config`
-  regenerates the upstream value and key-shape artifacts from the content-pinned Mermaid 11.17.2
+  regenerates the upstream value and key-shape artifacts from the content-pinned Mermaid 12.0.0
   runtime. No admission-specific override manifest can remove a family or key.
 - `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md` uses the primary SVG matrix as the boundary for
   rendered config claims: accepted/merged config can be broader than primary SVG support, but
   rendered support should point at an admitted family test, golden, or an explicit residual.
 
-This overview does not move fixtures or weaken evidence by itself. The completed Mermaid 11.17.2
+This overview does not move fixtures or weaken evidence by itself. The completed Mermaid 12.0.0
 admission process and the rules for future baseline additions are recorded in
 `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.
 

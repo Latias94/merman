@@ -10,7 +10,7 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Upstream baseline | Mermaid `@11.17.2` |
+| Upstream baseline | Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
 | Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-31; exact gate state belongs to the revision that ran it |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
@@ -141,7 +141,7 @@ out of ordinary snapshot sweeps. Family-specific fixtures and upstream SVG basel
 promotion mechanism.
 
 Five exact parser-only fixtures remain: one Flowchart parser case, two Sankey circular-link cases,
-and two XYChart inputs without plot data. The selected Mermaid 11.17.2 runtime fails to render all five, so
+and two XYChart inputs without plot data. The selected Mermaid 12.0.0 runtime fails to render all five, so
 `cargo run -p xtask -- audit-gaps --check-upstream-render` reports zero actionable parser-only
 gaps. Exact family-scoped capability facts own these exclusions; filename patterns do not.
 

@@ -1,6 +1,6 @@
 # C4 Layout Minimum Contract
 
-Baseline: pinned Mermaid `@11.17.2`.
+Baseline: pinned Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`.
 
 This document defines the minimum compatibility contract for **headless layout** of C4 diagrams in
 `merman-render`.

@@ -36,8 +36,13 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
+ - @chevrotain/cst-dts-gen@11.1.2
+ - @chevrotain/gast@11.1.2
+ - @chevrotain/regexp-to-ast@11.1.2
  - @chevrotain/types@11.1.2
- - dompurify@3.4.13
+ - @chevrotain/utils@11.1.2
+ - chevrotain@11.1.2
+ - dompurify@3.4.15
 
 These packages each contain the following license:
 
@@ -3303,11 +3308,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -----------
 
-The following npm package may be included in this product:
+The following npm packages may be included in this product:
 
+ - lodash-es@4.17.23
  - lodash-es@4.18.1
 
-This package contains the following license:
+These packages each contain the following license:
 
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
@@ -3459,13 +3465,11 @@ THIS SOFTWARE.
 
 -----------
 
-The following npm packages may be included in this product:
+The following npm package may be included in this product:
 
- - fastdom@1.0.12
  - react-remove-scroll-bar@2.3.8
- - strictdom@1.0.1
 
-These packages each contain the following license:
+This package contains the following license:
 
 MIT
 
@@ -5032,10 +5036,9 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - @mermaid-js/layout-elk@0.2.3
- - @mermaid-js/layout-tidy-tree@0.2.2
- - @mermaid-js/mermaid-zenuml@0.2.3
- - mermaid@11.17.2
+ - @mermaid-js/layout-tidy-tree@1.0.1
+ - @mermaid-js/mermaid-zenuml@1.0.1
+ - mermaid@12.0.0
 
 These packages each contain the following license:
 
@@ -5335,7 +5338,7 @@ THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - @mermaid-js/parser@1.2.1
+ - @mermaid-js/parser@2.0.0
 
 This package contains the following license:
 

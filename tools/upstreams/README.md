@@ -5,7 +5,7 @@ are not submodules, and must resolve to the selected revisions in `REPOS.lock.js
 
 Typical selected checkouts include:
 
-- `repo-ref/mermaid` for Mermaid `11.17.2`;
+- `repo-ref/mermaid` for Mermaid `12.0.0`;
 - `repo-ref/dompurify` for the selected sanitizer source;
 - `repo-ref/zenuml-core` for the selected ZenUML Core `3.50.1` source;
 - the selected Dagre, Graphlib, Cytoscape, and layout sources listed in the lock.
@@ -14,8 +14,9 @@ Typical selected checkouts include:
 
 `MERMAID_REFERENCE_BUNDLE.json` describes only the current graph: selected package versions and
 integrities, selected source commits, runtime registrations, workspace/lock ownership, installed
-content digests, built-in registry inputs, and generated projections. It deliberately contains no
-oracle, candidate, deferred-major, browser-admission, or attestation payload.
+content digests, built-in registry inputs, and generated projections. Registry source digests
+use UTF-8 source with CRLF normalized to LF, matching Git blobs across checkout platforms. It deliberately
+contains no oracle, candidate, deferred-major, browser-admission, or attestation payload.
 
 `MERMAID_SELECTION_DECISION.json` is the compact reviewed decision receipt. The bundle stores only
 its path and SHA-256. The receipt binds the previous and current selection identity digests, their
@@ -30,12 +31,16 @@ installed-content digests, lock verification, and selection-receipt coverage alo
 its runtime companions.
 
 The executable behavior oracle is the selected npm graph, not an assumption that every companion
-was rebuilt from the Mermaid host tag. In the `11.17.2` graph, `@mermaid-js/layout-elk@0.2.3` is the
-latest published ELK adapter and was built from its own package tag at commit
-`293b1c153a6f94c3a4a1d9cd5eae4dde609f1ec4` (the Mermaid `11.17.0` release line). Its installed
-artifact therefore remains authoritative for ELK DOM details, including `edges edgePath`, where it
-differs from later `11.17.2` host source. The bundle records that package tag and the exact installed
-content digest rather than relabeling the artifact as a `11.17.2` build.
+was rebuilt from the Mermaid host tag. Mermaid 12.0.0 owns ELK in its standard runtime. Do not
+register the legacy ELK adapter that the reference CLI still carries transitively: it replaces
+core layout/shape registrations and can break Agentflow and Usecase. Both baseline generation
+and upstream renderability audits use the standard runtime through the shared seeded renderer.
+
+Tidy Tree 1.0.1 and ZenUML 1.0.1 remain external companions. Their published package tags resolve
+to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.0.0's
+`98a0945418c76238f15df2afaddbba4272656c3b`. The bundle records each package's own source and
+installed-content identity. Historical baseline and source-corpus records retain their original
+versions until new target output is generated and reviewed.
 
 Run the offline-capable standing gate with:
 
