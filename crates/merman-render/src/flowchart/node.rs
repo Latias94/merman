@@ -1,3 +1,28 @@
+pub(crate) fn flowchart_brace_content_dimensions(
+    shape: &str,
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    look_is_neo: bool,
+) -> (f64, f64) {
+    // Public Flowchart configuration normalizes negative padding to zero.
+    // Mermaid's brace shapes otherwise preserve a zero-sized label box.
+    let padding = padding.max(0.0);
+    let (padding_x, padding_y) = if look_is_neo {
+        if matches!(shape, "comment" | "brace" | "brace-l") {
+            (18.0, 12.0)
+        } else {
+            (36.0, 24.0)
+        }
+    } else {
+        (padding, padding)
+    };
+    (
+        label_width.max(0.0) + padding_x,
+        label_height.max(0.0) + padding_y,
+    )
+}
+
 fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
@@ -739,8 +764,8 @@ fn node_render_dimensions(
 
         // Curly brace comment shapes (rendering-elements).
         "comment" | "brace" | "brace-l" => {
-            let w = text_w + p;
-            let h = text_h + p;
+            let (w, h) =
+                flowchart_brace_content_dimensions(shape, text_w, text_h, padding, look_is_neo);
             let radius = (h * 0.1).max(5.0);
             let group_tx = radius;
             let mut points: Vec<(f64, f64)> = Vec::new();
@@ -820,8 +845,8 @@ fn node_render_dimensions(
             ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
         "brace-r" => {
-            let w = text_w + p;
-            let h = text_h + p;
+            let (w, h) =
+                flowchart_brace_content_dimensions(shape, text_w, text_h, padding, look_is_neo);
             let radius = (h * 0.1).max(5.0);
             let group_tx = -radius;
             let mut rect_points: Vec<(f64, f64)> = Vec::new();
@@ -873,8 +898,8 @@ fn node_render_dimensions(
             ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
         "braces" => {
-            let w = text_w + p;
-            let h = text_h + p;
+            let (w, h) =
+                flowchart_brace_content_dimensions(shape, text_w, text_h, padding, look_is_neo);
             let radius = (h * 0.1).max(5.0);
             let group_tx = radius - radius / 4.0;
             let mut rect_points: Vec<(f64, f64)> = Vec::new();
@@ -1190,6 +1215,34 @@ mod render_dimension_tests {
             width: 100.0,
             height: 20.0,
             line_count: 1,
+        }
+    }
+
+    #[test]
+    fn brace_layout_uses_pinned_neo_axis_padding_and_preserves_zero() {
+        let empty = crate::text::TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 1,
+        };
+        for (shape, zero_width, neo_width, neo_height) in [
+            ("brace", 15.0, 129.8, 42.0),
+            ("brace-l", 15.0, 129.8, 42.0),
+            ("comment", 15.0, 129.8, 42.0),
+            ("brace-r", 10.0, 146.0, 54.0),
+            ("braces", 12.5, 148.5, 54.0),
+        ] {
+            for padding in [0.0, -2.0] {
+                let zero = node_render_dimensions(Some(shape), empty, padding, false);
+                assert!((zero.0 - zero_width).abs() < 1e-9, "{shape}: {zero:?}");
+                assert!((zero.1 - 10.0).abs() < 1e-9, "{shape}: {zero:?}");
+            }
+            // Neo owns its axis padding, independent of configured padding.
+            for padding in [0.0, 15.0, 40.0] {
+                let neo = node_render_dimensions(Some(shape), metrics(), padding, true);
+                assert!((neo.0 - neo_width).abs() < 1e-9, "{shape}: {neo:?}");
+                assert!((neo.1 - neo_height).abs() < 1e-9, "{shape}: {neo:?}");
+            }
         }
     }
 

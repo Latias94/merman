@@ -137,7 +137,8 @@ pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
 pub(crate) use node::{
-    NodeLayoutDimensionsRequest, flowchart_node_render_dimensions, node_layout_dimensions,
+    NodeLayoutDimensionsRequest, flowchart_brace_content_dimensions,
+    flowchart_node_render_dimensions, node_layout_dimensions,
 };
 pub(crate) use self_loop::flowchart_self_loop_helper_edges;
 pub(crate) use shapes::{

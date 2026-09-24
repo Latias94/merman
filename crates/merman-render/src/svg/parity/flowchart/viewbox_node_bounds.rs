@@ -355,7 +355,16 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                             metrics.width,
                             metrics.height,
                             node_padding,
+                            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
                         );
+                    // Root getBBox includes the separately translated label,
+                    // which can extend beyond Neo's fixed shape padding.
+                    include_rect(
+                        n.x + geometry.label_dx - metrics.width / 2.0,
+                        n.y + y_off + geometry.label_dy - metrics.height / 2.0,
+                        n.x + geometry.label_dx + metrics.width / 2.0,
+                        n.y + y_off + geometry.label_dy + metrics.height / 2.0,
+                    );
                     let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
                     for path in geometry.paths {
                         if let Some(mut pb) =
@@ -501,6 +510,145 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
             );
         } else {
             include_rect(n.x, n.y + y_off, n.x + n.width, n.y + y_off + n.height);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use crate::model::FlowchartLayout;
+    use crate::svg::parity::flowchart::svg_emit::{
+        FlowchartSvgModelRequest, render_flowchart_svg_model,
+    };
+    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn neo_brace_viewport_contains_shifted_labels_at_large_padding() {
+        for shape in ["brace", "brace-r", "braces"] {
+            for padding in [15.0, 100.0] {
+                let source = format!(
+                    "---\nconfig:\n  look: neo\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let render_context = parsed.flowchart_render_context().unwrap().clone();
+                let (metadata, semantic) = parsed.into_parts();
+                let RenderSemanticModel::Flowchart(model) = semantic else {
+                    panic!("expected Flowchart");
+                };
+                let (width, height) = crate::flowchart::flowchart_node_render_dimensions(
+                    Some(shape),
+                    crate::text::TextMetrics {
+                        width: 100.0,
+                        height: 20.0,
+                        line_count: 1,
+                    },
+                    padding,
+                    true,
+                );
+                let layout = FlowchartLayout {
+                    nodes: vec![LayoutNode {
+                        id: "A".into(),
+                        x: 100.0,
+                        y: 100.0,
+                        width,
+                        height,
+                        is_cluster: false,
+                        label_width: Some(100.0),
+                        label_height: Some(20.0),
+                    }],
+                    edges: Vec::new(),
+                    clusters: Vec::new(),
+                    bounds: None,
+                    dom_node_order_by_root: std::collections::HashMap::from([(
+                        String::new(),
+                        vec!["A".into()],
+                    )]),
+                    uses_elk_adapter_dom: false,
+                };
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                let request = SvgRenderOptions {
+                    diagram_id: Some("brace-label-bounds".into()),
+                    ..SvgRenderOptions::default()
+                };
+                let debug = SvgDebugOptions::default();
+                let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+                let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+                let svg = render_flowchart_svg_model(
+                    FlowchartSvgModelRequest {
+                        layout: &layout,
+                        swimlane_layout: None,
+                        model: &model,
+                        render_context: &render_context,
+                        effective_config: &metadata.effective_config,
+                        diagram_type: metadata.diagram_type.as_str(),
+                        diagram_title: None,
+                        presentation_policy: None,
+                        svg_label_sidecar: &sidecar,
+                    },
+                    &execution,
+                )
+                .unwrap()
+                .to_string();
+                let doc = roxmltree::Document::parse(&svg).unwrap();
+                let viewbox: Vec<f64> = doc
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|value| value.parse().unwrap())
+                    .collect();
+                let label = doc
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                let mut label_x = 0.0;
+                let mut label_y = 0.0;
+                for node in label.ancestors() {
+                    if let Some(transform) = node.attribute("transform") {
+                        let translation = transform
+                            .strip_prefix("translate(")
+                            .and_then(|value| value.strip_suffix(')'))
+                            .expect("translation only");
+                        let values: Vec<f64> = translation
+                            .split([',', ' '])
+                            .filter(|value| !value.is_empty())
+                            .map(|value| value.parse().unwrap())
+                            .collect();
+                        label_x += values[0];
+                        label_y += values.get(1).copied().unwrap_or(0.0);
+                    }
+                }
+                let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+                let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
+                let diagram_padding = 8.0;
+                assert!(
+                    viewbox[0] <= label_x - diagram_padding + 1e-6,
+                    "{shape}, padding {padding}"
+                );
+                assert!(
+                    viewbox[1] <= label_y - diagram_padding + 1e-6,
+                    "{shape}, padding {padding}"
+                );
+                assert!(
+                    viewbox[0] + viewbox[2] >= label_x + label_width + diagram_padding - 1e-6,
+                    "{shape}, padding {padding}: label exceeds right viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
+                );
+                assert!(
+                    viewbox[1] + viewbox[3] >= label_y + label_height + diagram_padding - 1e-6,
+                    "{shape}, padding {padding}: label exceeds bottom viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
+                );
+                if padding == 15.0 {
+                    // A contained label must not inflate the ordinary shape viewport.
+                    assert!((viewbox[2] - width - 2.0 * diagram_padding).abs() < 1e-6);
+                    assert!((viewbox[3] - height - 2.0 * diagram_padding).abs() < 1e-6);
+                }
+            }
         }
     }
 }

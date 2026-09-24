@@ -72,6 +72,11 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
         layout_shape,
         Some(
             "anchor"
+                | "brace"
+                | "brace-l"
+                | "comment"
+                | "brace-r"
+                | "braces"
                 | "circle"
                 | "circ"
                 | "diamond"
@@ -815,6 +820,32 @@ fn compute_node_label_metrics_for_intersection(
     );
 
     Some(metrics.with_label_min_width(label_text, min_width, None))
+}
+
+fn intersect_curly_brace(
+    node: &BoundaryNode,
+    shape: &str,
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    look_is_neo: bool,
+    point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let polygon = super::super::render::node::shapes::curly_brace_comment_intersection_points(
+        shape,
+        label_width,
+        label_height,
+        padding,
+        look_is_neo,
+    );
+    // Mermaid 12 assigns intersect.polygon(node, rectPoints, point) before the
+    // visible brace group's translation. Reuse those unshifted polygon points,
+    // including the left-only brace's width-dependent central indentation.
+    let points: Vec<_> = polygon
+        .into_iter()
+        .map(|(x, y)| crate::model::LayoutPoint { x, y })
+        .collect();
+    intersect_polygon(node, &points, point)
 }
 
 pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
@@ -1618,6 +1649,20 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
     }
 
     match layout_shape {
+        Some(shape @ ("brace" | "brace-l" | "comment" | "brace-r" | "braces")) => {
+            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+                return intersect_rect(node, point);
+            };
+            intersect_curly_brace(
+                node,
+                shape,
+                metrics.width,
+                metrics.height,
+                ctx.node_padding,
+                crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+                point,
+            )
+        }
         Some("anchor" | "circle" | "circ") => intersect_circle(node, point),
         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
@@ -1662,11 +1707,121 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
 
 #[cfg(test)]
 mod tests {
-    use super::{BoundaryNode, intersect_line, intersect_polygon_hourglass};
+    use super::{
+        BoundaryNode, force_intersect_for_layout_shape, intersect_curly_brace, intersect_line,
+        intersect_polygon_hourglass,
+    };
     use crate::model::LayoutPoint;
 
     fn point(x: f64, y: f64) -> LayoutPoint {
         LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn mermaid12_braces_intersect_the_source_polygon_in_each_direction() {
+        // label + padding gives w=160, h=40 and r=5. The left brace's
+        // rectPoints use w*0.1, unlike the visible path's 2*r indentation.
+        // Its polygon therefore extends beyond the measured visible bounds.
+        for (shape, width, left, right) in [
+            ("brace", 170.0, -85.0, 91.0),
+            ("brace-l", 170.0, -85.0, 91.0),
+            ("comment", 170.0, -85.0, 91.0),
+            ("brace-r", 170.0, -85.0, 85.0),
+            ("braces", 172.5, -86.25, 86.25),
+        ] {
+            assert!(force_intersect_for_layout_shape(Some(shape)));
+            for (center_x, center_y) in [(0.0, 0.0), (123.0, -47.0)] {
+                let node = BoundaryNode {
+                    x: center_x,
+                    y: center_y,
+                    width,
+                    height: 50.0,
+                };
+                for (dx, dy, expected_x, expected_y) in [
+                    (-500.0, 0.0, left, 0.0),
+                    (500.0, 0.0, right, 0.0),
+                    (0.0, -500.0, 0.0, -25.0),
+                    (0.0, 500.0, 0.0, 25.0),
+                ] {
+                    let actual = intersect_curly_brace(
+                        &node,
+                        shape,
+                        145.0,
+                        25.0,
+                        15.0,
+                        false,
+                        &point(center_x + dx, center_y + dy),
+                    );
+                    assert!(
+                        (actual.x - center_x - expected_x).abs() < 1e-9
+                            && (actual.y - center_y - expected_y).abs() < 1e-9,
+                        "{shape}: direction ({dx}, {dy}), actual {actual:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mermaid12_brace_intersections_preserve_empty_and_neo_dimensions() {
+        for (shape, zero_width, neo_width, neo_height) in [
+            ("brace", 15.0, 129.8, 42.0),
+            ("brace-l", 15.0, 129.8, 42.0),
+            ("comment", 15.0, 129.8, 42.0),
+            ("brace-r", 10.0, 146.0, 54.0),
+            ("braces", 12.5, 148.5, 54.0),
+        ] {
+            for padding in [0.0, -2.0] {
+                let node = BoundaryNode {
+                    x: 0.0,
+                    y: 0.0,
+                    width: zero_width,
+                    height: 10.0,
+                };
+                let actual = intersect_curly_brace(
+                    &node,
+                    shape,
+                    0.0,
+                    0.0,
+                    padding,
+                    false,
+                    &point(0.0, 500.0),
+                );
+                // The empty left brace's visible path widens the measured
+                // box beyond rectPoints; pinned polygon normalization keeps
+                // its lower vertical intersection at 2.5, not the box's 5.
+                let expected_y = if matches!(shape, "brace" | "brace-l" | "comment") {
+                    2.5
+                } else {
+                    5.0
+                };
+                assert!(
+                    actual.x.abs() < 1e-9 && (actual.y - expected_y).abs() < 1e-9,
+                    "{shape}: {actual:?}"
+                );
+            }
+            let node = BoundaryNode {
+                x: 0.0,
+                y: 0.0,
+                width: neo_width,
+                height: neo_height,
+            };
+            for direction in [-1.0, 1.0] {
+                let actual = intersect_curly_brace(
+                    &node,
+                    shape,
+                    100.0,
+                    20.0,
+                    15.0,
+                    true,
+                    &point(0.0, direction * 500.0),
+                );
+                assert!(
+                    actual.x.abs() < 1e-9 && (actual.y - direction * neo_height / 2.0).abs() < 1e-9,
+                    "{shape}: {actual:?}"
+                );
+            }
+        }
     }
 
     #[test]
