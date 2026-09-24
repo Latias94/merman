@@ -1512,8 +1512,11 @@ Z@{ shape: folder, label: "Label" }
         assert_close(n.height, tw.hypot(th) + p, "circle height");
 
         let n = nodes_by_id["D"];
-        assert_close(n.width, tw + 2.0 * p, "doublecircle width");
-        assert_close(n.height, tw + 2.0 * p, "doublecircle height");
+        // Mermaid's doublecircle uses the label diagonal for the inner radius and a
+        // 5px classic ring gap around it.
+        let doublecircle_diameter = tw.hypot(th) + 2.0 * p + 10.0;
+        assert_close(n.width, doublecircle_diameter, "doublecircle width");
+        assert_close(n.height, doublecircle_diameter, "doublecircle height");
     }
 
     // diamond/question
@@ -1547,35 +1550,9 @@ Z@{ shape: folder, label: "Label" }
         let n = nodes_by_id["H"];
         let h = th + p;
         let w = tw + h / 4.0 + p;
-
-        // Flowchart-v2 stadium nodes are rendered via a roughjs path built from sampled arc points.
-        // Mermaid runs `updateNodeBounds(getBBox)` on that path and feeds the resulting bbox width
-        // into Dagre layout. Because the arc sampling (50 points over 180deg) does not include the
-        // exact extrema, the bbox is slightly narrower than `w`.
-        let radius = h / 2.0;
-        let mut min_x = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut include_x = |x: f64| {
-            min_x = min_x.min(x);
-            max_x = max_x.max(x);
-        };
-        include_x(-w / 2.0 + radius);
-        include_x(w / 2.0 - radius);
-        // `generateCirclePoints(...)` returns negated coordinates.
-        let step = std::f64::consts::PI / (50_f64 - 1.0); // 180deg / (n-1)
-        for i in 0..50 {
-            let angle = (std::f64::consts::FRAC_PI_2) + (i as f64) * step; // 90deg..270deg
-            let x = (-w / 2.0 + radius) + radius * angle.cos();
-            include_x(-x);
-        }
-        for i in 0..50 {
-            let angle = (std::f64::consts::FRAC_PI_2 * 3.0) + (i as f64) * step; // 270deg..450deg
-            let x = (w / 2.0 - radius) + radius * angle.cos();
-            include_x(-x);
-        }
-        let expected_w = (max_x - min_x).max(0.0);
-
-        assert_close(n.width, expected_w, "stadium width");
+        // The pinned stadium helper keeps the theoretical source dimensions; its
+        // sampled arc points are used for the outline and intersection geometry.
+        assert_close(n.width, w, "stadium width");
         assert_close(n.height, h, "stadium height");
     }
 
@@ -1712,20 +1689,19 @@ Z@{ shape: folder, label: "Label" }
     // delay / half-rounded rectangle
     {
         let n = nodes_by_id["V"];
-        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
-        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let label_w = merman_render::text::round_to_1_64_px(tw);
+        let label_h = merman_render::text::round_to_1_64_px(th);
+        let min_width = 15.0;
+        let min_height = 10.0;
+        let h = label_h.max(min_height) + 2.0 * p;
         let radius = h / 2.0;
-        let mut min_x = -w / 2.0;
-        let mut max_x = w / 2.0 - radius;
-        let step = std::f64::consts::PI / (50_f64 - 1.0);
-        for i in 0..50 {
-            let angle = std::f64::consts::FRAC_PI_2 + (i as f64) * step;
-            let x = (-w / 2.0 + radius) + radius * angle.cos();
-            min_x = min_x.min(-x);
-            max_x = max_x.max(-x);
-        }
-        assert_close(n.width, (max_x - min_x) as f32 as f64, "delay width");
-        assert_close(n.height, h as f32 as f64, "delay height");
+        let cap = radius
+            - (radius * radius - (label_h.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let w = (label_w.max(min_width) + 2.0 * cap) + 2.0 * p;
+        assert_close(n.width, w, "delay width");
+        assert_close(n.height, h, "delay height");
     }
 
     // lined document
@@ -1803,35 +1779,22 @@ Z@{ shape: folder, label: "Label" }
     // curved trapezoid / display
     {
         let n = nodes_by_id["Y"];
+        let label_w = merman_render::text::round_to_1_64_px(tw);
+        let label_h = merman_render::text::round_to_1_64_px(th);
         let min_width = 20.0;
         let min_height = 5.0;
-        let w = ((merman_render::text::round_to_1_64_px(tw) + 2.0 * p) * 1.25).max(min_width);
-        let h = (merman_render::text::round_to_1_64_px(th) + 2.0 * p).max(min_height);
+        let h = (label_h + 2.0 * p).max(min_height);
         let radius = h / 2.0;
-        let rw = w - radius;
-        let trapezoid_tw = h / 4.0;
-        let mut points = vec![
-            (rw, 0.0),
-            (trapezoid_tw, 0.0),
-            (0.0, h / 2.0),
-            (trapezoid_tw, h),
-            (rw, h),
-        ];
-        let step = -std::f64::consts::PI / (50_f64 - 1.0);
-        for i in 0..50 {
-            let angle = std::f64::consts::PI * 1.5 + (i as f64) * step;
-            let x = -rw + radius * angle.cos();
-            let y = -h / 2.0 + radius * angle.sin();
-            points.push((-x, -y));
-        }
-
-        let (expected_w, expected_h) = bbox_size(&points);
-        assert_close(n.width, expected_w as f32 as f64, "curved trapezoid width");
-        assert_close(
-            n.height,
-            expected_h as f32 as f64,
-            "curved trapezoid height",
-        );
+        let cap = radius
+            - (radius * radius - (label_h.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let side = (h / 4.0).max(cap);
+        let w = (label_w + 2.0 * p + 2.0 * side)
+            .max((label_w + 2.0 * p) * 1.25)
+            .max(min_width);
+        assert_close(n.width, w, "curved trapezoid width");
+        assert_close(n.height, h, "curved trapezoid height");
     }
 
     // subroutine

@@ -137,9 +137,9 @@ pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
 pub(crate) use node::{
-    DoubleCircleGeometry, HexagonGeometry, LeanGeometry, LeanKind, NodeLayoutDimensionsRequest,
-    OddGeometry, flowchart_brace_content_dimensions, flowchart_node_render_dimensions,
-    flowchart_stacked_document_geometry, node_layout_dimensions,
+    DelayGeometry, DisplayGeometry, DoubleCircleGeometry, HexagonGeometry, LeanGeometry, LeanKind,
+    NodeLayoutDimensionsRequest, OddGeometry, StadiumGeometry, flowchart_brace_content_dimensions,
+    flowchart_node_render_dimensions, flowchart_stacked_document_geometry, node_layout_dimensions,
 };
 pub(crate) use self_loop::flowchart_self_loop_helper_edges;
 pub(crate) use shapes::{

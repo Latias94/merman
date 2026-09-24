@@ -252,6 +252,160 @@ impl DoubleCircleGeometry {
     }
 }
 
+fn sampled_circle_points(
+    center_x: f64,
+    center_y: f64,
+    radius: f64,
+    count: usize,
+    start_deg: f64,
+    end_deg: f64,
+    negate: bool,
+) -> Vec<(f64, f64)> {
+    let start = start_deg.to_radians();
+    let step = (end_deg.to_radians() - start) / (count.saturating_sub(1).max(1) as f64);
+    (0..count)
+        .map(|i| {
+            let angle = start + i as f64 * step;
+            let x = center_x + radius * angle.cos();
+            let y = center_y + radius * angle.sin();
+            if negate { (-x, -y) } else { (x, y) }
+        })
+        .collect()
+}
+
+pub(crate) struct StadiumGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) points: Vec<(f64, f64)>,
+}
+impl StadiumGeometry {
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let padding = padding.max(0.0);
+        let padding_x = if neo { 40.0 } else { padding };
+        let padding_y = if neo { 24.0 } else { padding };
+        let h = label_height.max(0.0) + padding_y;
+        let inscribed = h * (std::f64::consts::PI / (2.0 * 49.0)).cos();
+        let cap = (inscribed * inscribed - label_height.max(0.0).powi(2))
+            .max(0.0)
+            .sqrt();
+        let w = (label_width.max(0.0) + h / 4.0 + padding_x)
+            .max(1.5 * h + (h - inscribed))
+            .max(label_width.max(0.0) + padding_x + h - cap);
+        let radius = h / 2.0;
+        let mut points = vec![(-w / 2.0 + radius, -h / 2.0), (w / 2.0 - radius, -h / 2.0)];
+        points.extend(sampled_circle_points(
+            -w / 2.0 + radius,
+            0.0,
+            radius,
+            50,
+            90.0,
+            270.0,
+            true,
+        ));
+        points.push((w / 2.0 - radius, h / 2.0));
+        points.extend(sampled_circle_points(
+            w / 2.0 - radius,
+            0.0,
+            radius,
+            50,
+            270.0,
+            450.0,
+            true,
+        ));
+        // Keep the source theoretical dimensions. The sampled points are the paint/intersection
+        // outline, but using their narrower extrema for layout would shrink the same shape twice.
+        Self {
+            width: w,
+            height: h,
+            points,
+        }
+    }
+}
+
+pub(crate) struct DelayGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) points: Vec<(f64, f64)>,
+}
+impl DelayGeometry {
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let padding = padding.max(0.0);
+        let px = if neo { 16.0 } else { padding };
+        let py = if neo { 12.0 } else { padding };
+        let min_width = 15.0;
+        let min_height = 10.0;
+        let h = label_height.max(min_height) + py * 2.0;
+        let radius = h / 2.0;
+        let cap = radius
+            - (radius * radius - (label_height.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let w = (label_width.max(min_width) + cap * 2.0) + px * 2.0;
+        let mut points = vec![(-w / 2.0, -h / 2.0), (w / 2.0 - radius, -h / 2.0)];
+        points.extend(sampled_circle_points(
+            -w / 2.0 + radius,
+            0.0,
+            radius,
+            50,
+            90.0,
+            270.0,
+            true,
+        ));
+        points.extend([(w / 2.0 - radius, h / 2.0), (-w / 2.0, h / 2.0)]);
+        Self {
+            width: w,
+            height: h,
+            points,
+        }
+    }
+}
+
+pub(crate) struct DisplayGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) tx: f64,
+    pub(crate) ty: f64,
+    pub(crate) points: Vec<(f64, f64)>,
+}
+impl DisplayGeometry {
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let padding = padding.max(0.0);
+        let px = if neo { 16.0 } else { padding };
+        let py = if neo { 12.0 } else { padding };
+        let min_width = 20.0;
+        let min_height = 5.0;
+        let h = (label_height.max(0.0) + py * 2.0).max(min_height);
+        let radius = h / 2.0;
+        let cap = radius
+            - (radius * radius - (label_height.max(0.0) / 2.0).powi(2))
+                .max(0.0)
+                .sqrt();
+        let side = (h / 4.0).max(cap);
+        let w = (label_width.max(0.0) + px * 2.0 + side * 2.0)
+            .max((label_width.max(0.0) + px * 2.0) * 1.25)
+            .max(min_width);
+        let rw = w - radius;
+        let tw = h / 4.0;
+        let mut points = vec![(rw, 0.0), (tw, 0.0), (0.0, h / 2.0), (tw, h), (rw, h)];
+        points.extend(sampled_circle_points(
+            -rw,
+            -h / 2.0,
+            radius,
+            50,
+            270.0,
+            90.0,
+            true,
+        ));
+        Self {
+            width: w,
+            height: h,
+            tx: -w / 2.0,
+            ty: -h / 2.0,
+            points,
+        }
+    }
+}
+
 fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
@@ -479,9 +633,8 @@ fn node_render_dimensions(
 
         // Stadium/terminator.
         "stadium" | "terminal" | "pill" => {
-            let h = text_h + if look_is_neo { 24.0 } else { p };
-            let w = text_w + h / 4.0 + if look_is_neo { 40.0 } else { p };
-            (w, h)
+            let geometry = StadiumGeometry::from_label(text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
 
         // Subroutine/subprocess (framed rectangle): adds an 8px "frame" on both sides.
@@ -591,30 +744,10 @@ fn node_render_dimensions(
         // Flowchart v2 crossed circle (`crossedCircle.ts`) has a minimum 30px source radius.
         "cross-circ" | "summary" | "crossed-circle" => (60.0, 60.0),
 
-        // Flowchart v2 delay / halfRoundedRectangle (rendering-elements).
+        // Flowchart v2 delay / halfRoundedRectangle.
         "delay" | "half-rounded-rectangle" => {
-            let min_width = 15.0;
-            let min_height = 10.0;
-            let w = (text_w + 2.0 * p).max(min_width);
-            let h = (text_h + 2.0 * p).max(min_height);
-            let radius = h / 2.0;
-            let mut points: Vec<(f64, f64)> = Vec::new();
-            points.push((-w / 2.0, -h / 2.0));
-            points.push((w / 2.0 - radius, -h / 2.0));
-            points.extend(circle_points(
-                -w / 2.0 + radius,
-                0.0,
-                radius,
-                50,
-                90.0,
-                270.0,
-                true,
-            ));
-            points.push((w / 2.0 - radius, h / 2.0));
-            points.push((-w / 2.0, h / 2.0));
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((-w / 2.0, -h / 2.0, w / 2.0, h / 2.0));
-            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            let geometry = DelayGeometry::from_label(text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
 
         // Flowchart v2 lined cylinder (Disk storage).
@@ -628,36 +761,8 @@ fn node_render_dimensions(
 
         // Flowchart v2 curved trapezoid (Display).
         "curv-trap" | "display" | "curved-trapezoid" => {
-            let min_width = 20.0;
-            let min_height = 5.0;
-            let w = (text_w + 2.0 * p).mul_add(1.25, 0.0).max(min_width);
-            let h = (text_h + 2.0 * p).max(min_height);
-            let radius = h / 2.0;
-            let total_width = w;
-            let total_height = h;
-            let rw = total_width - radius;
-            let tw = total_height / 4.0;
-
-            let mut points: Vec<(f64, f64)> = vec![
-                (rw, 0.0),
-                (tw, 0.0),
-                (0.0, total_height / 2.0),
-                (tw, total_height),
-                (rw, total_height),
-            ];
-            points.extend(circle_points(
-                -rw,
-                -total_height / 2.0,
-                radius,
-                50,
-                270.0,
-                90.0,
-                true,
-            ));
-
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((0.0, 0.0, total_width, total_height));
-            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            let geometry = DisplayGeometry::from_label(text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
 
         // Flowchart v2 divided rectangle (Divided process).
@@ -1337,65 +1442,8 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     // 2) calls `updateNodeBounds(node, shapeElem)` which sets `node.width/height` from `getBBox()`,
     // 3) then feeds those updated dimensions into Dagre for layout.
     //
-    // For stadium shapes the rough path is built from sampled arc points (`generateCirclePoints`,
-    // 50 points over 180deg) and the resulting path bbox is slightly narrower than the theoretical
-    // `w = bbox.width + h/4 + padding` used to generate the points. That bbox width is what Dagre
-    // uses for spacing, which affects node x-positions and ultimately the root `viewBox`.
-    if matches!(shape, "stadium" | "terminal" | "pill") {
-        fn include_circle_points(
-            center_x: f64,
-            center_y: f64,
-            radius: f64,
-            table: &[(f64, f64)],
-            mut include: impl FnMut(f64, f64),
-        ) {
-            for &(cos, sin) in table {
-                let x = center_x + radius * cos;
-                let y = center_y + radius * sin;
-                include(-x, -y);
-            }
-        }
-
-        let w = render_w.max(0.0);
-        let h = render_h.max(0.0);
-        if w > 0.0 && h > 0.0 {
-            let radius = h / 2.0;
-            let mut min_x = f64::INFINITY;
-            let mut max_x = f64::NEG_INFINITY;
-            let mut min_y = f64::INFINITY;
-            let mut max_y = f64::NEG_INFINITY;
-            let mut include = |x: f64, y: f64| {
-                min_x = min_x.min(x);
-                max_x = max_x.max(x);
-                min_y = min_y.min(y);
-                max_y = max_y.max(y);
-            };
-
-            include(-w / 2.0 + radius, -h / 2.0);
-            include(w / 2.0 - radius, -h / 2.0);
-            include_circle_points(
-                -w / 2.0 + radius,
-                0.0,
-                radius,
-                &crate::trig_tables::STADIUM_ARC_90_270_COS_SIN,
-                &mut include,
-            );
-            include(w / 2.0 - radius, h / 2.0);
-            include_circle_points(
-                w / 2.0 - radius,
-                0.0,
-                radius,
-                &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
-                &mut include,
-            );
-
-            if min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite() {
-                let bbox_w = (max_x - min_x).max(0.0);
-                let bbox_h = (max_y - min_y).max(0.0);
-                return (bbox_w, bbox_h);
-            }
-        }
-    }
+    // StadiumGeometry already owns the source dimensions and sampled points. Keep its
+    // theoretical width here; re-sampling would shrink the same source geometry twice.
 
     (render_w, render_h)
 }
@@ -1409,6 +1457,47 @@ mod render_dimension_tests {
             width: 100.0,
             height: 20.0,
             line_count: 1,
+        }
+    }
+
+    #[test]
+    fn curved_neo_shapes_match_pinned_dimensions_and_sampling() {
+        let stadium = StadiumGeometry::from_label(100.0, 20.0, 15.0, false);
+        assert_eq!((stadium.width, stadium.height), (123.75, 35.0));
+        let neo_stadium = StadiumGeometry::from_label(100.0, 20.0, 15.0, true);
+        assert_eq!((neo_stadium.width, neo_stadium.height), (151.0, 44.0));
+        assert_eq!(stadium.points.len(), 103);
+        assert_eq!(neo_stadium.points.len(), 103);
+        let delay = DelayGeometry::from_label(100.0, 20.0, 15.0, false);
+        let neo_delay = DelayGeometry::from_label(100.0, 20.0, 15.0, true);
+        assert!((delay.width - 134.174243).abs() < 1e-5 && delay.height == 50.0);
+        assert!((neo_delay.width - 136.808164).abs() < 1e-5 && neo_delay.height == 44.0);
+        let display = DisplayGeometry::from_label(100.0, 20.0, 15.0, false);
+        let neo_display = DisplayGeometry::from_label(100.0, 20.0, 15.0, true);
+        assert_eq!((display.width, display.height), (162.5, 50.0));
+        assert_eq!((neo_display.width, neo_display.height), (165.0, 44.0));
+        assert_eq!(display.points.len(), 55);
+        assert_eq!(neo_display.points.len(), 55);
+        for shape in [
+            StadiumGeometry::from_label(0.0, 0.0, 0.0, false).points,
+            DelayGeometry::from_label(0.0, 0.0, 0.0, false).points,
+            DisplayGeometry::from_label(0.0, 0.0, 0.0, false).points,
+        ] {
+            assert!(shape.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
+        }
+        for neo in [false, true] {
+            assert_eq!(
+                node_render_dimensions(Some("stadium"), metrics(), -2.0, neo),
+                node_render_dimensions(Some("stadium"), metrics(), 0.0, neo)
+            );
+            assert_eq!(
+                node_render_dimensions(Some("delay"), metrics(), -2.0, neo),
+                node_render_dimensions(Some("delay"), metrics(), 0.0, neo)
+            );
+            assert_eq!(
+                node_render_dimensions(Some("display"), metrics(), -2.0, neo),
+                node_render_dimensions(Some("display"), metrics(), 0.0, neo)
+            );
         }
     }
 

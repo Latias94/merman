@@ -1,6 +1,6 @@
 //! Flowchart node rendered-bounds preparation for final viewBox calculation.
 
-use super::render::node::geom::{generate_circle_points, generate_full_sine_wave_points};
+use super::render::node::geom::generate_full_sine_wave_points;
 use super::*;
 
 fn union_svg_path_bounds(paths: &[&str]) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
@@ -192,8 +192,13 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 if matches!(shape, "curv-trap" | "display" | "curved-trapezoid")
                     && let Some(label_w) = layout_node_label_width_if_known(ctx, n)
                 {
-                    let pre_w = ((label_w + 2.0 * node_padding) * 1.25).max(20.0);
-                    left_hw = pre_w / 2.0;
+                    let geometry = crate::flowchart::DisplayGeometry::from_label(
+                        label_w,
+                        layout_node_label_size_or_zero(ctx, n).1,
+                        node_padding,
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+                    );
+                    left_hw = geometry.width / 2.0;
                     right_hw = (n.width - left_hw).max(0.0);
                 }
 
@@ -456,22 +461,13 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 if matches!(shape, "delay" | "half-rounded-rectangle") {
                     let label_w = n.label_width.unwrap_or(0.0);
                     let label_h = n.label_height.unwrap_or(0.0);
-                    let w = (label_w + 2.0 * node_padding).max(15.0);
-                    let h = (label_h + 2.0 * node_padding).max(10.0);
-                    let radius = h / 2.0;
-                    let mut points: Vec<(f64, f64)> = Vec::new();
-                    points.push((-w / 2.0, -h / 2.0));
-                    points.push((w / 2.0 - radius, -h / 2.0));
-                    points.extend(generate_circle_points(
-                        -w / 2.0 + radius,
-                        0.0,
-                        radius,
-                        50,
-                        90.0,
-                        270.0,
-                    ));
-                    points.push((w / 2.0 - radius, h / 2.0));
-                    points.push((-w / 2.0, h / 2.0));
+                    let geometry = crate::flowchart::DelayGeometry::from_label(
+                        label_w,
+                        label_h,
+                        node_padding,
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+                    );
+                    let points = geometry.points;
 
                     let path_data =
                         crate::svg::parity::roughjs_common::closed_path_d_from_points(&points);

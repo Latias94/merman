@@ -827,32 +827,6 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         points
     }
 
-    fn generate_circle_points(
-        center_x: f64,
-        center_y: f64,
-        radius: f64,
-        num_points: usize,
-        start_deg: f64,
-        end_deg: f64,
-    ) -> Vec<crate::model::LayoutPoint> {
-        let start = start_deg.to_radians();
-        let end = end_deg.to_radians();
-        let angle_range = end - start;
-        let angle_step = if num_points > 1 {
-            angle_range / (num_points as f64 - 1.0)
-        } else {
-            0.0
-        };
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(num_points);
-        for i in 0..num_points {
-            let a = start + (i as f64) * angle_step;
-            let x = center_x + radius * a.cos();
-            let y = center_y + radius * a.sin();
-            out.push(crate::model::LayoutPoint { x: -x, y: -y });
-        }
-        out
-    }
-
     fn arc_points(
         x1: f64,
         y1: f64,
@@ -916,62 +890,21 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         // Port of Mermaid@11.12.2 `stadium.ts` intersection behavior:
         // - `points` are generated from the theoretical render dimensions,
         // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
-        fn generate_circle_points(
-            center_x: f64,
-            center_y: f64,
-            radius: f64,
-            table: &[(f64, f64)],
-        ) -> Vec<crate::model::LayoutPoint> {
-            let mut pts = Vec::with_capacity(table.len());
-            for &(cos, sin) in table {
-                let x = center_x + radius * cos;
-                let y = center_y + radius * sin;
-                pts.push(crate::model::LayoutPoint { x: -x, y: -y });
-            }
-            pts
-        }
-
         let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
             return intersect_rect(node, point);
         };
-
-        let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
-            Some("stadium"),
-            metrics,
+        let geometry = crate::flowchart::StadiumGeometry::from_label(
+            metrics.width,
+            metrics.height,
             ctx.node_padding,
             crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         );
-        let w = render_w.max(1.0);
-        let h = render_h.max(1.0);
-
-        let radius = h / 2.0;
-
-        let mut pts: Vec<crate::model::LayoutPoint> = Vec::with_capacity(2 + 50 + 1 + 50);
-        pts.push(crate::model::LayoutPoint {
-            x: -w / 2.0 + radius,
-            y: -h / 2.0,
-        });
-        pts.push(crate::model::LayoutPoint {
-            x: w / 2.0 - radius,
-            y: -h / 2.0,
-        });
-        pts.extend(generate_circle_points(
-            -w / 2.0 + radius,
-            0.0,
-            radius,
-            &crate::trig_tables::STADIUM_ARC_90_270_COS_SIN,
-        ));
-        pts.push(crate::model::LayoutPoint {
-            x: w / 2.0 - radius,
-            y: h / 2.0,
-        });
-        pts.extend(generate_circle_points(
-            w / 2.0 - radius,
-            0.0,
-            radius,
-            &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
-        ));
-        intersect_polygon(node, &pts, point)
+        let points: Vec<_> = geometry
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect();
+        intersect_polygon(node, &points, point)
     }
 
     fn intersect_folder(
@@ -1100,32 +1033,17 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
             return intersect_rect(node, point);
         };
-
-        let p = ctx.node_padding;
-        let min_width = 20.0;
-        let min_height = 5.0;
-        let w = ((metrics.width + 2.0 * p) * 1.25).max(min_width);
-        let h = (metrics.height + 2.0 * p).max(min_height);
-        let radius = h / 2.0;
-        let rw = w - radius;
-        let tw = h / 4.0;
-
-        let mut points: Vec<crate::model::LayoutPoint> = vec![
-            crate::model::LayoutPoint { x: rw, y: 0.0 },
-            crate::model::LayoutPoint { x: tw, y: 0.0 },
-            crate::model::LayoutPoint { x: 0.0, y: h / 2.0 },
-            crate::model::LayoutPoint { x: tw, y: h },
-            crate::model::LayoutPoint { x: rw, y: h },
-        ];
-        points.extend(generate_circle_points(
-            -rw,
-            -h / 2.0,
-            radius,
-            50,
-            270.0,
-            90.0,
-        ));
-
+        let geometry = crate::flowchart::DisplayGeometry::from_label(
+            metrics.width,
+            metrics.height,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        );
+        let points: Vec<_> = geometry
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect();
         intersect_polygon(node, &points, point)
     }
 
@@ -1330,38 +1248,17 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
             return intersect_rect(node, point);
         };
-
-        let p = ctx.node_padding;
-        let w = (metrics.width + 2.0 * p).max(15.0);
-        let h = (metrics.height + 2.0 * p).max(10.0);
-        let radius = h / 2.0;
-
-        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
-        points.push(crate::model::LayoutPoint {
-            x: -w / 2.0,
-            y: -h / 2.0,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: w / 2.0 - radius,
-            y: -h / 2.0,
-        });
-        points.extend(generate_circle_points(
-            -w / 2.0 + radius,
-            0.0,
-            radius,
-            50,
-            90.0,
-            270.0,
-        ));
-        points.push(crate::model::LayoutPoint {
-            x: w / 2.0 - radius,
-            y: h / 2.0,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: -w / 2.0,
-            y: h / 2.0,
-        });
-
+        let geometry = crate::flowchart::DelayGeometry::from_label(
+            metrics.width,
+            metrics.height,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        );
+        let points: Vec<_> = geometry
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect();
         intersect_polygon(node, &points, point)
     }
 
