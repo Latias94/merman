@@ -26,9 +26,16 @@ status: active
   proves the removed 191px offset for hidden labels; non-empty group titles retain
   their layout role. All 1,481 all-feature ELK-adapter/renderer unit tests pass.
   Current-source family comparisons and changed layout snapshots still need refresh.
+- Latest paint checkpoint: 310 independently reviewed layout snapshots are committed.
+  Flowchart/State shadows, rounded radius, State HTML label boxes and Sequence paint
+  ordering/palettes are corrected. The 1,604-test batch has 1,602 passes plus two
+  source-verified fixture corrections whose reruns pass. P3 shared-property identity
+  is the next kernel fix; its first 1,910-test run has one source-replayed old assertion
+  pending correction. Fresh route snapshots and exact residual receipts remain open.
 - Consumer focus: five production Web WASM packages build; Web Node tests, Playground
   prepared/lint/build/eight browser smoke cases, and 255 VS Code tests pass. Those full
-  WASM artifacts predate the latest renderer repairs and require rebuilding.
+  WASM artifacts were rebuilt before the latest paint/kernel fixes; a final full/render
+  rebuild and consumer verification remain.
 - Remaining parity gates: fresh current-source comparisons pass all 34 primary
   families outside Flowchart/State/Sequence. Flowchart has 56 distinct DOM blockers
   after the reviewed shape/label batches and 34 stale receipt fixtures; State has
@@ -45,7 +52,8 @@ status: active
   comparison and current full-family reports remain diagnostic evidence, not admission.
 - Artifact-size focus: production theme audit snapshots were removed in `6dc4c9f6f`
   after equivalent-output tests and isolated measurement. Both analysis/editor gzip
-  and Brotli sizes improve, but all four compressed budgets still fail. Preserve
+  and Brotli sizes improve, but the fresh assembled artifacts still exceed analysis
+  gzip/Brotli by 37,226/37,900 bytes and editor by 7,351/19,502 bytes. Preserve
   capabilities and budgets. Typst measurement needs local Binaryen 131 on PATH.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
   contracts, editor snapshot memory use, and release-gate coverage.

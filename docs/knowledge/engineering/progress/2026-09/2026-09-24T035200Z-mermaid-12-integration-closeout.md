@@ -463,15 +463,79 @@ bytes and HEAD hashes are preserved under `target/mermaid12-neo-golden-review/` 
 existing-owner regeneration and independent cause review. Do not count generated
 candidates as admitted upstream geometry.
 
+# Reviewed paint fixes and current Web size measurements
+
+All 310 selected layout candidates were independently approved and committed in
+`1c9e7190e`: full before/after hashes, identity/topology preservation, 26 source
+shape-formula groups, all nine routing-only pinned elkjs replays, and the late State
+compound-publication correction are recorded under
+`target/mermaid12-neo-golden-review/independent-review-final.{md,json}`. The complete
+layout aggregate passes with these expectations; this is local regression admission.
+
+Whole-fixture SVG review then found actual paint omissions that structural comparison
+alone did not detect. Commits `6eba8dbc8`, `fe4f9a3ff`, `7c861d0fb`, and `f0b0d4db2`
+fix Flowchart/State small terminal shadows, effective rounded-rectangle radius and
+source hand-drawn arcs, State minimum-width HTML boxes, and Sequence actor order,
+Neo shadows, inherited glyph stroke and activation palettes. Raw theme truthiness is
+preserved, including numeric zero versus nonempty string zero. Independent source
+oracles cover 13 radius configurations, five paths, 16 Sequence order cases, and
+12 activation-palette cases. The 1,604-test renderer unit/integration batch passed
+1,602 initially; both remaining failures were new fixture expectations, not production
+failures. Pinned package initialization proves null radius overrides are ignored and
+the Neo theme does not enable nodeShadow. Corrected focused reruns pass 2/2.
+
+The latest post-P3/popup three-mode comparison still has Flowchart 52 DOM blockers
+plus 34 stale receipts, State 11, and Sequence 25 plus four stale receipts. The fresh
+run is recorded in `target/mermaid12-post-popup-family-convergence.log` and the per-family
+reports under `target/compare/`. Whole-fixture review has identified bounded residual
+candidates, but no new receipts are admitted yet. State style remains held for equal-size
+provider order. Sequence popup geometry is now source-backed and tested; its old receipt
+candidates must be regenerated before admission.
+
+Five production Web WASM packages and TypeScript/package assembly built successfully
+from the pre-paint-fix source. The actual assembled package size matrix reports:
+
+| Profile | Raw bytes | Stripped bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: | ---: |
+| analysis | 3,542,295 | 3,542,030 | 1,412,226 | 1,087,900 |
+| ASCII | 5,101,613 | 5,101,348 | 1,926,940 | 1,468,106 |
+| editor | 3,655,648 | 3,655,383 | 1,457,351 | 1,119,502 |
+| full | 12,946,551 | 12,946,286 | 4,862,740 | 3,603,109 |
+| render | 10,983,599 | 10,983,334 | 4,190,230 | 3,109,923 |
+
+Only four compressed caps fail: analysis gzip/Brotli by 37,226/37,900 bytes and
+editor by 7,351/19,502 bytes. Budgets and capabilities remain unchanged. Logs:
+`target/mermaid12-current-web-build.log` and `target/mermaid12-current-web-size.log`.
+The full/render artifacts need rebuilding after the final renderer/kernel repairs;
+analysis/editor/ASCII have no dependency on those edited renderer/kernel paths.
+
+# ELK randomized-attempt source identity
+
+An exact-size six-node complete DAG proves a remaining P3 defect: ELK's FIRST_TRY
+and SECOND_TRY properties use the same string ID, and Property equality is ID-based.
+Native code incorrectly stored independent flags, preserving model order for two
+tries instead of one. Giving the pinned elkjs SECOND_TRY a distinct ID reproduces the
+old native TB/LR positions exactly; restoring the shared identity produces the source
+crossing sequence `[4,4,4,3,3,3,3]`. Source evidence and phase traces are under
+`target/neo-p3-shared-property-diagnosis.md`. The repair is implemented in flat and
+hierarchical paths with a public deprecated diagnostic alias retained for alpha.6
+compatibility. Independent code review approves it.
+
+The current full three-crate library run passes 1,910/1,910 tests. The shared-ID
+property repair and its source-backed nested-order assertion are both green. Do not
+admit regenerated routing snapshots before the remaining family-level cause reviews.
+
+# Sequence popup geometry convergence
+
+Commits `11aec36fb` and `d9c74c3a3` align actor popup placement with Mermaid 12 `drawPopup`: mirror mode selects footer actor rectData, classic/Neo and collection/queue/database heights follow the draw order, radii follow actor type and look, long-link widths use actor-font measurements, and root bounds include the same panel geometry. Focused popup/order/palette tests pass 3/3; the complete `sequence_svg_test` passes 56/56 (one feature-gated test skipped), and `merman-render` Clippy passes with `-D warnings`.
+
 # Open gates
 
-Verify the transferred provider/brace batch and the source-compatible model-order
-sort correction, then execute the remaining Rust/doctest and SVG gates.
-Rebuild xtask before checking embedded residual catalogs. Continue source-backed
-Flowchart/State/Sequence convergence; do not accept old reports overwritten by focused
-negative-evidence tests. Rebuild production WASM after the final renderer changes,
-remeasure Web/Typst artifacts, and rerun relevant consumer/browser checks. Exact browser
-residuals require reviewed evidence rather than blanket signature refresh.
+The transferred provider/brace batch and source-compatible model-order correction are
+verified. Remaining gates are Rust/doctest, SVG receipt admission, final WASM rebuild and
+size verification, license/consumer checks, and source-backed Flowchart/State/Sequence
+residual review. Do not accept old reports overwritten by focused negative-evidence tests;
+exact browser residuals require reviewed evidence rather than blanket signature refresh.
 
 # Citations
 
