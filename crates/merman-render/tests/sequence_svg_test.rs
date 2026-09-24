@@ -3035,3 +3035,82 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
         }
     }
 }
+
+#[test]
+fn sequence_popup_inherits_actor_rect_height_position_width_and_corner_radius() {
+    let source = "sequenceDiagram\nparticipant A as First<br/>Second<br/>Third<br/>Fourth\nlinks A: {\"Docs\": \"https://example.com\", \"A very long popup menu label requiring a wider panel\": \"https://example.com/long\"}";
+    for look in ["classic", "neo"] {
+        for theme in ["default", "redux-color"] {
+            for mirror_actors in [false, true] {
+                let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({
+                        "look": look,
+                        "theme": theme,
+                        "sequence": {"mirrorActors": mirror_actors, "forceMenus": true, "wrap": true},
+                        "themeVariables": {"nodeBorderRadius": 22}
+                    }),
+                ));
+                let svg = render_sequence_svg_from_text_with_engine(engine, source);
+                let doc = roxmltree::Document::parse(&svg).expect("Sequence popup SVG");
+                let actor = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect")
+                            && node.attribute("name") == Some("A")
+                            && node.attribute("class")
+                                == Some(if mirror_actors {
+                                    "actor actor-bottom"
+                                } else {
+                                    "actor actor-top"
+                                })
+                    })
+                    .expect("actor rect");
+                let popup = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("actorPopupMenu")
+                    })
+                    .expect("popup");
+                let panel = popup
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .expect("popup panel");
+                assert_eq!(popup.attribute("display"), Some("block !important"));
+                assert_eq!(panel.attribute("x"), actor.attribute("x"));
+                assert_eq!(panel.attribute("y"), actor.attribute("height"));
+                let radius = if look == "neo" { "6" } else { "3" };
+                assert_eq!(panel.attribute("rx"), Some(radius));
+                assert_eq!(panel.attribute("ry"), Some(radius));
+                let actor_height: f64 = actor.attribute("height").unwrap().parse().unwrap();
+                assert!(
+                    actor_height > 65.0,
+                    "wrapped actor must exceed configured height"
+                );
+                assert!(
+                    panel.attribute("width").unwrap().parse::<f64>().unwrap()
+                        > actor.attribute("width").unwrap().parse::<f64>().unwrap(),
+                    "long link label must widen popup panel"
+                );
+                let text = popup
+                    .descendants()
+                    .find(|node| node.has_tag_name("text"))
+                    .expect("popup text");
+                let text_y: f64 = text.attribute("y").unwrap().parse().unwrap();
+                assert_eq!(text_y, actor_height + 30.0);
+                let view_box: Vec<f64> = doc
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|n| n.parse().unwrap())
+                    .collect();
+                let popup_bottom =
+                    actor_height + panel.attribute("height").unwrap().parse::<f64>().unwrap();
+                assert!(
+                    view_box[1] + view_box[3] >= popup_bottom,
+                    "popup must fit the root bounds: {look}/{theme}/mirror={mirror_actors}"
+                );
+            }
+        }
+    }
+}

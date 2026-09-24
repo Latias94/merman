@@ -250,6 +250,10 @@ fn render_sequence_diagram_svg_inner(
             force_menus: settings.force_menus,
             mirror_actors: settings.mirror_actors,
             actor_height: settings.actor_height,
+            wrap_padding: settings.wrap_padding,
+            box_margin: settings.box_margin,
+            actor_text_style: &settings.loop_text_style,
+            measurer,
         },
         checkpoints,
     )?;

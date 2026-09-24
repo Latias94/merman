@@ -1,5 +1,5 @@
 use super::SequenceLayoutCheckpoints;
-use super::constants::sequence_actor_popup_panel_height;
+use super::constants::{sequence_actor_popup_panel_height, sequence_actor_popup_rect_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::Result;
@@ -30,9 +30,11 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_margin_y: f64,
     pub(super) bottom_margin_adj: f64,
     pub(super) box_margin: f64,
+    pub(super) wrap_padding: f64,
     pub(super) has_boxes: bool,
     pub(super) mirror_actors: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) actor_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -44,6 +46,7 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Result
     let mut content = sequence_content_bounds(&ctx)?;
 
     include_actor_popup_bottoms(&mut content, &ctx)?;
+    include_actor_popup_widths(&mut content, &ctx)?;
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
@@ -159,6 +162,40 @@ fn include_footer_row_height(
     Ok(())
 }
 
+fn include_actor_popup_widths(
+    content: &mut ContentBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) -> Result<()> {
+    let node_prefix = if ctx.mirror_actors {
+        "actor-bottom-"
+    } else {
+        "actor-top-"
+    };
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        let Some(actor_id) = node.id.strip_prefix(node_prefix) else {
+            continue;
+        };
+        let Some(actor) = ctx.model.actors.get(actor_id) else {
+            continue;
+        };
+        if actor.links.is_empty() {
+            continue;
+        }
+        let min_width = crate::sequence::sequence_actor_popup_min_width(
+            actor,
+            ctx.measurer,
+            ctx.actor_text_style,
+            ctx.wrap_padding,
+            ctx.box_margin,
+        );
+        let panel_width = node.width.max(min_width);
+        let left = node.x - node.width / 2.0;
+        content.include_x(left, left + panel_width);
+    }
+    Ok(())
+}
+
 fn include_actor_popup_bottoms(
     content: &mut ContentBounds,
     ctx: &SequenceRootBoundsContext<'_>,
@@ -166,15 +203,30 @@ fn include_actor_popup_bottoms(
     // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
     // present, even when they are emitted hidden by default. Account for the menu panel bottom so
     // root height stays aligned with upstream for link-only fixtures.
-    for (actor_position, actor_id) in ctx.model.actor_order.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(actor_position)?;
+    let is_neo = crate::config::config_diagram_look(ctx.math_config.as_value()).is_neo();
+    let node_prefix = if ctx.mirror_actors {
+        "actor-bottom-"
+    } else {
+        "actor-top-"
+    };
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        let Some(actor_id) = node.id.strip_prefix(node_prefix) else {
+            continue;
+        };
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
         if actor.links.is_empty() {
             continue;
         }
-        let popup_bottom = ctx.actor_height + sequence_actor_popup_panel_height(actor.links.len());
+        let popup_bottom = sequence_actor_popup_rect_height(
+            &actor.actor_type,
+            node.height,
+            ctx.actor_height,
+            is_neo,
+            ctx.mirror_actors,
+        ) + sequence_actor_popup_panel_height(actor.links.len());
         let popup_content_bottom = if ctx.mirror_actors {
             popup_bottom - ctx.diagram_margin_y - if ctx.has_boxes { ctx.box_margin } else { 0.0 }
         } else {

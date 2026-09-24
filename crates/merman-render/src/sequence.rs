@@ -37,7 +37,8 @@ pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activatio
 pub(crate) use constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT,
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
-    SequenceActorBands, sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
+    SequenceActorBands, sequence_actor_popup_min_width, sequence_actor_popup_panel_height,
+    sequence_actor_popup_rect_height, sequence_text_dimensions_height_px,
 };
 pub(crate) use metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
@@ -511,9 +512,11 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         diagram_margin_y: settings.diagram_margin_y,
         bottom_margin_adj: settings.bottom_margin_adj,
         box_margin: settings.box_margin,
+        wrap_padding: settings.wrap_padding,
         has_boxes,
         mirror_actors: settings.mirror_actors,
         measurer,
+        actor_text_style: &settings.actor_text_style,
         msg_text_style: &settings.msg_text_style,
         math_config: &math_config,
         math_renderer,
