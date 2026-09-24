@@ -19,6 +19,7 @@ struct SequenceActivationRect {
     width: f64,
     height: f64,
     class_idx: usize,
+    actor_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,13 @@ pub(super) fn build_sequence_activation_plan<'a>(
     // the rect `fill` attribute in the baseline SVGs.
     let fill = "#EDF2AE".to_string();
     let stroke = "#666".to_string();
+
+    let mut actor_indexes =
+        FxHashMap::with_capacity_and_hasher(model.actor_order.len(), Default::default());
+    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_index)?;
+        actor_indexes.insert(actor_id.as_str(), actor_index);
+    }
 
     let mut last_line_y: Option<f64> = None;
     let mut activation_stacks: std::collections::BTreeMap<&str, Vec<SequenceActivationStart>> =
@@ -111,6 +119,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                     width: activation_width,
                     height: (vertical_pos - starty).max(0.0),
                     class_idx,
+                    actor_index: actor_indexes.get(actor_id).copied().unwrap_or(0),
                 };
                 if let Some(slot) = groups.get_mut(start.group_index) {
                     *slot = Some(rect);
@@ -135,7 +144,7 @@ pub(super) fn render_sequence_activation_group(
     out: &mut String,
     plan: &SequenceActivationPlan,
     message_id: &str,
-    is_neo: bool,
+    config: &merman_core::MermaidConfig,
 ) {
     let Some(group_index) = plan.group_by_start_id.get(message_id).copied() else {
         return;
@@ -145,9 +154,10 @@ pub(super) fn render_sequence_activation_group(
     // `<rect class="activation{0..2}">` once ACTIVE_END is encountered.
     out.push_str("<g>");
     if let Some(Some(a)) = plan.groups.get(group_index) {
+        let is_neo = crate::config::config_diagram_look(config.as_value()).is_neo();
         let _ = write!(
             out,
-            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}/>"##,
+            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
             x = fmt(a.startx),
             y = fmt(a.starty),
             w = fmt(a.width),
@@ -157,8 +167,51 @@ pub(super) fn render_sequence_activation_group(
             stroke = escape_xml(&plan.stroke),
             look_attr = if is_neo { r#" data-look="neo""# } else { "" },
         );
+        let style = activation_palette_style(config.as_value(), a.actor_index);
+        if !style.is_empty() {
+            let _ = write!(out, r#" style="{}""#, escape_attr(&style));
+        }
+        out.push_str("/>");
     }
     out.push_str("</g>");
+}
+
+fn activation_palette_style(config: &serde_json::Value, actor_index: usize) -> String {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return String::new();
+    }
+    let Some(theme) = config.get("themeVariables") else {
+        return String::new();
+    };
+    let palette_color = |key| {
+        theme
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .filter(|palette| !palette.is_empty())
+            .map(|palette| &palette[actor_index % palette.len()])
+    };
+    let stroke = palette_color("borderColorArray");
+    // Unlike actors, activations need an opaque fallback to cover the lifeline.
+    let fill = palette_color("bkgColorArray")
+        .filter(|color| !color.is_null())
+        .or_else(|| theme.get("mainBkg"));
+    let mut style = String::new();
+    for (property, value) in [("stroke", stroke), ("fill", fill)] {
+        if let Some(color) = value.and_then(serde_json::Value::as_str) {
+            let color = super::super::util::cssom_color_value(color);
+            if color.is_empty() {
+                continue;
+            }
+            if !style.is_empty() {
+                style.push(' ');
+            }
+            let _ = write!(style, "{property}: {color};");
+        }
+    }
+    style
 }
 
 fn actor_center_x(nodes_by_id: &FxHashMap<&str, &LayoutNode>, actor_id: &str) -> Option<f64> {

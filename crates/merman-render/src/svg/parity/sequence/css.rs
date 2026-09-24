@@ -4,7 +4,7 @@ pub(super) fn sequence_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
 ) -> String {
-    // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
+    // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = diagram_id;
     let theme = PresentationTheme::new(effective_config).sequence_diagram();
@@ -81,6 +81,11 @@ pub(super) fn sequence_css(
         &mut out,
         r#"#{} .actor{{stroke:{};fill:{};stroke-width:{};}}"#,
         id, actor_border, actor_fill, stroke_width
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} rect.actor.outer-path[data-look="neo"]{{filter:{};}}#{} rect.note[data-look="neo"]{{stroke:{};fill:{};filter:{};}}"#,
+        id, drop_shadow, id, note_border, note_fill, drop_shadow
     );
     let _ = write!(
         &mut out,
@@ -184,15 +189,11 @@ pub(super) fn sequence_css(
         r#"#{} .actorPopupMenuPanel{{position:absolute;fill:{};box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}}"#,
         id, actor_fill
     );
+    // Glyph strokes inherit their actor group's palette color in Mermaid 12.
     let _ = write!(
         &mut out,
-        r#"#{} .actor-man line{{stroke:{};fill:{};}}"#,
-        id, actor_border, actor_fill
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .actor-man circle,#{} line{{stroke:{};fill:{};stroke-width:2px;}}"#,
-        id, id, actor_border, actor_fill
+        r#"#{} .actor-man circle,#{} line{{fill:{};stroke-width:2px;}}"#,
+        id, id, actor_fill
     );
     let _ = write!(
         &mut out,
@@ -262,6 +263,28 @@ mod tests {
     }
 
     #[test]
+    fn sequence_css_preserves_actor_glyph_inherited_palette_stroke() {
+        let css = sequence_css(
+            "seq",
+            &json!({
+                "theme": "redux-color",
+                "themeVariables": {
+                    "actorBorder": "#220000",
+                    "actorBkg": "#330000",
+                    "borderColorArray": ["#0055cc", "#00aa77"]
+                }
+            }),
+        );
+
+        // A child stroke declaration would override the parent's per-actor palette.
+        assert!(
+            css.contains(r#"#seq .actor-man circle,#seq line{fill:#330000;stroke-width:2px;}"#)
+        );
+        assert!(!css.contains(".actor-man line{"));
+        assert!(!css.contains(".actor-man circle,#seq line{stroke:"));
+    }
+
+    #[test]
     fn sequence_css_honors_mermaid_12_theme_options() {
         let cfg = json!({
             "look": "neo",
@@ -305,6 +328,8 @@ mod tests {
             r#"#seq .marker{fill:#123456;stroke:#123456;}#seq .marker.cross{stroke:#123456;}"#
         ));
         assert!(css.contains(r#"#seq .actor{stroke:#220000;fill:#330000;stroke-width:2;}"#));
+        assert!(css.contains(r#"#seq rect.actor.outer-path[data-look="neo"]{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#));
+        assert!(css.contains(r#"#seq rect.note[data-look="neo"]{stroke:#cccccc;fill:#dddddd;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#));
         assert!(css.contains(r#"#seq text.actor>tspan{fill:#fafafa;stroke:none;}"#));
         assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
         assert!(css.contains(

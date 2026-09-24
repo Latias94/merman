@@ -2907,3 +2907,131 @@ fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
         .collect();
     assert_eq!(footer_names, ["boundary", "C", "E"]);
 }
+
+#[test]
+fn sequence_actor_glyphs_follow_overlays_and_precede_messages_and_popups() {
+    for look in ["classic", "neo"] {
+        for mirror_actors in [false, true] {
+            for actor_type in ["actor", "boundary", "control", "entity"] {
+                let source = format!(
+                    "sequenceDiagram\nparticipant A@{{ \"type\": \"{actor_type}\" }}\nparticipant B\nlinks B: {{\"Docs\": \"https://example.com\"}}\nNote over A: overlay\nloop repeat\nA->>B: ping\nend"
+                );
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "look": look,
+                        "sequence": {"mirrorActors": mirror_actors, "forceMenus": true}
+                    })));
+                let svg = render_sequence_svg_from_text_with_engine(engine, &source);
+                let doc = roxmltree::Document::parse(&svg).expect("Sequence actor order SVG");
+                let children: Vec<_> = doc
+                    .root_element()
+                    .children()
+                    .filter(|n| n.is_element())
+                    .collect();
+                let note = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("note"))
+                    .expect("note");
+                let control = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("control-structure"))
+                    .expect("loop");
+                let actor = children
+                    .iter()
+                    .position(|n| {
+                        n.attribute("data-id") == Some("A")
+                            && n.attribute("data-et") == Some("participant")
+                    })
+                    .expect("top actor glyph");
+                let message = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("message"))
+                    .expect("message");
+                let popup = children
+                    .iter()
+                    .position(|n| n.attribute("class") == Some("actorPopupMenu"))
+                    .expect("popup");
+                assert!(
+                    note < actor && control < actor && actor < message && message < popup,
+                    "{look}/{actor_type}/mirror={mirror_actors}"
+                );
+                let footer = children.iter().position(|n| {
+                    n.has_tag_name("g")
+                        && n.attribute("name") == Some("A")
+                        && n.attribute("class").is_some_and(|class| {
+                            class
+                                .split_ascii_whitespace()
+                                .any(|part| part == "actor-bottom")
+                        })
+                });
+                if mirror_actors {
+                    let footer = footer.expect("bottom actor glyph");
+                    assert!(message < footer && footer < popup, "{look}/{actor_type}");
+                } else {
+                    assert!(footer.is_none(), "{look}/{actor_type}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting() {
+    let source = "sequenceDiagram\nparticipant Idle\nparticipant A\ncreate participant B\nA->>+B: create\nactivate B\nB-->>A: nested\ndeactivate B\nB-->>-A: done\nactivate A\nA->>B: last\ndeactivate A";
+    for theme in ["redux-color", "redux-dark-color", "default"] {
+        for look in ["classic", "neo"] {
+            for backgrounds in [
+                serde_json::json!(["#110000", "#220000", "#330000"]),
+                serde_json::json!([]),
+            ] {
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "look": look,
+                        "theme": theme,
+                        "themeVariables": {
+                            "borderColorArray": ["#000011", "#000022"],
+                            "bkgColorArray": backgrounds,
+                            "mainBkg": "#445566"
+                        }
+                    })));
+                let svg = render_sequence_svg_from_text_with_engine(engine, source);
+                let doc =
+                    roxmltree::Document::parse(&svg).expect("Sequence activation palette SVG");
+                let activations: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("rect")
+                            && node
+                                .attribute("class")
+                                .is_some_and(|class| class.starts_with("activation"))
+                    })
+                    .collect();
+                assert_eq!(activations.len(), 3);
+                for (activation, actor_index) in activations.iter().zip([2, 2, 1]) {
+                    if theme == "default" {
+                        assert_eq!(activation.attribute("style"), None);
+                        continue;
+                    }
+                    let stroke = if actor_index == 2 {
+                        "rgb(0, 0, 17)"
+                    } else {
+                        "rgb(0, 0, 34)"
+                    };
+                    let fill = if backgrounds.as_array().unwrap().is_empty() {
+                        "rgb(68, 85, 102)"
+                    } else if actor_index == 2 {
+                        "rgb(51, 0, 0)"
+                    } else {
+                        "rgb(34, 0, 0)"
+                    };
+                    let expected = format!("stroke: {stroke}; fill: {fill};");
+                    assert_eq!(
+                        activation.attribute("style"),
+                        Some(expected.as_str()),
+                        "{theme}/{look}/actor={actor_index}"
+                    );
+                }
+            }
+        }
+    }
+}

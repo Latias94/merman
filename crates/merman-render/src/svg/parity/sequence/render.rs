@@ -191,8 +191,6 @@ fn render_sequence_diagram_svg_inner(
     }
     checkpoints.checkpoint()?;
 
-    render_sequence_actor_man_tops(&mut out, &actor_ctx, diagram_id)?;
-
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
         prepared,
@@ -217,6 +215,9 @@ fn render_sequence_diagram_svg_inner(
     };
     render_sequence_interaction_overlays(&mut out, &interaction_ctx)?;
 
+    // Mermaid appends glyph actors after overlays, before drawing messages.
+    render_sequence_actor_man_tops(&mut out, &actor_ctx, diagram_id)?;
+
     let message_ctx = SequenceMessageRenderContext {
         model,
         nodes_by_id: &nodes_by_id,
@@ -236,6 +237,10 @@ fn render_sequence_diagram_svg_inner(
     };
     render_sequence_messages(&mut out, &message_ctx)?;
 
+    if settings.mirror_actors {
+        render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
+    }
+
     render_sequence_actor_popup_menus(
         &mut out,
         model,
@@ -248,10 +253,6 @@ fn render_sequence_diagram_svg_inner(
         },
         checkpoints,
     )?;
-
-    if settings.mirror_actors {
-        render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
-    }
 
     if let Some(title) = effective_title {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
