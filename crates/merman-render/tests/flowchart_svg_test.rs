@@ -3819,3 +3819,101 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         "expected supported flowchart fixture formulas to replace source delimiters: {svg}"
     );
 }
+
+#[test]
+fn flowchart_rounded_rect_radius_uses_effective_theme_and_source_truthiness() {
+    for (look, theme, radius, expected) in [
+        ("neo", "neo", None, Some(3.0)),
+        ("neo", "redux", None, Some(12.0)),
+        ("classic", "redux", None, Some(12.0)),
+        ("neo", "default", None, Some(5.0)),
+        ("classic", "default", None, Some(5.0)),
+        (
+            "classic",
+            "default",
+            Some(serde_json::json!(7.5)),
+            Some(7.5),
+        ),
+        ("neo", "redux", Some(serde_json::json!(40)), Some(40.0)),
+        ("neo", "redux", Some(serde_json::json!(0)), None),
+        ("classic", "default", Some(serde_json::json!(0)), None),
+        ("classic", "default", Some(serde_json::json!(false)), None),
+        ("neo", "redux", Some(serde_json::json!("")), None),
+        // initialize ignores a null override before the shape reads its effective theme.
+        ("neo", "redux", Some(serde_json::json!(null)), Some(12.0)),
+        ("neo", "redux", Some(serde_json::json!("0")), Some(0.0)),
+        (
+            "classic",
+            "default",
+            Some(serde_json::json!("7.5")),
+            Some(7.5),
+        ),
+    ] {
+        for html_labels in [true, false] {
+            let mut config = serde_json::json!({
+                "look": look, "theme": theme, "htmlLabels": html_labels
+            });
+            if let Some(radius) = radius.clone() {
+                config["themeVariables"] = serde_json::json!({"radius": radius});
+            }
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+            let svg =
+                render_flowchart_svg_from_text_with_engine(engine, "flowchart TD\nA(Label)\n");
+            let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
+            let rect = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .expect("rounded rectangle");
+            for attr in ["rx", "ry"] {
+                let actual = rect
+                    .attribute(attr)
+                    .map(|value| value.parse::<f64>().unwrap());
+                assert_eq!(
+                    actual, expected,
+                    "look={look}, theme={theme}, radius={radius:?}, htmlLabels={html_labels}, {attr}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
+    let render_paths = |radius: serde_json::Value, source: &str| {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": "handDrawn", "theme": "default", "handDrawnSeed": 42,
+            // Equal padding isolates the drawRect primitive from each shape's sizing policy.
+            "flowchart": {"padding": 0},
+            "themeVariables": {"radius": radius}
+        })));
+        let svg = render_flowchart_svg_from_text_with_engine(engine, source);
+        let document = roxmltree::Document::parse(&svg).expect("Flowchart SVG");
+        let shape = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("class") == Some("basic label-container")
+            })
+            .expect("hand-drawn shape");
+        let paths: Vec<String> = shape
+            .descendants()
+            .filter(|node| node.has_tag_name("path"))
+            .map(|node| node.attribute("d").unwrap().to_owned())
+            .collect();
+        assert!(!paths.is_empty());
+        paths
+    };
+    let source = "flowchart TD\nA(Label)\n";
+    assert_ne!(
+        render_paths(serde_json::json!(5), source),
+        render_paths(serde_json::json!(12), source)
+    );
+    let square = render_paths(serde_json::json!(0), "flowchart TD\nA[Label]\n");
+    assert_eq!(render_paths(serde_json::json!(0), source), square);
+    assert_eq!(render_paths(serde_json::json!(false), source), square);
+    assert_eq!(render_paths(serde_json::json!(""), source), square);
+    // A nonempty string remains truthy in drawRect and uses its path branch.
+    assert_ne!(render_paths(serde_json::json!("0"), source), square);
+}
