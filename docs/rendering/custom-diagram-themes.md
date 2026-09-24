@@ -22,9 +22,10 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 
 The current catalog advertises no dedicated Modern Mermaid reproduction. A successful SVG
 render is not proof of readable dense labels, complete effects, or PNG/PDF portability.
-Cyberpunk now carries its layered canvas and declares scoped Flowchart/Sequence shape glow,
-but those family effect consumers are still incomplete. Their residuals prevent qualification;
-exporting the complete recipe does not make the current preset a finished reference reproduction.
+Cyberpunk carries a layered canvas and scoped effects with bounded Flowchart, Sequence and XY
+Chart SVG/PNG/PDF observations. Larger scenes may exceed native export budgets. Brutalist and
+Spotless currently provide shared palette recipes; their names do not promise the reference
+hard-shadow or paper-grid treatments. Exporting a complete recipe does not qualify every scene.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
 and approve the visual design of a particular scene. Web `renderSvg()` returns only the SVG
 string, and `svgPlanJson().ready` checks artifact capabilities rather than applied theme facets.
@@ -45,6 +46,23 @@ recipe and explain whether it has base-only or unreviewed styling. A host can of
 alternative. Unknown preset IDs and unsupported input schema versions are input errors, not reasons
 to silently substitute a default. An unsupported effect must remain visible in support/admission
 handling; choosing another preset must not conceal it.
+
+## Export glow and shadows to PDF
+
+PDF export can retain supported glow and shadow effects through localized rasterization of
+filtered regions while retaining other vector content. This can increase export time and PDF
+size. Inspect the actual PDF, including labels, arrowheads and outward glow; a successful SVG
+preview does not guarantee native export support for the same scene.
+
+Native conversion has a finite aggregate filter-primitive ceiling. For example,
+`max_total_svg_conversion_filter_primitives` reports a rejected scene's observed count and limit.
+The current ceiling is 128; it is a backend guard, not a caller-overridable theme option.
+Reducing image resolution does not reduce this primitive count.
+
+Keep the error visible when the scene exceeds a limit. Let the user explicitly simplify the
+recipe or choose another output target. Do not silently discard shadows, replace the theme or
+retry with relaxed resource checks. PDF filter-image sampling has a separate reported pixel
+budget; it does not remove filter-complexity limits. Font names still resolve through the host.
 
 ## Understand unapplied settings
 
@@ -260,8 +278,8 @@ The public Cyberpunk recipe uses these kind selectors and a three-color cycle: c
 and repeats after the third series. Saving the preset includes these rules and effect graphs.
 The recipe also scopes cyan (`#00f2ff`) text to the XY Chart title (18px, weight 700), axis
 titles (13px), and legend (12px). Tick-label sizes retain their baseline. These values survive
-preset export and fresh import. Text glow and final public-scene validation remain open;
-this is not qualification of the full Cyberpunk design. Public qualification cells remain empty.
+preset export and fresh import. Scoped text glow has bounded SVG/PNG/PDF scene observations;
+these do not qualify every input or the full Cyberpunk design. Public qualification cells remain empty.
 
 ## Style XY Chart text roles
 

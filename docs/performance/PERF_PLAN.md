@@ -343,10 +343,10 @@ part of this release-range comparison; this is not theme-only attribution.
 
 Stage diagnostics and matched alpha.6/candidate CPU sampling identify prepared-text token
 partitioning and standalone SVG finalization as shared cost centers. First review the minimal
-typed-theme/SVG dependency and execution boundary separately from explicit font-resource and
-native-export guarantees; the current non-optional shaping/WOFF2 closure needs a product
-justification beyond typed configuration. Investigate repeated scanning/allocation and ownership of
-already validated artifact facts. Preserve output bytes, terminal evidence, malformed-token and
+typed-theme/SVG dependency and execution boundary separately from native-export guarantees.
+Theme font embedding/shaping was retired in `54b4d484a`; that removes its dependency cost but does
+not close the default-SVG regression. Investigate scanning/allocation and ownership of already
+validated artifact facts. Preserve output bytes, terminal evidence, malformed-token and
 XML errors, resource limits and cancellation. Do not revive the rejected July raw-string API or
 skip admission because the caller did not explicitly select a theme.
 
@@ -377,7 +377,7 @@ they remain release-range evidence, not theme-only attribution.
 Two-pair stage diagnostics show sub-microsecond parse deltas and family SVG emission increases
 of 16.50/92.57 µs. Layout projection identities differ only in the default secure-key list;
 geometry matches, but that changed-config stage is not sampled. Four fresh CPU captures retain
-the measured binary identities: current standalone finalization accounts for 2,393 of 7,493
+the measured binary identities: that capture's standalone finalization accounts for 2,393 of 7,493
 main-thread end-to-end samples, including 2,327 in XML/reference resource-budget checking.
 These overlapping samples identify the next owner to investigate, not removable time. Preserve
 the new artifact/resource/admission contract and do not infer a finalizer-only cause by subtracting
@@ -388,6 +388,18 @@ allocation reduction without weakening effect accounting; full strict verificati
 blocked by existing workspace Clippy errors. It does not materially resolve the measured
 alpha.6 latency gap. Continue source-backed attribution before choosing another candidate;
 do not infer a speedup from reduced temporary storage.
+
+The [September 24 correctness and attribution checkpoint](../knowledge/engineering/verification/2026-09-24-modern-theme-performance-attribution.md)
+refreshes sampling at `8325653c3` after font retirement. Ordinary XML/reference budget validation
+accounts for 36.50%, 33.20% and 24.49% of the Flowchart-tiny, Sequence-medium and Class-medium
+main-thread samples respectively (inclusive, overlapping counts). This default BestEffort path
+already combines XML/reference collection in one pass and does not perform strict resvg/resource
+closure certification. Attribute its remaining attribute validation and reference-plan allocations
+before proposing another traversal refactor. Class also constructs node/relation/marker terminal
+expectations without a selected theme; determine their source-style responsibilities before making
+that work conditional. Keep reserved-token defenses, fingerprint identities and cancellation/error
+ordering intact. The 8-second `profile_render` stage data are diagnostic; its render stage includes
+preparation and is not Criterion's render-only body. No new latency improvement is claimed.
 
 Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
 cross-family controls, full relevant negative-contract tests, and the existing scenario-specific

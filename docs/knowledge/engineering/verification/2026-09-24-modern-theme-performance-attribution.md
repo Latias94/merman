@@ -2,94 +2,221 @@
 type: Audit Report
 title: Modern Mermaid README theme capability and performance attribution
 timestamp: 2026-09-24
-source_commit: 4c1a10733
+source_commit: 8325653c3
 reference_commit: a021cbce37fc0b07a9f4791c28e983101ea06f2d
 comparison_revision: v0.8.0-alpha.6
 ---
 
-#结论
+# Decision
 
-当前分支已经具备输出一部分接近 Modern Mermaid README 展示效果的基础能力，但还不能把自己描述成“支持 README 中的主题集合”。现有能力最接近 Brutalist、Spotless、Cyberpunk 三类效果；Ghibli、Memphis、HandDrawn 尚未成为当前公开 preset。更严格地说，当前 Cyberpunk 的复杂 glow 可以在 standalone SVG 中生成，但同一场景的 PNG/PDF 导出会触发 `max_total_svg_conversion_filter_primitives = 128` 的硬上限，因此还不能作为跨目标的完成验收。
+The current product can produce a complete Cyberpunk scene with visible glow in SVG, PNG and PDF
+within bounded workloads. Larger scenes can exceed native export limits and must fail explicitly.
+Keep that boundary; do not raise limits or silently remove effects to make demonstrations pass.
+The maintainer accepts explicit failure when faithful adaptation is not cost-effective.
 
-性能方面需要分成两个结论：
+The README appearance goal remains open. Public Brutalist and Spotless currently supply shared
+palette recipes, not the reference's full hard-shadow or paper-grid treatments. Their successful
+exports do not prove those missing effects. Ghibli, Memphis and HandDrawn have no public presets.
+The initial delivery should retain Cyberpunk's bounded scenes and add real, family-scoped
+Brutalist and Spotless treatments before expanding the catalog.
 
-- **主题视觉机制本身的增量目前是合理的。** 旧主题实现关闭字体处理与当前分支对比，普通 SVG 端到端仅约 `-0.16%` 到 `+1.97%`，主题 API 约在 `±2%` 内；移除 embedded fonts 后二进制也下降。
-- **alpha.6 到当前版本的整体回归不合理地归因成“主题成本”。** 同输入阶段 profile 显示 parse 基本稳定，主要增量发生在 SVG 生成和最终 admission/finalization。当前端到端比 alpha.6 慢约 `1.76x` 到 `2.95x`，默认 CLI stripped 增长约 `19.00%`。这应被视为版本区间回归，需要继续拆解，而不是接受为主题功能的必然成本。
+The default-render performance regression remains open. Fresh CPU sampling identifies ordinary
+XML/reference budget validation as a substantial cost center. Code inspection also finds Class
+theme terminal-expectation construction on the no-theme path. The regression cannot be assigned
+entirely to theme styling, but it cannot be declared unrelated to the theme architecture either.
 
-#README 级主题效果的当前边界
+## Corrections to the first version of this report
 
-Modern Mermaid README 的主题截图实际展示了六种设计语言：
+- The font-retirement comparison has theme code on both sides. Its approximately ±2% changes
+  support only a non-regression observation for that removal; they do not establish that theme
+  rendering overhead is acceptable.
+- `profile_render` logs total iterations over about eight seconds, not iterations per second.
+  The table below divides by actual elapsed time.
+- Its `render` stage includes session creation, parsed-model cloning, preparation/layout and SVG
+  emission. Call it **prepare + render**. Criterion `pipeline` has a separate render-only timed
+  body, with preparation outside that body. Do not mix these two measurements.
+- Ordinary BestEffort SVG validates XML and reference budgets. It does not perform the strict
+  resvg compatibility/resource-closure certification. A resource fingerprint is a hash of SVG
+  bytes and font policy, not a resource-closure scan.
+- The earlier Class CPU samples were collected at `e4db6ff9c`, not this revision. Fresh samples
+  below supersede them for current hotspot attribution.
+- The 18 Cyberpunk native failures in the 510-output reference probe occurred on larger literal
+  examples. They do not imply that the three bounded public scenes fail.
 
-| README 示例 | 主要视觉机制 | 当前状态 |
+# Appearance and output boundaries
+
+| Reference design | Required visible identity | Current public preset |
 | --- | --- | --- |
-| Brutalist | 粗轮廓、硬偏移阴影、强对比和 ordinal 色板 | 有 preset，可作为首批验收样式；仍需按 family/target 完成 qualification |
-| Cyberpunk | 青紫霓虹、链式 glow、深色网格和径向背景 | 有完整 recipe；当前有 Flowchart、Sequence、XY Chart 公共场景；PNG/PDF 复杂场景受滤镜硬上限限制 |
-| Ghibli | 米色纸张、棕色线条、无边框卡片、柔和阴影 | 当前无公开 preset |
-| Memphis | 黑色粗线、硬阴影、鲜艳 ordinal 色、几何纹理 | 当前无公开 preset |
-| Spotless | 纸张/网格、手工墨线、全大写、紧凑圆角 | 有 preset，可作为首批验收样式；字体仍是宿主能力 |
-| HandDrawn | 手写字体和不规则线条滤镜 | 当前无公开 preset；字体和不规则滤镜都需要单独的宿主/目标验收 |
+| Brutalist | Bold outlines, hard offset shadows, strong ordinal accents | Shared palette only; dedicated treatment remains open |
+| Cyberpunk | Cyan/magenta glow, navy grid and layered background | Complete scoped recipe; bounded Flowchart, Sequence and XY scenes verified below |
+| Ghibli | Cream paper, brown lines, soft card shadows | Not present |
+| Memphis | Heavy black lines, hard shadows, vivid ordinal colors, geometric texture | Not present |
+| Spotless | Paper grid, manual-like ink and typography | Shared palette only; dedicated treatment remains open |
+| HandDrawn | Handwriting and irregular-line treatment | Not present; host-font and geometry/filter scope must be explicit |
 
-这意味着第一阶段应固定一个小而可证明的展示集合，而不是直接承诺 Modern Mermaid 的 24 个主题。建议第一阶段以 `brutalist`、`spotless`、`cyberpunk` 为三个 recipe archetype，分别覆盖：硬阴影、纸张/手工风、霓虹/多层背景。Ghibli、Memphis、HandDrawn 应作为后续 recipe 设计工作，不应只通过改名或复制颜色进入 catalog。
+The recipe dispatch in `crates/merman-render/src/diagram_theme/presets/catalog.rs:254` selects a
+dedicated builder only for Cyberpunk. Brutalist/Spotless go through `build_cross_family_recipe`.
+Inspection of their actual Flowchart PNGs confirms palette changes without the reference hard
+shadow/grid treatment. This is a product gap, not an export failure.
 
-当前 README fence 执行探针共运行 `34 × 5 × 3 = 510` 个输出组合。以当前 CLI 和五个已存在 preset（editor-light、editor-dark、brutalist、spotless、cyberpunk）执行时，有 477 个组合成功，33 个失败：
+## Current correctness observations
 
-- 18 个 Cyberpunk PNG/PDF 组合因累计 SVG filter primitive 为 132 或 136，超过 128 的 native export 硬上限；
-- 15 个 GitGraph 组合因输入包含当前 parser 不接受的中文分支引用而失败，这属于输入/diagram parser 问题，不是主题机制问题。
+Source `8325653c3` was rebuilt with `cargo build --locked --release -p merman-cli` using one build
+job. Production sources match the preceding diagnostic revision; only documentation changed.
+All captures use the current host's fonts, not embedded theme font resources.
 
-这个探针只能证明“能否执行并生成合法签名”，不能替代视觉 qualification。真正的 README 级验收需要固定场景、主题、family、target 和宿主字体条件，并检查机制与语义。
+- **54/54 exports succeeded:** Brutalist, Spotless and Cyberpunk; public Flowchart, Sequence and
+  XY fixtures; SVG, PNG and PDF; both default label configuration and `htmlLabels: false`.
+  This is execution coverage, not appearance qualification for all three presets.
+- **110/110 Cyberpunk PDF pixel probes passed:** 26 Flowchart, 35 Sequence and 49 XY observations.
+  The existing `tools/debug/check_cyberpunk_pdf.py` renders actual PDFs through PDFium at 96 dpi,
+  requires identical pixels after raw SVG replay, then removes individual effects, markers,
+  canvas layers and labels to prove that each contributes pixels. Label probes disable glow first.
+  Source and output hashes, PDFium/Pillow versions, dimensions and font scope are recorded.
+- **Four expected native rejections:** literal reference examples 01 and 05 still emit SVG;
+  their PNG and PDF exports return the stable
+  `max_total_svg_conversion_filter_primitives` error at 132 and 136 against the cap of 128.
+  Fresh output paths remain absent. The counter may stop at the first exceeded bound; these
+  values are not necessarily the completed scene's total primitive count.
 
-#性能归因
+The 110 probes prove visible contributions, not exact agreement with reference blur pixels or
+universal absence of clipping. Font equivalence across hosts and broad family qualification remain
+open. No `qualified_cells` were promoted. Visual inspection of the bounded Flowchart PDF raster
+also confirms readable labels, arrowheads, cyan glow and the full grid background.
 
-## 同口径 alpha.6 阶段 profile
+The earlier literal-example probe ran 34 examples × five presets × three formats: 477/510
+executions succeeded. Of 33 failures, 18 were Cyberpunk native-budget rejections and 15 came from
+one GitGraph input with an unsupported branch reference. That probe checks execution/signatures,
+not visual fidelity.
 
-两边使用相同 Mermaid fixture、默认 feature、默认 `Renderer::new()` 路径和 8 秒阶段 profile。当前值为每秒完成次数，越低表示越慢：
+## PDF adaptation decision
 
-| 场景 | 阶段 | alpha.6 | 当前 | 当前相对吞吐 |
+The existing export path preserves vector content where supported and rasterizes filtered regions
+locally. `PdfOptions` requests filter scale 4 by default and separately budgets aggregate filter
+image pixels. That is useful existing support; no new backend or dependency is needed for the
+bounded glow scenes. The captured `htmlLabels: false` Cyberpunk PDFs are 489,421, 408,308 and 366,365 bytes
+for the Flowchart, Sequence and XY scenes respectively.
+
+Maintain these rules:
+
+1. Preserve requested stage order, color/alpha, labels, markers and background within supported
+   budgets. Validate actual PDF pixels, not only a PDF header or filter receipt.
+2. Keep filter-complexity ceilings active. Lowering raster scale does not remove the primitive
+   count limit. An SVG success is not a native-export guarantee.
+3. For an unsupported effect or exceeded budget, retain explicit error/admission behavior. A
+   caller may explicitly edit its recipe; the renderer must not silently remove glow, choose a
+   different preset or relax limits.
+4. The existing reported filter-image sampling policy is separate from primitive complexity.
+   Do not change sampling quality or report a new fidelity guarantee in a performance patch.
+
+# Default-render performance attribution
+
+## Historical-to-current stage diagnostic
+
+Both executables use default `complete-svg` features and the same inputs, without an explicit
+preset. The example source is identical. These are sequential single-run diagnostics, not
+calibrated A/A and AB/BA confirmation. The XOR length checksum does not prove equal output bytes;
+use the separate matched Class evidence for a decision-grade release-range regression.
+
+| Scene | Profile stage | alpha.6 ops/s | Current ops/s | Current/base |
 | --- | --- | ---: | ---: | ---: |
-| flowchart_tiny | parse | 1,588,757 | 1,484,895 | 93.5% |
-| flowchart_tiny | layout | 581,397 | 446,600 | 76.8% |
-| flowchart_tiny | render | 288,600 | 169,900 | 58.9% |
-| flowchart_tiny | end-to-end | 226,345 | 76,686 | 33.9% |
-| sequence_medium | parse | 273,550 | 278,049 | 101.6% |
-| sequence_medium | layout | 109,419 | 163,856 | 149.8% |
-| sequence_medium | render | 73,200 | 49,700 | 67.9% |
-| sequence_medium | end-to-end | 56,920 | 24,578 | 43.2% |
-| class_medium | parse | 104,154 | 105,886 | 101.7% |
-| class_medium | layout | 26,773 | 23,408 | 87.4% |
-| class_medium | render | 15,200 | 12,300 | 80.9% |
-| class_medium | end-to-end | 13,178 | 7,510 | 57.0% |
+| flowchart_tiny | parse | 198,594.6 | 185,611.9 | 93.46% |
+| flowchart_tiny | prepare | 72,674.6 | 55,825.0 | 76.81% |
+| flowchart_tiny | prepare + render | 36,070.5 | 21,229.5 | 58.86% |
+| flowchart_tiny | end-to-end | 28,293.1 | 9,585.8 | 33.88% |
+| sequence_medium | parse | 34,193.8 | 34,756.1 | 101.64% |
+| sequence_medium | prepare | 13,677.4 | 20,482.0 | 149.75% |
+| sequence_medium | prepare + render | 9,147.7 | 6,202.4 | 67.80% |
+| sequence_medium | end-to-end | 7,115.0 | 3,072.2 | 43.18% |
+| class_medium | parse | 13,019.2 | 13,235.8 | 101.66% |
+| class_medium | prepare | 3,346.6 | 2,926.0 | 87.43% |
+| class_medium | prepare + render | 1,890.3 | 1,527.0 | 80.78% |
+| class_medium | end-to-end | 1,647.2 | 938.8 | 56.99% |
 
-parse 阶段没有数量级变化；sequence 的 layout 甚至更快。由此可以排除“主题配置解析让所有阶段都变慢”这个简单解释。render 阶段的增量与 SVG 输出、文字准备、效果 materialization 和 evidence 记录相关；end-to-end 还额外包含最终 standalone artifact 的校验和 target admission。
+Parse is not the dominant regression signal. Sequence preparation improves while its end-to-end
+operation regresses. This prioritizes SVG emission and post-emission work for investigation; it
+does not allow subtracting independently measured stages to obtain an exact causal breakdown.
+The earlier default CLI comparison showed stripped growth of 6,987,552 bytes (19.00%). That is
+whole-version footprint, not size attributed to one theme module or dependency.
 
-## 当前代码中可对应的成本
+## Fresh current CPU samples
 
-当前 SVG public path 在 `render_svg_target` 中会继续执行 `finalize_standalone_for_target_admission`。该路径包括：
+Rebuilt `profile_render` with default features plus redundant `svg`, optimized bench profile.
+Each fixture ran the public end-to-end operation for 13 seconds; macOS `sample` attached after
+one second for eight seconds at 1 ms intervals. Runs were serial. Attached-sampler timings are
+excluded from latency evidence. No theme preset was requested.
 
-1. prepared text ledger 和 terminal receipt 的确认；
-2. SVG resource closure fingerprint；
-3. XML well-formed 校验；
-4. reference/resource budget 和 resvg compatibility 检查；
-5. 主题 evidence、native filter receipt、宿主字体和 target admission digest 的绑定；
-6. document/receipt 的 SHA-256 摘要。
+| Symbol scope | Flowchart tiny (6,646 samples) | Sequence medium (6,530) | Class medium (6,047) |
+| --- | ---: | ---: | ---: |
+| Standalone finalization | 37.21% | 33.45% | 24.79% |
+| Ordinary XML/reference budget validation | 36.50% | 33.20% | 24.49% |
+| XML element validation | 19.73% | 19.98% | 14.07% |
+| Family SVG emission | 17.79% | 25.60% | 23.35% |
+| SHA-256 symbols across callers | 7.78% | 6.66% | 4.93% |
 
-现有 CPU sampling 已观察到 `finalize_standalone_with_portability`、`StandaloneSvgArtifact::finalize_exact`、`check_svg_resource_budget_with_controls` 和 `validate_well_formed_element` 占据当前 Class medium 端到端样本的重要比例，而 alpha.6 没有对应的 finalization symbols。这个证据支持以下归因排序：
+These are inclusive, overlapping stack counts. XML element validation is inside budget validation,
+which is inside finalization; do not add percentages or interpret them as removable time. Optimized
+symbol inlining/merging also prevents exact attribution of small helper costs without disassembly
+or an isolated experiment. This is current hotspot evidence, not a speedup or acceptance result.
 
-- **高可信：** 输出安全契约、资源闭包、XML/reference 校验、target admission 和摘要计算是当前端到端回归的主要来源；
-- **中可信：** 主题 effect 实例化和 per-terminal filter/evidence 记录增加了 SVG render 成本，尤其是 Cyberpunk；
-- **低可信：** 仅把 theme recipe 编译、颜色 token、font-family 字符串或 preset catalog 解释成主要回归来源。已有主题 API 基准不支持这种解释。
+## Actual default path and remaining hypotheses
 
-因此合理的优化方向不是删除主题验收证据，而是把普通 SVG、strict/resvg-safe SVG、PNG/PDF native export 的必需工作分层，并测量每一层的独立成本。任何削弱资源限制或 target admission 的改动都不能直接作为性能优化合入。
+`render_svg_target` always finalizes the standalone artifact. With `pipeline=None` and BestEffort,
+`StandaloneSvgArtifact::finalize_exact` hashes the resource identity and checks XML/reference
+budgets. Strict resvg/CSS/resource-closure certification belongs to different policy branches.
+The ordinary validator already collects XML and reference facts in one traversal; the previously
+merged single-pass optimization must not be proposed again as unfinished work.
 
-#建议的验收门槛
+Class has an empty prepared-text ledger. Its partition helper still searches for reserved label
+spelling, but does not run token-bearing XML rewriting.
+Flowchart and Sequence have separate prepared-text paths and must be measured independently.
 
-README 级主题验收应按 `theme × family × target × host` 建立 cell，而不是只检查 preset 名称：
+There is theme-related work without a selected theme: `svg/parity/class/render.rs:54-99` builds
+node, relationship and marker expectations, an ID map, a cloned node list and a terminal receipt.
+`class/theme/evidence.rs:65-67` skips final theme aggregation only later. This is a concrete candidate
+for demand-driven ownership, but current sampling does not prove how much time it would save or
+which expectations also serve non-theme source styles.
 
-1. **视觉机制**：背景层、颜色 token、ordinal palette、圆角/线宽、阴影或 glow、字体名称分别有可观察证据；
-2. **语义保持**：节点/边/消息/系列数量、marker、标签和顺序不因主题改变；
-3. **目标分离**：standalone SVG、PNG、PDF 分开验收；SVG 成功不能自动推导 PNG/PDF 成功；
-4. **字体边界**：字体名称和排版值可进入 recipe，字体字节不打包，缺失字体必须显示 HostDependent 或明确 residual；
-5. **资源预算**：每个 effect graph、每个输出目标和聚合 filter primitive 数量都在预算内；超预算应是可解释的失败；
-6. **固定展示集**：至少为 Brutalist、Spotless、Cyberpunk 各固定一组 README 风格场景，并保存 source、recipe fingerprint、target 和输出摘要；
-7. **资格状态**：只有上述证据完整时才填写 `qualified_cells`，否则保留 Available/HostDependent/Unverified。
+Prioritize experiments in this order:
 
-当前建议的产品判断是：主题能力可以继续推进 README 级展示，但先把三个已有 archetype 做成跨目标、跨 family 的小矩阵；性能上先关闭“主题重构整体回归”这个未决项，优先对 finalization/resource validation 和 effect materialization 做消融测量。只有当普通无效果主题的 alpha.6 回归被压回可解释范围，并且 Cyberpunk 的 PNG/PDF 预算得到明确策略后，才适合把更多 README 主题加入公开 catalog。
+1. Attribute allocations/work inside ordinary XML attribute validation and reference-plan
+   construction. Preserve QName/namespace/entity checks, duplicate attributes, raw element and
+   reference amplification limits, error ordering and cancellation.
+2. Determine which Class terminal expectations are genuinely theme-only. Reuse or avoid those
+   only when the owning layer proves they are unnecessary; retain source-style and marker checks.
+3. Measure reserved-label scanning and artifact hashing separately. Reusing immutable artifacts
+   may help, but changing domain-separated fingerprints or dropping token defenses changes
+   contracts and is not a transparent optimization.
+4. Keep effect-heavy resvg-safe SVG, PNG and PDF as separate workloads. Glow is legitimate opt-in
+   work; default no-preset CPU samples cannot measure its marginal cost.
+
+The necessary checks have value. Their current implementation cost is not automatically justified
+by that value. No production bypass, budget relaxation or optimization was made in this checkpoint.
+
+# Reproduction and evidence
+
+Ignored evidence root: `target/bench/experiments/theme-correctness-20260924/`.
+
+- `matrix.json`: exact 54 commands, source/output hashes, CLI hash and host.
+- `boundary-errors.json`: six larger-example executions, including four expected native errors.
+- `pdf-pixels/results.json`: 110 pixel probes and reader/tool versions.
+- `nextest.log`: 24/24 focused `theme_composed_effects` and `theme_xychart_text` tests passed
+  with `--features svg,png,pdf`, one build job and one test thread. The suites include primitive
+  budget rejection, composed shadows, text paint and marker preservation.
+- `profile/runs.json`, `*.sample.txt`, `symbol-counts.json`: current executable/input identity and
+  raw CPU samples. Count only the call graph, not the repeated bottom-of-stack summary.
+- Earlier stage logs: `target/bench/experiments/theme-cost-attribution-20260924/` and the alpha.6
+  worktree `/private/tmp/merman-alpha6-u10-common/target/bench/experiments/theme-cost-attribution-20260924/`.
+
+The existing PDF probe can be reproduced without adding application dependencies:
+
+```console
+uv run --with pillow --with pypdfium2 python tools/debug/check_cyberpunk_pdf.py \
+  --cli target/release/merman-cli --output <new-output-directory>
+```
+
+A bounded README acceptance cell must specify recipe, family, source, target and host font
+conditions; show actual intended visual mechanisms; preserve labels, geometry and markers; and
+retain explicit unsupported/over-budget behavior. Export success and catalog presence alone do
+not close that cell. Brutalist/Spotless dedicated recipes and the overall performance/footprint
+acceptance remain open.
