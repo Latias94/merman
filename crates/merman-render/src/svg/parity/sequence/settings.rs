@@ -65,7 +65,7 @@ impl SequenceRenderSettings {
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
             font_size: actor_label_font_size,
-            font_weight: Some("400".to_string()),
+            font_weight: config.note_font_weight(),
             font_style: None,
         };
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
@@ -123,6 +123,28 @@ pub(super) fn sequence_text_style_attribute(style: &TextStyle) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn note_weight_reaches_inline_style_without_changing_message_weight() {
+        for weight in [json!(700), json!("700")] {
+            let settings = SequenceRenderSettings::from_effective_config(&json!({
+                "sequence": {"noteFontWeight": weight},
+                "themeVariables": {"noteFontWeight": 600},
+            }));
+            assert_eq!(settings.note_text_style.font_weight.as_deref(), Some("700"));
+            assert_eq!(settings.loop_text_style.font_weight.as_deref(), Some("400"));
+            assert!(
+                sequence_text_style_attribute(&settings.note_text_style)
+                    .contains("font-weight: 700;")
+            );
+        }
+        let settings = SequenceRenderSettings::from_effective_config(&json!({
+            "sequence": {"noteFontWeight": "700; font-style: italic"}
+        }));
+        let css = sequence_text_style_attribute(&settings.note_text_style);
+        assert!(!css.contains("font-weight"), "{css}");
+        assert!(!css.contains("font-style"), "{css}");
+    }
 
     #[test]
     fn sequence_render_settings_keep_svg_numeric_type_semantics() {

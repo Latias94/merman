@@ -2105,7 +2105,7 @@ A-->B: Headless dotted"#,
 fn sequence_classic_svg_honors_theme_css_options() {
     let svg = render_sequence_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"sequence": {"look": "classic"}, "themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
+        r##"%%{init: {"sequence": {"look": "classic", "noteFontWeight": 700}, "themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
 sequenceDiagram
 autonumber
 participant Alice
@@ -2159,10 +2159,20 @@ end"##,
         "expected note theme colors in Sequence CSS: {svg}"
     );
     assert!(
-        svg.contains(
-            r#".noteText,#merman .noteText>tspan{fill:#eeeeee;stroke:none;font-weight:600;}"#
-        ),
-        "expected note text theme color and weight in Sequence CSS: {svg}"
+        svg.contains(r#".noteText,#merman .noteText>tspan{fill:#eeeeee;stroke:none;}"#),
+        "expected note text theme color without a tspan weight override in Sequence CSS: {svg}"
+    );
+    let document = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+    let note_text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("noteText"))
+        .expect("note text");
+    assert!(
+        note_text
+            .attribute("style")
+            .unwrap()
+            .contains("font-weight: 700"),
+        "the configured note weight must reach the text that note tspans inherit"
     );
     assert!(
         svg.contains(r#".activation0{fill:#010203;stroke:#040506;}"#),

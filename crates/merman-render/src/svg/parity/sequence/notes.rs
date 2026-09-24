@@ -171,8 +171,9 @@ mod tests {
             fn measure_svg_tspan_text_bbox_height_px(
                 &self,
                 text: &str,
-                _: &crate::text::TextStyle,
+                style: &crate::text::TextStyle,
             ) -> f64 {
+                assert_eq!(style.font_weight.as_deref(), Some("700"));
                 self.0.set(self.0.get() + 1);
                 match text {
                     "first" => 10.4,
@@ -183,6 +184,9 @@ mod tests {
             }
         }
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let settings = super::super::settings::SequenceRenderSettings::from_effective_config(
+            &serde_json::json!({"sequence": {"noteFontWeight": 700}}),
+        );
         for margin in [5.0, 0.0, -5.0] {
             let probe = TspanProbe(std::cell::Cell::new(0));
             let mut out = String::new();
@@ -196,7 +200,7 @@ mod tests {
                     measurer: &probe,
                     note_margin: margin,
                     wrap_padding: 10.0,
-                    note_text_style: &crate::text::TextStyle::default(),
+                    note_text_style: &settings.note_text_style,
                     sanitize_config: &merman_core::MermaidConfig::default(),
                     math_renderer: None,
                     checkpoints: super::SequenceEmitCheckpoints::new(&meter),
@@ -218,6 +222,16 @@ mod tests {
                     vec!["10.25"; 3]
                 }
             );
+            for node in document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+            {
+                assert!(
+                    node.attribute("style")
+                        .unwrap()
+                        .contains("font-weight: 700;")
+                );
+            }
             assert_eq!(out.matches("dy=\"1em\"").count(), 3);
             assert!(out.contains("&amp;</tspan>"));
             assert_eq!(probe.0.get(), if margin > 0.0 { 3 } else { 0 });

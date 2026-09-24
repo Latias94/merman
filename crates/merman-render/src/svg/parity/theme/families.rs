@@ -580,11 +580,6 @@ impl<'a> PresentationTheme<'a> {
             activation_fill: self.raw.color("activationBkgColor", "#f4f4f4"),
             activation_border: self.raw.color("activationBorderColor", "#666"),
             node_border: self.raw.color("nodeBorder", actor_border.as_str()),
-            note_font_weight: self
-                .raw
-                .optional_value("noteFontWeight")
-                .map(|font_weight| format!("font-weight:{};", font_weight))
-                .unwrap_or_default(),
             label_box_filter: if self.common.is_neo() {
                 self.raw.css_value("dropShadow", "none")
             } else {

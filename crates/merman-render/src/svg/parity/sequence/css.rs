@@ -76,7 +76,6 @@ pub(super) fn sequence_css(
     let activation_border = theme.activation_border.as_str();
     let node_border = theme.node_border.as_str();
     let label_box_filter = theme.label_box_filter.as_str();
-    let note_font_weight = theme.note_font_weight.as_str();
 
     let _ = write!(
         &mut out,
@@ -159,10 +158,12 @@ pub(super) fn sequence_css(
         r#"#{} .note{{stroke:{};fill:{};}}"#,
         id, note_border, note_fill
     );
+    // Mermaid 12 leaves the tspan weight inherited from drawText's inline text style.
+    // A theme weight here would override sequence.noteFontWeight on the parent text.
     let _ = write!(
         &mut out,
-        r#"#{} .noteText,#{} .noteText>tspan{{fill:{};stroke:none;{}}}"#,
-        id, id, note_text, note_font_weight
+        r#"#{} .noteText,#{} .noteText>tspan{{fill:{};stroke:none;}}"#,
+        id, id, note_text
     );
     let _ = write!(
         &mut out,
@@ -261,9 +262,10 @@ mod tests {
     }
 
     #[test]
-    fn sequence_css_honors_mermaid_11_15_theme_options() {
+    fn sequence_css_honors_mermaid_12_theme_options() {
         let cfg = json!({
             "look": "neo",
+            "sequence": {"noteFontWeight": 700},
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
                 "textColor": "#abc001",
@@ -317,9 +319,12 @@ mod tests {
             )
         );
         assert!(css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
-        assert!(css.contains(
-            r#"#seq .noteText,#seq .noteText>tspan{fill:#eeeeee;stroke:none;font-weight:600;}"#
-        ));
+        assert!(css.contains(r#"#seq .noteText,#seq .noteText>tspan{fill:#eeeeee;stroke:none;}"#));
+        // styles.js deliberately omits weight on note tspans: theme 600 must not
+        // override the weight inherited from the parent text's inline style.
+        for rule in css.split('}').filter(|rule| rule.contains(".noteText")) {
+            assert!(!rule.contains("font-weight"), "{rule}");
+        }
         assert!(css.contains(r#"#seq .activation0{fill:#010203;stroke:#040506;}"#));
         assert!(css.contains(
             r#"#seq g rect.rect{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));stroke:#070809;}"#

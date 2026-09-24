@@ -82,7 +82,6 @@ pub(super) struct SequenceDiagramTheme {
     pub(super) activation_fill: String,
     pub(super) activation_border: String,
     pub(super) node_border: String,
-    pub(super) note_font_weight: String,
     pub(super) label_box_filter: String,
 }
 
