@@ -24,14 +24,15 @@ status: active
 - Consumer focus: five production Web WASM packages build; Web Node tests, Playground
   prepared/lint/build/eight browser smoke cases, and 255 VS Code tests pass. Those full
   WASM artifacts predate the latest renderer repairs and require rebuilding.
-- Remaining parity gates: a fresh current-source comparison passes all 34 primary
-  families outside Flowchart/State/Sequence. Flowchart has 64 distinct DOM blockers
-  and 34 stale receipt fixtures; State has 12 DOM blockers; Sequence has 25 plus four
-  stale receipts. Usecase is outside the primary matrix and was not selected by
-  compare-all; its family tests and changed golden need separate verification.
-  State compound self-loops now pass. Source reviews found further real gaps in
-  compound child-publication order, State theme radius, Sequence note CSS weight,
-  and Neo Flowchart shape geometry. Fix these before admitting measurement receipts.
+- Remaining parity gates: fresh current-source comparisons pass all 34 primary
+  families outside Flowchart/State/Sequence. Flowchart has 62 distinct DOM blockers
+  after the first two Neo geometry batches and 34 stale receipt fixtures; State has
+  12 DOM blockers; Sequence has 25 plus four stale receipts. Usecase is outside the
+  primary matrix and was not selected by compare-all; its family tests and changed
+  golden need separate verification. State compound self-loops, effective theme
+  radius, State label minimum width, and Sequence note CSS weight now have
+  source-backed fixes. Remaining work is the held State route/measurement set,
+  cylinder/bow-tie/stacked/triangle-related Neo shapes, and stale receipt review.
 - Artifact-size focus: production theme audit snapshots were removed in `6dc4c9f6f`
   after equivalent-output tests and isolated measurement. Both analysis/editor gzip
   and Brotli sizes improve, but all four compressed budgets still fail. Preserve
