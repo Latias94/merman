@@ -559,6 +559,20 @@ installation contract, process matrix, license-scope test, and CLI README. The d
 no-default-feature builds remain available. The installation, process-matrix, feature-matrix,
 license, legal-projection, Web build, package, and smoke checks pass at this boundary.
 
+
+# Slim WASM compiler experiments
+
+Two source-preserving A/B experiments were run against the analysis profile after the final
+rebuild. Candidate A overrode only `CARGO_PROFILE_WASM_SIZE_OPT_LEVEL=s` while keeping wasm-pack,
+Binaryen, strip, and compression unchanged. It produced 4,253,215 raw bytes, 4,252,992 stripped,
+1,657,633 gzip, and 1,234,516 Brotli bytes, materially worse than the official 3,544,491 /
+3,544,268 / 1,413,098 / 1,089,462 result.
+
+Candidate B applied only `wasm-opt -Oz --converge --all-features` to the official analysis input.
+It produced 3,452,981 raw bytes and 3,452,621 stripped bytes, but compressed to 1,414,857 gzip
+and 1,093,702 Brotli bytes, both worse than the official pipeline. Both candidates are rejected;
+no compiler profile, Binaryen flags, capability set, or budget was changed.
+
 # Open gates
 
 The transferred provider/brace batch and source-compatible model-order correction are
