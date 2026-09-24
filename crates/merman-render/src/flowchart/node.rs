@@ -810,9 +810,11 @@ fn node_render_dimensions(
 
         // Flowchart v2 document (wave-edged rectangle).
         "doc" | "document" => {
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 8.0;
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
+            let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
             let final_h = h + wave_amplitude;
             let min_width = 14.0;
             let extra_w = if w < min_width {
@@ -902,9 +904,11 @@ fn node_render_dimensions(
 
         // Flowchart v2 lined document.
         "lin-doc" | "lined-document" => {
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 8.0;
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
+            let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
             let final_h = h + wave_amplitude;
             let extra = (w / 2.0) * 0.1;
 
@@ -1906,6 +1910,14 @@ mod render_dimension_tests {
         let neo_rx = neo_ry / (2.5 + neo_h / 50.0);
         assert!((neo_h_cyl.0 - (100.0 + 12.0 + 3.0 * neo_rx)).abs() < 1e-9);
         assert!((neo_h_cyl.1 - neo_h).abs() < 1e-9);
+        assert_eq!(
+            node_render_dimensions(Some("document"), metrics(), 15.0, false),
+            (130.0, 62.49555920400368)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("document"), metrics(), 15.0, true),
+            (132.0, 65.99218419904648)
+        );
     }
 
     #[test]

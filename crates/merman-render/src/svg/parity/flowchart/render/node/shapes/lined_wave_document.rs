@@ -26,8 +26,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     );
 
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(0.0);
-    let h = (metrics.height + 2.0 * p).max(0.0);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(0.0);
+    let h = (metrics.height + 2.0 * padding_y).max(0.0);
     let wave_amplitude = if common.look_is_neo() {
         h / 4.0
     } else {

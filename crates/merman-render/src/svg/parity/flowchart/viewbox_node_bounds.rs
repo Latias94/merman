@@ -207,9 +207,13 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 // RoughJS path bbox. Rebuild that bbox directly.
                 if matches!(shape, "doc" | "document") {
                     let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
-                    let w = (label_w + 2.0 * node_padding).max(0.0);
-                    let h = (label_h + 2.0 * node_padding).max(0.0);
-                    let wave_amplitude = h / 8.0;
+                    let look_is_neo =
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = (label_w + 2.0 * padding_x).max(0.0);
+                    let h = (label_h + 2.0 * padding_y).max(0.0);
+                    let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
                     let final_h = h + wave_amplitude;
                     let extra_w = ((14.0 - w).max(0.0)) / 2.0;
                     let mut points: Vec<(f64, f64)> = Vec::new();
@@ -241,9 +245,13 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 // while the rendered root bbox comes from the original label-box path.
                 if matches!(shape, "lin-doc" | "lined-document") {
                     let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
-                    let w = (label_w + 2.0 * node_padding).max(0.0);
-                    let h = (label_h + 2.0 * node_padding).max(0.0);
-                    let wave_amplitude = h / 8.0;
+                    let look_is_neo =
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = (label_w + 2.0 * padding_x).max(0.0);
+                    let h = (label_h + 2.0 * padding_y).max(0.0);
+                    let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
                     let final_h = h + wave_amplitude;
                     let extra = (w / 2.0) * 0.1;
                     let mut points: Vec<(f64, f64)> = Vec::new();

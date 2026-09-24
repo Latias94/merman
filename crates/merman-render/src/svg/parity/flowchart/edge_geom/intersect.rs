@@ -1208,9 +1208,12 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = (metrics.width + 2.0 * p).max(0.0);
-        let h = (metrics.height + 2.0 * p).max(0.0);
-        let wave_amplitude = h / 8.0;
+        let look_is_neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if look_is_neo { 16.0 } else { p };
+        let padding_y = if look_is_neo { 12.0 } else { p };
+        let w = (metrics.width + 2.0 * padding_x).max(0.0);
+        let h = (metrics.height + 2.0 * padding_y).max(0.0);
+        let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
         let final_h = h + wave_amplitude;
         let extra_w = ((14.0 - w).max(0.0)) / 2.0;
 
