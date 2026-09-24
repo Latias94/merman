@@ -66,6 +66,35 @@ fn captures_parse_error_svg(diagram: &str) -> bool {
     diagram == "error"
 }
 
+// These imported negative fixtures already had Error SVG baselines before Mermaid 12.
+// Packet and Radar retain documentation placeholders (Radar's restaurant example also has a
+// trailing axis comma); the Treemap case uses a one-character classDef name, rejected by
+// the upstream CLASS_DEF token. Sources: repo-ref/mermaid/packages/mermaid/src/docs/syntax/
+// {packet,radar}.md and packages/parser/src/language/treemap/treemap.langium. The corresponding
+// fixtures/upstream-svgs/{packet,radar,treemap} SVGs were Error diagrams in 11.17.2.
+// Keep this explicit:
+// neither a local parser result nor a newly failing upstream render authorizes an Error SVG.
+fn fixture_captures_parse_error_svg(diagram: &str, stem: &str) -> bool {
+    captures_parse_error_svg(diagram)
+        || matches!(
+            (diagram, stem),
+            (
+                "packet",
+                "upstream_docs_packet_bits_syntax_v11_7_0_002" | "upstream_docs_packet_syntax_001"
+            ) | (
+                "radar",
+                "upstream_docs_radar_axis_007"
+                    | "upstream_docs_radar_curve_008"
+                    | "upstream_docs_radar_examples_005"
+                    | "upstream_docs_radar_options_009"
+                    | "upstream_docs_radar_title_006"
+            ) | (
+                "treemap",
+                "upstream_treemap_classdef_and_css_compiled_styles_db"
+            )
+        )
+}
+
 fn scripted_renderer_background_color(diagram: &str) -> &'static str {
     if captures_parse_error_svg(diagram) {
         ""
@@ -1496,15 +1525,17 @@ fn gen_upstream_svgs_impl(
                     workspace_root.join(&temp_out_path)
                 };
 
-                let input_json = upstream_svg_render_input(
+                let mut input_json = upstream_svg_render_input(
                     diagram,
                     snapshot_path,
                     &output_abs,
                     mermaid_config.path(),
                     &svg_id,
                     &render_probe.browser_executable,
-                )
-                .to_string();
+                );
+                input_json["capture_parse_error_svg"] =
+                    JsonValue::Bool(fixture_captures_parse_error_svg(diagram, stem));
+                let input_json = input_json.to_string();
 
                 let mut cmd = Command::new("node");
                 cmd.arg(&scripted_renderer)
@@ -2516,20 +2547,14 @@ const selectedLayoutUrls = ['tidy-tree']
     container.innerHTML = '';
     container.style.width = `${Math.max(1, Number(containerWidth) || 1)}px`;
 
-    // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
-    if (!captureParseErrorSvg && typeof mermaid.parse === 'function') {
-      try {
-        await mermaid.parse(code);
-      } catch (err) {
-        if (!debug) throw err;
-        return {
-          ok: false,
-          stage: 'parse',
-          error: String(err && err.message ? err.message : err),
-          stack: String(err && err.stack ? err.stack : ''),
-        };
-      }
+    // Langium's MermaidParseError carries a cyclic parser result. Chromium cannot transfer
+    // that exception through the protocol reliably; preserve its diagnostic in a plain Error.
+    function transferableError(error) {
+      return new Error(String(error && error.message ? error.message : error));
     }
+
+    // Render performs parsing itself. A separate parse mutates family state (including the
+    // Class database's global DOM-id counter), changing the SVG produced by the same input.
 
     function participantActorRects(svg) {
       return Array.from(
@@ -2645,7 +2670,7 @@ const selectedLayoutUrls = ['tidy-tree']
         try {
           rendered = await mermaid.render(svgId, code, container);
         } catch (err) {
-          if (!captureParseErrorSvg) throw err;
+          if (!captureParseErrorSvg) throw transferableError(err);
           const errorSvg = container.querySelector && container.querySelector('svg');
           if (!errorSvg || errorSvg.getAttribute('aria-roledescription') !== 'error') {
             throw new Error(
@@ -2689,7 +2714,7 @@ const selectedLayoutUrls = ['tidy-tree']
         try {
           api.render(svgId, code, (svgCode) => resolve(svgCode), container);
         } catch (err) {
-          reject(err);
+          reject(transferableError(err));
         }
       });
     }
@@ -2740,19 +2765,18 @@ const selectedLayoutUrls = ['tidy-tree']
       throw new Error(`expected svg string from mermaid.render, got ${typeof svgText}`);
     }
     if (!bg) return svgText;
-    if (svgText.includes('background-color:')) return svgText;
-    const m = svgText.match(/<svg\b[^>]*\bstyle="([^"]*)"/);
-    if (m) {
-      const raw = m[1] || '';
-      let next = raw.trim();
-      if (next.length > 0 && !next.trim().endsWith(';')) {
-        next += ';';
+    // The CLI background belongs to the root element. Theme CSS and nested SVG styles do
+    // not set that background and must not suppress the explicit output projection.
+    return svgText.replace(/<svg\b[^>]*>/, (root) => {
+      const style = root.match(/\sstyle="([^"]*)"/);
+      if (!style) {
+        return root.replace('<svg', `<svg style="background-color: ${bg};"`);
       }
-      next += ` background-color: ${bg};`;
-      return svgText.replace(m[0], m[0].replace(raw, next));
-    }
-    // Fallback: inject a style attr into the root <svg>.
-    return svgText.replace(/<svg\b/, `<svg style="background-color: ${bg};"`);
+      const raw = style[1];
+      if (/(?:^|;)\s*background-color\s*:/i.test(raw)) return root;
+      const separator = raw.trim().length > 0 && !raw.trimEnd().endsWith(';') ? ';' : '';
+      return root.replace(style[0], ` style="${raw}${separator} background-color: ${bg};"`);
+    });
   }
 
   const svgWithBg = ensureSvgBackgroundColor(svg, backgroundColor);
@@ -3849,6 +3873,38 @@ mod tests {
         assert_eq!(scripted_renderer_background_color("error"), "");
         assert!(!captures_parse_error_svg("state"));
         assert_eq!(scripted_renderer_background_color("sequence"), "white");
+    }
+
+    #[test]
+    fn imported_negative_fixtures_require_an_exact_family_and_stem() {
+        for (diagram, stem) in [
+            ("packet", "upstream_docs_packet_bits_syntax_v11_7_0_002"),
+            ("packet", "upstream_docs_packet_syntax_001"),
+            ("radar", "upstream_docs_radar_axis_007"),
+            ("radar", "upstream_docs_radar_curve_008"),
+            ("radar", "upstream_docs_radar_examples_005"),
+            ("radar", "upstream_docs_radar_options_009"),
+            ("radar", "upstream_docs_radar_title_006"),
+            (
+                "treemap",
+                "upstream_treemap_classdef_and_css_compiled_styles_db",
+            ),
+        ] {
+            assert!(super::fixture_captures_parse_error_svg(diagram, stem));
+            assert!(!super::fixture_captures_parse_error_svg("sequence", stem));
+            assert!(
+                !captures_parse_error_svg(diagram),
+                "audits must reject errors"
+            );
+        }
+        assert!(!super::fixture_captures_parse_error_svg(
+            "packet",
+            "new_invalid_fixture"
+        ));
+        assert!(!super::fixture_captures_parse_error_svg(
+            "radar",
+            "upstream_docs_radar_axis_007_new"
+        ));
     }
 
     #[test]

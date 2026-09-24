@@ -823,18 +823,6 @@ pub(crate) fn ensure_content_addressed_js_script(
     ensure_content_addressed_file(dir, stem, "js", contents)
 }
 
-pub(crate) fn ensure_upstream_svg_puppeteer_config() -> Result<PathBuf, XtaskError> {
-    // Puppeteer 23.11.1 may not reliably propagate this option through every launcher path, so
-    // the OS process-tree management above remains the authoritative timeout cleanup mechanism.
-    const CONFIG: &str = "{\n  \"detached\": false\n}\n";
-    ensure_content_addressed_file(
-        &crate::cmd::target_root().join("xtask-js"),
-        "upstream-svg-puppeteer-config",
-        "json",
-        CONFIG,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -989,25 +977,6 @@ mod tests {
                 Err(err) => panic!("managed listener remained alive after cleanup: {err}"),
             }
         }
-    }
-
-    #[test]
-    fn puppeteer_config_is_content_addressed_and_disables_detached_processes() {
-        let path = ensure_upstream_svg_puppeteer_config().expect("install Puppeteer config");
-        let contents = fs::read(&path).expect("read Puppeteer config");
-        let config: serde_json::Value =
-            serde_json::from_slice(&contents).expect("parse Puppeteer config");
-        let digest = Sha256::digest(&contents);
-        let expected_name = format!("upstream-svg-puppeteer-config-{digest:x}.json");
-
-        assert_eq!(
-            config.get("detached").and_then(|value| value.as_bool()),
-            Some(false)
-        );
-        assert_eq!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some(expected_name.as_str())
-        );
     }
 
     #[test]

@@ -184,48 +184,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         ));
     }
 
-    fn deferred_with_baselines_reason(
-        diagram_dir: &str,
-        stem: &str,
-        fixture_text: &str,
-    ) -> Option<&'static str> {
-        match diagram_dir {
-            "flowchart" => {
-                if fixture_text.trim_start().starts_with("flowchart-elk")
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-                if (fixture_text.contains("\n  layout: elk")
-                    || fixture_text.contains("\nlayout: elk"))
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-                if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
-                    && !matches!(look.as_str(), "classic" | "handDrawn")
-                {
-                    return Some("flowchart frontmatter config.look unsupported (deferred)");
-                }
-                if fixture_text.contains("$$") {
-                    return Some("flowchart math (deferred)");
-                }
-            }
-            "gantt"
-                if fixture_text.starts_with("---\n")
-                    && fixture_text.contains("\n---\n")
-                    && fixture_text.contains("\ngantt:") =>
-            {
-                return Some("gantt frontmatter config (deferred)");
-            }
-            "sequence" if fixture_text.contains("$$") => {
-                return Some("sequence math (deferred)");
-            }
-            _ => {}
-        }
-        None
-    }
-
     fn is_suspicious_blank_svg(svg_path: &Path) -> Result<bool, XtaskError> {
         let head = fs::read_to_string(svg_path).map_err(|source| XtaskError::ReadFile {
             path: svg_path.display().to_string(),
@@ -539,7 +497,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             continue;
         }
 
-        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &f.stem, &c.body) {
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &c.body) {
             report_lines.push(format!(
                 "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\texample_idx={}\ttitle={}\treason={reason}",
                 f.diagram_dir,
@@ -776,4 +734,52 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     }
 
     Ok(())
+}
+
+fn deferred_with_baselines_reason(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+    match diagram_dir {
+        "flowchart" => {
+            if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                && !matches!(look.as_str(), "classic" | "neo" | "handDrawn")
+            {
+                return Some("flowchart frontmatter config.look unsupported (deferred)");
+            }
+            if fixture_text.contains("$$") {
+                return Some("flowchart math (deferred)");
+            }
+        }
+        "gantt"
+            if fixture_text.starts_with("---\n")
+                && fixture_text.contains("\n---\n")
+                && fixture_text.contains("\ngantt:") =>
+        {
+            return Some("gantt frontmatter config (deferred)");
+        }
+        "sequence" if fixture_text.contains("$$") => {
+            return Some("sequence math (deferred)");
+        }
+        _ => {}
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn mermaid_12_import_admits_default_explicit_elk_and_neo() {
+        for source in [
+            "flowchart TD\nA --> B\n",
+            "flowchart-elk TD\nA --> B\n",
+            "---\nconfig:\n  layout: elk\n  look: neo\n---\nflowchart TD\nA --> B\n",
+        ] {
+            assert_eq!(
+                super::deferred_with_baselines_reason("flowchart", source),
+                None
+            );
+        }
+        assert!(
+            super::deferred_with_baselines_reason("sequence", "sequenceDiagram\nA->>B: $$x$$\n")
+                .is_some()
+        );
+    }
 }

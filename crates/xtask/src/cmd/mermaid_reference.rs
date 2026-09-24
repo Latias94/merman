@@ -968,6 +968,12 @@ fn file_sha256(path: &Path) -> Result<String, XtaskError> {
     Ok(crate::util::sha256_hex(&bytes))
 }
 
+// Registry inputs are UTF-8 source files; Git may check them out with CRLF on Windows.
+// Preserve all other bytes, including trailing whitespace, when checking their source identity.
+fn registry_source_sha256(source: &str) -> String {
+    crate::util::sha256_hex(source.replace("\r\n", "\n").as_bytes())
+}
+
 fn verify_reference_cli_files(
     root: &Path,
     bundle: &MermaidReferenceBundle,
@@ -1144,7 +1150,7 @@ fn verify_source_checkouts(
                     source_path.display()
                 ));
             } else {
-                let actual = file_sha256(&source_path)?;
+                let actual = registry_source_sha256(&crate::util::read_text(&source_path)?);
                 if actual != registration.source_sha256 {
                     failures.push(format!(
                         "runtime registration source digest drift for {}: expected {}, found {actual}",
@@ -1229,7 +1235,7 @@ fn verify_builtin_registry_inventory(
                 continue;
             }
         };
-        let actual_sha256 = crate::util::sha256_hex(source.as_bytes());
+        let actual_sha256 = registry_source_sha256(&source);
         if actual_sha256 != registry.source_sha256 {
             failures.push(format!(
                 "{kind} registry source digest drift for {}: expected {}, found {actual_sha256}",
@@ -2588,6 +2594,23 @@ mod tests {
     }
 
     #[test]
+    fn registry_source_identity_ignores_only_checkout_crlf() {
+        let source = "export const ids = ['elk'];\n";
+        assert_eq!(
+            registry_source_sha256(source),
+            registry_source_sha256(&source.replace('\n', "\r\n"))
+        );
+        assert_ne!(
+            registry_source_sha256(source),
+            registry_source_sha256(source.trim_end())
+        );
+        assert_ne!(
+            registry_source_sha256(source),
+            registry_source_sha256("export const ids = ['dagre'];\n")
+        );
+    }
+
+    #[test]
     fn materialized_runtime_graph_covers_every_selected_companion() {
         let root = crate::cmd::workspace_root();
         let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
@@ -2599,7 +2622,6 @@ mod tests {
         assert_eq!(
             packages,
             BTreeSet::from([
-                "@mermaid-js/layout-elk",
                 "@mermaid-js/layout-tidy-tree",
                 "@mermaid-js/mermaid-cli",
                 "@mermaid-js/mermaid-zenuml",

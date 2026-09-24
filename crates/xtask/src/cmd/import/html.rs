@@ -533,35 +533,6 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
             || first.contains(r#"style="max-width: 16px"#))
     }
 
-    fn should_defer_fixture(
-        diagram_dir: &str,
-        stem: &str,
-        fixture_text: &str,
-    ) -> Option<&'static str> {
-        match diagram_dir {
-            "flowchart" => {
-                if (fixture_text.contains("\n  layout: elk")
-                    || fixture_text.contains("\nlayout: elk"))
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-                if fixture_text
-                    .lines()
-                    .any(|l| l.trim_start().starts_with("flowchart-elk"))
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-            }
-            "sequence" if fixture_text.contains("$$") => {
-                return Some("sequence math rendering uses <foreignObject> upstream (deferred)");
-            }
-            _ => {}
-        }
-        None
-    }
-
     fn defer_fixture(
         f: &CreatedFixture,
         keep_upstream_svg: bool,
@@ -734,7 +705,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
             continue;
         }
 
-        if let Some(reason) = should_defer_fixture(&f.diagram_dir, &f.stem, &fixture_text) {
+        if let Some(reason) = should_defer_fixture(&f.diagram_dir, &fixture_text) {
             skipped.push(format!("defer ({reason}): {}", f.path.display()));
             let deferred_path = defer_fixture(&f, true, overwrite)?;
             existing.insert(fixture_text, deferred_path);
@@ -883,10 +854,31 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
     Ok(())
 }
 
+fn should_defer_fixture(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+    if diagram_dir == "sequence" && fixture_text.contains("$$") {
+        Some("sequence math rendering uses <foreignObject> upstream (deferred)")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::html_fixture_stem_suffix;
 
+    #[test]
+    fn mermaid_12_import_admits_default_explicit_elk_and_neo() {
+        for source in [
+            "flowchart TD\nA --> B\n",
+            "flowchart-elk TD\nA --> B\n",
+            "---\nconfig:\n  layout: elk\n  look: neo\n---\nflowchart TD\nA --> B\n",
+        ] {
+            assert_eq!(super::should_defer_fixture("flowchart", source), None);
+        }
+        assert!(
+            super::should_defer_fixture("sequence", "sequenceDiagram\nA->>B: $$x$$\n").is_some()
+        );
+    }
     #[test]
     fn flowchart_katex_html_blocks_use_active_baseline_suffix() {
         assert_eq!(
