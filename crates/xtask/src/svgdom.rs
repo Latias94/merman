@@ -231,6 +231,7 @@ impl<'input> ParsedSvgDom<'input> {
                     key.descendants,
                     key.decimals,
                     key.normalize_browser_text_wrapping,
+                    document_may_have_mid_markers(document),
                 );
                 if key.normalize_browser_text_wrapping {
                     normalize_browser_text_wrapping(
@@ -358,6 +359,61 @@ fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
             out
         })
         .to_string()
+}
+
+// CSS escapes, comments, and at-rules are deliberately not interpreted here.
+// A comparator must preserve vertices whenever marker semantics are uncertain.
+fn document_may_have_mid_markers(document: &roxmltree::Document<'_>) -> bool {
+    fn uncertain_style(style: &str) -> bool {
+        let compact: String = style.chars().filter(|c| !c.is_whitespace()).collect();
+        let lower = compact.to_ascii_lowercase();
+        lower.contains("marker-mid")
+            || lower.contains("marker:")
+            || lower.contains('\\')
+            || lower.contains("/*")
+            || lower.contains('@')
+    }
+    document.descendants().any(|node| {
+        node.attributes().any(|attribute| {
+            matches!(attribute.name(), "marker-mid" | "marker")
+                || (attribute.name() == "style" && uncertain_style(attribute.value()))
+        }) || (node.has_tag_name("style")
+            && (node.children().any(|child| !child.is_text())
+                || node
+                    .children()
+                    .filter_map(|child| child.text())
+                    .any(uncertain_style)))
+    })
+}
+
+// Browser circle intersections can differ from the ELK port by a few millionths
+// of a pixel. Preserve real segments and all commands after this initial stub.
+fn normalize_flowchart_initial_stub(path: &str, decimals: u32) -> String {
+    static PREFIX: OnceLock<Regex> = OnceLock::new();
+    let prefix = PREFIX.get_or_init(|| {
+        let number = r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)";
+        Regex::new(&format!(r"^M{number}[ ,]+{number}L{number}[ ,]+{number}L")).unwrap()
+    });
+    let Some(captures) = prefix.captures(path) else {
+        return path.to_string();
+    };
+    let mut coordinates = [0.0_f64; 4];
+    for (index, coordinate) in coordinates.iter_mut().enumerate() {
+        let Ok(value) = captures[index + 1].parse::<f64>() else {
+            return path.to_string();
+        };
+        *coordinate = value;
+    }
+    let [x, y, next_x, next_y] = coordinates;
+    if !coordinates.iter().all(|value| value.is_finite())
+        || (x - next_x).hypot(y - next_y) > 0.00001
+        || round_f64(x, decimals) != round_f64(next_x, decimals)
+        || round_f64(y, decimals) != round_f64(next_y, decimals)
+    {
+        return path.to_string();
+    }
+    let end = captures.get(0).expect("matched prefix").end();
+    format!("M{},{}L{}", &captures[1], &captures[2], &path[end..])
 }
 
 fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
@@ -618,6 +674,7 @@ fn build_node(
     mode: DomMode,
     decimals: u32,
     preserve_browser_text_rows: bool,
+    preserve_path_vertices: bool,
 ) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
@@ -945,6 +1002,18 @@ fn build_node(
                 }
             }
 
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && key == "d"
+                && n.tag_name().name() == "path"
+                && is_flowchart_diagram(n)
+                && has_class_token(n, "flowchart-link")
+                && !preserve_path_vertices
+                && n.ancestors()
+                    .any(|ancestor| has_class_token(ancestor, "edges"))
+            {
+                val = normalize_flowchart_initial_stub(&val, decimals);
+            }
+
             if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points") {
                 val = normalize_attr_whitespace_strict(&val);
             }
@@ -1168,7 +1237,13 @@ fn build_node(
         if has_element_child {
             for c in n.children() {
                 if c.is_element() {
-                    children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+                    children.push(build_node(
+                        c,
+                        mode,
+                        decimals,
+                        preserve_browser_text_rows,
+                        preserve_path_vertices,
+                    ));
                 } else if c.is_text()
                     && let Some(t) = c.text().and_then(normalize_text_node_text)
                 {
@@ -1183,13 +1258,25 @@ fn build_node(
         } else {
             text = n.text().and_then(normalize_text_node_text);
             for c in n.children().filter(|c| c.is_element()) {
-                children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+                children.push(build_node(
+                    c,
+                    mode,
+                    decimals,
+                    preserve_browser_text_rows,
+                    preserve_path_vertices,
+                ));
             }
         }
     } else {
         // Non-strict modes treat text as non-semantic and only track element structure.
         for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+            children.push(build_node(
+                c,
+                mode,
+                decimals,
+                preserve_browser_text_rows,
+                preserve_path_vertices,
+            ));
         }
         if preserve_browser_text_rows
             && n.tag_name().name() == "tspan"
@@ -2035,6 +2122,87 @@ mod tests {
         let xml = canonical_xml(svg, DomMode::Strict, 3).unwrap();
         assert!(xml.contains("This is a"));
         assert!(xml.contains("multiline string"));
+    }
+
+    #[test]
+    fn parity_normalizes_only_elk_flowchart_initial_float_stubs() {
+        let svg = |path: &str, extra: &str| {
+            format!(
+                r#"<svg class="flowchart"><g class="edges edgePaths"><path class="flowchart-link" d="{path}" {extra}/></g></svg>"#
+            )
+        };
+        let local = svg(
+            "M481.964,104.912L494.893,104.912Q501.964,104.912 501.964,111.983",
+            "",
+        );
+        let upstream = svg(
+            "M481.96426597074867,104.91181945800781L481.9642639160156,104.91181945800781L494.89319610415015,104.91181945800781Q501.9642639160156,104.91181945800781 501.9642639160156,111.98288726987329",
+            "",
+        );
+        for mode in [DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(&upstream, mode, 3).unwrap(),
+                dom_signature(&local, mode, 3).unwrap()
+            );
+            for changed in [
+                upstream.replace("481.96426597074867", "481.965"),
+                upstream.replace("flowchart-link", "node-border"),
+                upstream.replace("edges edgePaths", "edgePaths"),
+                upstream.replace(r#"class="flowchart""#, r#"class="sequence""#),
+                svg(
+                    "M481.964,104.912L481.964,104.912L494.893,104.912Q501.964,104.912 501.964,111.983",
+                    r#"marker-mid="url(#dot)""#,
+                ),
+            ] {
+                assert_ne!(
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap()
+                );
+            }
+        }
+        assert_ne!(
+            dom_signature(&upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(&local, DomMode::Strict, 3).unwrap()
+        );
+        for (prefix, attributes) in [
+            ("", r#"style="marker-mid:url(#dot)""#),
+            (r#"<g marker-mid="url(#dot)">"#, ""),
+            (
+                "<style>.flowchart-link { marker-mid:url(#dot) }</style>",
+                "",
+            ),
+            ("<style>.flowchart-link { marker : url(#dot) }</style>", ""),
+            (
+                "<style>.x{fill:red}<!-- split -->.flowchart-link{marker-mid:url(#dot)}</style>",
+                "",
+            ),
+            (
+                r"<style>.flowchart-link { marker-\6d id:url(#dot) }</style>",
+                "",
+            ),
+        ] {
+            let wrap = |path: &str| {
+                let suffix = if prefix.starts_with("<g ") {
+                    "</g>"
+                } else {
+                    ""
+                };
+                format!(
+                    r#"<svg class="flowchart">{prefix}<g class="edges"><path class="flowchart-link" d="{path}" {attributes}/></g>{suffix}</svg>"#
+                )
+            };
+            for mode in [DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&wrap("M0,0L0,0L10,0"), mode, 3).unwrap(),
+                    dom_signature(&wrap("M0,0L10,0"), mode, 3).unwrap(),
+                    "must preserve marker vertices: {prefix} {attributes}"
+                );
+            }
+        }
+        assert_eq!(
+            normalize_flowchart_initial_stub("M0,0L0.000009,0L1,0", 6),
+            "M0,0L0.000009,0L1,0"
+        );
     }
 
     #[test]
