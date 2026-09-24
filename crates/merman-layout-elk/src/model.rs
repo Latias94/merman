@@ -259,6 +259,8 @@ pub struct Node {
     pub layer_constraint: Option<LayerConstraint>,
     /// Alignment of this node's implicit ports, overriding the provider default.
     pub port_alignment: Option<PortAlignment>,
+    /// Measured label bounds for painting. Only non-empty groups expose these as ELK node labels;
+    /// leaf labels are already accounted for in the shape's width and height.
     pub label: Option<Label>,
 }
 

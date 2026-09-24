@@ -1712,6 +1712,72 @@ mod tests {
     }
 
     #[test]
+    fn elk_hidden_shape_labels_remain_paint_metadata_without_layout_margins() {
+        let shapes = [
+            "anchor",
+            "small-circle",
+            "framed-circle",
+            "fork",
+            "join",
+            "lightning-bolt",
+            "filled-circle",
+            "crossed-circle",
+            "hourglass",
+        ];
+        let nodes = shapes
+            .iter()
+            .enumerate()
+            .map(|(index, shape)| {
+                let mut item = node(
+                    &format!("n{index}"),
+                    Some("A long authored label ignored by this shape"),
+                    None,
+                );
+                item.layout_shape = Some((*shape).into());
+                item
+            })
+            .collect();
+        let edges = (0..shapes.len() - 1)
+            .map(|index| {
+                edge(
+                    &format!("e{index}"),
+                    &format!("n{index}"),
+                    &format!("n{}", index + 1),
+                    None,
+                )
+            })
+            .collect();
+        let mut model = model(nodes, edges);
+        model.direction = Some("LR".into());
+        let config = MermaidConfig::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let graph = build_flowchart_elk_graph(&model, &config, &measurer, None).unwrap();
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .all(|node| node.label.is_some_and(|label| label.width > node.width))
+        );
+        let actual = elk::layout(&graph).unwrap();
+        let mut without_paint_metrics = graph.clone();
+        for node in &mut without_paint_metrics.nodes {
+            node.label = None;
+        }
+        assert_eq!(actual, elk::layout(&without_paint_metrics).unwrap());
+        let rendered = flowchart_layout_from_elk(&model, &config, &graph, actual).unwrap();
+        for node in rendered.nodes {
+            let source = graph
+                .nodes
+                .iter()
+                .find(|source| source.id == node.id)
+                .unwrap();
+            let label = source.label.unwrap();
+            assert_eq!(node.label_width, Some(label.width));
+            assert_eq!(node.label_height, Some(label.height));
+        }
+    }
+
+    #[test]
     fn elk_preserves_operation_computed_length_precision() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(

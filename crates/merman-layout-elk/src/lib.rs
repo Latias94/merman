@@ -341,11 +341,11 @@ fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
                         graph.options.layered.hierarchy_handling,
                     ))
                 }),
-                // Mermaid only exposes a subgraph label to ELK when `childrenById` contains the
-                // subgraph. Empty subgraphs retain their label data for SVG rendering, but their
-                // titles must not create ELK label margins.
-                label: if node.kind == NodeKind::Leaf
-                    || node_ids_with_direct_children.contains(node.id.as_str())
+                // Mermaid's leaf labels are already included in the painted node dimensions.
+                // Only non-empty groups expose an ELK label; retain all other measurements in
+                // the adapter model for SVG rendering without creating provider label margins.
+                label: if node.kind == NodeKind::Group
+                    && node_ids_with_direct_children.contains(node.id.as_str())
                 {
                     node.label
                         .map(|label| ElkInputLabel::center("", label.width, label.height))
@@ -1275,9 +1275,9 @@ impl<'a> HierarchyIndex<'a> {
                         ))
                     }),
                     // Mermaid attaches an ELK label only when childrenById contains the group.
-                    // Empty-group titles remain available to SVG rendering without layout margin.
-                    label: if source.kind == NodeKind::Leaf
-                        || !self.children[*node_index].is_empty()
+                    // Leaf measurements and empty-group titles are paint metadata, not margins.
+                    label: if source.kind == NodeKind::Group
+                        && !self.children[*node_index].is_empty()
                     {
                         source
                             .label
@@ -3911,6 +3911,121 @@ mod tests {
                 }
             ))
         ));
+    }
+
+    #[test]
+    fn leaf_label_measurements_do_not_create_layered_margins() {
+        // Pinned elkjs 0.9.3 replay of newshapesset2_lr_allpairs_059 with the local
+        // measured shapes. Treating the hidden 120px bolt/circle labels as fixed ELK
+        // labels previously added 85 + 106 = 191px to the final node's x position.
+        let sizes = [
+            (169.4, 87.0),
+            (172.0, 127.23614471649148),
+            (35.0, 70.0),
+            (14.0, 14.0),
+            (162.0, 76.0),
+        ];
+        let nodes = sizes
+            .into_iter()
+            .enumerate()
+            .map(|(i, (width, height))| Node {
+                width,
+                height,
+                label: Some(Label {
+                    width: 120.0,
+                    height: if i == 0 { 63.0 } else { 42.0 },
+                }),
+                ..leaf(&format!("n{i}{i}"))
+            })
+            .collect();
+        let mut edges = Vec::new();
+        for from in 0..5 {
+            for to in from + 1..5 {
+                edges.push(edge(
+                    &format!("L_n{from}{from}_n{to}{to}_0"),
+                    &format!("n{from}{from}"),
+                    &format!("n{to}{to}"),
+                ));
+            }
+        }
+        let mut graph = flat_graph(nodes, edges);
+        graph.direction = Direction::Right;
+        let input = graph_to_source_input(&graph).unwrap();
+        assert!(input.nodes.iter().all(|node| node.label.is_none()));
+        assert!(graph.nodes.iter().all(|node| node.label.is_some()));
+        let actual = layout(&graph).unwrap();
+        for (id, expected_x) in [
+            ("n00", 96.7),
+            ("n11", 327.4),
+            ("n22", 470.9),
+            ("n33", 575.4),
+            ("n44", 723.4),
+        ] {
+            let node = actual.nodes.iter().find(|node| node.id == id).unwrap();
+            assert!((node.x - expected_x).abs() < 1e-8, "{node:?}");
+        }
+        for node in &mut graph.nodes {
+            node.label = None;
+        }
+        assert_eq!(actual, layout(&graph).unwrap());
+    }
+
+    #[test]
+    fn layered_scopes_preserve_group_labels_but_ignore_leaf_measurements() {
+        for handling in [
+            HierarchyHandling::IncludeChildren,
+            HierarchyHandling::SeparateChildren,
+        ] {
+            let mut child = leaf("child");
+            child.width = 14.0;
+            child.height = 14.0;
+            child.parent = Some("frame".into());
+            child.label = Some(Label {
+                width: 120.0,
+                height: 42.0,
+            });
+            let mut frame = group("frame", None, handling);
+            frame.label = Some(Label {
+                width: 160.0,
+                height: 24.0,
+            });
+            let mut graph = flat_graph(vec![frame, child], vec![]);
+            if handling == HierarchyHandling::IncludeChildren {
+                let input = graph_to_source_input(&graph).unwrap();
+                assert!(
+                    input
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "frame")
+                        .unwrap()
+                        .label
+                        .is_some()
+                );
+                assert!(
+                    input
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "child")
+                        .unwrap()
+                        .label
+                        .is_none()
+                );
+            }
+            let actual = layout(&graph).unwrap();
+            graph.nodes[1].label = None;
+            assert_eq!(actual, layout(&graph).unwrap(), "{handling:?}");
+            graph.nodes[0].label = None;
+            let without_title = layout(&graph).unwrap();
+            let frame_size = |result: &LayoutResult| {
+                let node = result.nodes.iter().find(|node| node.id == "frame").unwrap();
+                (node.width, node.height)
+            };
+            assert_ne!(
+                frame_size(&actual),
+                frame_size(&without_title),
+                "{handling:?}"
+            );
+        }
     }
 
     #[test]
