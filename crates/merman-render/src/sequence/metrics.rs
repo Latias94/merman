@@ -56,18 +56,49 @@ pub(crate) fn wrap_sequence_label_like_mermaid_lines(
     )
 }
 
-fn sequence_drawn_text_style(style: &TextStyle, config: &MermaidConfig) -> TextStyle {
-    let mut effective = style.clone();
-    let inherits_root = effective.font_family.as_deref().is_none_or(|family| {
-        let family = family.trim();
-        family.is_empty() || family.ends_with(';')
-    });
-    if inherits_root {
-        // svgDraw.drawText uses CSSOM: an absent or rejected inline family inherits the SVG
-        // root's theme font. The body-level calculateTextDimensions probe keeps the original
-        // family instead, because it has a different inheritance context.
-        effective.font_family = Some(crate::config::config_font_family_css(config.as_value()));
+/// Accept the static family-list grammar using CSS tokens, including quoted semicolons and
+/// escaped identifiers. A declaration separator is never a family value passed to CSSOM.
+pub(crate) fn sequence_inline_font_family(style: &TextStyle) -> Option<String> {
+    use cssparser::ToCss;
+    let family = style.font_family.as_deref()?;
+    let mut input = cssparser::ParserInput::new(family);
+    let mut parser = cssparser::Parser::new(&mut input);
+    let mut has_name = false;
+    let mut quoted = false;
+    let mut css = String::new();
+    while !parser.is_exhausted() {
+        match parser.next() {
+            Ok(token @ cssparser::Token::Ident(_)) if !quoted => {
+                if has_name {
+                    css.push(' ');
+                }
+                css.push_str(&token.to_css_string());
+                has_name = true;
+            }
+            Ok(token @ cssparser::Token::QuotedString(_)) if !has_name => {
+                css.push_str(&token.to_css_string());
+                has_name = true;
+                quoted = true;
+            }
+            Ok(cssparser::Token::Comma) if has_name => {
+                css.push_str(", ");
+                has_name = false;
+                quoted = false;
+            }
+            _ => return None,
+        }
     }
+    has_name.then_some(css)
+}
+
+pub(crate) fn sequence_drawn_text_style(style: &TextStyle, config: &MermaidConfig) -> TextStyle {
+    let mut effective = style.clone();
+    // CSSOM rejects invalid assignments, while accepted tokens must be serialized before
+    // embedding them in a declaration list (an EOF-terminated string needs its closing quote).
+    effective.font_family = Some(
+        sequence_inline_font_family(style)
+            .unwrap_or_else(|| crate::config::config_font_family_css(config.as_value())),
+    );
     effective
 }
 
@@ -85,7 +116,7 @@ pub(super) fn measure_svg_like_with_html_br(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequenceDrawnTextNode {
+pub(crate) enum SequenceDrawnTextNode {
     Direct,
     Tspan,
 }
@@ -115,21 +146,56 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
         }
         .max(0.0);
         checkpoints.checkpoint()?;
-        let line_height = match node {
-            SequenceDrawnTextNode::Direct => {
-                measurer.measure_svg_simple_text_bbox_height_px(measured_line, &effective_style)
-            }
-            SequenceDrawnTextNode::Tspan => {
-                measurer.measure_svg_tspan_text_bbox_height_px(measured_line, &effective_style)
-            }
-        }
-        .max(0.0);
-        checkpoints.checkpoint()?;
+        let line_height = measure_sequence_drawn_line_height(
+            measurer,
+            measured_line,
+            &effective_style,
+            node,
+            checkpoints,
+        )?;
         width = width.max(line_width);
         height += line_height;
     }
 
     Ok((width, height))
+}
+
+/// Measures the final text DOM shape, after resolving its inherited font.
+pub(crate) fn measure_sequence_drawn_line_height(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    drawn_style: &TextStyle,
+    node: SequenceDrawnTextNode,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<f64> {
+    let text = if text.is_empty() { "\u{200b}" } else { text };
+    checkpoints.checkpoint()?;
+    let height = match node {
+        SequenceDrawnTextNode::Direct => {
+            measurer.measure_svg_raw_text_bbox_height_px(text, drawn_style)
+        }
+        SequenceDrawnTextNode::Tspan => {
+            measurer.measure_svg_tspan_text_bbox_height_px(text, drawn_style)
+        }
+    };
+    checkpoints.checkpoint()?;
+    Ok(height.max(0.0))
+}
+
+/// The middle/center branch of svgDraw.drawText, before its per-row rounding.
+pub(crate) fn sequence_drawn_text_first_y(base_y: f64, margin: f64) -> f64 {
+    base_y + if margin > 0.0 { margin / 2.0 } else { 0.0 }
+}
+
+pub(crate) fn sequence_drawn_text_y(first_y: f64, margin: f64, preceding_height: f64) -> f64 {
+    if margin > 0.0 {
+        // Math.round chooses the upper integer at negative half ties, unlike f64::round.
+        let y = first_y + preceding_height;
+        let floor = y.floor();
+        floor + if y - floor >= 0.5 { 1.0 } else { 0.0 }
+    } else {
+        first_y
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -496,6 +562,11 @@ mod tests {
             23.0
         }
 
+        fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.record("raw-height", text, style);
+            19.0
+        }
+
         fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
             self.record("simple-height", text, style);
             match style.font_family.as_deref() {
@@ -525,7 +596,13 @@ mod tests {
     #[test]
     fn drawn_text_inherits_theme_only_when_inline_family_is_missing_or_rejected() {
         let config = drawn_text_config();
-        for family in [None, Some(""), Some("  "), Some("Inline Family; ")] {
+        for family in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("Inline Family; "),
+            Some("Arial; font-style: italic"),
+        ] {
             let mut style = default_sequence_style();
             style.font_family = family.map(str::to_string);
             let drawn = super::sequence_drawn_text_style(&style, &config);
@@ -752,6 +829,16 @@ mod tests {
                 .all(|(_, _, family)| family == "Theme Family,sans-serif")
         );
         assert!(direct_calls.iter().any(|(_, text, _)| text == "\u{200b}"));
+        assert!(
+            direct_calls
+                .iter()
+                .any(|(operation, _, _)| operation == "raw-height")
+        );
+        assert!(
+            direct_calls
+                .iter()
+                .all(|(operation, _, _)| operation != "simple-height")
+        );
 
         let tspan = OperationProbe::default();
         let tspan_dimensions = super::measure_drawn_svg_like_with_html_br(
@@ -831,5 +918,55 @@ mod tests {
         assert_eq!(raw_height, 110.5078125);
         assert_eq!(raw_height.round(), 111.0);
         assert_ne!(raw_height.round(), 10.0 * 11.05078125_f64.round());
+    }
+    #[test]
+    fn drawn_text_y_rounds_accumulated_heights_with_javascript_half_ties() {
+        let first = super::sequence_drawn_text_first_y(10.25, 5.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 0.0), 13.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 10.4), 23.0);
+        assert_eq!(super::sequence_drawn_text_y(first, 5.0, 30.8), 44.0);
+        assert_eq!(super::sequence_drawn_text_y(-1.5, 5.0, 0.0), -1.0);
+        for margin in [0.0, -5.0] {
+            let first = super::sequence_drawn_text_first_y(10.25, margin);
+            assert_eq!(first, 10.25);
+            assert_eq!(super::sequence_drawn_text_y(first, margin, 30.8), 10.25);
+        }
+    }
+    #[test]
+    fn inline_font_family_uses_css_tokens_without_turning_values_into_declarations() {
+        let config = drawn_text_config();
+        for family in [
+            "Arial; font-style: italic",
+            "Arial;",
+            "Arial !important",
+            "Arial,",
+            "Arial,,serif",
+            "'Quoted' Extra",
+        ] {
+            let mut style = default_sequence_style();
+            style.font_family = Some(family.to_string());
+            assert_eq!(super::sequence_inline_font_family(&style), None, "{family}");
+            assert_eq!(
+                super::sequence_drawn_text_style(&style, &config)
+                    .font_family
+                    .as_deref(),
+                Some("Theme Family,sans-serif")
+            );
+        }
+        for family in [
+            "Arial, sans-serif",
+            r#""Semi;Colon", serif"#,
+            r"Escaped\;Name, serif",
+            "Arial /*comment*/, serif",
+        ] {
+            let mut style = default_sequence_style();
+            style.font_family = Some(family.to_string());
+            let inline = super::sequence_inline_font_family(&style);
+            assert!(inline.is_some(), "{family}");
+            assert_eq!(
+                super::sequence_drawn_text_style(&style, &config).font_family,
+                inline
+            );
+        }
     }
 }

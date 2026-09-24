@@ -38,10 +38,11 @@ pub(crate) use constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT,
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
     SequenceActorBands, sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
-    sequence_text_line_step_px,
 };
 pub(crate) use metrics::{
-    SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_sequence_drawn_line_height,
+    measure_sequence_math_label, sequence_drawn_text_first_y, sequence_drawn_text_style,
+    sequence_drawn_text_y, sequence_inline_font_family, wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 

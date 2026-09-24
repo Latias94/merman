@@ -3,8 +3,9 @@ use super::SequenceEmitCheckpoints;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
-    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
-    sequence_text_line_step_px,
+    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceDrawnTextNode, SequenceMathHeightMode,
+    measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
+    sequence_drawn_text_style, sequence_drawn_text_y,
 };
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
@@ -25,7 +26,6 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) message_align: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) actor_height: f64,
-    pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
     pub(super) activation_width: f64,
     pub(super) wrap_padding: f64,
@@ -327,7 +327,6 @@ pub(super) fn render_sequence_messages(
 
         let text = msg.message_text();
         if let Some(lbl) = &edge.label {
-            let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
             let label_start_x = p0.x.min(p1.x);
@@ -373,8 +372,10 @@ pub(super) fn render_sequence_messages(
                         label_y: lbl.y,
                         label_x,
                         label_anchor,
-                        line_step,
-                        actor_label_font_size: ctx.actor_label_font_size,
+                        margin: ctx.wrap_padding,
+                        style: ctx.loop_text_style,
+                        measurer: ctx.measurer,
+                        config: ctx.sanitize_config,
                     },
                     ctx.checkpoints,
                 )?;
@@ -386,8 +387,10 @@ pub(super) fn render_sequence_messages(
                         label_y: lbl.y,
                         label_x,
                         label_anchor,
-                        line_step,
-                        actor_label_font_size: ctx.actor_label_font_size,
+                        margin: ctx.wrap_padding,
+                        style: ctx.loop_text_style,
+                        measurer: ctx.measurer,
+                        config: ctx.sanitize_config,
                     },
                     ctx.checkpoints,
                 )?;
@@ -537,13 +540,15 @@ fn format_sequence_number(value: f64) -> String {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct SequenceMessageTextLayout<'a> {
     label_y: f64,
     label_x: f64,
     label_anchor: &'a str,
-    line_step: f64,
-    actor_label_font_size: f64,
+    margin: f64,
+    style: &'a TextStyle,
+    measurer: &'a dyn TextMeasurer,
+    config: &'a merman_core::MermaidConfig,
 }
 
 fn render_sequence_message_text_lines<'a>(
@@ -552,9 +557,12 @@ fn render_sequence_message_text_lines<'a>(
     layout: SequenceMessageTextLayout<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
+    let drawn_style = sequence_drawn_text_style(layout.style, layout.config);
+    let css = super::settings::sequence_text_style_attribute(layout.style);
+    let mut preceding_height = 0.0;
     for (i, raw) in raw_lines.into_iter().enumerate() {
         checkpoints.checkpoint_loop(i)?;
-        let y = layout.label_y + (i as f64) * layout.line_step;
+        let y = sequence_drawn_text_y(layout.label_y, layout.margin, preceding_height);
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
         let line = if decoded.as_ref().is_empty() {
             "\u{200B}"
@@ -563,13 +571,22 @@ fn render_sequence_message_text_lines<'a>(
         };
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="{css}">{text}</text>"#,
             x = fmt(layout.label_x.round()),
             y = fmt(y),
             anchor = layout.label_anchor,
-            fs = fmt(layout.actor_label_font_size),
+            css = escape_attr(&css),
             text = escape_xml(line)
         );
+        if layout.margin > 0.0 {
+            preceding_height += measure_sequence_drawn_line_height(
+                layout.measurer,
+                line,
+                &drawn_style,
+                SequenceDrawnTextNode::Direct,
+                checkpoints.text(),
+            )?;
+        }
     }
     checkpoints.checkpoint()
 }
@@ -624,8 +641,10 @@ mod tests {
                 label_y: 10.0,
                 label_x: 20.0,
                 label_anchor: "middle",
-                line_step: 19.0,
-                actor_label_font_size: 16.0,
+                margin: 10.0,
+                style: &crate::text::TextStyle::default(),
+                measurer: &crate::text::DeterministicTextMeasurer::default(),
+                config: &merman_core::MermaidConfig::default(),
             },
             checkpoints,
         )
@@ -636,5 +655,123 @@ mod tests {
 
         assert_eq!(error.phase, OperationPhase::Emit);
         assert_eq!(out.matches("<text ").count(), 64);
+    }
+    #[derive(Default)]
+    struct RowProbe {
+        calls: std::cell::RefCell<Vec<String>>,
+        cancel: Option<OperationControl>,
+    }
+
+    impl crate::text::TextMeasurer for RowProbe {
+        fn measure(&self, _: &str, _: &crate::text::TextStyle) -> crate::text::TextMetrics {
+            panic!("message rows must use the raw text height operation")
+        }
+
+        fn measure_svg_raw_text_bbox_height_px(
+            &self,
+            text: &str,
+            style: &crate::text::TextStyle,
+        ) -> f64 {
+            assert_eq!(style.font_family.as_deref(), Some("ThemeFont"));
+            self.calls.borrow_mut().push(text.to_string());
+            if let Some(control) = &self.cancel {
+                control.cancel();
+            }
+            match text {
+                "first" => 10.4,
+                "\u{200b}" => 20.4,
+                "&" => 8.0,
+                _ => panic!("unexpected row"),
+            }
+        }
+    }
+
+    #[test]
+    fn message_rows_accumulate_raw_heights_after_decoding_and_preserve_explicit_dy() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = crate::text::TextStyle::default();
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"fontFamily": "ThemeFont"}
+        }));
+        for margin in [5.0, 0.0, -5.0] {
+            let probe = RowProbe::default();
+            let first_y = crate::sequence::sequence_drawn_text_first_y(10.25, margin);
+            let mut out = String::new();
+            render_sequence_message_text_lines(
+                &mut out,
+                ["first", "", "#38;"],
+                super::SequenceMessageTextLayout {
+                    label_y: first_y,
+                    label_x: 20.0,
+                    label_anchor: "middle",
+                    margin,
+                    style: &style,
+                    measurer: &probe,
+                    config: &config,
+                },
+                super::SequenceEmitCheckpoints::new(&meter),
+            )
+            .unwrap();
+            let svg = format!("<svg>{out}</svg>");
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let ys: Vec<_> = document
+                .descendants()
+                .filter(|n| n.has_tag_name("text"))
+                .map(|n| n.attribute("y").unwrap())
+                .collect();
+            assert_eq!(
+                ys,
+                if margin > 0.0 {
+                    vec!["13", "23", "44"]
+                } else {
+                    vec!["10.25"; 3]
+                }
+            );
+            assert_eq!(out.matches("dy=\"1em\"").count(), 3);
+            assert!(out.contains("&amp;</text>"));
+            if margin > 0.0 {
+                assert_eq!(*probe.calls.borrow(), ["first", "\u{200b}", "&"]);
+            } else {
+                assert!(probe.calls.borrow().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn message_height_callback_cancellation_stops_before_the_next_row() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let probe = RowProbe {
+            cancel: Some(control),
+            ..Default::default()
+        };
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"fontFamily": "ThemeFont"}
+        }));
+        let mut out = String::new();
+        let error = render_sequence_message_text_lines(
+            &mut out,
+            ["first", "first"],
+            super::SequenceMessageTextLayout {
+                label_y: 10.0,
+                label_x: 20.0,
+                label_anchor: "middle",
+                margin: 5.0,
+                style: &crate::text::TextStyle::default(),
+                measurer: &probe,
+                config: &config,
+            },
+            super::SequenceEmitCheckpoints::new(&meter),
+        )
+        .unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected cancellation");
+        };
+        assert_eq!(error.phase, OperationPhase::Emit);
+        assert_eq!(probe.calls.borrow().len(), 1);
+        assert_eq!(out.matches("<text ").count(), 1);
     }
 }

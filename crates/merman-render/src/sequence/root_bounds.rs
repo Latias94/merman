@@ -118,7 +118,13 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> Result<Conten
                 content.include_y(p.y);
             }
             if let Some(label) = e.label.as_ref() {
-                content.include_y(label.y + label.height / 2.0);
+                let margin = crate::config::config_f64(
+                    ctx.math_config.as_value(),
+                    &["sequence", "wrapPadding"],
+                )
+                .unwrap_or(10.0);
+                let first_y = super::sequence_drawn_text_y(label.y, margin, 0.0);
+                content.include_y(first_y + label.height / 2.0);
             }
         }
     }

@@ -75,6 +75,8 @@ pub(super) fn render_sequence_interaction_overlays(
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
         label_box_width: ctx.settings.label_box_width,
+        box_margin: ctx.settings.box_margin,
+        box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
@@ -85,7 +87,7 @@ pub(super) fn render_sequence_interaction_overlays(
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,
         measurer: ctx.measurer,
-        actor_label_font_size: ctx.settings.actor_label_font_size,
+        note_margin: ctx.settings.note_margin,
         wrap_padding: ctx.settings.wrap_padding,
         note_text_style: &ctx.settings.note_text_style,
         sanitize_config: ctx.sanitize_config,

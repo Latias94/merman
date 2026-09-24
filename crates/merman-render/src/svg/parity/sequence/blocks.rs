@@ -16,6 +16,8 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_width: f64,
+    pub(super) box_margin: f64,
+    pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
@@ -40,6 +42,7 @@ impl<'a> SequenceBlockRenderContext<'a> {
             self.loop_text_style,
             self.sanitize_config,
             self.math_renderer,
+            self.box_text_margin,
             self.checkpoints,
         )
     }
@@ -166,7 +169,7 @@ pub(super) fn render_simple_sequence_block(
     );
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
-    let text_y = frame_y1 + 18.0;
+    let text_y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
     let label =
         display_block_label(block.raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let max_w = ctx.label_wrap_width(block.label_id, Some((frame_x2 - label_box_right).max(0.0)));
@@ -284,7 +287,7 @@ pub(super) fn render_sectioned_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -302,7 +305,8 @@ pub(super) fn render_sectioned_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,
@@ -389,7 +393,7 @@ pub(super) fn render_critical_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -407,7 +411,8 @@ pub(super) fn render_critical_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,

@@ -227,7 +227,6 @@ fn render_sequence_diagram_svg_inner(
         message_align: settings.message_align.as_str(),
         diagram_id,
         actor_height: settings.actor_height,
-        actor_label_font_size: settings.actor_label_font_size,
         sequence_width: settings.sequence_width,
         activation_width: settings.activation_width,
         wrap_padding: settings.wrap_padding,
