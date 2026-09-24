@@ -639,7 +639,10 @@ mod tests {
         for (diagram, stem) in [
             ("info", "upstream_info_spec"),
             ("er", "basic"),
-            ("flowchart", "basic"),
+            (
+                "flowchart",
+                "upstream_examples_flowchart_basic_flowchart_001",
+            ),
             ("gantt", "basic"),
         ] {
             let report_path = output_root.join(format!("{diagram}.md"));

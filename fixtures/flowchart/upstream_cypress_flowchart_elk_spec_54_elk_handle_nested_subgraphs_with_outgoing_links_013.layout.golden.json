@@ -4,7 +4,7 @@
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "subGraph1",
+          "id": "main",
           "x": 136.0,
           "y": 146.0,
           "width": 248.0,
@@ -69,7 +69,7 @@
       ],
       "clusters": [
         {
-          "id": "subGraph1",
+          "id": "main",
           "x": 136.0,
           "y": 146.0,
           "width": 248.0,

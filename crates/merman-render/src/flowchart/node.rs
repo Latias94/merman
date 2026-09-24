@@ -283,11 +283,18 @@ fn node_render_dimensions(
             (w + rect_offset, h + rect_offset)
         }
 
-        // Circle.
+        // Circle. Mermaid sizes the radius from the label bbox diagonal, then adds
+        // the look-specific padding (circle.ts: labelRadius + labelPadding/halfPadding).
+        // Using the width alone under-sizes empty and wrapped labels, and in neo mode
+        // turns a 64px empty circle into a padding-sized dot.
         "circle" | "circ" => {
-            // Mermaid uses half-padding for circles and bases radius on label width.
-            let d = text_w + p;
-            (d, d)
+            let label_diameter = text_w.hypot(text_h);
+            let diameter = if look_is_neo {
+                label_diameter + 64.0
+            } else {
+                label_diameter + 2.0 * p
+            };
+            (diameter, diameter)
         }
 
         // Organic arc paths use the browser-visible path bbox, not their construction box.
@@ -1206,6 +1213,28 @@ mod render_dimension_tests {
         let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
         assert_eq!(cylinder_w, 124.0);
         assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn circle_uses_label_diagonal_and_neo_padding() {
+        let empty = crate::text::TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 1,
+        };
+        assert_eq!(
+            node_render_dimensions(Some("circle"), empty, 15.0, true),
+            (64.0, 64.0)
+        );
+
+        let value = node_render_dimensions(Some("circle"), metrics(), 15.0, true);
+        let expected = 100.0_f64.hypot(20.0) + 64.0;
+        assert!((value.0 - expected).abs() < 1e-9);
+        assert_eq!(value.0, value.1);
+
+        let classic = node_render_dimensions(Some("circle"), metrics(), 15.0, false);
+        let classic_expected = 100.0_f64.hypot(20.0) + 30.0;
+        assert!((classic.0 - classic_expected).abs() < 1e-9);
     }
 
     #[test]
