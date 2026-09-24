@@ -1438,7 +1438,12 @@ mod tests {
     fn model_order_sort_matches_pinned_worker_comparison_schedule() {
         // Extracted insertionSort/mergeSort_0/merge_1 from elkjs 0.9.3, including
         // the seven-element merge boundary and the already-ordered fast path.
-        let cases: &[(&[usize], &[usize], &[(usize, usize)])] = &[
+        type SortCase = (
+            &'static [usize],
+            &'static [usize],
+            &'static [(usize, usize)],
+        );
+        let cases: &[SortCase] = &[
             (&[], &[], &[]),
             (&[0], &[0], &[]),
             (&[2, 1, 0], &[0, 1, 2], &[(2, 1), (2, 0), (1, 0)]),
