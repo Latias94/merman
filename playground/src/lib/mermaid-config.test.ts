@@ -166,3 +166,31 @@ test("canvas tone merges scoped source themes with the injected configuration", 
   assert.equal(resolveMermaidCanvasTone("{}", "default", `${source}\n%%{init: {'flowchart': {'theme': 'forest'}}}%%`, "flowchart"), "light");
   assert.equal(resolveMermaidCanvasTone("{}", "default", "flowchart TD\nA-->B\n%%{init: {'flowchart': {'theme': 'dark'}}}%%", "flowchart"), "dark");
 });
+
+
+test("canvas validates themes after merging replacements and ignoring JSON null", () => {
+  assert.equal(resolveMermaidCanvasTone('{"theme":"unknown"}', "dark", "flowchart TD\nA-->B", "flowchart"), "light");
+  const source = "---\nconfig:\n  flowchart:\n    theme: dark\n---\nflowchart TD\nA-->B";
+  assert.equal(
+    resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"unknown"}}', "auto", source, "flowchart"),
+    "light",
+  );
+  assert.equal(
+    resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":null}}', "auto", source, "flowchart"),
+    "dark",
+  );
+  assert.equal(
+    resolveMermaidCanvasTone("{}", "auto", `${source}\n%%{init: {"theme":"default","flowchart":{"theme":"unknown"}}}%%`, "flowchart"),
+    "light",
+  );
+  assert.equal(
+    resolveMermaidCanvasTone("{}", "auto", '---\nconfig: {theme: dark}\n---\nflowchart TD\nA-->B\n%%{init: {"theme":"unknown"}}%%', "flowchart"),
+    "light",
+  );
+});
+
+test("the string null sentinel retains the initialized theme palette", () => {
+  const source = 'flowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
+  assert.equal(resolveMermaidCanvasTone('{"theme":"dark"}', "auto", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"dark"}}', "auto", source, "flowchart"), "light");
+});

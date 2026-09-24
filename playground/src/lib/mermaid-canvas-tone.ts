@@ -40,10 +40,12 @@ export function resolveMermaidCanvasTone(
       mergeThemeFields(themes, directive, configNamespace);
     }
     const resolved = [themes.scoped, themes.global].find(
-      (value): value is ThemeName =>
-        typeof value === "string" && Object.hasOwn(MERMAID_CANVAS_TONES, value),
+      (value): value is ThemeName | "null" => value === "null" || isKnownTheme(value),
     );
-    effectiveTheme = resolved ?? effectiveTheme;
+    // The string sentinel skips theme recomputation and retains initialize()'s palette.
+    effectiveTheme = resolved === "null"
+      ? normalizeMermaidThemeName(typeof config.theme === "string" ? config.theme : undefined)
+      : resolved ?? (themes.sawThemeField ? "default" : effectiveTheme);
   } catch {
     // Invalid config is rendered as an error; keep the selected-theme canvas.
   }
@@ -106,6 +108,7 @@ function isPlainObject(value: unknown): value is MermaidConfigObject {
 interface ThemeFields {
   global?: unknown;
   scoped?: unknown;
+  sawThemeField?: boolean;
 }
 
 function isKnownTheme(value: unknown): value is ThemeName {
@@ -118,9 +121,15 @@ function mergeThemeFields(
   namespace: string | null | undefined,
 ): void {
   if (!config) return;
-  if (isKnownTheme(config.theme)) themes.global = config.theme;
+  // assignWithDepth ignores JSON null, but unknown strings replace previous values.
+  // Validate after merging so a rejected scoped value can fall back to the global one.
+  if (config.theme != null) {
+    themes.sawThemeField = true;
+    themes.global = config.theme;
+  }
   const section = namespace ? config[namespace] : undefined;
-  if (isPlainObject(section) && isKnownTheme(section.theme)) {
+  if (isPlainObject(section) && section.theme != null) {
+    themes.sawThemeField = true;
     themes.scoped = section.theme;
   }
 }
