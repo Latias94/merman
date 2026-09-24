@@ -2,6 +2,7 @@ use crate::MermaidConfig;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use serde::Deserialize;
 use serde_json::{Map, Value};
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -589,6 +590,7 @@ fn finish_theme_defaults(
     Ok(())
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThemeResolutionStage {
     DefaultSnapshot,
@@ -597,6 +599,7 @@ enum ThemeResolutionStage {
     ExplicitReplay,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThemeValueOrigin {
     DefaultSnapshot,
@@ -606,43 +609,47 @@ enum ThemeValueOrigin {
 
 #[derive(Debug, Clone)]
 struct ThemeStageSnapshot {
+    #[cfg(test)]
     stage: ThemeResolutionStage,
     variables: Map<String, Value>,
+    #[cfg(test)]
     origins: BTreeMap<String, ThemeValueOrigin>,
 }
 
 impl ThemeStageSnapshot {
-    fn from_variables(
-        stage: ThemeResolutionStage,
-        variables: Map<String, Value>,
-        origin: ThemeValueOrigin,
-    ) -> Self {
-        let origins = variables.keys().map(|key| (key.clone(), origin)).collect();
+    fn from_variables(variables: Map<String, Value>) -> Self {
         Self {
-            stage,
+            #[cfg(test)]
+            stage: ThemeResolutionStage::Calculated,
+            #[cfg(test)]
+            origins: variables
+                .keys()
+                .map(|key| (key.clone(), ThemeValueOrigin::Calculated))
+                .collect(),
             variables,
-            origins,
         }
     }
 
-    fn overlay(&mut self, values: &Map<String, Value>, origin: ThemeValueOrigin) {
+    fn overlay(&mut self, values: &Map<String, Value>) {
         for (key, value) in values {
             self.variables.insert(key.clone(), value.clone());
-            self.origins.insert(key.clone(), origin);
+            #[cfg(test)]
+            self.origins
+                .insert(key.clone(), ThemeValueOrigin::ExplicitOverride);
         }
     }
 }
 
-/// Ordered theme resolution stages shared by every family renderer.
-///
-/// The upstream theme classes are mutable JavaScript objects, but their observable contract is
-/// an ordered pipeline. Keeping each stage as an immutable snapshot makes the order explicit and
-/// gives tests a place to assert value provenance without leaking a mutable theme object into
-/// diagram families.
+/// Ordered theme resolution shared by every family renderer.
+/// Tests retain intermediate snapshots and value origins to audit the same calculation;
+/// production carries only the variables needed by the next stage.
 #[derive(Debug, Clone)]
 struct ThemeResolution {
+    #[cfg(test)]
     default_snapshot: ThemeStageSnapshot,
+    #[cfg(test)]
     overrides_applied: ThemeStageSnapshot,
+    #[cfg(test)]
     calculated: ThemeStageSnapshot,
     explicit_replay: ThemeStageSnapshot,
 }
@@ -655,34 +662,35 @@ impl ThemeResolution {
     ) -> Result<Self, ColorError> {
         let program = ThemeProgram::resolve(theme);
         let has_user_theme_variables = !explicit.is_empty();
-        let default_variables = program.default_snapshot().clone();
-        let default_snapshot = ThemeStageSnapshot::from_variables(
-            ThemeResolutionStage::DefaultSnapshot,
-            default_variables,
-            ThemeValueOrigin::DefaultSnapshot,
-        );
+        let default_variables = program.default_snapshot();
+        #[cfg(test)]
+        let default_snapshot = ThemeStageSnapshot {
+            stage: ThemeResolutionStage::DefaultSnapshot,
+            variables: default_variables.clone(),
+            origins: default_variables
+                .keys()
+                .map(|key| (key.clone(), ThemeValueOrigin::DefaultSnapshot))
+                .collect(),
+        };
 
-        let mut overrides_applied = default_snapshot.clone();
-        overrides_applied.stage = ThemeResolutionStage::OverridesApplied;
-        overrides_applied.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
+        #[cfg(test)]
+        let overrides_applied = {
+            let mut snapshot = default_snapshot.clone();
+            snapshot.stage = ThemeResolutionStage::OverridesApplied;
+            snapshot.overlay(&explicit);
+            snapshot
+        };
 
-        let mut calculated_snapshot = ThemeStageSnapshot::from_variables(
-            ThemeResolutionStage::Calculated,
-            calculated,
-            ThemeValueOrigin::Calculated,
-        );
+        let mut calculated_snapshot = ThemeStageSnapshot::from_variables(calculated);
 
         if let Some(snapshot) = program.exact_snapshot(&explicit) {
             // Generated snapshots are exact calculation-stage results for branch-only inputs.
             // Typography inputs do not affect updateColors() and are replayed below.
-            calculated_snapshot = ThemeStageSnapshot::from_variables(
-                ThemeResolutionStage::Calculated,
-                snapshot.clone(),
-                ThemeValueOrigin::Calculated,
-            );
+            calculated_snapshot = ThemeStageSnapshot::from_variables(snapshot.clone());
         } else if program.kind != ThemeProgramKind::Base {
             let snapshot = program.calculation_snapshot(&explicit);
             merge_theme_variable_defaults(&mut calculated_snapshot.variables, snapshot);
+            #[cfg(test)]
             for key in snapshot.keys() {
                 calculated_snapshot
                     .origins
@@ -690,6 +698,7 @@ impl ThemeResolution {
                     .or_insert(ThemeValueOrigin::DefaultSnapshot);
             }
 
+            #[cfg(test)]
             let before_dependencies = calculated_snapshot.variables.clone();
             if program.kind == ThemeProgramKind::Extended {
                 apply_extended_theme_visible_derivations(
@@ -712,6 +721,7 @@ impl ThemeResolution {
                     .variables
                     .insert("flowContainerStroke".to_string(), border);
             }
+            #[cfg(test)]
             for (key, value) in &calculated_snapshot.variables {
                 if before_dependencies.get(key) != Some(value) {
                     calculated_snapshot
@@ -721,8 +731,13 @@ impl ThemeResolution {
             }
         }
 
-        let mut explicit_replay = calculated_snapshot.clone();
-        explicit_replay.stage = ThemeResolutionStage::ExplicitReplay;
+        #[cfg(test)]
+        let calculated = calculated_snapshot.clone();
+        let mut explicit_replay = calculated_snapshot;
+        #[cfg(test)]
+        {
+            explicit_replay.stage = ThemeResolutionStage::ExplicitReplay;
+        }
 
         // `theme-default` constructs and updates its color scale before calculate() applies
         // overrides. A second update darkens the already-created cScale values, while peer and
@@ -730,13 +745,9 @@ impl ThemeResolution {
         // baseline before replaying explicit values; this is why a font-only override must not
         // change Radar/Kanban/Mindmap/Timeline colors.
         if has_user_theme_variables && theme == "default" {
-            restore_default_baseline_palette(
-                &mut explicit_replay.variables,
-                &mut explicit_replay.origins,
-                &default_snapshot.variables,
-            );
+            restore_default_baseline_palette(&mut explicit_replay, default_variables);
         }
-        explicit_replay.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
+        explicit_replay.overlay(&explicit);
         // Mermaid base.calculate() disables the inferred gradient after replay so an
         // explicitly supplied node stroke paints under the default neo look.
         if program.kind == ThemeProgramKind::Base
@@ -746,42 +757,30 @@ impl ThemeResolution {
             explicit_replay
                 .variables
                 .insert("useGradient".to_string(), Value::Bool(false));
+            #[cfg(test)]
             explicit_replay
                 .origins
                 .insert("useGradient".to_string(), ThemeValueOrigin::Calculated);
         }
 
         Ok(Self {
+            #[cfg(test)]
             default_snapshot,
+            #[cfg(test)]
             overrides_applied,
-            calculated: calculated_snapshot,
+            #[cfg(test)]
+            calculated,
             explicit_replay,
         })
     }
 
     fn into_resolved_variables(self) -> Map<String, Value> {
-        // Touch the intermediate snapshots so the compiler and debug views retain the full
-        // ordered pipeline even though callers only need the final map.
-        debug_assert_eq!(
-            self.default_snapshot.stage,
-            ThemeResolutionStage::DefaultSnapshot
-        );
-        debug_assert_eq!(
-            self.overrides_applied.stage,
-            ThemeResolutionStage::OverridesApplied
-        );
-        debug_assert_eq!(self.calculated.stage, ThemeResolutionStage::Calculated);
-        debug_assert_eq!(
-            self.explicit_replay.stage,
-            ThemeResolutionStage::ExplicitReplay
-        );
         self.explicit_replay.variables
     }
 }
 
 fn restore_default_baseline_palette(
-    target: &mut Map<String, Value>,
-    origins: &mut BTreeMap<String, ThemeValueOrigin>,
+    target: &mut ThemeStageSnapshot,
     baseline: &Map<String, Value>,
 ) {
     for prefix in [
@@ -795,21 +794,30 @@ fn restore_default_baseline_palette(
         for index in 0..12 {
             let key = format!("{prefix}{index}");
             if let Some(value) = baseline.get(&key) {
-                target.insert(key.clone(), value.clone());
-                origins.insert(key, ThemeValueOrigin::DefaultSnapshot);
+                #[cfg(test)]
+                target
+                    .origins
+                    .insert(key.clone(), ThemeValueOrigin::DefaultSnapshot);
+                target.variables.insert(key, value.clone());
             }
         }
     }
     for index in 1..=12 {
         let key = format!("pie{index}");
         if let Some(value) = baseline.get(&key) {
-            target.insert(key.clone(), value.clone());
-            origins.insert(key, ThemeValueOrigin::DefaultSnapshot);
+            #[cfg(test)]
+            target
+                .origins
+                .insert(key.clone(), ThemeValueOrigin::DefaultSnapshot);
+            target.variables.insert(key, value.clone());
         }
     }
     if let Some(value) = baseline.get("scaleLabelColor") {
-        target.insert("scaleLabelColor".to_string(), value.clone());
-        origins.insert(
+        target
+            .variables
+            .insert("scaleLabelColor".to_string(), value.clone());
+        #[cfg(test)]
+        target.origins.insert(
             "scaleLabelColor".to_string(),
             ThemeValueOrigin::DefaultSnapshot,
         );
