@@ -110,6 +110,8 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "tagged-process"
                 | "doc"
                 | "document"
+                | "lin-doc"
+                | "lined-document"
                 | "delay"
                 | "half-rounded-rectangle"
                 | "notch-pent"
@@ -1242,6 +1244,66 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         intersect_polygon(node, &points, point)
     }
 
+    fn intersect_lined_wave_document(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let look_is_neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if look_is_neo { 16.0 } else { ctx.node_padding };
+        let padding_y = if look_is_neo { 12.0 } else { ctx.node_padding };
+        let w = (metrics.width + 2.0 * padding_x).max(0.0);
+        let h = (metrics.height + 2.0 * padding_y).max(0.0);
+        let wave_amplitude = if look_is_neo { h / 4.0 } else { h / 8.0 };
+        let final_h = h + wave_amplitude;
+        let extension = (w / 2.0) * 0.1;
+
+        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0 - extension,
+            y: -final_h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0 - extension,
+            y: final_h / 2.0,
+        });
+        points.extend(generate_full_sine_wave_points(
+            -w / 2.0 - extension,
+            final_h / 2.0,
+            w / 2.0 + extension,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push(crate::model::LayoutPoint {
+            x: w / 2.0 + extension,
+            y: -final_h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0 - extension,
+            y: -final_h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0,
+            y: -final_h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0,
+            y: (final_h / 2.0) * 1.1,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0,
+            y: -final_h / 2.0,
+        });
+
+        intersect_polygon(node, &points, point)
+    }
+
     fn intersect_delay(
         ctx: &FlowchartRenderCtx<'_>,
         node_id: &str,
@@ -1439,6 +1501,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             intersect_tagged_rect(ctx, node_id, node, point)
         }
         Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, point),
+        Some("lin-doc" | "lined-document") => {
+            intersect_lined_wave_document(ctx, node_id, node, point)
+        }
         Some("delay" | "half-rounded-rectangle") => intersect_delay(ctx, node_id, node, point),
         Some("notch-pent" | "loop-limit" | "notched-pentagon") => {
             intersect_notched_pentagon(ctx, node_id, node, point)
@@ -1471,6 +1536,12 @@ mod tests {
 
     fn point(x: f64, y: f64) -> LayoutPoint {
         LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn lined_documents_force_source_polygon_intersections() {
+        assert!(force_intersect_for_layout_shape(Some("lin-doc")));
+        assert!(force_intersect_for_layout_shape(Some("lined-document")));
     }
 
     #[test]

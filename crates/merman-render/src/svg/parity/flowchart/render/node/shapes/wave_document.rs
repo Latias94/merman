@@ -85,6 +85,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     );
 
     // Mirror Mermaid `waveEdgedRectangle.ts` label placement.
-    label.dx = -w / 2.0 + padding_x + metrics.width / 2.0;
-    label.dy = -h / 2.0 + padding_y - wave_amplitude + metrics.height / 2.0;
+    label.dx = -w / 2.0 + p + metrics.width / 2.0;
+    label.dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
 }

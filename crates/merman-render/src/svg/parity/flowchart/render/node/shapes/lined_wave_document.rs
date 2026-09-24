@@ -38,9 +38,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     let final_h = h + wave_amplitude;
     let ext = (w / 2.0) * 0.1;
 
-    // Mermaid nudges label by half the left extension, and shifts it up by waveAmplitude/2.
-    label.dx = ext / 2.0;
-    label.dy = -wave_amplitude / 2.0;
+    // Mermaid keeps the authored padding in the label transform while the shape uses
+    // look-specific axis padding. Convert that source transform to the local label wrapper base.
+    label.dx = -padding_x + p + ext / 2.0;
+    label.dy = -padding_y + p - wave_amplitude;
 
     let mut points: Vec<(f64, f64)> = Vec::new();
     points.push((-w / 2.0 - ext, -final_h / 2.0));

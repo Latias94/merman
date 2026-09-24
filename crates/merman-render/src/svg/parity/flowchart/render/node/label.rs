@@ -102,6 +102,8 @@ fn render_flowchart_node_label_with_wrapper(
             common.shape,
             "doc"
                 | "document"
+                | "lin-doc"
+                | "lined-document"
                 | "lin-cyl"
                 | "disk"
                 | "lined-cylinder"

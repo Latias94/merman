@@ -692,6 +692,68 @@ mod tests {
         assert_neo_shape_viewport_contains_shifted_label("documents");
     }
     #[test]
+    fn wave_document_labels_use_source_padding_and_wave_offsets() {
+        for (shape, neo) in [
+            ("doc", false),
+            ("doc", true),
+            ("lin-doc", false),
+            ("lin-doc", true),
+        ] {
+            let padding = 15.0;
+            let svg = render_measured_shape(
+                shape,
+                neo,
+                padding,
+                crate::text::TextMetrics {
+                    width: 120.0,
+                    height: if shape == "doc" { 42.0 } else { 63.0 },
+                    line_count: 1,
+                },
+            );
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let label = doc
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+            let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
+            let padding_x = if neo { 16.0 } else { padding };
+            let padding_y = if neo { 12.0 } else { padding };
+            let w = label_width + 2.0 * padding_x;
+            let h = label_height + 2.0 * padding_y;
+            let wave_amplitude = if neo { h / 4.0 } else { h / 8.0 };
+            let extension = if shape == "lin-doc" {
+                (w / 2.0) * 0.1 / 2.0
+            } else {
+                0.0
+            };
+            let expected_x = -w / 2.0 + padding + extension;
+            let expected_y = -h / 2.0 + padding - wave_amplitude;
+            let transform = label
+                .parent_element()
+                .and_then(|node| node.attribute("transform"))
+                .unwrap();
+            let values: Vec<f64> = transform
+                .strip_prefix("translate(")
+                .and_then(|value| value.strip_suffix(')'))
+                .unwrap()
+                .split([',', ' '])
+                .filter(|value| !value.is_empty())
+                .map(|value| value.parse().unwrap())
+                .collect();
+            assert_eq!(values.len(), 2, "{shape}, neo={neo}");
+            assert!(
+                (values[0] - expected_x).abs() < 1e-6,
+                "{shape}, neo={neo}: values={values:?}, expected={expected_x}"
+            );
+            assert!(
+                (values[1] - expected_y).abs() < 1e-6,
+                "{shape}, neo={neo}: values={values:?}, expected={expected_y}"
+            );
+        }
+    }
+
+    #[test]
     fn neo_shape_svg_uses_source_vertices_rings_and_label_shift() {
         let metrics = crate::text::TextMetrics {
             width: 100.0,
