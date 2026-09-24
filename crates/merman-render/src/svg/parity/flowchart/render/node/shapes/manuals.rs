@@ -157,5 +157,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
         ctx.measurer
             .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
+    // Mermaid's slopedRect label transform uses authored padding against the shape's
+    // look-specific horizontal padding.
+    label.dx = -padding_x + p;
     label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
 }

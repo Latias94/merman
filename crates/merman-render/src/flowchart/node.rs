@@ -1083,9 +1083,17 @@ fn node_render_dimensions(
             }
         }
 
-        // Shaded process / lined rectangle: adds 8px on both sides (total +16).
+        // Mermaid `shadedProcess.ts` uses fixed Neo label padding and one 8px frame on
+        // the outer width; Classic keeps two frame widths around the configured padding.
         "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
-            (text_w + 2.0 * p + 16.0, text_h + 2.0 * p)
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let frame_width = 8.0;
+            let frame_count = if look_is_neo { 1.0 } else { 2.0 };
+            (
+                text_w + 2.0 * padding_x + frame_count * frame_width,
+                text_h + 2.0 * padding_y,
+            )
         }
 
         // Text block: bbox + 1x padding (not 2x).
@@ -2063,6 +2071,15 @@ mod render_dimension_tests {
                 true,
             ),
             (32.0, 24.0)
+        );
+
+        assert_eq!(
+            node_render_dimensions(Some("shaded-process"), metrics(), 15.0, false),
+            (146.0, 50.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("shaded-process"), metrics(), 15.0, true),
+            (140.0, 44.0)
         );
 
         // Stored data uses Neo's 16px/12px axis padding before the sampled arc bbox.

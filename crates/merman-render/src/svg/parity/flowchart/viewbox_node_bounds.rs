@@ -758,6 +758,37 @@ mod tests {
     }
 
     #[test]
+    fn sloped_rectangle_label_uses_authored_padding_against_neo_geometry() {
+        let padding = 15.0;
+        let metrics = crate::text::TextMetrics {
+            width: 120.0,
+            height: 42.0,
+            line_count: 1,
+        };
+        let svg = render_measured_shape("manual-input", true, padding, metrics);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let label = doc
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+        let w = label_width + 32.0;
+        let transform = label
+            .parent_element()
+            .and_then(|node| node.attribute("transform"))
+            .unwrap();
+        let values: Vec<f64> = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .unwrap()
+            .split([',', ' '])
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse().unwrap())
+            .collect();
+        assert!((values[0] - (-w / 2.0 + padding)).abs() < 1e-6);
+    }
+
+    #[test]
     fn neo_shape_svg_uses_source_vertices_rings_and_label_shift() {
         let metrics = crate::text::TextMetrics {
             width: 100.0,
