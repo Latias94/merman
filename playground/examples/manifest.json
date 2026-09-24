@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "mermaidBaseline": "mermaid@11.17.2",
+  "mermaidBaseline": "mermaid@12.0.0",
   "examples": [
     {
       "diagramType": "agentflow",

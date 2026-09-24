@@ -10,6 +10,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference";
 import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
 test("loads the production WASM and renders a safe SVG", async ({ page }, testInfo) => {
@@ -175,7 +176,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   errors.assertNone();
 });
 
-test("Compare detection and rendering share external ELK configuration", async ({
+test("Compare detection and rendering share built-in ELK configuration", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -196,6 +197,45 @@ test("Compare detection and rendering share external ELK configuration", async (
       expect.stringContaining("Configured input"),
     ]);
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
+  await expect(page.locator('[data-merman-compare-engine="mermaid"]')).toContainText(MERMAID_JS_VERSION);
+  errors.assertNone();
+});
+
+test("automatic and explicit default themes remain distinct in the presentation controls", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }))
+    .toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Default", exact: true }).click();
+  await waitForPreviewSvg(page);
+  await expect(page.locator("footer")).toContainText("Default");
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Default", exact: true }))
+    .toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }).click();
+  await expect(page.locator("footer")).toContainText("Automatic (diagram default)");
+  errors.assertNone();
+});
+
+test("Compare renders Mermaid 12 Agentflow and Usecase through the production WASM", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  for (const [source, label] of [
+    ['agentflow-beta TB\nflow support["Support"]\n  input["Question"]@{ shape: input }\n  task["Resolve"]@{ shape: task }\n  input --> task\nend', "Question"],
+    ['usecase-beta\nactor Customer("Customer")\nsystemBoundary "Order system"\n  Checkout("Place order")\nend\nCustomer --> Checkout', "Place order"],
+  ]) {
+    await replaceEditorSource(page, source);
+    await expect.poll(() => compareSvgTexts(page)).toEqual([
+      expect.stringContaining(label),
+      expect.stringContaining(label),
+    ]);
+  }
   errors.assertNone();
 });
 

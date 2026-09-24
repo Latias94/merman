@@ -348,6 +348,7 @@
     "syntaxIssues": "Syntax issues"
   },
   "themes": {
+    "auto": "Automatic (diagram default)",
     "default": "Default",
     "dark": "Dark",
     "forest": "Forest",

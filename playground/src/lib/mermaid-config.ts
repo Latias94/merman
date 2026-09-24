@@ -1,5 +1,5 @@
 import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
-import { normalizeMermaidThemeName } from "./mermaid-theme-name.ts";
+import { normalizeMermaidThemeSelection } from "./mermaid-theme-name.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;
 
@@ -32,8 +32,8 @@ export function buildMermaidConfig(
   options: MermaidConfigBuildOptions = {}
 ): MermaidConfigObject {
   const config = { ...parseMermaidConfigJson(configJson) };
-  const normalizedTheme = normalizeMermaidThemeName(theme);
-  if (normalizedTheme !== "default" && config.theme === undefined) {
+  const normalizedTheme = normalizeMermaidThemeSelection(theme);
+  if (normalizedTheme !== "auto" && config.theme === undefined) {
     config.theme = normalizedTheme;
   }
   if (options.diagramFont) {

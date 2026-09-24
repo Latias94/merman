@@ -93,7 +93,7 @@ declare global {
       }[];
       ready(): Promise<{
         catalog: {
-          fixtures: readonly unknown[];
+          fixtures: readonly { readonly id: string }[];
           identity: { availableFamilies: number };
         };
       }>;

@@ -1,6 +1,7 @@
 import { Unzlib, zlibSync } from "fflate";
 import { isBundledThemePresetName, isThemeName } from "@mermanjs/web";
 
+import { isMermaidThemeSelection } from "./mermaid-theme-name.ts";
 import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
 import {
@@ -29,7 +30,8 @@ export const SHARE_V2_PREFIX = "#s2:" as const;
 
 // This is the complete default snapshot owned by the s2 wire format. Keep it
 // independent from application defaults so future UI changes cannot reinterpret
-// fields omitted by an already-shared URL.
+// fields omitted by an already-shared URL. The historical omitted/default theme
+// is represented by `auto` because it never injected a Mermaid theme override.
 export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
   code: `flowchart TD
     A[Start] --> B{Condition?}
@@ -37,7 +39,7 @@ export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
     B -->|No| D[End]
     C --> D`,
   mermaidConfig: "{\n}\n",
-  diagramTheme: "default",
+  diagramTheme: "auto",
   presentationThemePresetId: null,
   presentationProfileId: null,
   svgPipeline: "parity",
@@ -51,6 +53,7 @@ const LEGACY_RENDER_VIEWPORT_KEY = "renderViewportMode";
 const WORKSPACE_V2_KEYS = new Set([
   "code",
   "theme",
+  "themeSelection",
   "config",
   "presentationThemePresetId",
   "presentationProfileId",
@@ -148,7 +151,7 @@ function encodeWorkspaceV2Payload(
   const payload: Record<string, unknown> = {};
   if (data.code !== WORKSPACE_V2_DEFAULTS.code) payload.code = data.code;
   if (data.diagramTheme !== WORKSPACE_V2_DEFAULTS.diagramTheme) {
-    payload.theme = data.diagramTheme;
+    payload.themeSelection = data.diagramTheme;
   }
   if (data.mermaidConfig !== WORKSPACE_V2_DEFAULTS.mermaidConfig) {
     payload.config = data.mermaidConfig;
@@ -206,12 +209,7 @@ function decodeWorkspaceV2Record(
     WORKSPACE_V2_DEFAULTS.code,
     SHARE_LIMITS.sourceBytes
   );
-  const diagramTheme = optionalEnum(
-    value,
-    "theme",
-    WORKSPACE_V2_DEFAULTS.diagramTheme,
-    isThemeNameValue
-  );
+  const diagramTheme = decodeThemeSelection(value);
   const mermaidConfig = optionalBoundedString(
     value,
     "config",
@@ -313,7 +311,7 @@ function decodeLegacyWorkspaceHash(
 
     return {
       code: value.code,
-      diagramTheme: value.theme,
+      diagramTheme: value.theme === "default" ? "auto" : value.theme,
       mermaidConfig: config,
       ...presentation,
       textMeasurementMode,
@@ -471,7 +469,7 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
   return (
     isBoundedString(value.code, SHARE_LIMITS.sourceBytes) &&
     isBoundedString(value.mermaidConfig, SHARE_LIMITS.configBytes) &&
-    isThemeName(value.diagramTheme) &&
+    isMermaidThemeSelection(value.diagramTheme) &&
     isOptionalId(value.presentationThemePresetId) &&
     isOptionalId(value.presentationProfileId) &&
     isMermanSvgPipeline(value.svgPipeline) &&
@@ -505,10 +503,20 @@ function isTextMeasurementMode(
   return value === "browser" || value === "headless";
 }
 
-function isThemeNameValue(
-  value: unknown
-): value is WorkspaceSnapshot["diagramTheme"] {
-  return typeof value === "string" && isThemeName(value);
+// Historical `theme: default` meant no override. New selections have their own
+// field so explicit classic default and automatic appearance remain distinct.
+function decodeThemeSelection(
+  value: Record<string, unknown>,
+): WorkspaceSnapshot["diagramTheme"] | null {
+  if (Object.hasOwn(value, "themeSelection")) {
+    if (Object.hasOwn(value, "theme")) return null;
+    return isMermaidThemeSelection(value.themeSelection)
+      ? value.themeSelection
+      : null;
+  }
+  if (!Object.hasOwn(value, "theme")) return WORKSPACE_V2_DEFAULTS.diagramTheme;
+  if (typeof value.theme !== "string" || !isThemeName(value.theme)) return null;
+  return value.theme === "default" ? "auto" : value.theme;
 }
 
 function isDiagramFontValue(

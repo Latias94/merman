@@ -348,6 +348,7 @@
     "syntaxIssues": "语法有误"
   },
   "themes": {
+    "auto": "自动（图表默认）",
     "default": "默认",
     "dark": "深色",
     "forest": "森林",
