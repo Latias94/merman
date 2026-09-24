@@ -21,18 +21,28 @@ status: active
   41 State layout/SVG tests pass. All 63 reviewed provider/brace goldens are
   committed and the 12 snapshot/Usecase checks pass. Required doctests pass;
   final current-source SVG comparisons remain open.
+- Latest verified boundary: ELK now keeps leaf label measurements as paint metadata
+  instead of projecting them into provider margins. Equal-size pinned elkjs replay
+  proves the removed 191px offset for hidden labels; non-empty group titles retain
+  their layout role. All 1,481 all-feature ELK-adapter/renderer unit tests pass.
+  Current-source family comparisons and changed layout snapshots still need refresh.
 - Consumer focus: five production Web WASM packages build; Web Node tests, Playground
   prepared/lint/build/eight browser smoke cases, and 255 VS Code tests pass. Those full
   WASM artifacts predate the latest renderer repairs and require rebuilding.
 - Remaining parity gates: fresh current-source comparisons pass all 34 primary
-  families outside Flowchart/State/Sequence. Flowchart has 62 distinct DOM blockers
-  after the first two Neo geometry batches and 34 stale receipt fixtures; State has
-  12 DOM blockers; Sequence has 25 plus four stale receipts. Usecase is outside the
+  families outside Flowchart/State/Sequence. Flowchart has 56 distinct DOM blockers
+  after the reviewed shape/label batches and 34 stale receipt fixtures; State has
+  12 DOM blockers; Sequence has 25 plus three stale receipts. Usecase is outside the
   primary matrix and was not selected by compare-all; its family tests and changed
   golden need separate verification. State compound self-loops, effective theme
   radius, State label minimum width, and Sequence note CSS weight now have
   source-backed fixes. Remaining work is the held State route/measurement set,
-  cylinder/bow-tie/stacked/triangle-related Neo shapes, and stale receipt review.
+  remaining route/measurement differences and stale receipt review. The Neo cylinder,
+  document, tape, tag, bow-tie, card, window/divided/stacked rectangle, triangle and
+  sloped/shaded geometry batches now have source-backed fixes. Follow-up review added
+  the stacked-rectangle polygon intersection and removed two fixture-specific float
+  substitutions. The fresh three-mode family comparison still fails; the 96-newshape
+  comparison and current full-family reports remain diagnostic evidence, not admission.
 - Artifact-size focus: production theme audit snapshots were removed in `6dc4c9f6f`
   after equivalent-output tests and isolated measurement. Both analysis/editor gzip
   and Brotli sizes improve, but all four compressed budgets still fail. Preserve

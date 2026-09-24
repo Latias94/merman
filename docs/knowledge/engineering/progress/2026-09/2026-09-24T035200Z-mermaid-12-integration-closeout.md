@@ -408,6 +408,61 @@ closes shape semantics without constituting Flowchart admission. Remaining block
 primarily route/path geometry and the unrepaired Neo shape groups listed in the current
 state document.
 
+# Continued Neo shape and ELK label convergence
+
+Source-backed Neo shape batches now cover triangular, cylindrical, sloped, notched,
+bow-tie, tape/tag, document, window/divided/stacked rectangle, and shaded-process
+geometry. The latest commits include `b3090f939`, `d9b095bed`, `2d39ced27`,
+`57110ec9c`, and `9bb1ccba7`. Layout, paint and intersections share the pinned source
+formulas; the stacked-rectangle intersection follows its stepped polygon rather than
+its rectangular envelope. Sloped rectangles now reuse the cached label measurement,
+preserving minimum-width and host-measurement contracts during paint. Paired braces
+follow upstream right/left/hidden-rectangle insertion order. Two label-text-dependent
+RoughJS string substitutions were removed instead of hiding float-rounding residuals.
+
+The 96-fixture newshape run in `target/compare/flowchart_neo_shape_refresh.md` still
+fails. It predates the following ELK fix and is not final admission evidence. Read-only
+browser/source replay explains SVG markdown wrapping threshold crossings: one candidate
+line measures 125.236900px in the browser but 116.34px in the deterministic profile,
+straddling the unchanged 120px wrap width. Remaining edge skeleton differences must
+be reviewed separately; matching word content alone does not admit a whole fixture.
+
+Commit `a7ebb2301` fixes a distinct provider-boundary defect. Mermaid does not expose
+leaf labels to ELK; the adapter previously projected paint measurements into fixed node
+labels in both layered paths. Hidden bolt/circle labels then created 85px and 106px
+margins. Equal-size elkjs 0.9.3 replay and a numerical regression prove the resulting
+191px accumulated offset. Both layered paths now project labels only for non-empty
+groups, while preserving all measured leaf labels for SVG rendering. Independent
+review checked the pinned Mermaid graph constructor, Java importer, other family
+callers and both hierarchy modes. All 1,481 all-feature renderer/adapter unit tests
+pass, including the hidden-shape metadata and group-title regressions.
+
+The main workspace analysis/editor WASM artifacts remain stale. The last valid isolated
+candidate still exceeds analysis gzip/Brotli budgets by 38,257/38,501 bytes and editor
+budgets by 8,058/19,272 bytes. Read-only attribution reproduced the retained encoding
+tables; that is an optimization lead, not an accepted sanitizer change or measured
+implementation saving.
+
+The next source-backed label fix (`e2c943b34`) propagates measured SVG bbox-y
+compensation through stacked rectangles, shaded processes and all brace aliases.
+A public host-measurement regression injects a 7px offset and confirms the SVG label
+shift while HTML labels stay unchanged; all seven label measurement contract tests
+pass. The three-package all-target/all-feature Clippy check also passes.
+
+A fresh rebuilt three-mode run with the existing exact browser-residual policy reports
+Flowchart 56 distinct DOM blockers plus 34 stale receipts, State 12 blockers, and
+Sequence 25 blockers plus three stale receipts. Inventory:
+`target/mermaid12-shape-label-mismatch-inventory.json`; raw log:
+`target/mermaid12-shape-and-label-convergence.log`. No new receipts are admitted.
+The first diagnostic run omitted the receipt flag; its 75/12/28 raw counts must not
+be compared directly with the policy-enabled counts above.
+
+The affected layout/SVG integration run passes 138/139 tests. The remaining aggregate
+identifies 310 changed snapshots (308 Flowchart, one Agentflow, one State). Their old
+bytes and HEAD hashes are preserved under `target/mermaid12-neo-golden-review/` before
+existing-owner regeneration and independent cause review. Do not count generated
+candidates as admitted upstream geometry.
+
 # Open gates
 
 Verify the transferred provider/brace batch and the source-compatible model-order
