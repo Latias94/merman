@@ -1058,8 +1058,14 @@ fn node_render_dimensions(
         // Hourglass/collate (label cleared, but label group still emitted).
         "hourglass" | "collate" => (30.0, 30.0),
 
-        // Card/notched rectangle: adds a fixed 12px notch width.
-        "notch-rect" | "notched-rectangle" | "card" => (text_w + p + 12.0, text_h + p),
+        // Card/notched rectangle: Neo reserves 28px on each axis before drawing the notch.
+        "notch-rect" | "notched-rectangle" | "card" => {
+            if look_is_neo {
+                (text_w + 56.0, text_h + 48.0)
+            } else {
+                (text_w + p + 12.0, text_h + p)
+            }
+        }
 
         // Shaded process / lined rectangle: adds 8px on both sides (total +16).
         "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
@@ -1927,6 +1933,14 @@ mod render_dimension_tests {
         assert_eq!(
             node_render_dimensions(Some("sloped-rectangle"), metrics(), 15.0, true),
             (132.0, 66.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("card"), metrics(), 15.0, false),
+            (127.0, 35.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("card"), metrics(), 15.0, true),
+            (156.0, 68.0)
         );
     }
 
