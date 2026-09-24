@@ -13,7 +13,7 @@ fixture corpus grows. For the detailed post-parity hardening phases, see:
 
 ## Milestones
 
-### M0: Baseline parity for current corpus (done)
+### M0: Baseline parity for current corpus (Mermaid 12 integration pending)
 
 Exit criteria:
 

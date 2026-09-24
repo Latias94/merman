@@ -9,7 +9,7 @@ The admission consistency checks live in `crates/xtask/src/cmd/admission.rs`.
 Admission is composed from three owner-local structures:
 
 - `merman-core` family capabilities own the canonical public family set and parser/render facts;
-- `DIAGRAM_VERIFICATION_FACTS` in `crates/xtask/src/cmd/compare/diagrams.rs` owns the 35-family
+- `DIAGRAM_VERIFICATION_FACTS` in `crates/xtask/src/cmd/compare/diagrams.rs` owns the 37-family
   primary SVG matrix, compare commands, default DOM modes, and family-specific compare policy; and
 - per-family fixture directories, semantic/layout goldens, and upstream
   `_baseline-manifest.json` files own admitted evidence bytes and provenance.
@@ -24,7 +24,7 @@ not machine admission inputs.
 
 Current consumers:
 
-- `xtask compare-all-svgs` reads the 35-family primary SVG matrix directly from the compare facts;
+- `xtask compare-all-svgs` reads the 37-family primary SVG matrix directly from the compare facts;
   all current primary families participate in the root-validation contract.
 - Per-diagram `xtask compare-*` commands keep their CLI adapters, but shared fixture discovery,
   upstream/local SVG loading, DOM checks, local SVG output writing, and result sections live in the
@@ -40,7 +40,7 @@ Current consumers:
   rendered config claims: accepted/merged config can be broader than primary SVG support, but
   rendered support should point at an admitted family test, golden, or an explicit residual.
 
-This overview does not move fixtures or weaken evidence by itself. The completed Mermaid 12.0.0
+This overview does not move fixtures or weaken evidence by itself. The historical Mermaid 11.17.2
 admission process and the rules for future baseline additions are recorded in
 `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.
 
