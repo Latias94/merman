@@ -56,18 +56,17 @@ pub(crate) fn wrap_sequence_label_like_mermaid_lines(
     )
 }
 
-fn sequence_drawn_text_style(style: &TextStyle) -> TextStyle {
+fn sequence_drawn_text_style(style: &TextStyle, config: &MermaidConfig) -> TextStyle {
     let mut effective = style.clone();
-    if let Some(font_family) = effective.font_family.as_mut()
-        && font_family.trim_end().ends_with(';')
-    {
-        // The same rejected inline assignment on final Sequence text falls back to the diagram
-        // root, whose stylesheet contains the configured family as a valid declaration value.
-        *font_family = font_family
-            .trim_end()
-            .trim_end_matches(';')
-            .trim_end()
-            .to_string();
+    let inherits_root = effective.font_family.as_deref().is_none_or(|family| {
+        let family = family.trim();
+        family.is_empty() || family.ends_with(';')
+    });
+    if inherits_root {
+        // svgDraw.drawText uses CSSOM: an absent or rejected inline family inherits the SVG
+        // root's theme font. The body-level calculateTextDimensions probe keeps the original
+        // family instead, because it has a different inheritance context.
+        effective.font_family = Some(crate::config::config_font_family_css(config.as_value()));
     }
     effective
 }
@@ -96,9 +95,10 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     text: &str,
     style: &TextStyle,
     node: SequenceDrawnTextNode,
+    config: &MermaidConfig,
     checkpoints: SequenceTextCheckpoints<'_>,
 ) -> Result<(f64, f64)> {
-    let effective_style = sequence_drawn_text_style(style);
+    let effective_style = sequence_drawn_text_style(style, config);
     let lines = split_html_br_lines(text);
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
@@ -515,6 +515,35 @@ mod tests {
         }
     }
 
+    fn drawn_text_config() -> merman_core::MermaidConfig {
+        merman_core::MermaidConfig::from_value(serde_json::json!({
+            "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
+            "themeVariables": { "fontFamily": "Theme Family, sans-serif" }
+        }))
+    }
+
+    #[test]
+    fn drawn_text_inherits_theme_only_when_inline_family_is_missing_or_rejected() {
+        let config = drawn_text_config();
+        for family in [None, Some(""), Some("  "), Some("Inline Family; ")] {
+            let mut style = default_sequence_style();
+            style.font_family = family.map(str::to_string);
+            let drawn = super::sequence_drawn_text_style(&style, &config);
+            assert_eq!(
+                drawn.font_family.as_deref(),
+                Some("Theme Family,sans-serif")
+            );
+            assert_eq!(style.font_family.as_deref(), family);
+            assert_eq!(drawn.font_size, style.font_size);
+            assert_eq!(drawn.font_weight, style.font_weight);
+        }
+
+        let mut style = default_sequence_style();
+        style.font_family = Some("Inline Family, monospace".to_string());
+        let drawn = super::sequence_drawn_text_style(&style, &config);
+        assert_eq!(drawn.font_family, style.font_family);
+    }
+
     fn checkpoints(
         meter: &OperationWorkMeter,
         phase: OperationPhase,
@@ -704,6 +733,7 @@ mod tests {
             "alpha<br><br>beta",
             &style,
             super::SequenceDrawnTextNode::Direct,
+            &drawn_text_config(),
             checkpoints(&meter, OperationPhase::Layout),
         )
         .unwrap();
@@ -719,7 +749,7 @@ mod tests {
         assert!(
             direct_calls
                 .iter()
-                .all(|(_, _, family)| family == "\"trebuchet ms\", verdana, arial, sans-serif")
+                .all(|(_, _, family)| family == "Theme Family,sans-serif")
         );
         assert!(direct_calls.iter().any(|(_, text, _)| text == "\u{200b}"));
 
@@ -729,11 +759,17 @@ mod tests {
             "alpha",
             &style,
             super::SequenceDrawnTextNode::Tspan,
+            &drawn_text_config(),
             checkpoints(&meter, OperationPhase::Layout),
         )
         .unwrap();
         assert_eq!(tspan_dimensions, (202.0, 23.0));
         let tspan_calls = tspan.calls.borrow();
+        assert!(
+            tspan_calls
+                .iter()
+                .all(|(_, _, family)| family == "Theme Family,sans-serif")
+        );
         assert!(
             tspan_calls
                 .iter()
@@ -787,6 +823,7 @@ mod tests {
             &text,
             &default_sequence_style(),
             super::SequenceDrawnTextNode::Tspan,
+            &drawn_text_config(),
             checkpoints(&meter, OperationPhase::Layout),
         )
         .unwrap();

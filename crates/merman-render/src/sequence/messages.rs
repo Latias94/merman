@@ -640,6 +640,7 @@ fn message_label(
             effective_text,
             ctx.msg_text_style,
             SequenceDrawnTextNode::Direct,
+            ctx.math_config,
             ctx.checkpoints.text(),
         )?
     };

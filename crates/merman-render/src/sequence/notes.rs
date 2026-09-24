@@ -288,6 +288,7 @@ pub(super) fn layout_sequence_note(
             &horizontal.effective_text,
             ctx.note_text_style,
             SequenceDrawnTextNode::Tspan,
+            ctx.math_config,
             ctx.checkpoints.text(),
         )?
     };
