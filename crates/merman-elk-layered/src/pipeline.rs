@@ -3888,7 +3888,13 @@ mod tests {
                 .iter()
                 .all(|node| node.ports.len() == DEGREE)
         );
-        // Both sides use matching top-to-bottom endpoint positions.
+        // Establish a crossing-free fixture independently of PortListSorter:
+        // west ports run bottom-to-top, opposite the east source-port order.
+        let mut target_order = (0..DEGREE).collect::<Vec<_>>();
+        target_order.sort_by_key(|&port| {
+            std::cmp::Reverse(graph.layerless_nodes[1].ports[port].incoming_edges[0])
+        });
+        graph.reorder_node_ports(1, target_order);
         assert_eq!(CrossingsCounter::new().count_all_crossings(&graph), 0);
         let context = ReorderNodePortsWorkContext::new(&graph).unwrap();
         let minimum_restore_work = 8 * DEGREE * 2

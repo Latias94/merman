@@ -472,15 +472,27 @@ fn reverse_west_and_south_side(graph: &mut LGraph, node: usize) {
 
 fn reverse_side_range(graph: &mut LGraph, node: usize, side: PortSide) {
     let ports = &graph.layerless_nodes[node].ports;
-    let Some(low) = ports.iter().position(|port| port.side == side) else {
+    if ports.is_empty() {
         return;
-    };
-    let high = ports
-        .iter()
-        .enumerate()
-        .skip(low)
-        .find_map(|(index, port)| (port.side != side).then_some(index))
-        .unwrap_or(ports.len());
+    }
+
+    // Match PortListSorter.java:105-143 at ELK 62d5909f and elkjs 0.9.3.
+    // The published provider caps high at len - 1 and rereads low while advancing
+    // high. South can temporarily include west ports; the subsequent west pass
+    // must inspect the reordered list. A conventional side range changes routes.
+    let lower_bound = port_side_order(side);
+    let upper_bound = lower_bound + 1;
+    let mut current_side = port_side_order(ports[0].side);
+    let mut low = 0;
+    while low < ports.len() - 1 && current_side < lower_bound {
+        low += 1;
+        current_side = port_side_order(ports[low].side);
+    }
+    let mut high = low;
+    while high < ports.len() - 1 && current_side < upper_bound {
+        high += 1;
+        current_side = port_side_order(ports[low].side);
+    }
     if high <= low + 2 {
         return;
     }
@@ -1488,6 +1500,159 @@ mod tests {
             graph.layerless_nodes[a].ports[graph.edges[0].source.port].id,
             "A:0"
         );
+    }
+
+    #[test]
+    fn port_list_sorter_matches_pinned_side_ranges_and_preserves_edge_endpoints() {
+        use PortSide::{East, North, South, West};
+
+        // Expected permutations come from the pinned elkjs 0.9.3 PortListSorter,
+        // including its exclusive last-port bound and sequential south/west passes.
+        let cases: &[(&[PortSide], &[usize])] = &[
+            (&[], &[]),
+            (&[West], &[0]),
+            (&[West, West], &[0, 1]),
+            (&[West, West, West], &[0, 1, 2]),
+            (&[West, West, West, West], &[2, 1, 0, 3]),
+            (&[West, West, West, West, West], &[3, 2, 1, 0, 4]),
+            (&[South], &[0]),
+            (&[South, South], &[0, 1]),
+            (&[South, South, South], &[0, 1, 2]),
+            (&[South, South, South, South], &[2, 1, 0, 3]),
+            (&[South, South, South, South, South], &[3, 2, 1, 0, 4]),
+            (&[North, North, East, East, East], &[0, 1, 2, 3, 4]),
+            (
+                &[North, East, South, South, South, West],
+                &[0, 1, 4, 3, 2, 5],
+            ),
+            (
+                &[North, East, South, South, South, West, West],
+                &[0, 1, 2, 3, 4, 5, 6],
+            ),
+            (
+                &[North, North, South, South, South, West, West, West, West],
+                &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+            ),
+        ];
+        for &(sides, expected) in cases {
+            let mut graph = graph(vec![node("A"), node("B")], vec![]);
+            graph.layerless_nodes[0].port_constraints = PortConstraints::FixedSide;
+            graph.set_node_layer(0, 0);
+            for (index, side) in sides.iter().copied().enumerate() {
+                let outgoing = index % 2 == 0;
+                let local = graph
+                    .add_port(
+                        0,
+                        if outgoing {
+                            PortType::Output
+                        } else {
+                            PortType::Input
+                        },
+                        side,
+                        LPoint { x: 0.0, y: 0.0 },
+                    )
+                    .unwrap();
+                let remote = graph
+                    .add_port(
+                        1,
+                        if outgoing {
+                            PortType::Input
+                        } else {
+                            PortType::Output
+                        },
+                        side.opposed(),
+                        LPoint { x: 0.0, y: 0.0 },
+                    )
+                    .unwrap();
+                graph.layerless_nodes[0].ports[local.port].id = index.to_string();
+                let (source, target) = if outgoing {
+                    (local, remote)
+                } else {
+                    (remote, local)
+                };
+                graph
+                    .add_edge(layered_edge(&format!("edge{index}"), source, target))
+                    .unwrap();
+            }
+
+            sort_port_lists(&mut graph);
+
+            let actual = graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| port.id.parse::<usize>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "source range behavior for {sides:?}");
+            for (position, &original) in expected.iter().enumerate() {
+                let edge = &graph.edges[original];
+                let (local, remote) = if original % 2 == 0 {
+                    (edge.source, edge.target)
+                } else {
+                    (edge.target, edge.source)
+                };
+                assert_eq!(
+                    local,
+                    PortRef {
+                        node: 0,
+                        port: position
+                    }
+                );
+                assert_eq!(
+                    remote,
+                    PortRef {
+                        node: 1,
+                        port: original
+                    }
+                );
+                let port = &graph.layerless_nodes[0].ports[position];
+                if original % 2 == 0 {
+                    assert_eq!(port.outgoing_edges, vec![original]);
+                    assert!(port.incoming_edges.is_empty());
+                } else {
+                    assert_eq!(port.incoming_edges, vec![original]);
+                    assert!(port.outgoing_edges.is_empty());
+                }
+                assert!(graph.edge_source_attached(original));
+                assert!(graph.edge_target_attached(original));
+            }
+        }
+    }
+
+    #[test]
+    fn west_range_is_recomputed_after_south_temporarily_crosses_sides() {
+        let mut graph = graph(vec![node("A")], vec![]);
+        for (index, side) in [
+            PortSide::North,
+            PortSide::East,
+            PortSide::South,
+            PortSide::South,
+            PortSide::South,
+            PortSide::West,
+            PortSide::West,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let port = graph
+                .add_port(0, PortType::Input, side, LPoint { x: 0.0, y: 0.0 })
+                .unwrap();
+            graph.layerless_nodes[0].ports[port.port].id = index.to_string();
+        }
+        reverse_side_range(&mut graph, 0, PortSide::South);
+        let after_south = graph.layerless_nodes[0]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(after_south, vec!["0", "1", "5", "4", "3", "2", "6"]);
+
+        reverse_side_range(&mut graph, 0, PortSide::West);
+        let after_west = graph.layerless_nodes[0]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(after_west, vec!["0", "1", "2", "3", "4", "5", "6"]);
     }
 
     #[test]
