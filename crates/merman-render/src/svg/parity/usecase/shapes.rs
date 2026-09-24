@@ -62,19 +62,26 @@ pub(super) fn rect(
     );
 }
 
+pub(super) struct UsecaseNodeRenderContext<'a> {
+    pub(super) source: Option<&'a UsecaseNode>,
+    pub(super) note: bool,
+    pub(super) style: &'a str,
+    pub(super) config: &'a merman_core::MermaidConfig,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) diagram_id: SvgDiagramId<'a>,
+    pub(super) options: &'a SvgExecution<'a>,
+}
+
 pub(super) fn write_node(
     out: &mut String,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
-    source: Option<&UsecaseNode>,
-    note: bool,
-    style: &str,
-    config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    diagram_id: SvgDiagramId<'_>,
-    options: &SvgExecution<'_>,
+    context: &UsecaseNodeRenderContext<'_>,
 ) -> Result<()> {
-    if let Some(actor) = source.filter(|node| node.kind == UsecaseNodeKind::Actor) {
+    if let Some(actor) = context
+        .source
+        .filter(|node| node.kind == UsecaseNodeKind::Actor)
+    {
         rect(
             out,
             "usecase-actor-outline",
@@ -96,7 +103,7 @@ pub(super) fn write_node(
             out,
             r#"<g class="usecase-actor-glyph usecase-actor-{variant}" transform="translate(0,{})" style="{}">"#,
             fmt(glyph_y),
-            escape_attr(style)
+            escape_attr(context.style)
         );
         match actor.actor_type {
             UsecaseActorType::Normal => out.push_str(r#"<path class="usecase-actor-stick" d="M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28"/>"#),
@@ -104,12 +111,12 @@ pub(super) fn write_node(
             UsecaseActorType::Awesome => out.push_str(r#"<path class="usecase-actor-awesome-silhouette" d="M 0 -34 C 7.18 -34 13 -28.18 13 -21 C 13 -13.82 7.18 -8 0 -8 C -7.18 -8 -13 -13.82 -13 -21 C -13 -28.18 -7.18 -34 0 -34 Z M -24 25 C -24 7 -14 -3 0 -3 C 14 -3 24 7 24 25 C 24 28 21 30 18 30 H -18 C -21 30 -24 28 -24 25 Z"/>"#),
             UsecaseActorType::Icon => {
                 out.push_str(r#"<rect class="usecase-actor-icon-frame" x="-26" y="-28" width="52" height="52" rx="4" ry="4"/>"#);
-                let icon = if let Some(registry) = options.icon_registry() {
-                    let work = options.work_meter();
-                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(&["usecase-", diagram_id.semantic_str(), "-"], work)?;
+                let icon = if let Some(registry) = context.options.icon_registry() {
+                    let work = context.options.work_meter();
+                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(&["usecase-", context.diagram_id.semantic_str(), "-"], work)?;
                     registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
                         icon_name: actor.icon.as_deref().unwrap_or(""), width_px: 42.0, height_px: 42.0,
-                        fallback_prefix: Some("fa"), extra_class: None, id_scope: prefix.scope_parts(&[&actor.id], work)?, effective_config: config, work_meter: work,
+                        fallback_prefix: Some("fa"), extra_class: None, id_scope: prefix.scope_parts(&[&actor.id], work)?, effective_config: context.config, work_meter: work,
                     })?
                 } else { None };
                 let fallback = icon.is_none();
@@ -153,8 +160,8 @@ pub(super) fn write_node(
                 "usecase-stereotype",
                 0.0,
                 y + stereotype.metrics.height / 2.0,
-                config,
-                measurer,
+                context.config,
+                context.measurer,
             );
             y += stereotype.metrics.height + 2.0;
         }
@@ -164,8 +171,8 @@ pub(super) fn write_node(
             "actor-label usecase-actor-label",
             0.0,
             y + plan.label.metrics.height / 2.0,
-            config,
-            measurer,
+            context.config,
+            context.measurer,
         );
     } else if let Some(table) = &plan.table {
         rect(
@@ -175,7 +182,7 @@ pub(super) fn write_node(
             -node.height / 2.0,
             node.width,
             node.height,
-            style,
+            context.style,
         );
         let inner_width = node.width - 2.0 * table.border_width;
         let left = -inner_width / 2.0;
@@ -188,7 +195,7 @@ pub(super) fn write_node(
             top,
             inner_width,
             table.title_height,
-            style,
+            context.style,
         );
         write_label(
             out,
@@ -196,12 +203,12 @@ pub(super) fn write_node(
             "usecase-json-title",
             0.0,
             top + table.title_height / 2.0,
-            config,
-            measurer,
+            context.config,
+            context.measurer,
         );
         let mut row_top = top + table.title_height;
         for (index, row) in table.rows.iter().enumerate() {
-            options.checkpoint_emit()?;
+            context.options.checkpoint_emit()?;
             let _ = write!(
                 out,
                 r#"<g class="usecase-json-row" data-row-index="{index}" transform="translate(0,{})">"#,
@@ -214,7 +221,7 @@ pub(super) fn write_node(
                 0.0,
                 table.key_width,
                 row.height,
-                style,
+                context.style,
             );
             rect(
                 out,
@@ -223,7 +230,7 @@ pub(super) fn write_node(
                 0.0,
                 table.value_width,
                 row.height,
-                style,
+                context.style,
             );
             write_label(
                 out,
@@ -231,8 +238,8 @@ pub(super) fn write_node(
                 "usecase-json-key",
                 left + table.key_width / 2.0,
                 row.height / 2.0,
-                config,
-                measurer,
+                context.config,
+                context.measurer,
             );
             write_label(
                 out,
@@ -240,8 +247,8 @@ pub(super) fn write_node(
                 "usecase-json-value",
                 left + table.key_width + table.value_width / 2.0,
                 row.height / 2.0,
-                config,
-                measurer,
+                context.config,
+                context.measurer,
             );
             out.push_str("</g>");
             row_top += row.height;
@@ -249,7 +256,7 @@ pub(super) fn write_node(
         out.push_str("</g>");
     } else {
         if plan.ellipse {
-            let business = source.is_some_and(|node| node.business);
+            let business = context.source.is_some_and(|node| node.business);
             let _ = write!(
                 out,
                 r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
@@ -260,7 +267,7 @@ pub(super) fn write_node(
                 },
                 fmt(node.width / 2.0),
                 fmt(node.height / 2.0),
-                escape_attr(style)
+                escape_attr(context.style)
             );
             if business {
                 let (rx, ry) = (node.width / 2.0, node.height / 2.0);
@@ -279,14 +286,14 @@ pub(super) fn write_node(
                     fmt(y1),
                     fmt(x2),
                     fmt(y2),
-                    escape_attr(style)
+                    escape_attr(context.style)
                 );
             }
-        } else if note {
+        } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
-            let randomness = options.rough_randomness(
-                config_f64(config.as_value(), &["handDrawnSeed"]).unwrap_or(0.0),
+            let randomness = context.options.rough_randomness(
+                config_f64(context.config.as_value(), &["handDrawnSeed"]).unwrap_or(0.0),
                 "usecase-note",
             );
             let (fill, stroke) =
@@ -306,8 +313,8 @@ pub(super) fn write_node(
             let _ = write!(
                 out,
                 r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" style="{}"/><path d="{stroke}" fill="none" style="{}"/></g>"#,
-                escape_attr(style),
-                escape_attr(style)
+                escape_attr(context.style),
+                escape_attr(context.style)
             );
         } else {
             rect(
@@ -317,14 +324,14 @@ pub(super) fn write_node(
                 -node.height / 2.0,
                 node.width,
                 node.height,
-                style,
+                context.style,
             );
         }
         let stereo_height = plan
             .stereotype
             .as_ref()
             .map_or(0.0, |label| label.metrics.height);
-        let gap = if plan.stereotype.is_some() && source.is_some_and(|node| node.business) {
+        let gap = if plan.stereotype.is_some() && context.source.is_some_and(|node| node.business) {
             2.0
         } else {
             0.0
@@ -337,19 +344,23 @@ pub(super) fn write_node(
                 "usecase-stereotype",
                 0.0,
                 -height / 2.0 + stereo_height / 2.0,
-                config,
-                measurer,
+                context.config,
+                context.measurer,
             );
         }
         let label_start = out.len();
         write_label(
             out,
             &plan.label,
-            if note { "noteLabel" } else { "usecase-label" },
+            if context.note {
+                "noteLabel"
+            } else {
+                "usecase-label"
+            },
             0.0,
             height / 2.0 - plan.label.metrics.height / 2.0,
-            config,
-            measurer,
+            context.config,
+            context.measurer,
         );
         if plan.folded_stereotype {
             annotate_folded_stereotype(out, label_start)?;
@@ -382,14 +393,12 @@ fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
     } else if let Some(span) = document
         .descendants()
         .find(|node| node.has_tag_name("tspan") && node.children().any(|child| child.is_text()))
-    {
-        if let Some(attribute) = span
+        && let Some(attribute) = span
             .attributes()
             .find(|attribute| attribute.name() == "class")
-        {
-            let insertion = attribute.range_value().end;
-            out.insert_str(start + insertion, " usecase-stereotype");
-        }
+    {
+        let insertion = attribute.range_value().end;
+        out.insert_str(start + insertion, " usecase-stereotype");
     }
     Ok(())
 }

@@ -45,8 +45,8 @@ pub(super) fn place(
         }
         visited[start] = 2;
     }
-    for n in 0..count {
-        for &e in &outgoing[n] {
+    for (n, outgoing) in outgoing.iter().enumerate().take(count) {
+        for &e in outgoing {
             if !removed[e] {
                 let target = component.edges[e].target;
                 component.nodes[n].children.push(target);
@@ -126,10 +126,10 @@ fn set_levels_and_neighbors(
             c.nodes[n].level = depth;
             c.nodes[n].level_height = height;
             c.nodes[n].left_neighbor = previous;
-            if let Some(p) = previous {
-                if c.nodes[n].parent == c.nodes[p].parent {
-                    c.nodes[n].left_sibling = Some(p);
-                }
+            if let Some(p) = previous
+                && c.nodes[n].parent == c.nodes[p].parent
+            {
+                c.nodes[n].left_sibling = Some(p);
             }
             previous = Some(n);
             next.extend_from_slice(&c.nodes[n].children);

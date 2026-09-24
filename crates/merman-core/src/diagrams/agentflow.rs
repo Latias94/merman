@@ -488,7 +488,7 @@ pub(crate) fn parse_agentflow_with_warning_facts(
     let control = OperationControl::new();
     let construction = construct(code, meta, &control)
         .expect("a private operation control cannot be cancelled")
-        .map_err(|failure| family::CombinedSemanticFailure::into_error(failure))?;
+        .map_err(family::CombinedSemanticFailure::into_error)?;
     Ok(family::WarningSemanticParse::new(
         render_model_to_compat_json(&construction.model, meta)?,
         construction.model.warning_facts,
@@ -718,7 +718,7 @@ impl<'a> Parser<'a> {
                     None => {
                         return Ok(Err(self.failure(
                             "invalid agentflow direction",
-                            span_of(line_start, &line, trimmed),
+                            span_of(line_start, line, trimmed),
                         )));
                     }
                 };
@@ -866,12 +866,12 @@ impl<'a> Parser<'a> {
                 Ok(false) => {}
                 Err(error) => return Ok(Err(error)),
             }
-            match self.parse_edge_statement(trimmed, line_start, &line) {
+            match self.parse_edge_statement(trimmed, line_start, line) {
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(error) => return Ok(Err(error)),
             }
-            if let Err(error) = self.parse_node_statement(trimmed, line_start, &line) {
+            if let Err(error) = self.parse_node_statement(trimmed, line_start, line) {
                 return Ok(Err(error));
             }
         }
@@ -896,7 +896,7 @@ impl<'a> Parser<'a> {
                 .nodes
                 .iter()
                 .filter(|node| !self.sub_graph_index.contains_key(&node.id))
-                .filter_map(|node| shape_diagnostic(node))
+                .filter_map(shape_diagnostic)
                 .collect(),
             vertices: self
                 .nodes
@@ -1112,7 +1112,7 @@ impl<'a> Parser<'a> {
         mut edge: AgentflowEdge,
         span: SourceSpan,
     ) -> std::result::Result<(), ParseFailure> {
-        if self.edges.len() % 128 == 0 {
+        if self.edges.len().is_multiple_of(128) {
             self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
         }
         let limit = self
@@ -2018,12 +2018,11 @@ fn parse_metadata(
     let mut result = crate::inline_config::parse_mermaid_inline_object_controlled(body, control)?;
     if result.is_err() && body.contains('\n') {
         let stripped = strip_line_trailing_commas(body);
-        if stripped != body {
-            if let Ok(value) =
+        if stripped != body
+            && let Ok(value) =
                 crate::inline_config::parse_mermaid_inline_object_controlled(&stripped, control)?
-            {
-                result = Ok(value);
-            }
+        {
+            result = Ok(value);
         }
     }
     Ok(result.and_then(|value| match strip_prototype_keys(value) {

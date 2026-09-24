@@ -103,10 +103,10 @@ pub fn layout(
     let mut force_nodes: Vec<_> = nodes.iter().map(|n| n.geometry).collect();
     let mut force_edges = Vec::with_capacity(edges.len());
     for (i, edge) in edges.iter().enumerate() {
-        if let Some(length) = edge.desired_length {
-            if !length.is_finite() || length <= 0.0 {
-                return Err(Error::InvalidEdgeLength(i));
-            }
+        if let Some(length) = edge.desired_length
+            && (!length.is_finite() || length <= 0.0)
+        {
+            return Err(Error::InvalidEdgeLength(i));
         }
         charge(work, edge.geometry.labels.len())?;
         force_edges.push(edge.geometry.clone());

@@ -9,8 +9,8 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
 const FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     out: &mut String,

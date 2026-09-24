@@ -238,7 +238,7 @@ impl<L> FlowchartFamilyArtifact<L> {
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Agentflow {
-        semantic: diagrams::agentflow::AgentflowDiagramRenderModel,
+        semantic: Box<diagrams::agentflow::AgentflowDiagramRenderModel>,
         flow: Box<FlowchartFamilyArtifact<FlowchartLayout>>,
     },
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
@@ -1026,10 +1026,8 @@ fn project_agentflow_flowchart_config(
             .get("flowchart")
             .and_then(serde_json::Value::as_object)
             .is_some_and(|section| section.contains_key(key));
-        if !flowchart_has_key {
-            if let Some(value) = agentflow.get(key) {
-                projected.set_value(&format!("flowchart.{key}"), value.clone());
-            }
+        if !flowchart_has_key && let Some(value) = agentflow.get(key) {
+            projected.set_value(&format!("flowchart.{key}"), value.clone());
         }
     }
     projected
@@ -1733,7 +1731,7 @@ fn prepare_non_class_render(
                 },
             )?;
             BuiltinFamilyArtifact::Agentflow {
-                semantic: model,
+                semantic: Box::new(model),
                 flow,
             }
         }

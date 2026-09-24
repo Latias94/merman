@@ -643,10 +643,7 @@ fn model_order_relation_work(
         let per_relation = checked_add(2, checked_mul(set_bound, 2)?)?;
         checked_sum([a, b, 2, checked_mul(checked_add(a, b)?, per_relation)?])
     };
-    Ok(checked_add(
-        1,
-        update(first, second)?.max(update(second, first)?),
-    )?)
+    checked_add(1, update(first, second)?.max(update(second, first)?))
 }
 
 pub fn long_edge_target_node_preprocessing(

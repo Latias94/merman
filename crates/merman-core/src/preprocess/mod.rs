@@ -49,7 +49,7 @@ pub(crate) struct PreprocessCaptureOutcome {
 
 #[derive(Debug)]
 pub(crate) enum PreprocessCaptureResult {
-    Ready(PreprocessResult),
+    Ready(Box<PreprocessResult>),
     Failed(Error),
     Panicked(CapturedPanic),
 }
@@ -57,7 +57,7 @@ pub(crate) enum PreprocessCaptureResult {
 impl PreprocessCaptureOutcome {
     fn into_result(self) -> Result<PreprocessResult> {
         match self.outcome {
-            PreprocessCaptureResult::Ready(result) => Ok(result),
+            PreprocessCaptureResult::Ready(result) => Ok(*result),
             PreprocessCaptureResult::Failed(error) => Err(error),
             PreprocessCaptureResult::Panicked(panic) => {
                 std::panic::resume_unwind(panic.into_payload())
@@ -197,9 +197,9 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
     )?;
     control.checkpoint()?;
     let outcome = match captured.outcome {
-        PreprocessCaptureResult::Ready(preprocessed) => {
-            PreprocessCaptureResult::Ready(prepare_parser_code_controlled(preprocessed, control)?)
-        }
+        PreprocessCaptureResult::Ready(preprocessed) => PreprocessCaptureResult::Ready(Box::new(
+            prepare_parser_code_controlled(*preprocessed, control)?,
+        )),
         PreprocessCaptureResult::Failed(error) => PreprocessCaptureResult::Failed(error),
         PreprocessCaptureResult::Panicked(panic) => PreprocessCaptureResult::Panicked(panic),
     };
@@ -447,12 +447,12 @@ fn preprocess_single_pass_controlled(
         with_comments.copy_global_editor_evidence_from(&source);
     }
     Ok(PreprocessCaptureOutcome {
-        outcome: PreprocessCaptureResult::Ready(PreprocessResult {
+        outcome: PreprocessCaptureResult::Ready(Box::new(PreprocessResult {
             source,
             title,
             config: frontmatter_config,
             with_comments,
-        }),
+        })),
         source_config,
     })
 }

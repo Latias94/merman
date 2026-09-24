@@ -888,10 +888,7 @@ fn class_svg_elk_paints_straightened_terminal_channels_without_moving_ports() {
             .unwrap();
         let points: Vec<merman_render::model::LayoutPoint> =
             serde_json::from_slice(&decoded).unwrap();
-        points
-            .into_iter()
-            .map(|p| (p.x, p.y))
-            .collect::<Vec<_>>()
+        points.into_iter().map(|p| (p.x, p.y)).collect::<Vec<_>>()
     };
 
     // Mermaid 12 moves the whole terminal channel onto the port row. Both source and

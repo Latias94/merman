@@ -390,8 +390,8 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
         } else {
             roughr::core::FillStyle::Solid
         })
-        .fill_weight(4.0)
-        .hachure_gap(5.2)
+        .fill_weight(1.5)
+        .hachure_gap(1.5)
         .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])

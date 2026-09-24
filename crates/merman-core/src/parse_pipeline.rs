@@ -1050,7 +1050,7 @@ impl<'a> ParsePipeline<'a> {
         let outcome = match captured.outcome {
             crate::preprocess::PreprocessCaptureResult::Ready(preprocessed) => {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    self.finish_preprocessed_controlled(preprocessed, known_type, control)
+                    self.finish_preprocessed_controlled(*preprocessed, known_type, control)
                 })) {
                     Ok(result) => match result? {
                         Ok((source, metadata)) => {

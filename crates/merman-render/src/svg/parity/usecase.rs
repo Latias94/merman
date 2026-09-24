@@ -643,13 +643,15 @@ pub(crate) fn render_usecase_diagram_svg_model(
             &mut out,
             node,
             plan,
-            source,
-            note.is_some(),
-            &style,
-            config,
-            measurer,
-            diagram_id,
-            options,
+            &shapes::UsecaseNodeRenderContext {
+                source,
+                note: note.is_some(),
+                style: &style,
+                config,
+                measurer,
+                diagram_id,
+                options,
+            },
         )?;
         out.push_str("</g>");
     }

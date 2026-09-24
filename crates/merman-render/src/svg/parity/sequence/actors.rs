@@ -1,9 +1,9 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
-    ActorLabelContext, is_actor_man_variant, write_actor_man_lifeline,
-    write_collection_actor_shape, write_database_actor_shape, write_lifeline_root_open,
-    write_queue_actor_shape, write_rect_actor_shape,
+    ActorLabelContext, ActorLifelineIdentity, is_actor_man_variant, write_actor_man_lifeline,
+    write_collection_actor_shape, write_database_actor_shape, write_queue_actor_shape,
+    write_rect_actor_shape,
 };
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
@@ -154,7 +154,17 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
             }
             "collections" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &label_ctx);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                );
                 write_collection_actor_shape(
                     out,
                     top,
@@ -167,12 +177,32 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
             "queue" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &label_ctx);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                );
                 write_queue_actor_shape(out, top, actor, idx, &label_ctx)?;
                 out.push_str("</g></g>");
             }
             "database" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &label_ctx);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                );
                 write_database_actor_shape(
                     out,
                     top,
@@ -185,7 +215,17 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 out.push_str("</g></g>");
             }
             _ => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type, &label_ctx);
+                label_ctx.write_lifeline_root_open(
+                    out,
+                    idx,
+                    top.x,
+                    y1,
+                    y2,
+                    ActorLifelineIdentity {
+                        actor_id,
+                        actor_type,
+                    },
+                );
                 write_rect_actor_shape(out, top, actor_id, actor, "actor-top", idx, &label_ctx)?;
                 out.push_str("</g></g>");
             }

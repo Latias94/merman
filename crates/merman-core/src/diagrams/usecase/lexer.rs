@@ -347,14 +347,13 @@ pub(super) fn lex(
             ("false", False),
         ];
         if let Some((image, kind)) = keywords.into_iter().find(|(image, kind)| {
-            let matched = if matches!(kind, Include | Extend) {
+            if matches!(kind, Include | Extend) {
                 remaining
                     .get(..image.len())
                     .is_some_and(|prefix| prefix.eq_ignore_ascii_case(image))
             } else {
                 remaining.starts_with(image)
-            };
-            matched
+            }
         }) {
             if identifier_end > start + image.len() {
                 offset = identifier_end;

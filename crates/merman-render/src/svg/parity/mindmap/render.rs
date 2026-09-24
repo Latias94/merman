@@ -952,7 +952,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                             });
                             elk_points.extend(points.iter().cloned());
                             elk_points.push(crate::model::LayoutPoint { x: end.x, y: end.y });
-                            let clipped = sanitize(
+                            sanitize(
                                 &elk_points,
                                 Shape {
                                     node: start,
@@ -970,8 +970,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                                         Outline::Rect
                                     },
                                 },
-                            );
-                            clipped
+                            )
                         }
                     } else {
                         crate::mindmap::dagre_shape_points(

@@ -31,47 +31,6 @@ pub(super) struct MeasuredGraph {
     pub edges: IndexMap<(String, String, String), MeasuredEdge>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{MeasuredGraph, MeasuredNode};
-    use indexmap::IndexMap;
-
-    #[test]
-    fn forward_namespace_parents_do_not_reorder_declared_children() {
-        let mut measured = MeasuredGraph {
-            direction: "TB".into(),
-            nodesep: 50.0,
-            ranksep: 50.0,
-            nodes: IndexMap::new(),
-            parents: IndexMap::new(),
-            edges: IndexMap::new(),
-        };
-        for (child, parent) in [("Child", "Parent"), ("Sibling", "Root"), ("Parent", "Root")] {
-            measured.set_node(
-                child.into(),
-                MeasuredNode {
-                    is_namespace: true,
-                    ..Default::default()
-                },
-            );
-            measured.set_parent(child.into(), parent.into());
-        }
-        measured.set_node(
-            "Root".into(),
-            MeasuredNode {
-                is_namespace: true,
-                ..Default::default()
-            },
-        );
-
-        let graph = measured.to_dagre();
-        assert_eq!(graph.node_ids(), ["Child", "Parent", "Sibling", "Root"]);
-        assert_eq!(graph.children("Root"), ["Sibling", "Parent"]);
-        assert_eq!(graph.parent("Child"), Some("Parent"));
-        assert_eq!(graph.parent("Parent"), Some("Root"));
-    }
-}
-
 impl MeasuredGraph {
     pub fn set_node(&mut self, id: String, mut node: MeasuredNode) {
         if let Some(existing) = self.nodes.get(&id) {
@@ -160,5 +119,46 @@ impl MeasuredGraph {
             );
         }
         graph
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MeasuredGraph, MeasuredNode};
+    use indexmap::IndexMap;
+
+    #[test]
+    fn forward_namespace_parents_do_not_reorder_declared_children() {
+        let mut measured = MeasuredGraph {
+            direction: "TB".into(),
+            nodesep: 50.0,
+            ranksep: 50.0,
+            nodes: IndexMap::new(),
+            parents: IndexMap::new(),
+            edges: IndexMap::new(),
+        };
+        for (child, parent) in [("Child", "Parent"), ("Sibling", "Root"), ("Parent", "Root")] {
+            measured.set_node(
+                child.into(),
+                MeasuredNode {
+                    is_namespace: true,
+                    ..Default::default()
+                },
+            );
+            measured.set_parent(child.into(), parent.into());
+        }
+        measured.set_node(
+            "Root".into(),
+            MeasuredNode {
+                is_namespace: true,
+                ..Default::default()
+            },
+        );
+
+        let graph = measured.to_dagre();
+        assert_eq!(graph.node_ids(), ["Child", "Parent", "Sibling", "Root"]);
+        assert_eq!(graph.children("Root"), ["Sibling", "Parent"]);
+        assert_eq!(graph.parent("Child"), Some("Parent"));
+        assert_eq!(graph.parent("Parent"), Some("Root"));
     }
 }

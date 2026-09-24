@@ -6,8 +6,8 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     out: &mut String,

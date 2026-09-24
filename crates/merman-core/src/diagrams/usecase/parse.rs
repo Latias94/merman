@@ -155,7 +155,7 @@ impl<'a> Parser<'a> {
             .map_or(K::Eof, |token| token.kind)
     }
     fn take(&mut self) -> Token {
-        let token = self.current().clone();
+        let token = *self.current();
         if token.kind != K::Eof {
             self.at += 1;
         }
@@ -608,7 +608,7 @@ impl<'a> Parser<'a> {
             None
         };
         let first = self.take();
-        let mut last = first.clone();
+        let mut last = first;
         let mut label = None;
         let mut relation_type = UsecaseRelationshipType::Association;
         let mut arrow = match first.kind {

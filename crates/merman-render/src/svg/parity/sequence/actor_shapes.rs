@@ -5,6 +5,11 @@ use super::math_label::sequence_katex_label;
 use crate::sequence::{SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, SequenceMathHeightMode};
 use merman_core::diagrams::sequence::SequenceActor;
 
+pub(super) struct ActorLifelineIdentity<'a> {
+    pub(super) actor_id: &'a str,
+    pub(super) actor_type: &'a str,
+}
+
 pub(super) struct ActorLabelContext<'a> {
     wrap_width_px: f64,
     diagram_id: &'a str,
@@ -155,43 +160,48 @@ pub(super) fn write_actor_man_lifeline(
     );
 }
 
-pub(super) fn write_lifeline_root_open(
-    out: &mut String,
-    idx: usize,
-    cx: f64,
-    y1: f64,
-    y2: f64,
-    actor_id: &str,
-    actor_type: &str,
-    label_ctx: &ActorLabelContext<'_>,
-) {
-    out.push_str("<g>");
-    let root_class = if actor_type == "queue" {
-        r#" class="actor actor-top""#
-    } else {
-        ""
-    };
-    let _ = write!(
-        out,
-        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}"{look_attr}"##,
-        idx = idx,
-        cx = fmt(cx),
-        y1 = fmt(y1),
-        y2 = fmt(y2),
-        name = escape_xml(actor_id),
-        data_id = escape_attr(actor_id),
-        root_class = root_class,
-        actor_type = escape_attr(actor_type),
-        look_attr = if label_ctx.is_neo() {
-            r#" data-look="neo""#
+impl ActorLabelContext<'_> {
+    pub(super) fn write_lifeline_root_open(
+        &self,
+        out: &mut String,
+        idx: usize,
+        cx: f64,
+        y1: f64,
+        y2: f64,
+        identity: ActorLifelineIdentity<'_>,
+    ) {
+        let ActorLifelineIdentity {
+            actor_id,
+            actor_type,
+        } = identity;
+        out.push_str("<g>");
+        let root_class = if actor_type == "queue" {
+            r#" class="actor actor-top""#
         } else {
             ""
-        },
-    );
-    if actor_type == "collections" {
-        label_ctx.write_shadow_attr(out);
+        };
+        let _ = write!(
+            out,
+            r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}"{look_attr}"##,
+            idx = idx,
+            cx = fmt(cx),
+            y1 = fmt(y1),
+            y2 = fmt(y2),
+            name = escape_xml(actor_id),
+            data_id = escape_attr(actor_id),
+            root_class = root_class,
+            actor_type = escape_attr(actor_type),
+            look_attr = if self.is_neo() {
+                r#" data-look="neo""#
+            } else {
+                ""
+            },
+        );
+        if actor_type == "collections" {
+            self.write_shadow_attr(out);
+        }
+        out.push('>');
     }
-    out.push('>');
 }
 
 pub(super) fn write_collection_actor_shape(

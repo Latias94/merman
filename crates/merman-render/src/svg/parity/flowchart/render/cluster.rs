@@ -6,7 +6,7 @@ use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
 const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
-const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
     let mut out = String::new();

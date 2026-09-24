@@ -96,7 +96,10 @@ pub(super) fn layer(
             remaining.clone_from(&nodes);
             remaining_outgoing.clone_from(&outgoing);
         } else {
-            let node = remaining.remove(selected.expect("a selected node reached placement"));
+            let Some(selected) = selected else {
+                return Err(LayeringError::CyclicGraph);
+            };
+            let node = remaining.remove(selected);
             current.push(node);
             width_current = width_current - outgoing[node] as f64 * dummy_size + sizes[node];
             width_up += incoming[node] as f64 * dummy_size;

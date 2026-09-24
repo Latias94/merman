@@ -114,10 +114,9 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
             && !value
                 .as_str()
                 .is_some_and(|name| name == "null" || theme::SUPPORTED_THEME_NAMES.contains(&name))
-    }) {
-        if let Some(theme) = generated::upstream_default_config().as_value().get("theme") {
-            site_config.set_value("theme", theme.clone());
-        }
+    }) && let Some(theme) = generated::upstream_default_config().as_value().get("theme")
+    {
+        site_config.set_value("theme", theme.clone());
     }
     let explicit_secure_policy = site_config
         .as_value()

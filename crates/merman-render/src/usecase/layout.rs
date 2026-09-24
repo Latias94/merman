@@ -222,21 +222,18 @@ fn finish(
         };
         edge.from_cluster = start.is_cluster.then(|| start.id.clone());
         edge.to_cluster = end.is_cluster.then(|| end.id.clone());
-        if edge.label.is_none() {
-            if let Some(label) = edge_by_id
+        if edge.label.is_none()
+            && let Some(label) = edge_by_id
                 .get(edge.id.as_str())
                 .and_then(|plan| plan.label.as_ref())
-            {
-                let points = edge_points(edge, &nodes, plans);
-                if let Some((x, y)) = route_midpoint(&points) {
-                    edge.label = Some(LayoutLabel {
-                        x,
-                        y,
-                        width: label.metrics.width,
-                        height: label.metrics.height,
-                    });
-                }
-            }
+            && let Some((x, y)) = route_midpoint(&edge_points(edge, &nodes, plans))
+        {
+            edge.label = Some(LayoutLabel {
+                x,
+                y,
+                width: label.metrics.width,
+                height: label.metrics.height,
+            });
         }
     }
     let bounds = Bounds::from_points(
@@ -478,13 +475,13 @@ pub(super) fn prepare_edge_paths(
     // retain the provider's own label placement.
     if elk {
         for edge in &mut layout.edges {
-            if edge.points.is_empty() {
-                if let (Some(label), Some(points)) = (edge.label.as_mut(), paths.get(&edge.id)) {
-                    if let (Some(first), Some(last)) = (points.first(), points.last()) {
-                        label.x = (first.x + last.x) / 2.0;
-                        label.y = (first.y + last.y) / 2.0;
-                    }
-                }
+            if edge.points.is_empty()
+                && let Some(label) = edge.label.as_mut()
+                && let Some(points) = paths.get(&edge.id)
+                && let (Some(first), Some(last)) = (points.first(), points.last())
+            {
+                label.x = (first.x + last.x) / 2.0;
+                label.y = (first.y + last.y) / 2.0;
             }
         }
     }

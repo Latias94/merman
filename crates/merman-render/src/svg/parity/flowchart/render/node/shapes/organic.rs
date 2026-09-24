@@ -7,8 +7,8 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn path_data(arcs: &[RelativeArc]) -> String {
     let mut path = String::from("M0 0\n");

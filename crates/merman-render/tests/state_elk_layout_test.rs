@@ -180,33 +180,21 @@ fn state_elk_cross_concurrency_edges_remain_orthogonal_through_parent_boundaries
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn state_elk_compound_routes_use_state_model_order_defaults() {
+fn state_elk_honors_default_and_explicit_model_order() {
     let source =
         include_str!("../../../fixtures/state/stress_state_cross_composite_transitions_007.mmd");
-    let (layout, _) = render(source, "elk");
-    let edges = layout["edges"].as_array().expect("edges");
-    let edge_points = |id: &str| {
-        edges
-            .iter()
-            .find(|edge| edge["id"] == id)
-            .and_then(|edge| edge["points"].as_array())
-            .expect("compound edge points")
-            .iter()
-            .filter_map(|point| point["x"].as_f64())
-            .collect::<Vec<_>>()
+    let (default_layout, _) = render(source, "elk");
+    let explicit_source = |strategy: &str| {
+        format!("---\nconfig:\n  elk:\n    considerModelOrder: {strategy}\n---\n{source}")
     };
-    let edge5 = edge_points("edge5");
-    let edge6 = edge_points("edge6");
-    let edge7 = edge_points("edge7");
-    assert!(
-        edge5.iter().copied().fold(f64::NEG_INFINITY, f64::max)
-            < edge6.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-        "State ELK must leave compound edge ordering to the provider default: edge5={edge5:?}, edge6={edge6:?}"
-    );
-    assert!(
-        edge7.iter().copied().fold(f64::INFINITY, f64::min) > 100.0,
-        "State ELK must keep the deep cross-boundary route in the provider's central lane: edge7={edge7:?}"
-    );
+    let (model_order_layout, _) = render(&explicit_source("NODES_AND_EDGES"), "elk");
+    let (unordered_layout, _) = render(&explicit_source("NONE"), "elk");
+
+    // Mermaid 12's defaultConfig and StateDB preserve the shared model-order setting.
+    // This compound graph changes its routes when the caller opts out, so an adapter
+    // that silently forces either strategy cannot satisfy both assertions.
+    assert_eq!(default_layout, model_order_layout);
+    assert_ne!(default_layout["edges"], unordered_layout["edges"]);
 }
 
 #[cfg(feature = "layout-elk")]

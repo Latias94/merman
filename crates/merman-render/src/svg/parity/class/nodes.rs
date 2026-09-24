@@ -14,8 +14,9 @@ use super::namespace::{
 };
 use super::node::{
     ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
-    ClassNodeRenderState, ClassSvgNodeBodyContext, render_class_html_node_body,
-    render_class_node_basic_container, render_class_node_shell_open, render_class_svg_node_body,
+    ClassNodeRenderState, ClassNodeShellContext, ClassSvgNodeBodyContext,
+    render_class_html_node_body, render_class_node_basic_container, render_class_node_shell_open,
+    render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::settings::ClassRenderSettings;
@@ -745,12 +746,14 @@ fn render_class_node_id(
         out,
         node,
         position,
-        ctx.diagram_id,
-        ctx.emit,
-        settings.look.as_str(),
-        settings.security_level_loose,
-        ctx.class_color_indices.get(n.id.as_str()).copied(),
-        super::css::class_palette_size(ctx.effective_config),
+        &ClassNodeShellContext {
+            diagram_id: ctx.diagram_id,
+            emit: ctx.emit,
+            look: settings.look.as_str(),
+            security_level_loose: settings.security_level_loose,
+            color_index: ctx.class_color_indices.get(n.id.as_str()).copied(),
+            palette_size: super::css::class_palette_size(ctx.effective_config),
+        },
     )?;
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {

@@ -41,6 +41,7 @@ fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
         .join("class")
         .join(format!("{name}.mmd"));
     let text = std::fs::read_to_string(&path).expect("fixture");
+    let text = format!("---\nconfig:\n  layout: dagre\n---\n{text}");
 
     layout_class_with_dagre(&text, &environment)
 }

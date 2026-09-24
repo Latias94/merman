@@ -91,10 +91,11 @@ fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> T
             "font-weight" => base.font_weight = Some(value.to_owned()),
             "font-style" => base.font_style = Some(value.to_owned()),
             "font-size" => {
-                if let Ok(size) = value.trim_end_matches("px").parse::<f64>() {
-                    if size.is_finite() && size > 0.0 {
-                        base.font_size = size;
-                    }
+                if let Ok(size) = value.trim_end_matches("px").parse::<f64>()
+                    && size.is_finite()
+                    && size > 0.0
+                {
+                    base.font_size = size;
                 }
             }
             _ => {}
@@ -103,17 +104,22 @@ fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> T
     base
 }
 
+struct LabelContext<'a> {
+    config: &'a Value,
+    measurer: &'a dyn TextMeasurer,
+    styles: &'a indexmap::IndexMap<String, String>,
+}
+
 fn label(
     text: &str,
     label_type: UsecaseLabelType,
     style: &TextStyle,
     max_width: Option<f64>,
     min_width: f64,
-    config: &Value,
-    measurer: &dyn TextMeasurer,
-    styles: &indexmap::IndexMap<String, String>,
+    context: &LabelContext<'_>,
 ) -> UsecaseLabelPlan {
-    let html = config
+    let html = context
+        .config
         .get("htmlLabels")
         .and_then(Value::as_bool)
         .unwrap_or(true);
@@ -123,14 +129,16 @@ fn label(
         WrapMode::SvgLike
     };
     let mut metrics = if label_type == UsecaseLabelType::Markdown {
-        measure_wrapped_markdown_with_inline_styles(measurer, text, style, max_width, mode)
+        measure_wrapped_markdown_with_inline_styles(context.measurer, text, style, max_width, mode)
     } else {
         // Plain Usecase labels are escaped before createText; markup is literal content.
         let escaped = text
             .replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;");
-        measurer.measure_wrapped(&escaped, style, max_width, mode)
+        context
+            .measurer
+            .measure_wrapped(&escaped, style, max_width, mode)
     };
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
@@ -142,7 +150,8 @@ fn label(
         metrics,
         style: style.clone(),
         max_width,
-        styles: styles
+        styles: context
+            .styles
             .iter()
             .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
             .map(|(key, value)| (key.clone(), value.clone()))
@@ -251,6 +260,11 @@ pub(super) fn measure(
             work.charge_adapter(1)?;
             let css = styles(model, &node.classes, &node.styles);
             let style = styled(text_style(config, Some(actor)), &css);
+            let label_context = LabelContext {
+                config,
+                measurer,
+                styles: &css,
+            };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = sanitize(&node.label);
             let source_stereotype = node.stereotype.as_deref().map(sanitize);
@@ -280,9 +294,7 @@ pub(super) fn measure(
                 &style,
                 wrapping_width,
                 if actor { 0.0 } else { min_width },
-                config,
-                measurer,
-                &css,
+                &label_context,
             );
             let stereotype = source_stereotype
                 .as_ref()
@@ -294,9 +306,7 @@ pub(super) fn measure(
                         &style,
                         wrapping_width,
                         0.0,
-                        config,
-                        measurer,
-                        &css,
+                        &label_context,
                     )
                 });
             let stereo_width = stereotype.as_ref().map_or(0.0, |value| value.metrics.width);
@@ -349,15 +359,18 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         let css = styles(model, &[], &[]);
         let style = styled(generic.clone(), &css);
+        let label_context = LabelContext {
+            config,
+            measurer,
+            styles: &css,
+        };
         let main = label(
             &sanitize(&note.label),
             note.label_type,
             &style,
             wrapping_width,
             min_width,
-            config,
-            measurer,
-            &css,
+            &label_context,
         );
         nodes.push(UsecaseNodePlan {
             id: note.id.clone(),
@@ -379,15 +392,18 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         let css = styles(model, &node.classes, &node.styles);
         let style = styled(generic.clone(), &css);
+        let label_context = LabelContext {
+            config,
+            measurer,
+            styles: &css,
+        };
         let main = label(
             &sanitize(&node.id),
             UsecaseLabelType::Text,
             &style,
             wrapping_width,
             min_width,
-            config,
-            measurer,
-            &css,
+            &label_context,
         );
         let mut rows = Vec::new();
         let mut key_width: f64 = 16.0;
@@ -400,9 +416,7 @@ pub(super) fn measure(
                 &style,
                 None,
                 0.0,
-                config,
-                measurer,
-                &css,
+                &label_context,
             );
             let value_label = label(
                 &sanitize(&value),
@@ -410,9 +424,7 @@ pub(super) fn measure(
                 &style,
                 None,
                 0.0,
-                config,
-                measurer,
-                &css,
+                &label_context,
             );
             key_width = key_width.max(key_label.metrics.width + 16.0);
             value_width = value_width.max(value_label.metrics.width + 16.0);
@@ -459,15 +471,18 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         let css = styles(model, &boundary.classes, &boundary.styles);
         let style = styled(generic.clone(), &css);
+        let label_context = LabelContext {
+            config,
+            measurer,
+            styles: &css,
+        };
         let main = label(
             &sanitize(&boundary.label),
             boundary.label_type,
             &style,
             Some(200.0),
             0.0,
-            config,
-            measurer,
-            &css,
+            &label_context,
         );
         nodes.push(UsecaseNodePlan {
             id: boundary.id.clone(),
@@ -490,6 +505,11 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         let css = styles(model, &edge.classes, &edge.styles);
         let style = styled(generic.clone(), &css);
+        let label_context = LabelContext {
+            config,
+            measurer,
+            styles: &css,
+        };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (
                 Some("include"),
@@ -541,9 +561,7 @@ pub(super) fn measure(
                     &style,
                     Some(200.0),
                     0.0,
-                    config,
-                    measurer,
-                    &css,
+                    &label_context,
                 )
             }),
             minlen: edge.minlen,
@@ -577,16 +595,15 @@ pub(super) fn measure(
         });
     }
     for node in &nodes {
-        if let Some(parent) = &node.parent {
-            if !model
+        if let Some(parent) = &node.parent
+            && !model
                 .boundaries
                 .iter()
                 .any(|boundary| &boundary.id == parent)
-            {
-                return Err(Error::InvalidModel {
-                    message: format!("missing Usecase boundary {parent}"),
-                });
-            }
+        {
+            return Err(Error::InvalidModel {
+                message: format!("missing Usecase boundary {parent}"),
+            });
         }
     }
     for edge in &edges {

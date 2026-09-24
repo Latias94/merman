@@ -9,7 +9,7 @@ use crate::svg::parity::flowchart::{
 use crate::svg::parity::{fmt, fmt_display};
 
 const FRAME_PADDING: f64 = 20.0;
-const HAND_DRAWN_FILL_WEIGHT: f64 = 4.0;
+const HAND_DRAWN_FILL_WEIGHT: f64 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     out: &mut String,

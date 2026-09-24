@@ -299,7 +299,12 @@ fn position_nodes(
         };
         // Preserve the pinned source's parentheses: this is not acos(r / (r + radius)).
         // With the source default radius, tau is NaN and the complete wedge is used.
-        let tau = 2.0 * (current_radius / current_radius + radius).acos();
+        let radius_ratio = if current_radius == 0.0 || !current_radius.is_finite() {
+            f64::NAN
+        } else {
+            1.0
+        };
+        let tau = 2.0 * (radius_ratio + radius).acos();
         let (scale, mut alpha) = if tau < maximum - minimum {
             (tau / weights[node], (minimum + maximum - tau) / 2.0)
         } else {
