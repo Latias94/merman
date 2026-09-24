@@ -138,7 +138,7 @@ pub(crate) use label::{
 };
 pub(crate) use node::{
     NodeLayoutDimensionsRequest, flowchart_brace_content_dimensions,
-    flowchart_node_render_dimensions, node_layout_dimensions,
+    flowchart_node_render_dimensions, flowchart_stacked_document_geometry, node_layout_dimensions,
 };
 pub(crate) use self_loop::flowchart_self_loop_helper_edges;
 pub(crate) use shapes::{

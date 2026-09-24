@@ -408,45 +408,49 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     }
                 }
 
-                // Mermaid `multiWaveEdgedRectangle.ts` emits a bottom sine wave and then
-                // translates the whole group upward by `waveAmplitude / 2`.
+                // Root getBBox includes both painted paths and the displaced label;
+                // the unshifted outer polygon remains the layout/intersection boundary.
                 if matches!(shape, "docs" | "documents" | "st-doc" | "stacked-document") {
                     let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
-                    let w = label_w + 2.0 * node_padding;
-                    let h = label_h + 3.0 * node_padding;
-                    let wave_amplitude = h / 8.0;
-                    let final_h = h + wave_amplitude / 2.0;
-                    let rect_offset = 10.0;
-                    let y = -final_h / 2.0;
-                    let baseline_y = y + final_h + rect_offset;
-
-                    let mut max_wave_y = baseline_y;
-                    let delta_x = w;
-                    let cycle_length = if delta_x.abs() < 1e-9 {
-                        delta_x
-                    } else {
-                        delta_x / 0.8
-                    };
-                    let frequency = if cycle_length.abs() < 1e-9 {
-                        0.0
-                    } else {
-                        (2.0 * std::f64::consts::PI) / cycle_length
-                    };
-                    for i in 0..=50 {
-                        let t = i as f64 / 50.0;
-                        let x = t * delta_x;
-                        let wave_y = baseline_y + wave_amplitude * (frequency * x).sin();
-                        max_wave_y = max_wave_y.max(wave_y);
+                    let geometry = crate::flowchart::flowchart_stacked_document_geometry(
+                        label_w,
+                        label_h,
+                        node_padding,
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+                    );
+                    let outer = crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                        &geometry.outer_points,
+                    );
+                    let inner = crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                        &geometry.inner_points,
+                    );
+                    let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
+                    for path in [&outer, &inner] {
+                        if let Some(pb) = rough_svg_path_bounds(&bounds_randomness, path) {
+                            bounds = Some(match bounds {
+                                Some(mut acc) => {
+                                    acc.min_x = acc.min_x.min(pb.min_x);
+                                    acc.min_y = acc.min_y.min(pb.min_y);
+                                    acc.max_x = acc.max_x.max(pb.max_x);
+                                    acc.max_y = acc.max_y.max(pb.max_y);
+                                    acc
+                                }
+                                None => pb,
+                            });
+                        }
                     }
-
-                    let top_y = y - rect_offset - wave_amplitude / 2.0;
-                    let bottom_y = max_wave_y - wave_amplitude / 2.0;
-                    top_hh = -top_y;
-                    bottom_hh = bottom_y;
-                    if left_hw == right_hw {
-                        left_hw = w / 2.0 + rect_offset;
-                        right_hw = left_hw;
+                    if let Some(pb) = bounds {
+                        left_hw = (-pb.min_x).max(0.0);
+                        right_hw = pb.max_x.max(0.0);
+                        top_hh = (-(pb.min_y + geometry.group_dy)).max(0.0);
+                        bottom_hh = (pb.max_y + geometry.group_dy).max(0.0);
                     }
+                    include_rect(
+                        n.x + geometry.label_dx - label_w / 2.0,
+                        n.y + y_off + geometry.label_dy - label_h / 2.0,
+                        n.x + geometry.label_dx + label_w / 2.0,
+                        n.y + y_off + geometry.label_dy + label_h / 2.0,
+                    );
                 }
 
                 if matches!(shape, "delay" | "half-rounded-rectangle") {
@@ -525,130 +529,149 @@ mod tests {
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
+    fn assert_neo_shape_viewport_contains_shifted_label(shape: &str) {
+        for padding in [15.0, 100.0] {
+            let source = format!(
+                "---\nconfig:\n  look: neo\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let render_context = parsed.flowchart_render_context().unwrap().clone();
+            let (metadata, semantic) = parsed.into_parts();
+            let RenderSemanticModel::Flowchart(model) = semantic else {
+                panic!("expected Flowchart");
+            };
+            let (width, height) = crate::flowchart::flowchart_node_render_dimensions(
+                Some(shape),
+                crate::text::TextMetrics {
+                    width: 100.0,
+                    height: 20.0,
+                    line_count: 1,
+                },
+                padding,
+                true,
+            );
+            let layout = FlowchartLayout {
+                nodes: vec![LayoutNode {
+                    id: "A".into(),
+                    x: 100.0,
+                    y: 100.0,
+                    width,
+                    height,
+                    is_cluster: false,
+                    label_width: Some(100.0),
+                    label_height: Some(20.0),
+                }],
+                edges: Vec::new(),
+                clusters: Vec::new(),
+                bounds: None,
+                dom_node_order_by_root: std::collections::HashMap::from([(
+                    String::new(),
+                    vec!["A".into()],
+                )]),
+                uses_elk_adapter_dom: false,
+            };
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let request = SvgRenderOptions {
+                diagram_id: Some("brace-label-bounds".into()),
+                ..SvgRenderOptions::default()
+            };
+            let debug = SvgDebugOptions::default();
+            let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+            let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+            let svg = render_flowchart_svg_model(
+                FlowchartSvgModelRequest {
+                    layout: &layout,
+                    swimlane_layout: None,
+                    model: &model,
+                    render_context: &render_context,
+                    effective_config: &metadata.effective_config,
+                    diagram_type: metadata.diagram_type.as_str(),
+                    diagram_title: None,
+                    presentation_policy: None,
+                    svg_label_sidecar: &sidecar,
+                },
+                &execution,
+            )
+            .unwrap()
+            .to_string();
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let viewbox: Vec<f64> = doc
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|value| value.parse().unwrap())
+                .collect();
+            let label = doc
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            let mut label_x = 0.0;
+            let mut label_y = 0.0;
+            for node in label.ancestors() {
+                if let Some(transform) = node.attribute("transform") {
+                    let translation = transform
+                        .strip_prefix("translate(")
+                        .and_then(|value| value.strip_suffix(')'))
+                        .expect("translation only");
+                    let values: Vec<f64> = translation
+                        .split([',', ' '])
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.parse().unwrap())
+                        .collect();
+                    label_x += values[0];
+                    label_y += values.get(1).copied().unwrap_or(0.0);
+                }
+            }
+            let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+            let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
+            let diagram_padding = 8.0;
+            assert!(
+                viewbox[0] <= label_x - diagram_padding + 1e-6,
+                "{shape}, padding {padding}"
+            );
+            assert!(
+                viewbox[1] <= label_y - diagram_padding + 1e-6,
+                "{shape}, padding {padding}"
+            );
+            assert!(
+                viewbox[0] + viewbox[2] >= label_x + label_width + diagram_padding - 1e-6,
+                "{shape}, padding {padding}: label exceeds right viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
+            );
+            assert!(
+                viewbox[1] + viewbox[3] >= label_y + label_height + diagram_padding - 1e-6,
+                "{shape}, padding {padding}: label exceeds bottom viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
+            );
+            if shape == "documents" {
+                // Pinned h=56, amplitude14: label offset(-10,-4), group y=-7.
+                assert_eq!((label_x, label_y), (40.0, 86.0));
+                let body = doc
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("basic label-container outer-path")
+                    })
+                    .unwrap();
+                assert_eq!(body.attribute("transform"), Some("translate(0,-7)"));
+            } else if padding == 15.0 {
+                // A contained label must not inflate the ordinary shape viewport.
+                assert!((viewbox[2] - width - 2.0 * diagram_padding).abs() < 1e-6);
+                assert!((viewbox[3] - height - 2.0 * diagram_padding).abs() < 1e-6);
+            }
+        }
+    }
+
     #[test]
     fn neo_brace_viewport_contains_shifted_labels_at_large_padding() {
         for shape in ["brace", "brace-r", "braces"] {
-            for padding in [15.0, 100.0] {
-                let source = format!(
-                    "---\nconfig:\n  look: neo\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
-                );
-                let parsed = Engine::new()
-                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                    .unwrap()
-                    .unwrap();
-                let render_context = parsed.flowchart_render_context().unwrap().clone();
-                let (metadata, semantic) = parsed.into_parts();
-                let RenderSemanticModel::Flowchart(model) = semantic else {
-                    panic!("expected Flowchart");
-                };
-                let (width, height) = crate::flowchart::flowchart_node_render_dimensions(
-                    Some(shape),
-                    crate::text::TextMetrics {
-                        width: 100.0,
-                        height: 20.0,
-                        line_count: 1,
-                    },
-                    padding,
-                    true,
-                );
-                let layout = FlowchartLayout {
-                    nodes: vec![LayoutNode {
-                        id: "A".into(),
-                        x: 100.0,
-                        y: 100.0,
-                        width,
-                        height,
-                        is_cluster: false,
-                        label_width: Some(100.0),
-                        label_height: Some(20.0),
-                    }],
-                    edges: Vec::new(),
-                    clusters: Vec::new(),
-                    bounds: None,
-                    dom_node_order_by_root: std::collections::HashMap::from([(
-                        String::new(),
-                        vec!["A".into()],
-                    )]),
-                    uses_elk_adapter_dom: false,
-                };
-                let session = RenderEnvironment::deterministic().begin_session().unwrap();
-                let request = SvgRenderOptions {
-                    diagram_id: Some("brace-label-bounds".into()),
-                    ..SvgRenderOptions::default()
-                };
-                let debug = SvgDebugOptions::default();
-                let execution = SvgExecution::new(&request, &debug, &session).unwrap();
-                let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-                let svg = render_flowchart_svg_model(
-                    FlowchartSvgModelRequest {
-                        layout: &layout,
-                        swimlane_layout: None,
-                        model: &model,
-                        render_context: &render_context,
-                        effective_config: &metadata.effective_config,
-                        diagram_type: metadata.diagram_type.as_str(),
-                        diagram_title: None,
-                        presentation_policy: None,
-                        svg_label_sidecar: &sidecar,
-                    },
-                    &execution,
-                )
-                .unwrap()
-                .to_string();
-                let doc = roxmltree::Document::parse(&svg).unwrap();
-                let viewbox: Vec<f64> = doc
-                    .root_element()
-                    .attribute("viewBox")
-                    .unwrap()
-                    .split_whitespace()
-                    .map(|value| value.parse().unwrap())
-                    .collect();
-                let label = doc
-                    .descendants()
-                    .find(|node| node.has_tag_name("foreignObject"))
-                    .unwrap();
-                let mut label_x = 0.0;
-                let mut label_y = 0.0;
-                for node in label.ancestors() {
-                    if let Some(transform) = node.attribute("transform") {
-                        let translation = transform
-                            .strip_prefix("translate(")
-                            .and_then(|value| value.strip_suffix(')'))
-                            .expect("translation only");
-                        let values: Vec<f64> = translation
-                            .split([',', ' '])
-                            .filter(|value| !value.is_empty())
-                            .map(|value| value.parse().unwrap())
-                            .collect();
-                        label_x += values[0];
-                        label_y += values.get(1).copied().unwrap_or(0.0);
-                    }
-                }
-                let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
-                let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
-                let diagram_padding = 8.0;
-                assert!(
-                    viewbox[0] <= label_x - diagram_padding + 1e-6,
-                    "{shape}, padding {padding}"
-                );
-                assert!(
-                    viewbox[1] <= label_y - diagram_padding + 1e-6,
-                    "{shape}, padding {padding}"
-                );
-                assert!(
-                    viewbox[0] + viewbox[2] >= label_x + label_width + diagram_padding - 1e-6,
-                    "{shape}, padding {padding}: label exceeds right viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
-                );
-                assert!(
-                    viewbox[1] + viewbox[3] >= label_y + label_height + diagram_padding - 1e-6,
-                    "{shape}, padding {padding}: label exceeds bottom viewport; viewbox={viewbox:?}, label=({label_x},{label_y},{label_width},{label_height})"
-                );
-                if padding == 15.0 {
-                    // A contained label must not inflate the ordinary shape viewport.
-                    assert!((viewbox[2] - width - 2.0 * diagram_padding).abs() < 1e-6);
-                    assert!((viewbox[3] - height - 2.0 * diagram_padding).abs() < 1e-6);
-                }
-            }
+            assert_neo_shape_viewport_contains_shifted_label(shape);
         }
+    }
+
+    #[test]
+    fn neo_stacked_document_viewport_contains_source_positioned_label() {
+        assert_neo_shape_viewport_contains_shifted_label("documents");
     }
 }

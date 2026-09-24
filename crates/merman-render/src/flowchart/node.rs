@@ -23,6 +23,83 @@ pub(crate) fn flowchart_brace_content_dimensions(
     )
 }
 
+pub(crate) struct StackedDocumentGeometry {
+    pub(crate) outer_points: Vec<(f64, f64)>,
+    pub(crate) inner_points: Vec<(f64, f64)>,
+    pub(crate) group_dy: f64,
+    pub(crate) label_dx: f64,
+    pub(crate) label_dy: f64,
+}
+
+pub(crate) fn flowchart_stacked_document_geometry(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    look_is_neo: bool,
+) -> StackedDocumentGeometry {
+    // Pinned multiWaveEdgedRectangle.ts: keep the same unshifted outer polygon
+    // for updateNodeBounds/intersection and a separate paint-group translation.
+    let padding = padding.max(0.0);
+    let (padding_x, padding_y) = if look_is_neo {
+        (16.0, 12.0)
+    } else {
+        (padding, padding)
+    };
+    let w = label_width.max(0.0) + 2.0 * padding_x;
+    let h = label_height.max(0.0) + 3.0 * padding_y;
+    let amplitude = h / if look_is_neo { 4.0 } else { 8.0 };
+    let final_h = h + amplitude / 2.0;
+    let x = -w / 2.0;
+    let y = -final_h / 2.0;
+    let offset = 10.0;
+    let wave_x = x - offset;
+    let wave_y = y + final_h + offset;
+    let delta_x = (x + w - offset) - wave_x;
+    let cycle_length = delta_x / 0.8;
+    // Preserve the layout's finite zero-span fallback. Upstream divides by
+    // zero here for an empty classic label with zero padding.
+    let frequency = if cycle_length == 0.0 {
+        0.0
+    } else {
+        2.0 * std::f64::consts::PI / cycle_length
+    };
+    let mut outer_points = Vec::with_capacity(62);
+    outer_points.push((x - offset, y + offset));
+    outer_points.push((x - offset, y + final_h + offset));
+    for i in 0..=50 {
+        let px = wave_x + (i as f64 / 50.0) * delta_x;
+        let py = wave_y + amplitude * (frequency * (px - wave_x)).sin();
+        outer_points.push((px, py));
+    }
+    let last_y = outer_points[52].1;
+    outer_points.extend([
+        (x + w - offset, last_y - offset),
+        (x + w, last_y - offset),
+        (x + w, last_y - 2.0 * offset),
+        (x + w + offset, last_y - 2.0 * offset),
+        (x + w + offset, y - offset),
+        (x + offset, y - offset),
+        (x + offset, y),
+        (x, y),
+        (x, y + offset),
+    ]);
+    let inner_points = vec![
+        (x, y + offset),
+        (x + w - offset, y + offset),
+        (x + w - offset, last_y - offset),
+        (x + w, last_y - offset),
+        (x + w, y),
+        (x, y),
+    ];
+    StackedDocumentGeometry {
+        outer_points,
+        inner_points,
+        group_dy: -amplitude / 2.0,
+        label_dx: -offset,
+        label_dy: offset - amplitude,
+    }
+}
+
 fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
@@ -514,40 +591,10 @@ fn node_render_dimensions(
 
         // Flowchart v2 stacked document (multi-wave edged rectangle).
         "docs" | "documents" | "st-doc" | "stacked-document" => {
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 3.0 * p).max(0.0);
-            let wave_amplitude = h / 8.0;
-            let final_h = h + wave_amplitude / 2.0;
-            let rect_offset = 10.0;
-            let x = -w / 2.0;
-            let y = -final_h / 2.0;
-
-            let wave_points = generate_full_sine_wave_points(
-                x - rect_offset,
-                y + final_h + rect_offset,
-                x + w - rect_offset,
-                y + final_h + rect_offset,
-                wave_amplitude,
-                0.8,
-            );
-            let (_last_x, last_y) = wave_points[wave_points.len() - 1];
-
-            let mut outer_points: Vec<(f64, f64)> = Vec::new();
-            outer_points.push((x - rect_offset, y + rect_offset));
-            outer_points.push((x - rect_offset, y + final_h + rect_offset));
-            outer_points.extend(wave_points.iter().copied());
-            outer_points.push((x + w - rect_offset, last_y - rect_offset));
-            outer_points.push((x + w, last_y - rect_offset));
-            outer_points.push((x + w, last_y - 2.0 * rect_offset));
-            outer_points.push((x + w + rect_offset, last_y - 2.0 * rect_offset));
-            outer_points.push((x + w + rect_offset, y - rect_offset));
-            outer_points.push((x + rect_offset, y - rect_offset));
-            outer_points.push((x + rect_offset, y));
-            outer_points.push((x, y));
-            outer_points.push((x, y + rect_offset));
-
+            let geometry =
+                flowchart_stacked_document_geometry(text_w, text_h, padding, look_is_neo);
             let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&outer_points).unwrap_or((x, y, x + w, y + final_h));
+                bbox_of_points(&geometry.outer_points).unwrap_or((0.0, 0.0, 0.0, 0.0));
             ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -1215,6 +1262,128 @@ mod render_dimension_tests {
             width: 100.0,
             height: 20.0,
             line_count: 1,
+        }
+    }
+
+    #[test]
+    fn stacked_document_geometry_matches_pinned_neo_and_classic_source() {
+        // Captured from the pinned TS outerPathPoints using its sine generator.
+        for (neo, padding, width, height, bounds, label_dy, group_dy, last_wave_y) in [
+            (
+                true,
+                15.0,
+                100.0,
+                20.0,
+                (-76.0, -41.5, 76.0, 55.49005261696825),
+                -4.0,
+                -7.0,
+                28.18520877186785,
+            ),
+            (
+                false,
+                15.0,
+                100.0,
+                20.0,
+                (-75.0, -44.53125, 75.0, 52.65047696520479),
+                1.875,
+                -4.0625,
+                36.80391580510188,
+            ),
+            (
+                false,
+                0.0,
+                100.0,
+                20.0,
+                (-60.0, -20.625, 60.0, 23.123223681601473),
+                7.5,
+                -1.25,
+                18.247358709262116,
+            ),
+            (
+                true,
+                0.0,
+                0.0,
+                0.0,
+                (-26.0, -30.25, 26.0, 39.2436052537653),
+                1.0,
+                -4.5,
+                21.690491353343617,
+            ),
+        ] {
+            let geometry = flowchart_stacked_document_geometry(width, height, padding, neo);
+            assert_eq!(geometry.outer_points.len(), 62);
+            assert_eq!(geometry.inner_points.len(), 6);
+            let actual = geometry.outer_points.iter().fold(
+                (
+                    f64::INFINITY,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::NEG_INFINITY,
+                ),
+                |(min_x, min_y, max_x, max_y), &(x, y)| {
+                    (min_x.min(x), min_y.min(y), max_x.max(x), max_y.max(y))
+                },
+            );
+            for (a, b) in [
+                (actual.0, bounds.0),
+                (actual.1, bounds.1),
+                (actual.2, bounds.2),
+                (actual.3, bounds.3),
+            ] {
+                assert!(
+                    (a - b).abs() < 1e-9,
+                    "neo={neo}, padding={padding}: {actual:?}"
+                );
+            }
+            assert_eq!(geometry.label_dx, -10.0);
+            assert_eq!(geometry.label_dy, label_dy);
+            assert_eq!(geometry.group_dy, group_dy);
+            assert!((geometry.outer_points[52].1 - last_wave_y).abs() < 1e-9);
+            for shape in ["docs", "documents", "st-doc", "stacked-document"] {
+                let size = node_render_dimensions(
+                    Some(shape),
+                    crate::text::TextMetrics {
+                        width,
+                        height,
+                        line_count: 1,
+                    },
+                    padding,
+                    neo,
+                );
+                assert!((size.0 - (bounds.2 - bounds.0)).abs() < 1e-9);
+                assert!((size.1 - (bounds.3 - bounds.1)).abs() < 1e-9);
+            }
+        }
+        let neo = flowchart_stacked_document_geometry(100.0, 20.0, 15.0, true);
+        for padding in [0.0, -2.0, 100.0] {
+            let other = flowchart_stacked_document_geometry(100.0, 20.0, padding, true);
+            assert_eq!(other.outer_points, neo.outer_points);
+            assert_eq!(other.label_dy, neo.label_dy);
+        }
+        // Preserve the established finite zero-span layout fallback, rather
+        // than importing the TS sine helper's division-by-zero NaNs.
+        for padding in [0.0, -2.0] {
+            let empty = flowchart_stacked_document_geometry(0.0, 0.0, padding, false);
+            assert!(
+                empty
+                    .outer_points
+                    .iter()
+                    .chain(&empty.inner_points)
+                    .all(|(x, y)| x.is_finite() && y.is_finite())
+            );
+            assert_eq!(empty.outer_points[0], (-10.0, 10.0));
+            assert_eq!(empty.label_dy, 10.0);
+            let size = node_render_dimensions(
+                Some("documents"),
+                crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                },
+                padding,
+                false,
+            );
+            assert_eq!(size, (20.0, 20.0));
         }
     }
 

@@ -1510,71 +1510,17 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             return intersect_rect(node, point);
         };
 
-        let p = ctx.node_padding;
-        let w = metrics.width + 2.0 * p;
-        let h = metrics.height + 2.0 * p;
-        let wave_amplitude = h / 4.0;
-        let final_h = h + wave_amplitude;
-        let x = -w / 2.0;
-        let y = -final_h / 2.0;
-        let rect_offset = 5.0;
-
-        let wave_points = generate_full_sine_wave_points(
-            x - rect_offset,
-            y + final_h + rect_offset,
-            x + w - rect_offset,
-            y + final_h + rect_offset,
-            wave_amplitude,
-            0.8,
+        let geometry = crate::flowchart::flowchart_stacked_document_geometry(
+            metrics.width,
+            metrics.height,
+            ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         );
-        let last_y = wave_points
-            .last()
-            .map(|p| p.y)
-            .unwrap_or(y + final_h + rect_offset);
-
-        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
-        points.push(crate::model::LayoutPoint {
-            x: x - rect_offset,
-            y: y + rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x - rect_offset,
-            y: y + final_h + rect_offset,
-        });
-        points.extend(wave_points);
-        points.push(crate::model::LayoutPoint {
-            x: x + w - rect_offset,
-            y: last_y - rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + w,
-            y: last_y - rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + w,
-            y: last_y - 2.0 * rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + w + rect_offset,
-            y: last_y - 2.0 * rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + w + rect_offset,
-            y: y - rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + rect_offset,
-            y: y - rect_offset,
-        });
-        points.push(crate::model::LayoutPoint {
-            x: x + rect_offset,
-            y,
-        });
-        points.push(crate::model::LayoutPoint { x, y });
-        points.push(crate::model::LayoutPoint {
-            x,
-            y: y + rect_offset,
-        });
+        let points: Vec<_> = geometry
+            .outer_points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect();
 
         intersect_polygon(node, &points, point)
     }
@@ -1709,7 +1655,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
 mod tests {
     use super::{
         BoundaryNode, force_intersect_for_layout_shape, intersect_curly_brace, intersect_line,
-        intersect_polygon_hourglass,
+        intersect_polygon, intersect_polygon_hourglass,
     };
     use crate::model::LayoutPoint;
 
@@ -1819,6 +1765,50 @@ mod tests {
                 assert!(
                     actual.x.abs() < 1e-9 && (actual.y - direction * neo_height / 2.0).abs() < 1e-9,
                     "{shape}: {actual:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stacked_document_intersection_uses_pinned_outer_polygon() {
+        for (neo, left, right, top, bottom) in [
+            (false, -65.0, 85.0, -28.590863482602394, 62.414677511183605),
+            (true, -66.0, 86.0, -28.495026308484125, 57.93185341111228),
+        ] {
+            let geometry =
+                crate::flowchart::flowchart_stacked_document_geometry(100.0, 20.0, 15.0, neo);
+            let (width, height) = crate::flowchart::flowchart_node_render_dimensions(
+                Some("documents"),
+                crate::text::TextMetrics {
+                    width: 100.0,
+                    height: 20.0,
+                    line_count: 1,
+                },
+                15.0,
+                neo,
+            );
+            let node = BoundaryNode {
+                x: 10.0,
+                y: 20.0,
+                width,
+                height,
+            };
+            let polygon: Vec<_> = geometry
+                .outer_points
+                .into_iter()
+                .map(|(x, y)| point(x, y))
+                .collect();
+            for (query, expected) in [
+                (point(-500.0, 20.0), point(left, 20.0)),
+                (point(500.0, 20.0), point(right, 20.0)),
+                (point(10.0, -500.0), point(10.0, top)),
+                (point(10.0, 500.0), point(10.0, bottom)),
+            ] {
+                let actual = intersect_polygon(&node, &polygon, &query);
+                assert!(
+                    (actual.x - expected.x).abs() < 1e-9 && (actual.y - expected.y).abs() < 1e-9,
+                    "neo={neo}: {actual:?}"
                 );
             }
         }
