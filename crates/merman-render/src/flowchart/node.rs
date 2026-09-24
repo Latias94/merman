@@ -659,13 +659,13 @@ fn node_render_dimensions(
         // Flowchart v2 tilted cylinder ("horizontal-cylinder").
         "h-cyl" | "das" | "horizontal-cylinder" => {
             // Mermaid `tiltedCylinder.ts`:
-            // - `labelPadding` defaults to `halfPadding` (i.e. `node.padding / 2`) for classic look.
+            // - `labelPadding` is 12 for Neo and `halfPadding` for Classic.
             // - `h = bbox.height + labelPadding`
             // - `ry = h / 2`, `rx = ry / (2.5 + h / 50)`
             // - `w = bbox.width + rx + labelPadding`
             // - the rendered `<path>` bbox expands by `rx` on both sides (arc extents), so Dagre
             //   sees `out_w = w + 2*rx` via `updateNodeBounds(...)`.
-            let label_padding = p / 2.0;
+            let label_padding = if look_is_neo { 12.0 } else { p / 2.0 };
             let h = text_h + label_padding;
             let ry = h / 2.0;
             let rx = if ry == 0.0 {
@@ -1894,6 +1894,18 @@ mod render_dimension_tests {
             node_render_dimensions(Some("flipped-triangle"), metrics(), 15.0, false),
             (135.0, 135.0)
         );
+        let classic_h_cyl = node_render_dimensions(Some("h-cyl"), metrics(), 15.0, false);
+        let classic_h = 20.0 + 7.5;
+        let classic_ry = classic_h / 2.0;
+        let classic_rx = classic_ry / (2.5 + classic_h / 50.0);
+        assert!((classic_h_cyl.0 - (100.0 + 7.5 + 3.0 * classic_rx)).abs() < 1e-9);
+        assert!((classic_h_cyl.1 - classic_h).abs() < 1e-9);
+        let neo_h_cyl = node_render_dimensions(Some("h-cyl"), metrics(), 15.0, true);
+        let neo_h = 20.0 + 12.0;
+        let neo_ry = neo_h / 2.0;
+        let neo_rx = neo_ry / (2.5 + neo_h / 50.0);
+        assert!((neo_h_cyl.0 - (100.0 + 12.0 + 3.0 * neo_rx)).abs() < 1e-9);
+        assert!((neo_h_cyl.1 - neo_h).abs() < 1e-9);
     }
 
     #[test]
