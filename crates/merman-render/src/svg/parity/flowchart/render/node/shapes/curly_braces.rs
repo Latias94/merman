@@ -300,13 +300,14 @@ pub(in crate::svg::parity::flowchart) fn curly_brace_comment_geometry(
             .trim_end_matches('Z')
             .to_string();
         let rect_path = path_from_points(&rect_points);
+        // Upstream inserts each path at :first-child: right, left, then the hidden rectangle.
         vec![
             CurlyBraceCommentPath {
-                d: left_path,
+                d: right_path,
                 visible: true,
             },
             CurlyBraceCommentPath {
-                d: right_path,
+                d: left_path,
                 visible: true,
             },
             CurlyBraceCommentPath {
@@ -543,6 +544,27 @@ mod tests {
         let tall = curly_brace_comment_geometry("brace", 100.0, 85.0, 15.0, false);
         assert_eq!(tall.label_dx, 2.5);
         assert_eq!(tall.label_dy, 0.0);
+    }
+
+    #[test]
+    fn paired_braces_follow_source_dom_insertion_order() {
+        let geometry = curly_brace_comment_geometry("braces", 100.0, 20.0, 15.0, true);
+        assert_eq!(geometry.paths.len(), 3);
+        let bounds = |index: usize| {
+            crate::svg::parity::path_bounds::svg_path_bounds_from_d(&geometry.paths[index].d)
+                .expect("path bounds")
+        };
+        assert!(geometry.paths[0].visible);
+        assert!(geometry.paths[1].visible);
+        assert!(!geometry.paths[2].visible);
+        assert!(
+            bounds(0).min_x > 0.0,
+            "the right brace is inserted last and painted first"
+        );
+        assert!(
+            bounds(1).max_x < 0.0,
+            "the left brace follows the right brace"
+        );
     }
 
     #[test]

@@ -32,7 +32,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curved_trapezoid(
         crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
     let path_data = path_from_points(&geometry.points);
-    let (fill_d, mut stroke_d) =
+    let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -44,12 +44,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curved_trapezoid(
             )
         })
         .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-    if !ctx.node_html_labels && label.text.contains("curved-trapezoid shape") {
-        // Mermaid/RoughJS and `roughr` still differ by a 1e-3 rounding step on this upstream
-        // new-shapes fixture after geometry has otherwise matched. Normalize the emitted token so
-        // strict XML parity lands on the browser baseline instead of the Rust-side float tie.
-        stroke_d = stroke_d.replace("100.533", "100.534");
-    }
     let _ = write!(
         out,
         r##"<g class="basic label-container outer-path" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
