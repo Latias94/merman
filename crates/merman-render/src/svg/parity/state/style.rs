@@ -8,6 +8,7 @@ pub(super) struct StateThemeDefaults {
     pub(super) state_bkg: String,
     pub(super) state_border: String,
     pub(super) rect_radius: f64,
+    pub(super) node_shadow: bool,
     pub(super) stroke_width: String,
     pub(super) stroke_width_px: String,
     pub(super) rough_stroke_width_value: f64,
@@ -41,6 +42,10 @@ impl StateThemeDefaults {
             state_bkg: theme.state_bkg,
             state_border: theme.state_border,
             rect_radius,
+            node_shadow: effective_config
+                .get("themeVariables")
+                .and_then(|theme| theme.get("nodeShadow"))
+                .is_some_and(crate::config::json_value_is_truthy),
             stroke_width: theme.stroke_width,
             stroke_width_px: theme.stroke_width_px,
             rough_stroke_width_value: theme.rough_stroke_width_value,

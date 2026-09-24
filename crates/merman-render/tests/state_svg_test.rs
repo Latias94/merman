@@ -1079,3 +1079,125 @@ fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
         }
     }
 }
+
+#[test]
+fn state_svg_small_terminal_shadow_uses_effective_theme_and_look() {
+    // stateStart/stateEnd choose the small filter using nodeShadow, independently
+    // of look=neo and dropShadow; a hand-drawn terminal never gets this override.
+    for (look, theme, shadow, expected) in [
+        ("neo", "neo", None, false),
+        ("neo", "redux", None, true),
+        ("classic", "redux", None, true),
+        ("classic", "default", None, false),
+        ("neo", "neo", Some(serde_json::json!(false)), false),
+        ("classic", "default", Some(serde_json::json!(true)), true),
+        ("handDrawn", "neo", Some(serde_json::json!(true)), false),
+        ("neo", "neo", Some(serde_json::json!(0)), false),
+        ("neo", "neo", Some(serde_json::json!("false")), true),
+    ] {
+        let mut config = serde_json::json!({"look": look, "theme": theme});
+        if let Some(shadow) = shadow.clone() {
+            config["themeVariables"] = serde_json::json!({"nodeShadow": shadow});
+        }
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let svg = render_state_svg_from_text_with_engine(
+            engine,
+            "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("State SVG");
+        let diagram_id = document.root_element().attribute("id").expect("diagram id");
+        let expected_style = format!("filter:url(#{diagram_id}-drop-shadow-small)");
+        for class in ["state-start", "outer-path"] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class))
+                .unwrap_or_else(|| panic!("missing State terminal {class}"));
+            assert_eq!(
+                terminal.attribute("style"),
+                expected.then_some(expected_style.as_str()),
+                "look={look}, theme={theme}, nodeShadow={shadow:?}, terminal={class}"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
+    for (min_width, label, wrapping_width, display, white_space, width) in [
+        (120, "A", 1000, "table", "nowrap", Some("120px")),
+        (0, "A", 1000, "table-cell", "nowrap", None),
+        (
+            120,
+            "A long state label beyond the minimum width",
+            1000,
+            "table-cell",
+            "nowrap",
+            None,
+        ),
+        (
+            120,
+            "A long state label that must wrap onto multiple lines",
+            120,
+            "table",
+            "break-spaces",
+            Some("120px"),
+        ),
+    ] {
+        for note in [false, true] {
+            let config = serde_json::json!({
+                "htmlLabels": true,
+                "state": {"minNodeWidth": min_width, "wrappingWidth": wrapping_width}
+            });
+            let source = if note {
+                format!("stateDiagram-v2\nN\nnote right of N : {label}\n")
+            } else {
+                format!("stateDiagram-v2\nstate \"{label}\" as N\n")
+            };
+            let svg = render_state_svg_from_text_with_engine(
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                &source,
+            );
+            let document = roxmltree::Document::parse(&svg).expect("State SVG");
+            let div = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("div")
+                        && node.descendants().any(|child| child.text() == Some(label))
+                })
+                .expect("leaf label div");
+            let style: std::collections::BTreeMap<_, _> = div
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .filter_map(|entry| entry.split_once(':'))
+                .map(|(key, value)| (key.trim(), value.trim()))
+                .collect();
+            assert_eq!(
+                style.get("display").copied(),
+                Some(display),
+                "note={note}, min={min_width}, label={label}"
+            );
+            assert_eq!(style.get("white-space").copied(), Some(white_space));
+            assert_eq!(style.get("width").copied(), width);
+        }
+    }
+    let svg = render_state_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false, "state": {"minNodeWidth": 120}
+        }))),
+        "stateDiagram-v2\n[*] --> A\nA --> [*]\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("State SVG");
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("state-start"))
+            .count(),
+        1
+    );
+}

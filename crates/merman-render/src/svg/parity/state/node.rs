@@ -86,16 +86,30 @@ pub(super) fn render_state_node_svg(
         details.leaf_nodes_style_parse += s.elapsed();
     }
 
+    let small_shadow_attr = if matches!(node.shape.as_str(), "stateStart" | "stateEnd")
+        && w < 25.0
+        && ctx.theme_defaults.node_shadow
+        && data_look != "handDrawn"
+    {
+        format!(
+            r#" style="filter:url(#{}-drop-shadow-small)""#,
+            ctx.diagram_id
+        )
+    } else {
+        String::new()
+    };
+
     match node.shape.as_str() {
         "stateStart" => {
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
+                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"{}/></g>"#,
                 node_dom_id,
                 escape_xml_display(data_look),
                 fmt_display(cx),
-                fmt_display(cy)
+                fmt_display(cy),
+                small_shadow_attr
             );
             drop(_g_emit);
         }
@@ -150,11 +164,12 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
+                small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
                 shape_style_escaped,
@@ -337,6 +352,12 @@ pub(super) fn render_state_node_svg(
                         "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
                         fmt(ctx.html_label_wrapping_width),
                         fmt(ctx.html_label_wrapping_width),
+                    )
+                } else if lw > metrics.width {
+                    format!(
+                        "display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        fmt(ctx.html_label_wrapping_width),
+                        fmt(lw),
                     )
                 } else {
                     format!(
@@ -625,6 +646,13 @@ pub(super) fn render_state_node_svg(
                     div_style_prefix,
                     fmt(ctx.html_label_wrapping_width),
                     fmt(ctx.html_label_wrapping_width),
+                )
+            } else if lw > metrics.width {
+                format!(
+                    r#"{}display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
+                    div_style_prefix,
+                    fmt(ctx.html_label_wrapping_width),
+                    fmt(lw),
                 )
             } else {
                 format!(
