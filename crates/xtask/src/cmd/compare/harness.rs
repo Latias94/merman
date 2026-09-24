@@ -1133,11 +1133,22 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let svg_request = svg_request(
+            let mut svg_request = svg_request(
                 environment.clone(),
                 layout_options.clone(),
                 Some(diagram_id),
             );
+            // The reference CLI applies its white output background even when a
+            // negative fixture renders as Error; the dedicated Error lane omits it.
+            if semantic.semantic_kind() == "error" && fact.diagram != "error" {
+                svg_request.pipeline = Some(
+                    merman::svg::SvgOutputPolicy {
+                        root_background_color: Some("white".to_string()),
+                        ..Default::default()
+                    }
+                    .pipeline(),
+                );
+            }
 
             match fact.specialist {
                 SpecialistHook::None => {}
