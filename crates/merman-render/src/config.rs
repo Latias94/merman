@@ -49,6 +49,17 @@ pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
+// Theme overrides retain their JSON types; source drawing guards use JavaScript truthiness.
+pub(crate) fn json_value_is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64() != Some(0.0),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
 pub(crate) fn config_effective_html_labels(cfg: &Value) -> bool {
     config_bool(cfg, &["htmlLabels"])
         .or_else(|| config_bool(cfg, &["flowchart", "htmlLabels"]))

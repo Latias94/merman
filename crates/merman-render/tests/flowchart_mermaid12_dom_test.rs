@@ -206,3 +206,37 @@ fn flowchart_elk_line_hops_follow_elk_config_and_preserve_routes() {
         assert_eq!(swimlane_disabled.1, elk_gap.1);
     }
 }
+
+#[test]
+fn flowchart_start_stop_aliases_apply_effective_small_shadow() {
+    for look in ["neo", "classic", "handDrawn"] {
+        for (raw, enabled) in [
+            ("true", true),
+            ("false", false),
+            ("'false'", true),
+            ("1", true),
+            ("0", false),
+            ("''", false),
+        ] {
+            let svg = render_flowchart(&format!(
+                "---\nconfig:\n  layout: dagre\n  look: {look}\n  theme: redux\n  themeVariables:\n    nodeShadow: {raw}\n---\nflowchart LR\nA@{{ shape: start }}\nB@{{ shape: sm-circ }}\nC@{{ shape: small-circle }}\nD@{{ shape: stop }}\nE@{{ shape: fr-circ }}\nF@{{ shape: framed-circle }}\n"
+            ));
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            let mut checked = 0;
+            for node in document.descendants().filter(|node| {
+                matches!(
+                    node.attribute("class"),
+                    Some("node default" | "rough-node default")
+                )
+            }) {
+                let shape = node.children().find(|child| child.is_element()).unwrap();
+                let shadow = shape.attribute("style").is_some_and(|style| {
+                    style.contains("filter:url(#") && style.ends_with("-drop-shadow-small)")
+                });
+                assert_eq!(shadow, enabled && look != "handDrawn", "{look}, {enabled}");
+                checked += 1;
+            }
+            assert_eq!(checked, 6);
+        }
+    }
+}
