@@ -26,24 +26,31 @@ export function resolveMermaidCanvasTone(
   configJson: string,
   selectedTheme: string,
   source = "",
+  configNamespace?: string | null,
 ): MermaidCanvasTone {
   let effectiveTheme = normalizeMermaidThemeName(selectedTheme);
   try {
     const config = buildMermaidConfig(configJson, selectedTheme);
-    if (typeof config.theme === "string") {
-      effectiveTheme = normalizeMermaidThemeName(config.theme);
-    } else {
-      effectiveTheme = frontmatterTheme(source) ?? effectiveTheme;
+    // The playground inserts config after frontmatter and before authored directives.
+    // Project only theme fields; scoped values survive later global-only overrides.
+    const themes: ThemeFields = {};
+    mergeThemeFields(themes, frontmatterConfig(source), configNamespace);
+    mergeThemeFields(themes, config, configNamespace);
+    for (const directive of directiveConfigs(source)) {
+      mergeThemeFields(themes, directive, configNamespace);
     }
-
-    effectiveTheme = directiveTheme(source) ?? effectiveTheme;
+    const resolved = [themes.scoped, themes.global].find(
+      (value): value is ThemeName =>
+        typeof value === "string" && Object.hasOwn(MERMAID_CANVAS_TONES, value),
+    );
+    effectiveTheme = resolved ?? effectiveTheme;
   } catch {
     // Invalid config is rendered as an error; keep the selected-theme canvas.
   }
   return MERMAID_CANVAS_TONES[effectiveTheme];
 }
 
-function frontmatterTheme(source: string): ThemeName | null {
+function frontmatterConfig(source: string): MermaidConfigObject | null {
   const match = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/s.exec(
     source,
   );
@@ -62,18 +69,15 @@ function frontmatterTheme(source: string): ThemeName | null {
   try {
     const parsed = parseYaml(body, { schema: JSON_SCHEMA }) as unknown;
     if (!isPlainObject(parsed) || !isPlainObject(parsed.config)) return null;
-    return typeof parsed.config.theme === "string"
-      ? normalizeMermaidThemeName(parsed.config.theme)
-      : null;
+    return parsed.config;
   } catch {
     return null;
   }
 }
 
-function directiveTheme(source: string): ThemeName | null {
+function* directiveConfigs(source: string): Generator<MermaidConfigObject> {
   const directiveStart = /%%\{\s*(?:init|initialize)\s*:\s*/gi;
   const directiveEnd = /\}\s*%%/g;
-  let effectiveTheme: ThemeName | null = null;
 
   for (
     let start = directiveStart.exec(source);
@@ -88,16 +92,35 @@ function directiveTheme(source: string): ThemeName | null {
     directiveStart.lastIndex = directiveEnd.lastIndex;
     try {
       const config = JSON.parse(body.trim().replaceAll("'", '"')) as unknown;
-      if (isPlainObject(config) && typeof config.theme === "string") {
-        effectiveTheme = normalizeMermaidThemeName(config.theme);
-      }
+      if (isPlainObject(config)) yield config;
     } catch {
-      return null;
+      return;
     }
   }
-  return effectiveTheme;
 }
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface ThemeFields {
+  global?: unknown;
+  scoped?: unknown;
+}
+
+function isKnownTheme(value: unknown): value is ThemeName {
+  return typeof value === "string" && Object.hasOwn(MERMAID_CANVAS_TONES, value);
+}
+
+function mergeThemeFields(
+  themes: ThemeFields,
+  config: MermaidConfigObject | null,
+  namespace: string | null | undefined,
+): void {
+  if (!config) return;
+  if (isKnownTheme(config.theme)) themes.global = config.theme;
+  const section = namespace ? config[namespace] : undefined;
+  if (isPlainObject(section) && isKnownTheme(section.theme)) {
+    themes.scoped = section.theme;
+  }
 }

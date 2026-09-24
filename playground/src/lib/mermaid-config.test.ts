@@ -9,11 +9,18 @@ import {
   sourceWithConfig,
 } from "./mermaid-config.ts";
 
-test("Mermaid config accepts every canonical 11.16 theme", () => {
+test("Mermaid config accepts every canonical target theme", () => {
   for (const theme of SUPPORTED_THEMES) {
     const config = buildMermaidConfig("{}", theme);
-    assert.equal(config.theme, theme === "default" ? undefined : theme);
+    assert.equal(config.theme, theme);
   }
+});
+
+test("automatic appearance omits theme while explicit default is preserved", () => {
+  assert.deepEqual(buildMermaidConfig("{}", "auto"), {});
+  assert.deepEqual(buildMermaidConfig("{}", "default"), { theme: "default" });
+  assert.deepEqual(buildMermaidConfig('{"theme":"forest"}', "auto"), { theme: "forest" });
+  assert.equal(sourceWithConfig("flowchart TD\nA-->B", "auto", "{}"), "flowchart TD\nA-->B");
 });
 
 test("explicit config theme takes precedence over the selected theme", () => {
@@ -63,7 +70,7 @@ config:
 flowchart TD
   A --> B`;
 
-  assert.equal(resolveMermaidCanvasTone("{}", "default", source), "dark");
+  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark");
   assert.equal(resolveMermaidCanvasTone("{}", "forest", source), "light");
   assert.equal(
     resolveMermaidCanvasTone(
@@ -81,7 +88,7 @@ test("reads block and flow-style Mermaid frontmatter themes", () => {
     "---\nconfig: {\n  theme: neo-dark\n}\n---\nflowchart TD\n  A --> B",
     "---\nconfig:\n  theme: 'redux-dark'\n---\nflowchart TD\n  A --> B",
   ]) {
-    assert.equal(resolveMermaidCanvasTone("{}", "default", source), "dark");
+    assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark");
   }
 });
 
@@ -89,7 +96,7 @@ test("scans unmatched Mermaid init directives in linear time", () => {
   const source = "%%{initialize:".repeat(16_384);
   const startedAt = performance.now();
 
-  assert.equal(resolveMermaidCanvasTone("{}", "default", source), "light");
+  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "light");
   assert.ok(
     performance.now() - startedAt < 500,
     "unmatched directives should not rescan the remaining source",
@@ -138,4 +145,24 @@ test("indented frontmatter does not close on a differently indented scalar line"
     ),
     '   ---\n   title: |\n     A scalar\n     ---\n   ---\n%%{init: {"theme":"dark"}}%%\n   flowchart TD'
   );
+});
+
+
+test("canvas tone follows scoped Mermaid 12 themes without parsing diagram headers", () => {
+  const source = "flowchart TD\nA-->B";
+  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"dark"}}', "auto", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"dark"}}', "default", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"theme":"dark","flowchart":{"theme":"default"}}', "auto", source, "flowchart"), "light");
+  assert.equal(resolveMermaidCanvasTone('{"theme":"dark","flowchart":{"theme":"unknown"}}', "auto", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"unknown"}}', "dark", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"sequence":{"theme":"dark"}}', "auto", source, "flowchart"), "light");
+  assert.equal(resolveMermaidCanvasTone('{"xyChart":{"theme":"dark"}}', "auto", "xychart-beta", "xyChart"), "dark");
+});
+
+test("canvas tone merges scoped source themes with the injected configuration", () => {
+  const source = "---\nconfig:\n  flowchart:\n    theme: dark\n---\nflowchart TD\nA-->B";
+  assert.equal(resolveMermaidCanvasTone("{}", "default", source, "flowchart"), "dark");
+  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"default"}}', "auto", source, "flowchart"), "light");
+  assert.equal(resolveMermaidCanvasTone("{}", "default", `${source}\n%%{init: {'flowchart': {'theme': 'forest'}}}%%`, "flowchart"), "light");
+  assert.equal(resolveMermaidCanvasTone("{}", "default", "flowchart TD\nA-->B\n%%{init: {'flowchart': {'theme': 'dark'}}}%%", "flowchart"), "dark");
 });
