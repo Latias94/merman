@@ -2,7 +2,6 @@ use super::super::*;
 
 pub(super) fn sequence_css(
     diagram_id: impl Copy + std::fmt::Display,
-    font_size_px: f64,
     effective_config: &serde_json::Value,
 ) -> String {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
@@ -10,6 +9,13 @@ pub(super) fn sequence_css(
     let id = diagram_id;
     let theme = PresentationTheme::new(effective_config).sequence_diagram();
     let font = theme.common.font_family_css.as_str();
+    // Mermaid's shared stylesheet reads resolved theme variables, independently
+    // of the runtime Sequence actor/message font sizes.
+    let font_size_css = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "fontSize"],
+    )
+    .unwrap_or_else(|| "16px".to_string());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
@@ -17,10 +23,10 @@ pub(super) fn sequence_css(
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
         id,
         font,
-        fmt(font_size_px),
+        font_size_css,
         text_color
     );
     out.push_str(
@@ -48,10 +54,10 @@ pub(super) fn sequence_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
         id,
         font,
-        fmt(font_size_px),
+        font_size_css,
         id
     );
 
@@ -226,7 +232,7 @@ mod tests {
 
     #[test]
     fn sequence_css_uses_configured_font_size() {
-        let css = sequence_css("seq", 24.0, &json!({}));
+        let css = sequence_css("seq", &json!({"themeVariables": {"fontSize": "24px"}}));
 
         assert!(css.contains(
             r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
@@ -235,9 +241,27 @@ mod tests {
     }
 
     #[test]
+    fn sequence_css_keeps_theme_font_size_independent_of_runtime_text_size() {
+        for size in ["14px", "1.25em"] {
+            let css = sequence_css(
+                "seq",
+                &json!({
+                    "fontSize": 22,
+                    "sequence": {"messageFontSize": 18},
+                    "themeVariables": {"fontSize": size}
+                }),
+            );
+
+            assert_eq!(css.matches(&format!("font-size:{size};")).count(), 2);
+            assert!(!css.contains("font-size:22px;"));
+            assert!(!css.contains("font-size:18px;"));
+        }
+    }
+
+    #[test]
     fn sequence_css_formats_the_diagram_id_for_each_emitted_selector() {
         let writes = Cell::new(0);
-        let css = sequence_css(TrackedDiagramId { writes: &writes }, 16.0, &json!({}));
+        let css = sequence_css(TrackedDiagramId { writes: &writes }, &json!({}));
 
         assert_eq!(writes.get(), css.matches("#seq").count());
     }
@@ -275,7 +299,7 @@ mod tests {
             }
         });
 
-        let css = sequence_css("seq", 16.0, &cfg);
+        let css = sequence_css("seq", &cfg);
 
         assert!(css.contains(r#"#seq{font-family:Inter,Arial;font-size:16px;fill:#abc001;}"#));
         assert!(css.contains(
