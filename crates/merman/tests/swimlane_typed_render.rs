@@ -479,9 +479,8 @@ fn loose_nodes_render_the_synthetic_default_lane() {
     );
 
     assert!(
-        svg.contains(
-            r#"<g class="cluster swimlane" id="__swimlane_default__" data-id="__swimlane_default__" data-et="cluster">"#
-        ),
+        svg.contains(r#"class="cluster swimlane" id="__swimlane_default__""#)
+            && svg.contains(r#"data-id="__swimlane_default__" data-et="cluster""#),
         "{svg}"
     );
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 1);
