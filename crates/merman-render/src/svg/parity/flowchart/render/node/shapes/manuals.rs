@@ -94,7 +94,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
-        None,
+        Some(common.layout_node),
         label.text,
         label.label_type,
         common.node_classes,

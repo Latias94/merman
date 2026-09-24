@@ -772,7 +772,9 @@ mod tests {
             .find(|node| node.has_tag_name("foreignObject"))
             .unwrap();
         let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+        let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
         let w = label_width + 32.0;
+        let h = label_height + 24.0;
         let transform = label
             .parent_element()
             .and_then(|node| node.attribute("transform"))
@@ -786,6 +788,7 @@ mod tests {
             .map(|value| value.parse().unwrap())
             .collect();
         assert!((values[0] - (-w / 2.0 + padding)).abs() < 1e-6);
+        assert!((values[1] - (-h / 4.0 + padding)).abs() < 1e-6);
     }
 
     #[test]

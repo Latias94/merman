@@ -113,6 +113,10 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "notch-rect"
                 | "notched-rectangle"
                 | "card"
+                | "st-rect"
+                | "procs"
+                | "processes"
+                | "stacked-rectangle"
                 | "doc"
                 | "document"
                 | "lin-doc"
@@ -862,6 +866,57 @@ fn intersect_notched_rectangle(
     intersect_polygon(node, &points, point)
 }
 
+fn stacked_rectangle_intersection_points(
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    look_is_neo: bool,
+) -> Vec<crate::model::LayoutPoint> {
+    let padding_x = if look_is_neo { 16.0 } else { padding };
+    let padding_y = if look_is_neo { 12.0 } else { padding };
+    let rect_offset = if look_is_neo { 10.0 } else { 5.0 };
+    let width = (label_width + 2.0 * padding_x).max(0.0);
+    let height = (label_height + 2.0 * padding_y).max(0.0);
+    let x = -width / 2.0;
+    let y = -height / 2.0;
+
+    [
+        (x - rect_offset, y + rect_offset),
+        (x - rect_offset, y + height + rect_offset),
+        (x + width - rect_offset, y + height + rect_offset),
+        (x + width - rect_offset, y + height),
+        (x + width, y + height),
+        (x + width, y + height - rect_offset),
+        (x + width + rect_offset, y + height - rect_offset),
+        (x + width + rect_offset, y - rect_offset),
+        (x + rect_offset, y - rect_offset),
+        (x + rect_offset, y),
+        (x, y),
+        (x, y + rect_offset),
+    ]
+    .into_iter()
+    .map(|(x, y)| crate::model::LayoutPoint { x, y })
+    .collect()
+}
+
+fn intersect_stacked_rectangle(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    node: &BoundaryNode,
+    point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+        return intersect_rect(node, point);
+    };
+    let points = stacked_rectangle_intersection_points(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    );
+    intersect_polygon(node, &points, point)
+}
+
 pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
@@ -1594,6 +1649,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("notch-rect" | "notched-rectangle" | "card") => {
             intersect_notched_rectangle(node, point)
         }
+        Some("st-rect" | "procs" | "processes" | "stacked-rectangle") => {
+            intersect_stacked_rectangle(ctx, node_id, node, point)
+        }
         Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, point),
         Some("lin-doc" | "lined-document") => {
             intersect_lined_wave_document(ctx, node_id, node, point)
@@ -1625,7 +1683,7 @@ mod tests {
     use super::{
         BoundaryNode, force_intersect_for_layout_shape, intersect_curly_brace, intersect_line,
         intersect_notched_rectangle, intersect_polygon, intersect_polygon_hourglass,
-        intersect_wave_rectangle,
+        intersect_wave_rectangle, stacked_rectangle_intersection_points,
     };
     use crate::model::LayoutPoint;
 
@@ -1662,6 +1720,29 @@ mod tests {
     fn lined_documents_force_source_polygon_intersections() {
         assert!(force_intersect_for_layout_shape(Some("lin-doc")));
         assert!(force_intersect_for_layout_shape(Some("lined-document")));
+    }
+
+    #[test]
+    fn stacked_rectangles_intersect_the_source_layered_polygon() {
+        for shape in ["st-rect", "procs", "processes", "stacked-rectangle"] {
+            assert!(force_intersect_for_layout_shape(Some(shape)));
+        }
+        for (neo, width, height, expected_x, expected_y) in [
+            (false, 140.0, 60.0, -60.0, -25.714285714285715),
+            (true, 152.0, 64.0, -56.0, -23.57894736842105),
+        ] {
+            let node = BoundaryNode {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+            };
+            let points = stacked_rectangle_intersection_points(100.0, 20.0, 15.0, neo);
+            let actual = intersect_polygon(&node, &points, &point(-width * 5.0, -height * 5.0));
+            // The upper-left ray hits a layer step before the bounding-box corner.
+            assert!((actual.x - expected_x).abs() < 1e-9, "{actual:?}");
+            assert!((actual.y - expected_y).abs() < 1e-9, "{actual:?}");
+        }
     }
 
     #[test]
