@@ -7,6 +7,7 @@ pub(super) struct StateThemeDefaults {
     pub(super) main_bkg: String,
     pub(super) state_bkg: String,
     pub(super) state_border: String,
+    pub(super) rect_radius: f64,
     pub(super) stroke_width: String,
     pub(super) stroke_width_px: String,
     pub(super) rough_stroke_width_value: f64,
@@ -19,6 +20,19 @@ pub(super) struct StateThemeDefaults {
 impl StateThemeDefaults {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
         let theme = PresentationTheme::new(effective_config).state_diagram();
+        // Mermaid 12 roundedRect uses theme radius ?? 5. drawRect only applies a
+        // truthy override, so numeric zero preserves State dataFetcher's rx/ry=10;
+        // a numeric string such as "0" still overrides those defaults.
+        let numeric_zero = effective_config
+            .get("themeVariables")
+            .and_then(|theme| theme.get("radius"))
+            .and_then(serde_json::Value::as_f64)
+            == Some(0.0);
+        let rect_radius = if numeric_zero {
+            10.0
+        } else {
+            config_f64(effective_config, &["themeVariables", "radius"]).unwrap_or(5.0)
+        };
 
         Self {
             background: theme.background,
@@ -26,6 +40,7 @@ impl StateThemeDefaults {
             main_bkg: theme.main_bkg,
             state_bkg: theme.state_bkg,
             state_border: theme.state_border,
+            rect_radius,
             stroke_width: theme.stroke_width,
             stroke_width_px: theme.stroke_width_px,
             rough_stroke_width_value: theme.rough_stroke_width_value,
@@ -940,6 +955,32 @@ mod tests {
     use super::*;
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
+
+    #[test]
+    fn state_rect_radius_preserves_source_fallback_and_zero_override() {
+        for (config, expected) in [
+            (json!({}), 5.0),
+            (json!({"themeVariables": {"radius": null}}), 5.0),
+            (
+                json!({"look": "neo", "themeVariables": {"radius": 12}}),
+                12.0,
+            ),
+            (
+                json!({"look": "classic", "themeVariables": {"radius": 7.5}}),
+                7.5,
+            ),
+            (json!({"themeVariables": {"radius": 0}}), 10.0),
+            (json!({"themeVariables": {"radius": "0"}}), 0.0),
+            (json!({"themeVariables": {"radius": "7.5"}}), 7.5),
+            // Invalid values retain the existing numeric configuration contract.
+            (json!({"themeVariables": {"radius": "invalid"}}), 5.0),
+        ] {
+            assert_eq!(
+                StateThemeDefaults::from_config(&config).rect_radius,
+                expected
+            );
+        }
+    }
 
     fn model_with_hot_class() -> StateSvgModel {
         let mut model = StateSvgModel::default();

@@ -973,3 +973,51 @@ note right of Idle : themed note"#,
         "note rough paths should consume noteBkgColor/noteBorderColor: {svg}"
     );
 }
+
+#[test]
+fn state_svg_plain_rect_radius_uses_effective_theme_for_both_label_modes() {
+    // Pinned roundedRect -> drawRect keeps State's preset radius 10 for numeric
+    // zero, while the truthy string "0" explicitly draws square corners.
+    // Theme Neo supplies radius 3 and Redux supplies 12, independently of look.
+    for (look, theme, radius, expected) in [
+        ("neo", "neo", None, 3.0),
+        ("neo", "redux", None, 12.0),
+        ("classic", "redux", None, 12.0),
+        ("neo", "default", None, 5.0),
+        ("classic", "default", None, 5.0),
+        ("default", "default", None, 5.0),
+        ("neo", "neo", Some(serde_json::json!(0)), 10.0),
+        ("classic", "default", Some(serde_json::json!(0)), 10.0),
+        ("neo", "neo", Some(serde_json::json!("0")), 0.0),
+        ("classic", "default", Some(serde_json::json!(7.5)), 7.5),
+        ("neo", "neo", Some(serde_json::json!(7.5)), 7.5),
+    ] {
+        for html_labels in [true, false] {
+            let mut config = serde_json::json!({
+                "look": look,
+                "theme": theme,
+                "htmlLabels": html_labels
+            });
+            if let Some(radius) = radius.clone() {
+                config["themeVariables"] = serde_json::json!({"radius": radius});
+            }
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+            let svg = render_state_svg_from_text_with_engine(engine, "stateDiagram-v2\nA\n");
+            let document = roxmltree::Document::parse(&svg).expect("State SVG");
+            let rect = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .expect("ordinary State rectangle");
+            for attr in ["rx", "ry"] {
+                let actual: f64 = rect.attribute(attr).unwrap().parse().unwrap();
+                assert_eq!(
+                    actual, expected,
+                    "look={look}, theme={theme}, radius={radius:?}, htmlLabels={html_labels}, {attr}"
+                );
+            }
+        }
+    }
+}

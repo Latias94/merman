@@ -621,7 +621,7 @@ pub(super) fn render_state_node_svg(
             };
 
             if data_look != "handDrawn" {
-                let rect_radius = if data_look == "neo" { 3.0 } else { 5.0 };
+                let rect_radius = ctx.theme_defaults.rect_radius;
                 let rect_style = escape_xml_display(&shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
