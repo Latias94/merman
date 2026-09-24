@@ -4140,6 +4140,12 @@ fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
         "flowchart TD
   手順１ --> 手順２
 ",
+        "flowchart TD
+  Aͅ --> B
+",
+        "flowchart TD
+  𠀀 --> B
+",
     ] {
         assert!(
             engine
@@ -4148,4 +4154,21 @@ fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
             "{text}"
         );
     }
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
+    let engine = Engine::new();
+    assert!(
+        engine
+            .parse_diagram_sync("flowchart TD\nend開始 --> B", ParseOptions::default())
+            .is_err()
+    );
+
+    let parsed = engine
+        .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "TB");
+    assert_eq!(parsed.model["vertexCalls"], json!(["開始", "B"]));
 }
