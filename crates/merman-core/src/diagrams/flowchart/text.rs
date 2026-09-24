@@ -17,25 +17,7 @@ pub(super) fn unquote(s: &str) -> String {
 }
 
 pub(super) fn is_ecmascript_trim_char(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{0009}'
-            | '\u{000a}'
-            | '\u{000b}'
-            | '\u{000c}'
-            | '\u{000d}'
-            | '\u{0020}'
-            | '\u{00a0}'
-            | '\u{1680}'
-            | '\u{2000}'
-            ..='\u{200a}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202f}'
-                | '\u{205f}'
-                | '\u{3000}'
-                | '\u{feff}'
-    )
+    crate::diagrams::scan::is_ecmascript_whitespace(ch)
 }
 
 pub(super) fn trim_flowdb_label_text(text: &str) -> &str {

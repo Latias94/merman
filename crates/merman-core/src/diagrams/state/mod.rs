@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use crate::diagrams::scan::consume_line_ending;
+use crate::diagrams::scan::{
+    consume_line_ending, is_ecmascript_inline_whitespace, is_ecmascript_whitespace,
+};
 
 mod ast;
 mod db;
@@ -233,17 +235,18 @@ impl<'input> Lexer<'input> {
         if after >= self.input.len() {
             return true;
         }
-        let b = self.input.as_bytes()[after];
-        b.is_ascii_whitespace() || matches!(b, b'{' | b'}' | b'[' | b']' | b'"' | b':' | b';')
+        let next = self.input[after..].chars().next();
+        next.is_some_and(|ch| {
+            is_ecmascript_whitespace(ch) || matches!(ch, '{' | '}' | '[' | ']' | '"' | ':' | ';')
+        })
     }
 
     fn skip_ws(&mut self) {
-        while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_inline_whitespace(ch) {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -495,11 +498,11 @@ impl<'input> Lexer<'input> {
 
             self.skip_ws();
             let id_start = self.pos;
-            while let Some(b) = self.peek() {
-                if b == b':' || b == b'\n' || b.is_ascii_whitespace() || b == b'-' {
+            while let Some(ch) = self.input[self.pos..].chars().next() {
+                if ch == ':' || ch == '\n' || is_ecmascript_whitespace(ch) || ch == '-' {
                     break;
                 }
-                self.pos += 1;
+                self.pos += ch.len_utf8();
             }
             let id_end = self.pos;
             let id = self.input[id_start..self.pos].trim().to_string();
@@ -653,8 +656,8 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
             }
             let raw = &self.input[body_start..self.pos];
-            let leading = raw.len().saturating_sub(raw.trim_start().len());
-            let trailing = raw.trim_end().len();
+            let leading = raw.len() - raw.trim_start_matches(is_ecmascript_whitespace).len();
+            let trailing = raw.trim_end_matches(is_ecmascript_whitespace).len();
             let id_start = body_start + leading;
             let id_end = body_start + trailing;
             let id = self.input[id_start..id_end].to_string();
@@ -740,12 +743,11 @@ impl<'input> Lexer<'input> {
         // parser sees `CompositState` followed immediately by a `Block`.
         let end = self.pos;
         let mut look = self.pos;
-        while let Some(b) = self.input.as_bytes().get(look).copied() {
-            if matches!(b, b' ' | b'\t') {
-                look += 1;
-                continue;
+        while let Some(ch) = self.input[look..].chars().next() {
+            if !is_ecmascript_inline_whitespace(ch) {
+                break;
             }
-            break;
+            look += ch.len_utf8();
         }
         let same_line_end = self.input[look..]
             .find(['\r', '\n'])
@@ -776,11 +778,11 @@ impl<'input> Lexer<'input> {
                     scan = end;
                     continue;
                 }
-                let Some(b) = self.input.as_bytes().get(scan).copied() else {
+                let Some(ch) = self.input[scan..].chars().next() else {
                     break;
                 };
-                if matches!(b, b' ' | b'\t') {
-                    scan += 1;
+                if is_ecmascript_inline_whitespace(ch) {
+                    scan += ch.len_utf8();
                     continue;
                 }
                 break;
@@ -796,11 +798,11 @@ impl<'input> Lexer<'input> {
     fn lex_id(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let mut end = self.pos;
-        while let Some(b) = self.input.as_bytes().get(end).copied() {
-            if b == b':' || b == b'\n' || b.is_ascii_whitespace() || b == b'-' || b == b'{' {
+        while let Some(ch) = self.input[end..].chars().next() {
+            if ch == ':' || ch == '\n' || is_ecmascript_whitespace(ch) || ch == '-' || ch == '{' {
                 break;
             }
-            end += 1;
+            end += ch.len_utf8();
         }
         if end == start {
             return None;
@@ -829,11 +831,11 @@ impl<'input> Lexer<'input> {
     fn read_plain_id(&mut self) -> Option<String> {
         let start = self.pos;
         let mut end = self.pos;
-        while let Some(b) = self.input.as_bytes().get(end).copied() {
-            if b == b':' || b == b'\n' || b.is_ascii_whitespace() || b == b'-' || b == b'{' {
+        while let Some(ch) = self.input[end..].chars().next() {
+            if ch == ':' || ch == '\n' || is_ecmascript_whitespace(ch) || ch == '-' || ch == '{' {
                 break;
             }
-            end += 1;
+            end += ch.len_utf8();
         }
         if end == start {
             return None;

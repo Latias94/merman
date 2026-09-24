@@ -121,6 +121,37 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
         .sum()
 }
 
+/// Returns whether a character belongs to JavaScript's ECMAScript whitespace set.
+///
+/// Mermaid's Jison lexers use `\s`, whose behavior differs from Rust's `char::is_whitespace`
+/// for U+FEFF and a few control characters. Keep this predicate source-compatible with the
+/// JavaScript lexer while advancing UTF-8 cursors by complete characters.
+pub(crate) fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+pub(crate) fn is_ecmascript_inline_whitespace(ch: char) -> bool {
+    is_ecmascript_whitespace(ch) && !matches!(ch, '\r' | '\n')
+}
+
 pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
     let mut end = s.len();
     for (i, c) in s.char_indices() {
