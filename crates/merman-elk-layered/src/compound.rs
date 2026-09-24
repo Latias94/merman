@@ -4,7 +4,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CrossHierarchyEdgeComparator.java
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphNodeRef, GraphPortRef,
@@ -617,6 +617,149 @@ fn materialize_hierarchy_edge_segments(edge: &HierarchyEdge) -> Vec<ScopedHierar
         .collect()
 }
 
+// CompoundGraphPreprocessor#transformHierarchyEdges publishes all child exports before
+// processOuterHierarchicalEdgeSegments visits the graph's own nodes and ports. Keep that
+// publication order for both parent ports and their external dummies, independently of the
+// original edge/model order. The explicit stack and stable buckets keep this linear and safe
+// for deep hierarchies; no segment walks its ancestor chain again.
+struct LocalPortPublication {
+    node_id: String,
+    port_key: String,
+    port_type: PortType,
+}
+
+struct HierarchyPublications {
+    segments: Vec<ScopedHierarchySegment>,
+    local_ports: HashMap<Option<String>, Vec<LocalPortPublication>>,
+}
+
+fn order_segments_by_publication(
+    graph: &LGraph,
+    segments: Vec<ScopedHierarchySegment>,
+) -> HierarchyPublications {
+    let mut node_order = HashMap::new();
+    let mut nested_nodes = HashSet::new();
+    let mut port_order = HashMap::new();
+    let mut buckets = Vec::new();
+    let mut stack = vec![(graph, false)];
+    while let Some((current, children_visited)) = stack.pop() {
+        if !children_visited {
+            stack.push((current, true));
+            stack.extend(
+                current
+                    .layerless_nodes
+                    .iter()
+                    .rev()
+                    .filter_map(|node| node.nested_graph.as_deref())
+                    .map(|nested| (nested, false)),
+            );
+            continue;
+        }
+        for node in &current.layerless_nodes {
+            if node.nested_graph.is_some() {
+                nested_nodes.insert(node.id.as_str());
+            }
+            for port in &node.ports {
+                port_order
+                    .entry((node.id.as_str(), port.port_type, port.id.as_str()))
+                    .or_insert(buckets.len());
+                buckets.push(Vec::new());
+            }
+            // Already scoped inputs may introduce a port that is not present in the imported
+            // node yet. Preserve their supplied order within that node's publication slot.
+            node_order.entry(node.id.as_str()).or_insert(buckets.len());
+            buckets.push(Vec::new());
+        }
+    }
+    let unindexed = buckets.len();
+    buckets.push(Vec::new());
+    let publication_order =
+        |node_id: &str, port_key: &str, port_type: PortType, endpoint: &PendingSegmentEndpoint| {
+            port_order
+                .get(&(node_id, port_type, port_key))
+                .or_else(|| node_order.get(node_id))
+                .or_else(|| match endpoint {
+                    PendingSegmentEndpoint::LocalNode { node_id, .. } => {
+                        node_order.get(node_id.as_str())
+                    }
+                    PendingSegmentEndpoint::ParentBoundary { .. } => None,
+                })
+                .copied()
+                .unwrap_or(unindexed)
+        };
+    let mut port_buckets = (0..buckets.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+    for scoped in segments {
+        let source_order = publication_order(
+            &scoped.edge.source_node_id,
+            &scoped.edge.source_port_key,
+            PortType::Output,
+            &scoped.pending.source,
+        );
+        let target_order = publication_order(
+            &scoped.edge.target_node_id,
+            &scoped.edge.target_port_key,
+            PortType::Input,
+            &scoped.pending.target,
+        );
+        // A sibling-to-sibling segment publishes each endpoint in its own child's order.
+        // Creating both ports when that central segment is attached would incorrectly force
+        // the target child's input ports to follow the source child's output order.
+        for (endpoint, port_type, order) in [
+            (&scoped.pending.source, PortType::Output, source_order),
+            (&scoped.pending.target, PortType::Input, target_order),
+        ] {
+            if let PendingSegmentEndpoint::LocalNode { node_id, port_key } = endpoint
+                && !port_order.contains_key(&(node_id.as_str(), port_type, port_key.as_str()))
+            {
+                port_buckets[order].push((
+                    scoped.pending.graph_parent.clone(),
+                    LocalPortPublication {
+                        node_id: node_id.clone(),
+                        port_key: port_key.clone(),
+                        port_type,
+                    },
+                ));
+            }
+        }
+        // A pre-scoped segment retains its caller's absolute side during import rebasing.
+        // Publication follows the local child/boundary relationship, not that label side.
+        let order = match (&scoped.pending.source, &scoped.pending.target) {
+            (PendingSegmentEndpoint::ParentBoundary { .. }, _) => target_order,
+            (_, PendingSegmentEndpoint::ParentBoundary { .. }) => source_order,
+            (
+                PendingSegmentEndpoint::LocalNode {
+                    node_id: source, ..
+                },
+                PendingSegmentEndpoint::LocalNode {
+                    node_id: target, ..
+                },
+            ) => {
+                if source != &scoped.edge.source_node_id && nested_nodes.contains(source.as_str()) {
+                    source_order
+                } else if target != &scoped.edge.target_node_id
+                    && nested_nodes.contains(target.as_str())
+                {
+                    target_order
+                } else {
+                    match scoped.pending.segment {
+                        CompoundEdgeSegment::Output { .. } => source_order,
+                        CompoundEdgeSegment::Input { .. } => target_order,
+                    }
+                }
+            }
+        };
+        buckets[order].push(scoped);
+    }
+    let mut local_ports: HashMap<_, Vec<_>> = HashMap::new();
+    for (parent, port) in port_buckets.into_iter().flatten() {
+        local_ports.entry(parent).or_default().push(port);
+    }
+    HierarchyPublications {
+        segments: buckets.into_iter().flatten().collect(),
+        local_ports,
+    }
+}
+
 // A child graph cannot look up its original parent's ports through GraphPortIndex. Capture only
 // the border-offset property before segment introduction creates exported parent ports.
 type ParentPortBorderOffsets = HashMap<PortType, HashMap<String, f64>>;
@@ -625,10 +768,15 @@ pub(crate) fn introduce_source_ported_scoped_edge_segments(
     graph: &mut LGraph,
     segments: Vec<ScopedHierarchySegment>,
 ) {
+    if segments.is_empty() {
+        return;
+    }
+    let publications = order_segments_by_publication(graph, segments);
+    let mut local_port_publications = publications.local_ports;
     let mut segments_by_parent: HashMap<Option<String>, Vec<ScopedHierarchySegment>> =
         HashMap::new();
     let mut original_parent_offsets: HashMap<String, ParentPortBorderOffsets> = HashMap::new();
-    for scoped in segments {
+    for scoped in publications.segments {
         for endpoint in [&scoped.pending.source, &scoped.pending.target] {
             if let PendingSegmentEndpoint::ParentBoundary {
                 node_id,
@@ -664,15 +812,20 @@ pub(crate) fn introduce_source_ported_scoped_edge_segments(
             .as_ref()
             .and_then(|id| original_parent_offsets.remove(id))
             .unwrap_or_default();
-        let segments = if first_graph {
+        let parent = if first_graph {
             first_graph = false;
-            segments_by_parent.remove(&None)
+            None
         } else {
-            segments_by_parent.remove(&graph.parent_node_id)
+            graph.parent_node_id.clone()
         };
-        if let Some(segments) = segments {
+        if let Some(segments) = segments_by_parent.remove(&parent) {
             let mut external_ports = HashMap::new();
             let mut local_ports = GraphPortIndex::new(graph);
+            for port in local_port_publications.remove(&parent).unwrap_or_default() {
+                local_ports
+                    .ensure_local_node_port(graph, &port.node_id, &port.port_key, port.port_type)
+                    .expect("scoped local endpoints were validated before publication");
+            }
             for scoped in segments {
                 let edge_index = introduce_hierarchical_edge_segment(
                     graph,
@@ -2079,6 +2232,261 @@ mod tests {
             // Only group-0 owns an external dummy. Unrelated compound siblings must not trigger
             // whole-parent port-index rebuilds.
             assert_eq!(work.parent_port_indexes_built, 1);
+        }
+    }
+
+    #[test]
+    fn nested_exports_publish_child_ports_and_dummies_before_parent_edges() {
+        // Minimal State007 provider oracle, including the reversed input direction:
+        // Outer -> After is already local; Deep's export precedes InnerB's own edge.
+        for reverse in [false, true] {
+            for spacing in [20.0, 40.0] {
+                let mut outer = node("Outer");
+                outer.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+                let mut inner = node("InnerB");
+                inner.parent = Some("Outer".to_string());
+                inner.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+                let mut deep = node("Deep");
+                deep.parent = Some("InnerB".to_string());
+                let mut input = graph(
+                    vec![outer, inner, deep, node("After")],
+                    ["Outer", "InnerB", "Deep"]
+                        .into_iter()
+                        .map(|id| {
+                            if reverse {
+                                edge(id, "After", id)
+                            } else {
+                                edge(id, id, "After")
+                            }
+                        })
+                        .collect(),
+                );
+                input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+                input.options.spacing.edge_edge = spacing;
+                let mut graph = import_graph(&input).unwrap();
+                graph
+                    .try_for_each_graph_mut(|graph| {
+                        graph.options.spacing.edge_edge = spacing;
+                        Ok::<(), std::convert::Infallible>(())
+                    })
+                    .unwrap();
+                preprocess_source_ported_compound_graph(&mut graph);
+                let outer = graph
+                    .layerless_nodes
+                    .iter()
+                    .find(|node| node.id == "Outer")
+                    .unwrap();
+                let incident = |port: &LPort| {
+                    if reverse {
+                        &port.incoming_edges
+                    } else {
+                        &port.outgoing_edges
+                    }
+                    .first()
+                    .copied()
+                };
+                let published = outer
+                    .ports
+                    .iter()
+                    .filter_map(incident)
+                    .map(|edge| graph.edges[edge].id.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(published, ["Outer", "Deep", "InnerB"]);
+
+                let nested = outer.nested_graph.as_deref().unwrap();
+                let dummy_edges = nested
+                    .layerless_nodes
+                    .iter()
+                    .filter(|node| node.kind == LNodeKind::ExternalPort)
+                    .filter_map(|node| {
+                        let port = &node.ports[0];
+                        let edge = if reverse {
+                            port.outgoing_edges.first()
+                        } else {
+                            port.incoming_edges.first()
+                        }?;
+                        assert_eq!(port.border_offset, Some(spacing / 2.0));
+                        let origin = node.origin_port.as_ref().unwrap().port;
+                        let parent = &graph.layerless_nodes[origin.node].ports[origin.port];
+                        assert_eq!(parent.border_offset, Some(spacing / 2.0));
+                        assert_eq!(
+                            graph.edges[incident(parent).unwrap()].id,
+                            nested.edges[*edge].id
+                        );
+                        Some(nested.edges[*edge].id.as_str())
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(dummy_edges, ["Deep", "InnerB"]);
+                for edge in &graph.edges {
+                    let (source, target) = if reverse {
+                        ("After", edge.id.as_str())
+                    } else {
+                        (edge.id.as_str(), "After")
+                    };
+                    assert_eq!(edge.source_node_id, source);
+                    assert_eq!(edge.target_node_id, target);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn nested_publication_keeps_child_graph_then_local_node_order() {
+        let mut outer = node("Outer");
+        outer.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut first = node("First");
+        first.parent = Some("Outer".to_string());
+        let mut inner = node("Inner");
+        inner.parent = Some("Outer".to_string());
+        inner.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut deep = node("Deep");
+        deep.parent = Some("Inner".to_string());
+        let mut last = node("Last");
+        last.parent = Some("Outer".to_string());
+        let mut input = graph(
+            vec![outer, first, inner, deep, last, node("After")],
+            vec![
+                edge("Last", "Last", "After"),
+                edge("First", "First", "After"),
+                edge("Deep", "Deep", "After"),
+            ],
+        );
+        input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+        let mut graph = import_graph(&input).unwrap();
+        preprocess_source_ported_compound_graph(&mut graph);
+        let outer = graph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "Outer")
+            .unwrap();
+        let publication = outer
+            .ports
+            .iter()
+            .filter_map(|port| port.outgoing_edges.first())
+            .map(|edge| graph.edges[*edge].id.as_str())
+            .collect::<Vec<_>>();
+        // All child exports precede direct nodes, including First which occurs before Inner.
+        // The direct nodes then follow node order, not the reversed edge declaration order.
+        assert_eq!(publication, ["Deep", "First", "Last"]);
+    }
+
+    #[test]
+    fn sibling_groups_publish_each_end_in_its_own_child_order() {
+        let mut nodes = Vec::new();
+        for (group_id, children) in [("Left", ["A", "B"]), ("Right", ["C", "D"])] {
+            let mut group = node(group_id);
+            group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+            nodes.push(group);
+            for child_id in children {
+                let mut child = node(child_id);
+                child.parent = Some(group_id.to_string());
+                nodes.push(child);
+            }
+        }
+        let mut input = graph(nodes, vec![edge("AD", "A", "D"), edge("BC", "B", "C")]);
+        input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+        let mut graph = import_graph(&input).unwrap();
+        preprocess_source_ported_compound_graph(&mut graph);
+        for (id, expected) in [("Left", ["AD", "BC"]), ("Right", ["BC", "AD"])] {
+            let group = graph
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap();
+            let published = group
+                .ports
+                .iter()
+                .map(|port| {
+                    let edge = port
+                        .outgoing_edges
+                        .first()
+                        .or_else(|| port.incoming_edges.first())
+                        .unwrap();
+                    graph.edges[*edge].id.as_str()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(published, expected, "{id} publishes its own child ports");
+        }
+    }
+
+    #[test]
+    fn scoped_publication_uses_local_input_side_without_changing_absolute_side() {
+        for source_is_boundary in [false, true] {
+            let mut inner = node("Inner");
+            inner.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+            let mut a = node("A");
+            a.parent = Some("Inner".to_string());
+            let mut b = node("B");
+            b.parent = Some("Inner".to_string());
+            let mut input = graph(vec![node("Outside"), inner, a, b], Vec::new());
+            input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+            let mut graph = import_graph(&input).unwrap();
+            let mut segments = Vec::new();
+            for target in ["B", "A"] {
+                let edge = HierarchyEdge {
+                    id: target.to_string(),
+                    source_node_id: "Outside".to_string(),
+                    target_node_id: target.to_string(),
+                    source_port_key: "Outside:shared".to_string(),
+                    target_port_key: format!("{target}:input"),
+                    source_path: Vec::new(),
+                    target_path: vec!["Inner".to_string()],
+                    labels: Vec::new(),
+                    minlen: 1,
+                    model_order: None,
+                    priority_direction: 0,
+                    priority_shortness: 0,
+                    priority_straightness: 0,
+                };
+                for mut scoped in materialize_hierarchy_edge_segments(&edge) {
+                    let depth = match scoped.pending.segment {
+                        CompoundEdgeSegment::Input { depth }
+                        | CompoundEdgeSegment::Output { depth } => depth,
+                    };
+                    scoped.pending.segment = CompoundEdgeSegment::Output { depth };
+                    if source_is_boundary && scoped.pending.graph_parent.is_none() {
+                        scoped.pending.source = PendingSegmentEndpoint::ParentBoundary {
+                            node_id: "Outside".to_string(),
+                            port_key: "Outside:shared".to_string(),
+                            port_type: PortType::Input,
+                            parent_port_type: PortType::Input,
+                            connects_parent_node: false,
+                        };
+                    }
+                    segments.push(scoped);
+                }
+            }
+            introduce_source_ported_scoped_edge_segments(&mut graph, segments);
+            assert_eq!(
+                graph
+                    .edges
+                    .iter()
+                    .map(|edge| edge.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["A", "B"]
+            );
+            let inner = graph
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == "Inner")
+                .unwrap()
+                .nested_graph
+                .as_deref()
+                .unwrap();
+            assert_eq!(
+                inner
+                    .edges
+                    .iter()
+                    .map(|edge| edge.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["A", "B"]
+            );
+            for graph in [&graph, inner] {
+                assert!(graph.edges.iter().all(|edge| matches!(
+                    edge.compound_segment,
+                    Some(CompoundEdgeSegment::Output { .. })
+                )));
+            }
         }
     }
 
