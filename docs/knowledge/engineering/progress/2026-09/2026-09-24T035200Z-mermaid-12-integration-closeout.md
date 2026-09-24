@@ -597,6 +597,14 @@ staged. A subsequent renderer-wide attempt was stopped before test execution by
 `LNK1201` while writing a PDB, because the shared target drive had only 85 MB free; the
 affected debug artifacts are generated build output and the source tree is unchanged.
 
+After clearing only Cargo's generated `target` cache, the renderer gate was rerun with
+`CARGO_BUILD_JOBS=1` and test/debug information disabled to keep Windows linker pressure
+bounded. `cargo nextest run -p merman-render --all-features --no-fail-fast --test-threads 2`
+completed with 2,016 tests run, 2,016 passed, and 2 skipped. Workspace Rustdoc validation
+also passed: `cargo test --workspace --doc` completed all supported doctests, with only the
+four existing `roughr` examples marked ignored. `cargo fmt --all --check` and `git diff --check`
+are clean.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
