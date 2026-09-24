@@ -15,13 +15,6 @@ pub(super) fn sequence_css(
         effective_config,
         &["themeVariables", "fontSize"],
     )
-    .map(|value| {
-        if value.parse::<f64>().is_ok() {
-            format!("{value}px")
-        } else {
-            value
-        }
-    })
     .unwrap_or_else(|| "16px".to_string());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
@@ -253,8 +246,7 @@ mod tests {
                 }),
             );
 
-            let expected = if size == "14" { "14px" } else { size };
-            assert_eq!(css.matches(&format!("font-size:{expected};")).count(), 2);
+            assert_eq!(css.matches(&format!("font-size:{size};")).count(), 2);
             assert!(!css.contains("font-size:22px;"));
             assert!(!css.contains("font-size:18px;"));
         }
