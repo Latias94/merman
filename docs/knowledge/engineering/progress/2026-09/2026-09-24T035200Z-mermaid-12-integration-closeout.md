@@ -169,10 +169,231 @@ sizes are analysis 1,413,257/1,088,501 and editor 1,458,058/1,119,272. Improveme
 are respectively 2,109/1,414 and 2,321/443 bytes, with raw size also decreasing.
 This is a bounded intermediate improvement, not artifact-size gate completion. No budget increase or capability removal is authorized.
 
+# Drawing semantics follow-up
+
+A new source-backed batch implements shared rounded-corner crossing exclusion and
+hop radius filtering, Sequence actual per-row Direct/Tspan height accumulation,
+and Flowchart brace polygon intersections. All 61 targeted tests pass in
+`target/mermaid12-drawing-semantics-tests.log`. Independent review closed the
+Sequence CSS declaration-injection finding using the existing cssparser tokenizer
+and safe token serialization shared by measurement and SVG emission.
+
+Brace review found a new zero-padding intersection regression caused by a 1px
+minimum copied from old paint geometry. The exact upstream oracle requires retaining
+zero dimensions. Full Neo brace convergence also needs common axis-specific padding
+and label placement across layout, SVG, intersections, and bounds. These repairs
+are queued while the serial complete-workspace nextest run finishes; this section
+is not an admission receipt for that unfinished brace work.
+
+State parallel-channel replay captured the real Mermaid 12 provider graph and
+reproduced the signed SVG through elkjs 0.9.3. Replacing every leaf-node and edge-label
+size with local values still leaves the upstream channel sides opposite to Rust.
+A target-only Rust phase diagnostic confirms the child model-order option is NONE,
+so the remaining cause lies beyond simple option inheritance. Keep this blocked
+as provider ordering semantics, not a font residual. Flowchart group external-port
+10px return segments are separately under source audit.
+
+# Provider causality and isolated follow-up
+
+The State parallel-port root cause is now proven in both the pinned Java
+`PortListSorter.java:105-143` and elkjs 0.9.3's published worker. Their high index
+stops at len-1 and the high-index loop rereads the low port; ranges of length <=2
+are not reversed. SOUTH executes before a fresh WEST search, so mixed groups can
+cross and subsequently restore ordering. Replacing only this helper in the captured
+JS provider reproduces Rust's wrong channels; restoring it restores the entire
+output. The proposed Rust correction preserves that reference behavior and existing
+complete port-reference remapping. The 040 State fixture's remaining raw routes are
+also reproduced by the original JS provider after substituting local measured sizes.
+Composite self-loop parent-port ordering remains independently under investigation.
+
+Flowchart's group-endpoint return segments have a separate proven cause:
+`CompoundGraphPreprocessor.java:893-931` preserves an original parent's port properties
+for a direct parent connection, while `:951-956` assigns spacing/2 only for a truly
+exported boundary port. Native code applied spacing/2 to both. Replays cover spacing
+20/40, original offsets +7/-4, and ordinary crossing controls with equal node bounds.
+
+To keep the main checkout's current-source test run immutable, further edits use
+`target/worktrees/mermaid12-layout-closeout`, detached at `4c4f6aec1`. The main pending
+renderer edits were copied there before editing. No Cargo runs in this worktree.
+`target/mermaid12-layout-closeout-baseline.json` binds 22 original source-file hashes;
+verify them again before copying any reviewed files back. Three disjoint owners handle
+P3 port ordering, compound direct-parent offsets, and complete Neo brace geometry.
+The original shared `target` remains the only build location.
+
+At 05:18 UTC the main workspace nextest run has finished compiling 226 binaries
+(23m48s) and is executing 8,635 tests with two test threads. Its log is
+`target/mermaid12-workspace-nextest-convergence.log`; no completion claim is made here.
+The isolated follow-up changes are not part of those compiled binaries and require
+scoped checks after transfer. Detailed causal evidence remains in
+`target/mermaid12-state-provider-causality.md`,
+`target/mermaid12-group-endpoint-evidence/diagnosis.md`, and
+`target/mermaid12-brace-isolated-closeout.md`.
+
+# Remaining size attribution boundary
+
+Read-only artifact attribution locates 37 complete legacy-encoding tables in both
+actual analysis/editor WASM files (77,549 uncompressed bytes). The sanitizer's
+public input is UTF-8, but lol_html 3.0.1 retains runtime encoding operations in its
+decoder, token/attribute conversions, and mutation sink. It exposes no static
+UTF-8-only backend or feature. Its rewrite_str convenience API still uses the
+general backend and would also bypass Merman's bounded streaming sink if substituted
+naively. No dependency or sanitizer behavior was changed.
+
+A memory-only zeroing probe shows enough compressed entropy to motivate a separate
+research candidate, but produces no valid artifact and is not implementation savings
+or gate evidence. A maintained specialization would require an additive dependency
+backend or a scoped private variant; a subtractive global Cargo patch could affect
+other consumers through feature unification. This is not a safe one-line release
+fix. Exact hashes, source seams, and the probe's limits are recorded in
+`target/bench/experiments/mermaid12-theme-audit-elision/next-size-attribution.md`.
+
+# Workspace completion and reviewed transfer
+
+The complete workspace run finished: 8,635 executed, 8,634 passed, one failed,
+and seven skipped. The only failure was the residual catalog's fixed entry count
+of 96 after the reviewed Timeline admission increased it to 97. Commit `6a2035822`
+updates that assertion; all three browser-text-layout catalog tests pass in
+`target/mermaid12-catalog-tests.log`. No semantic assertion was relaxed. This closes
+the sole workspace failure without repeating the entire unchanged test suite.
+
+Sequence source drawing semantics are committed in `d4ea42349`; shared rounded-corner
+line-hop filtering is committed in `7a7b24f76`. The 61 focused renderer tests and
+workspace renderer tests pass, and cargo fmt passes. The reviewed follow-up batch
+was transferred only after all seven destination hashes matched the saved baseline.
+Individual and frozen integration reviews report no blocking findings. The exact
+transfer is recorded in `target/mermaid12-layout-closeout-copyback.json`; kernel and
+renderer checks for those new bytes remain distinct from the completed workspace run.
+
+A further State compound-self-loop defect has a source/intervention/restored replay:
+Rust stable sorting invokes the stateful model-order comparator in a different order
+from the pinned GWT insertion/merge sort. Reversing only the provider's comparator
+invocation reproduces native routing point for point; restoring it restores the full
+provider output. Earlier parent-port synchronization attribution is withdrawn.
+Evidence: `target/mermaid12-state-selfloop-sort-gap.md`. This requires source-compatible
+sorting, not a forced self-loop side or a browser residual receipt.
+
+# Provider and brace closeout checks
+
+Port-range convergence is committed in `cc1d773fd`; direct-parent boundary offsets
+in `5c6a02c86`; complete brace sizing, polygon intersections and translated-label
+bounds in `9b50b4614`; source-compatible stateful comparison scheduling in `53057af2f`.
+The last change passes all 420 kernel unit tests, including existing budget/error
+contracts and five new scheduling/compound regressions. Individual source reviews
+report no blocking findings. Logs: `target/mermaid12-model-order-kernel-tests.log`
+and source evidence `target/mermaid12-model-sort-implementation.md`.
+
+The first transferred kernel batch passed all 415 tests after its high-degree
+budget fixture explicitly established crossing-free west-port order. This preserves
+the budget test's original premise independently of PortListSorter's corrected
+source behavior; all budget and output assertions remain unchanged. Independent
+review confirmed this is fixture setup, not displaced production work.
+
+Renderer unit tests passed 1,398/1,399 initially. The new viewport test manually
+cached a 100px label while retaining the default 120px minimum; actual layout always
+applies that minimum before caching. Explicit `minNodeWidth: 0` makes this controlled
+fixture valid. Its rerun passes (`target/mermaid12-brace-viewport-check.log`), without
+changing production bounds or tolerances. The three-package all-target/all-feature
+Clippy check and workspace formatting check pass before the final sorting change.
+
+The affected integration run passed 229/231 with one skipped. Its failures are the
+layout snapshot aggregate and State's existing model-order distinguishing fixture.
+These results predate the last stateful sorting correction. The old State fixture
+must be compared with the source provider at equal dimensions before changing its
+assertions. Golden refreshes must be cause-reviewed against fresh output; the
+reported mismatches include expected provider ordering and Neo brace size changes.
+Log: `target/mermaid12-layout-closeout-integration.log`. A rebuilt xtask and four-family
+three-mode comparison are in progress; no fresh SVG admission is asserted yet.
+
+# Fresh SVG and remaining semantic gaps
+
+The rebuilt tool completed the three selected primary families: Flowchart has
+64 distinct DOM blockers and 34 stale receipts, State has 12 DOM blockers, Sequence
+has 25 DOM blockers and four stale receipts. Counts cover Mismatches only, not
+accepted Notes. Inventory: `target/mermaid12-layout-closeout-mismatch-inventory.json`.
+Usecase was also requested but is outside the primary matrix and was not run;
+do not count the command as a fourth-family receipt. All other 34 primary families
+pass all three DOM modes in `target/mermaid12-layout-closeout-control-families.log`.
+
+The post-sorting integration run still passes 229/231: 63 layout goldens differ
+(45 Flowchart, 17 State, one Usecase), and the old State007 model-order assertion
+still fails. Exact selected goldens were regenerated with their existing owner;
+original bytes and before/after hashes are preserved in target for independent
+cause review. They are not yet committed or admitted as upstream parity evidence.
+
+State013 and three statements015 aliases have same-size provider and full paint
+replays proving their remaining path differences arise from measurement. However,
+independent whole-fixture review blocks State receipts: ordinary rectangles still
+hard-code Neo radius3 rather than the source's effective theme radius (usually12,
+5 for the reviewed040 context). Fix that real theme omission before new signatures.
+
+State007 has another proven source defect: compound hierarchy edge publication
+must publish inner child exports before a containing node's own outside edges.
+Changing both the published provider's parent ports and external dummy order from
+[edge7,edge6] to native [edge6,edge7] reproduces native endpoints exactly. Neither
+text dimensions nor merely changing one of those two orders explains it. The old
+assertion remains intact; a source-compatible compound fix is being implemented.
+
+Sequence's current inline note font weight matches the source, but its generated
+CSS still forces note tspans to theme weight600. The pinned source explicitly removed
+that rule so custom/inline note weight can inherit. This is a real cascade defect,
+not font measurement residual, and is being removed before note receipt review.
+
+Flowchart's narrowed text-residual review also found Neo shape-size omissions:
+stacked documents need source axis padding, wave amplitude and label offset; lean
+and trapezoid variants need source horizontal padding. The adjacent shape audit is
+checking shared layout/paint/intersection/bounds formulas rather than tuning each
+fixture. Existing receipts are not broadened to hide these differences.
+
+# Verified provider snapshots and doctests
+
+Independent review accepted all 63 selected goldens: three direct-parent boundary
+changes, 36 Neo brace size propagations, four source-replayed self-loop fixes and
+20 remaining provider-order changes. Every saved before hash equals HEAD's previous
+golden; node/edge/label identities and semantic properties are preserved. This is
+local snapshot admission, not a claim of complete upstream coordinate parity.
+All 12 snapshot/Usecase tests pass in `target/mermaid12-provider-golden-tests.log`.
+The snapshots are committed in `a10ad820f`. Source/cause details remain in
+`target/mermaid12-model-order-golden-review.md` and `-review-causes.json`.
+
+All required doctest commands pass: renderer 5, SVG facade 1, full workspace 33
+with four previously ignored roughr cases. Logs are respectively
+`target/mermaid12-render-doctests.log`, `target/mermaid12-facade-doctests.log`, and
+`target/mermaid12-workspace-doctests.log`. These runs predate the next isolated
+State radius, compound publication and stacked-document patches.
+
+Sequence CSS was transferred after baseline-hash verification and its four focused
+CSS tests pass. Compilation exposed the now-unused Sequence-specific theme field;
+that field and initializer are being removed while retaining the shared theme
+variable and GitGraph behavior. The CSS fix is not yet committed.
+
+# Continued refactor after closeout checkpoint
+
+The browser-text residual signature for `stress_br_in_messages_notes_011` was refreshed
+after the source-backed Sequence note-weight change and its three catalog tests pass.
+The workspace Clippy check initially found a test-only `type_complexity` warning in the
+new ELK comparison schedule table; the case tuple is now named in `09d245ffe`, and the
+three-package all-target/all-feature Clippy check passes again.
+
+State minimum label width now follows the pinned default of 120 while preserving an
+explicit `state.minNodeWidth: 0`. The value is propagated through layout settings and
+SVG label emission for ordinary leaf rectangles and notes; group titles, special state
+markers, and edge labels remain outside that rule. A cross-composite regression exposed
+that ordinary rectangles use the renderer's fallback shape branch, so the same helper is
+used there as well. Commit `d9325285e` passes all 41 State layout/SVG tests. A fresh
+`compare-state-svgs` run still reports 12 distinct DOM blockers; these are route and
+measurement residuals, so no State receipts were admitted.
+
+The next isolated Flowchart Neo batch covers stadium, delay, and display geometry across
+layout, paint, intersections, and viewBox bounds. Independent review found two blockers
+before transfer: stadium sampling tests expected 102 points although the pinned source
+produces 103, and the current implementation derives width from sampled points and then
+samples again in layout, shrinking the theoretical source width twice. The batch remains
+in the isolation tree until those source-semantic issues are corrected and re-reviewed.
+
 # Open gates
 
-Complete the confirmed line-hop and Sequence drawing repairs, then execute the
-remaining Rust/doctest and SVG gates.
+Verify the transferred provider/brace batch and the source-compatible model-order
+sort correction, then execute the remaining Rust/doctest and SVG gates.
 Rebuild xtask before checking embedded residual catalogs. Continue source-backed
 Flowchart/State/Sequence convergence; do not accept old reports overwritten by focused
 negative-evidence tests. Rebuild production WASM after the final renderer changes,
