@@ -4087,3 +4087,88 @@ fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
             && expected.span == SourceSpan::new(text.len(), text.len())
     }));
 }
+
+#[test]
+fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
+    // Mermaid's flowchart lexer accepts UNICODE_TEXT in ids (mermaid@11.17.2 parses all of these).
+    let engine = Engine::new();
+    let text = "flowchart TD
+  開始 --> 在庫確認{在庫はあるか}
+  在庫確認 -->|はい| 出荷ー
+  subgraph 受注
+    受付 --> 確認
+  end
+  確認 --> 受注
+  classDef 強調 fill:#f96
+  受付:::強調 --> Ünïcödé
+";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    let ids: Vec<&str> = res.model["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "開始",
+            "在庫確認",
+            "出荷ー",
+            "受付",
+            "確認",
+            "受注",
+            "Ünïcödé"
+        ]
+    );
+    assert_eq!(res.model["nodes"][1]["label"], "在庫はあるか");
+    assert_eq!(res.model["subgraphs"][0]["id"], "受注");
+    assert_eq!(res.model["nodes"][3]["classes"], json!(["強調"]));
+}
+
+#[test]
+fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
+    // mermaid@11.17.2 rejects both of these with "Lexical error ... Unrecognized text".
+    let engine = Engine::new();
+    for text in [
+        "flowchart TD
+  開始、 --> 終了
+",
+        "flowchart TD
+  手順１ --> 手順２
+",
+        "flowchart TD
+  Aͅ --> B
+",
+        "flowchart TD
+  𠀀 --> B
+",
+    ] {
+        assert!(
+            engine
+                .parse_diagram_sync(text, ParseOptions::default())
+                .is_err(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
+    let engine = Engine::new();
+    assert!(
+        engine
+            .parse_diagram_sync("flowchart TD\nend開始 --> B", ParseOptions::default())
+            .is_err()
+    );
+
+    let parsed = engine
+        .parse_diagram_sync("flowchart TD開始 --> B", ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "TB");
+    assert_eq!(parsed.model["vertexCalls"], json!(["開始", "B"]));
+}
