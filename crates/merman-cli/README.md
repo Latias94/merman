@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, Cytoscape layout, math, icons, completions, and native runtime adapters. ELK layout remains an explicit opt-in because it adds the EPL-2.0 ELK closure.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, Cytoscape layout, math, icons, completions, and native runtime adapters. The current source for `0.8.0-alpha.7` also includes ELK layout by default, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
 The command line has four explicit workflows:
 
@@ -43,7 +43,7 @@ From a checkout at tag `v0.8.0-alpha.6`:
 cargo install --path crates/merman-cli --locked
 ```
 
-The standard source-install command uses the default capability set, which deliberately omits ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
+The alpha.6 source-install command above uses that release's default capability set, which omits ELK. The current alpha.7 source default includes ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
@@ -356,7 +356,7 @@ cargo install merman-cli --version 0.8.0-alpha.6 --locked \
   --no-default-features --features analysis
 ```
 
-Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default CLI includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The alpha.7 source default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
 Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 5`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 5 retains the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow from contract 4. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
@@ -498,8 +498,9 @@ omitted commands, options, and values stay omitted. A build without that feature
 
 ## License
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The ordinary Cargo
-default intentionally excludes the optional EPL-2.0 ELK implementation, but the `cli-release`
-archive includes ELK and the math/font closure selected by its profile. Release archives include
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The current alpha.7
+Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation and the
+math/font closure. Explicit lean source builds can exclude ELK by disabling default features.
+Release archives include
 the matching `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES/`; source-built distributions must
 carry the notices for the features they select.
