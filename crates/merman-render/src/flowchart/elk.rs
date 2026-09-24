@@ -2623,7 +2623,7 @@ mod tests {
         assert!(graph.options.layered.merge_hierarchy_edges);
         assert_eq!(
             graph.options.layered.self_loop_distribution,
-            elk::SelfLoopDistributionStrategy::Equally
+            elk::SelfLoopDistributionStrategy::North
         );
         assert_eq!(
             graph.options.layered.self_loop_ordering,
