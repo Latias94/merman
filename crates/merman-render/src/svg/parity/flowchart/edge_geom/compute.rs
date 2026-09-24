@@ -42,7 +42,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     let local_points = scratch.local_points.as_slice();
 
     let is_elk_layout = ctx.uses_elk_adapter_dom;
-    dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    if is_elk_layout {
+        scratch.tmp_points_a.clear();
+        scratch.tmp_points_a.extend_from_slice(local_points);
+    } else {
+        dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    }
     let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
 
     scratch.tmp_points_b.clear();
@@ -58,22 +63,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
             origin_y,
             base_points,
             points_after_intersect,
-        );
-        if ctx.compact_edge_corners {
-            align_elk_endpoint_adapters_to_route(
-                ctx,
-                edge,
-                origin_x,
-                origin_y,
-                &mut elk_endpoint_adapters,
-                points_after_intersect,
-            );
-        }
-        ensure_elk_marker_segment_lengths(
-            points_after_intersect,
-            edge.edge_type.as_deref(),
-            boundary_for_node(ctx, &edge.from, origin_x, origin_y),
-            boundary_for_node(ctx, &edge.to, origin_x, origin_y),
         );
     } else if base_points.len() >= 3 {
         // The semantic edge keeps its original source/target, while explicit-direction cluster
@@ -189,7 +178,9 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let points_after_intersect = &scratch.tmp_points_b;
 
     scratch.tmp_points_c.clear();
-    if !missing_section && let Some(tc) = le.to_cluster.as_deref() {
+    // ELK groups were clipped by sanitizeElkEdgePoints. The local cluster metadata is
+    // not Dagre's toCluster/fromCluster rewrite; clipping again would discard that route.
+    if !is_elk_layout && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
         } else {
@@ -202,7 +193,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if !missing_section
+    if !is_elk_layout
         && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
@@ -252,7 +243,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             | "rounded"
     );
 
-    let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
+    let is_cluster_edge = !is_elk_layout && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
     let label_path_points = if ctx
@@ -269,7 +260,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if !missing_section && points_for_render.len() == 1 {
+    if !is_elk_layout && points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
         points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {

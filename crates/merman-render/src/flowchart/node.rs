@@ -292,7 +292,7 @@ fn node_render_dimensions(
             let diameter = if look_is_neo {
                 label_diameter + 64.0
             } else {
-                label_diameter + 2.0 * p
+                label_diameter + p
             };
             (diameter, diameter)
         }
@@ -1233,8 +1233,12 @@ mod render_dimension_tests {
         assert_eq!(value.0, value.1);
 
         let classic = node_render_dimensions(Some("circle"), metrics(), 15.0, false);
-        let classic_expected = 100.0_f64.hypot(20.0) + 30.0;
+        let classic_expected = 100.0_f64.hypot(20.0) + 15.0;
         assert!((classic.0 - classic_expected).abs() < 1e-9);
+        assert_eq!(
+            node_render_dimensions(Some("circle"), empty, 24.0, false),
+            (24.0, 24.0)
+        );
     }
 
     #[test]

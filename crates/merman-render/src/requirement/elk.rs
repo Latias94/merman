@@ -151,10 +151,12 @@ pub(super) fn render_layout(
         routes.push(geometry::sanitize(
             &points,
             Shape {
+                intersection: None,
                 node: start,
                 outline: Outline::Rect,
             },
             Shape {
+                intersection: None,
                 node: end,
                 outline: Outline::Rect,
             },

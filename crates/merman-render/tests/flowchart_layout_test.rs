@@ -1508,8 +1508,8 @@ Z@{ shape: folder, label: "Label" }
     // circle / doublecircle
     {
         let n = nodes_by_id["C"];
-        assert_close(n.width, tw + p, "circle width");
-        assert_close(n.height, tw + p, "circle height");
+        assert_close(n.width, tw.hypot(th) + p, "circle width");
+        assert_close(n.height, tw.hypot(th) + p, "circle height");
 
         let n = nodes_by_id["D"];
         assert_close(n.width, tw + 2.0 * p, "doublecircle width");

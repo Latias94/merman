@@ -2066,7 +2066,12 @@ fn layout_state_diagram_inner(
                     "choice" => Outline::Diamond,
                     _ => Outline::Rect,
                 };
-                let hit = Shape { node, outline }.intersect(&target);
+                let hit = Shape {
+                    node,
+                    outline,
+                    intersection: None,
+                }
+                .intersect(&target);
                 if hit.x.is_finite() && hit.y.is_finite() {
                     edge.points[endpoint] = hit;
                 }

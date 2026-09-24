@@ -955,6 +955,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                             sanitize(
                                 &elk_points,
                                 Shape {
+                                    intersection: None,
                                     node: start,
                                     outline: if is_circle(&e.start) {
                                         Outline::Ellipse
@@ -963,6 +964,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                                     },
                                 },
                                 Shape {
+                                    intersection: None,
                                     node: end,
                                     outline: if is_circle(&e.end) {
                                         Outline::Ellipse

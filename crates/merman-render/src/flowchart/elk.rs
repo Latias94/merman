@@ -209,8 +209,11 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         ..
     } = FlowchartConfigView::new(effective_config_value).layout_settings();
 
-    let source_index_work =
-        checked_adapter_add(&work_control, graph.nodes.len(), graph.edges.len())?;
+    let source_index_work = checked_adapter_add(
+        &work_control,
+        checked_adapter_add(&work_control, graph.nodes.len(), graph.edges.len())?,
+        model.nodes.len(),
+    )?;
     charge_adapter_work(&mut work_control, source_index_work)?;
     let source_node_by_id: HashMap<&str, &elk::Node> = graph
         .nodes
@@ -221,6 +224,12 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         .edges
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
+        .collect();
+
+    let source_shape_by_id: HashMap<&str, Option<&str>> = model
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.layout_shape.as_deref()))
         .collect();
 
     charge_adapter_work(&mut work_control, layout.nodes.len())?;
@@ -241,6 +250,49 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
             label_width: source.label.map(|label| label.width),
             label_height: source.label.map(|label| label.height),
         });
+    }
+
+    // Mermaid's applyElkEdgeLayout aligns small nodes before constructing any edge points.
+    // Keep ELK's routes intact: a clamped port defines the line onto which its node must move.
+    let alignment_work = checked_adapter_add(
+        &work_control,
+        out_nodes.len(),
+        checked_adapter_mul(&work_control, layout.edges.len(), 3)?,
+    )?;
+    charge_adapter_work(&mut work_control, alignment_work)?;
+    {
+        let mut nodes_to_align = HashMap::with_capacity(out_nodes.len());
+        for node in &mut out_nodes {
+            if let Some(source) = source_node_by_id.get(node.id.as_str()) {
+                nodes_to_align.insert(source.id.as_str(), (node, false));
+            }
+        }
+        for edge in &layout.edges {
+            let (Some(start), Some(end)) = (edge.points.first(), edge.points.last()) else {
+                continue;
+            };
+            let Some(source) = source_edge_by_id.get(edge.id.as_str()) else {
+                return Err(Error::InvalidModel {
+                    message: format!("ELK layout returned unknown edge {}", edge.id),
+                });
+            };
+            if !nodes_to_align.contains_key(source.source.as_str())
+                || !nodes_to_align.contains_key(source.target.as_str())
+            {
+                continue;
+            }
+            for (id, anchor) in [
+                (source.source.as_str(), start),
+                (source.target.as_str(), end),
+            ] {
+                if source_shape_by_id.get(id).copied().flatten() == Some("rect33") {
+                    continue;
+                }
+                if let Some((node, aligned)) = nodes_to_align.get_mut(id) {
+                    align_degenerate_node_to_anchor(node, anchor, aligned);
+                }
+            }
+        }
     }
 
     charge_adapter_work(&mut work_control, out_nodes.len())?;
@@ -386,6 +438,33 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         dom_node_order_by_root,
         uses_elk_adapter_dom: true,
     })
+}
+
+// Pinned Mermaid elk/render.ts: alignDegenerateNodeToAnchor. The 12px margin is also
+// configured by merman-layout-elk; only sides shorter than twice that margin are affected.
+fn align_degenerate_node_to_anchor(node: &mut LayoutNode, anchor: &elk::Point, aligned: &mut bool) {
+    let top = node.y - node.height / 2.0;
+    let bottom = node.y + node.height / 2.0;
+    let along_width = (anchor.y - top).abs() <= 0.5 || (anchor.y - bottom).abs() <= 0.5;
+    let side = if along_width { node.width } else { node.height };
+    if side >= 24.0 || *aligned {
+        return;
+    }
+    // Even a negligible first adjustment claims the node; later edges must not move it.
+    *aligned = true;
+    let delta = if along_width {
+        anchor.x - node.x
+    } else {
+        anchor.y - node.y
+    };
+    if delta.abs() < 0.01 {
+        return;
+    }
+    if along_width {
+        node.x += delta;
+    } else {
+        node.y += delta;
+    }
 }
 
 fn flowchart_elk_dom_node_order_by_root(graph: &elk::Graph) -> HashMap<String, Vec<String>> {
@@ -1912,6 +1991,140 @@ mod tests {
         (model, graph, layout)
     }
 
+    #[test]
+    fn flowchart_elk_small_nodes_align_to_routes_before_projection() {
+        for vertical in [false, true] {
+            let (mut model, graph, mut layout) = projection_fixture();
+            model.nodes[1].layout_shape = Some("anchor".to_string());
+            let target = &mut layout.nodes[1];
+            target.width = 2.0;
+            target.height = 2.0;
+            target.x = 205.0;
+            target.y = 25.5;
+            let anchor = if vertical {
+                elk::Point { x: 214.0, y: 24.5 }
+            } else {
+                elk::Point { x: 204.0, y: 34.5 }
+            };
+            layout.edges[0].points[1] = anchor;
+            layout.edges[0].labels.push(elk::EdgeLabelLayout {
+                x: 80.0,
+                y: 15.0,
+                width: 20.0,
+                height: 10.0,
+            });
+            let mut graph = graph;
+            graph.edges[0].label = Some(elk::Label {
+                width: 20.0,
+                height: 10.0,
+            });
+            let original_route = layout.edges[0].points.clone();
+            let projected =
+                flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, layout)
+                    .unwrap();
+            let target = &projected.nodes[1];
+            let expected = if vertical {
+                (214.0, 25.5)
+            } else {
+                (205.0, 34.5)
+            };
+            assert_eq!((target.x, target.y), expected);
+            assert_eq!((target.width, target.height), (2.0, 2.0));
+            for (actual, original) in projected.edges[0].points.iter().zip(original_route) {
+                assert_eq!((actual.x, actual.y), (original.x, original.y));
+            }
+            let label = projected.edges[0].label.as_ref().unwrap();
+            assert_eq!((label.x, label.y), (90.0, 20.0));
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_small_node_alignment_preserves_first_anchor_even_for_small_delta() {
+        for first_delta in [0.005, 3.0] {
+            let (model, mut graph, mut layout) = projection_fixture();
+            layout.edges[0].points[1].y = first_delta;
+            let mut second_source = graph.edges[0].clone();
+            second_source.id = "second".to_string();
+            graph.edges.push(second_source);
+            let mut second = layout.edges[0].clone();
+            second.id = "second".to_string();
+            second.points[1].y = 8.0;
+            layout.edges.push(second);
+            for reversed in [false, true] {
+                let mut ordered_layout = layout.clone();
+                if reversed {
+                    ordered_layout.edges.reverse();
+                }
+                let projected = flowchart_layout_from_elk(
+                    &model,
+                    &MermaidConfig::default(),
+                    &graph,
+                    ordered_layout,
+                )
+                .unwrap();
+                let expected = if reversed {
+                    8.0
+                } else if first_delta < 0.01 {
+                    0.0
+                } else {
+                    first_delta
+                };
+                assert_eq!(projected.nodes[1].y, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_small_node_alignment_skips_rect33_and_missing_sections() {
+        for missing_section in [false, true] {
+            let (mut model, graph, mut layout) = projection_fixture();
+            if missing_section {
+                layout.edges[0].points.clear();
+            } else {
+                model.nodes[1].layout_shape = Some("rect33".to_string());
+                layout.edges[0].points[1].y = 8.0;
+            }
+            let projected =
+                flowchart_layout_from_elk(&model, &MermaidConfig::default(), &graph, layout)
+                    .unwrap();
+            assert_eq!((projected.nodes[1].x, projected.nodes[1].y), (20.0, 0.0));
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_small_node_alignment_uses_source_border_and_size_thresholds() {
+        for (width, anchor_y, expected_x, expected_y, expected_aligned) in [
+            (23.0, -9.5, 7.0, 0.0, true),
+            (24.0, -9.5, 0.0, 0.0, false),
+            (24.0, -9.499, 0.0, -9.499, true),
+            (23.0, 10.5, 7.0, 0.0, true),
+        ] {
+            let mut node = LayoutNode {
+                id: "tiny".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width,
+                height: 20.0,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            };
+            let mut aligned = false;
+            align_degenerate_node_to_anchor(
+                &mut node,
+                &elk::Point {
+                    x: 7.0,
+                    y: anchor_y,
+                },
+                &mut aligned,
+            );
+            assert_eq!(
+                (node.x, node.y, aligned),
+                (expected_x, expected_y, expected_aligned)
+            );
+        }
+    }
+
     fn adapter_graph_and_work(
         model: &FlowchartModel,
         config: &MermaidConfig,
@@ -2038,9 +2251,9 @@ mod tests {
 
     #[test]
     fn flowchart_elk_projection_work_has_an_independent_exact_budget() {
-        // 3 source-index rows + 2 projected nodes + 2 layout-index rows + 7 edge units
-        // + 12 bounds units + 5 DOM-order units.
-        const EXPECTED_PROJECTION_WORK: usize = 31;
+        // 5 source-index rows + 2 projected nodes + 5 alignment units + 2 layout-index rows
+        // + 7 edge units + 12 bounds units + 5 DOM-order units.
+        const EXPECTED_PROJECTION_WORK: usize = 38;
 
         let (model, graph, layout) = projection_fixture();
         let meter = Arc::new(OperationWorkMeter::new(
@@ -2078,7 +2291,7 @@ mod tests {
 
     #[test]
     fn flowchart_elk_projection_rejection_does_not_advance_past_completed_work() {
-        const WORK_BEFORE_DOM_ORDER: usize = 26;
+        const WORK_BEFORE_DOM_ORDER: usize = 33;
 
         let (model, graph, layout) = projection_fixture();
         let meter = Arc::new(OperationWorkMeter::new(
@@ -2111,9 +2324,9 @@ mod tests {
 
     #[test]
     fn flowchart_elk_projection_rejects_the_complete_edge_tranche_atomically() {
-        // 4 source-index rows + 2 projected nodes + 2 layout-index rows. Two seven-unit edges must
-        // be accepted together before the output allocation starts.
-        const WORK_BEFORE_EDGES: usize = 8;
+        // 6 source-index rows + 2 projected nodes + 8 alignment units + 2 layout-index rows.
+        // Two seven-unit edges must be accepted together before the output allocation starts.
+        const WORK_BEFORE_EDGES: usize = 18;
         const ONE_EDGE_WORK: usize = 7;
 
         let (mut model, _, mut layout) = projection_fixture();

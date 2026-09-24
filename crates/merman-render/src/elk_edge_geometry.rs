@@ -17,6 +17,7 @@ pub(crate) enum Outline {
 pub(crate) struct Shape<'a> {
     pub node: &'a LayoutNode,
     pub outline: Outline,
+    pub intersection: Option<&'a dyn Fn(&P) -> P>,
 }
 
 impl Shape<'_> {
@@ -28,6 +29,9 @@ impl Shape<'_> {
     }
 
     pub(crate) fn intersect(self, point: &P) -> P {
+        if let Some(intersection) = self.intersection {
+            return intersection(point);
+        }
         let node = self.node;
         let dx = point.x - node.x;
         let dy = point.y - node.y;
@@ -471,6 +475,7 @@ mod tests {
     fn ellipse_near_intersection_uses_the_shared_segment_fallback() {
         let node = node(0.0, 0.0, 100.0, 60.0, false);
         let shape = Shape {
+            intersection: None,
             node: &node,
             outline: Outline::Ellipse,
         };
@@ -483,10 +488,12 @@ mod tests {
         let start_node = node(0.0, 0.0, 100.0, 60.0, false);
         let end_node = node(200.0, 15.0, 60.0, 60.0, false);
         let start = Shape {
+            intersection: None,
             node: &start_node,
             outline: Outline::Ellipse,
         };
         let end = Shape {
+            intersection: None,
             node: &end_node,
             outline: Outline::Rect,
         };
@@ -513,10 +520,12 @@ mod tests {
         let source_node = node(-100.0, 130.0, 40.0, 40.0, true);
         let target_node = node(100.0, 100.0, 100.0, 120.0, true);
         let source = Shape {
+            intersection: None,
             node: &source_node,
             outline: Outline::Rect,
         };
         let target = Shape {
+            intersection: None,
             node: &target_node,
             outline: Outline::Rect,
         };
@@ -559,6 +568,7 @@ mod tests {
     fn short_marker_stubs_are_removed_without_changing_ports() {
         let terminal = node(100.0, 100.0, 100.0, 100.0, false);
         let shape = Shape {
+            intersection: None,
             node: &terminal,
             outline: Outline::Rect,
         };
@@ -569,5 +579,103 @@ mod tests {
         let mut neo_route = points(&[(0.0, 90.0), (50.0, 90.0), (50.0, 100.0)]);
         marker_segment(&mut neo_route, shape, Some("arrow_barb_neo"), false);
         assert_eq!(coordinates(&neo_route), [(0.0, 90.0), (50.0, 100.0)]);
+    }
+
+    #[test]
+    fn endpoint_replacement_keeps_the_exact_source_threshold() {
+        let mut route = points(&[(0.0, 0.0), (10.0, 0.0)]);
+        replace_endpoint(&mut route, true, P { x: 0.1, y: 0.0 });
+        assert_eq!(coordinates(&route), [(0.1, 0.0), (10.0, 0.0)]);
+    }
+
+    #[test]
+    fn group_border_removes_auto_centers_and_deduplicates_original_neighbors() {
+        let source_node = node(0.0, 0.0, 20.0, 20.0, true);
+        let target_node = node(100.0, 0.0, 20.0, 20.0, true);
+        let source = Shape {
+            node: &source_node,
+            outline: Outline::Rect,
+            intersection: None,
+        };
+        let target = Shape {
+            node: &target_node,
+            outline: Outline::Rect,
+            intersection: None,
+        };
+        let raw = points(&[
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.00000075, 0.0),
+            (10.0000015, 0.0),
+            (90.0, 0.0),
+            (100.0, 0.0),
+        ]);
+        assert_eq!(
+            coordinates(&sanitize(&raw, source, target)),
+            [(10.0, 0.0), (90.0, 0.0)]
+        );
+        assert_eq!(raw.len(), 6, "provider route remains unchanged");
+    }
+
+    #[test]
+    fn family_outline_callback_drives_departure_and_endpoint_intersections() {
+        let source_node = node(0.0, 0.0, 100.0, 60.0, false);
+        let target_node = node(200.0, 15.0, 60.0, 60.0, false);
+        let ellipse = Shape {
+            node: &source_node,
+            outline: Outline::Ellipse,
+            intersection: None,
+        };
+        let callback = |point: &P| ellipse.intersect(point);
+        let source = Shape {
+            node: &source_node,
+            outline: Outline::Rect,
+            intersection: Some(&callback),
+        };
+        let target = Shape {
+            node: &target_node,
+            outline: Outline::Rect,
+            intersection: None,
+        };
+        let raw = points(&[
+            (0.0, 0.0),
+            (50.0, 15.0),
+            (100.0, 15.0),
+            (170.0, 15.0),
+            (200.0, 15.0),
+        ]);
+        let actual = sanitize(&raw, source, target);
+        assert_eq!(
+            coordinates(&actual),
+            coordinates(&sanitize(&raw, ellipse, target))
+        );
+        assert!((actual[0].x - 50.0 * 0.75_f64.sqrt()).abs() < 0.0001);
+        assert_eq!(actual[0].y, 15.0);
+    }
+
+    #[test]
+    fn invalid_family_intersections_restore_finite_provider_points() {
+        let source_node = node(0.0, 0.0, 20.0, 20.0, false);
+        let target_node = node(100.0, 0.0, 20.0, 20.0, false);
+        let invalid = |_: &P| P {
+            x: f64::NAN,
+            y: f64::NAN,
+        };
+        let source = Shape {
+            node: &source_node,
+            outline: Outline::Rect,
+            intersection: Some(&invalid),
+        };
+        let target = Shape {
+            node: &target_node,
+            outline: Outline::Rect,
+            intersection: Some(&invalid),
+        };
+        let raw = points(&[(0.0, 0.0), (f64::NAN, 0.0), (50.0, 0.0), (100.0, 0.0)]);
+        assert_eq!(
+            coordinates(&sanitize(&raw, source, target)),
+            [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+        );
+        assert!(raw[1].x.is_nan());
     }
 }

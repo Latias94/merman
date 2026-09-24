@@ -363,6 +363,7 @@ fn prepare_paint_paths(
             continue;
         };
         let start = Shape {
+            intersection: None,
             node: &layout.nodes[start_index],
             outline: match start_source.shape.as_str() {
                 "stateStart" | "stateEnd" => Outline::Ellipse,
@@ -371,6 +372,7 @@ fn prepare_paint_paths(
             },
         };
         let end = Shape {
+            intersection: None,
             node: &layout.nodes[end_index],
             outline: match end_source.shape.as_str() {
                 "stateStart" | "stateEnd" => Outline::Ellipse,

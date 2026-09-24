@@ -406,6 +406,7 @@ pub(super) fn prepare_edge_paths(
         work.charge_adapter(work.checked_add(edge.points.len(), 50)?)?;
         let points = if elk {
             let start = Shape {
+                intersection: None,
                 node: &layout.nodes[node_indexes[&edge.from]],
                 outline: if plan_by_id[edge.from.as_str()].ellipse {
                     Outline::Ellipse
@@ -414,6 +415,7 @@ pub(super) fn prepare_edge_paths(
                 },
             };
             let end = Shape {
+                intersection: None,
                 node: &layout.nodes[node_indexes[&edge.to]],
                 outline: if plan_by_id[edge.to.as_str()].ellipse {
                     Outline::Ellipse
