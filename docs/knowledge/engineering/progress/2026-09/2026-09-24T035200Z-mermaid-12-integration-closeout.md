@@ -617,6 +617,26 @@ cluster/edge paths and shape outlines, not browser text residuals. No receipt wa
 the parity gate remains strict. The verifier stopped at Flowchart, so later family parity
 commands were not reached in this strict run.
 
+# Flowchart route and slim-WASM follow-up on 2026-09-25
+
+Focused inspection of `stress_flowchart_cluster_dense_children_021` confirms that at least part
+of the Flowchart path drift begins before SVG curve emission: corresponding ELK edges
+`L_b2_c3_0` and `L_c2_a3_0` have different routed point sequences in `data-points`, and use
+different channels around the same child cluster. The local and upstream path commands therefore
+cannot be reconciled by changing the rounded-curve serializer. A separate `shape_mix_009` route
+contains a roughly 2e-6 endpoint segment in the upstream output that the local route does not;
+that small numerical case does not explain the channel-routing mismatches. No fixture-specific
+route rewrite or comparator normalization was added.
+
+The analysis profile's dependency tree confirms that its current capability closure includes the
+full `merman-core` parser and semantic family catalog, `merman-analysis`, and `lol_html`; the latter
+directly depends on `encoding_rs`. The measured `encoding_rs` decoder/encoder code is not an
+orphaned dependency that can be dropped without changing HTML processing behavior. Existing
+`opt-level=s` and extra `wasm-opt -Oz --converge` experiments already made compressed output worse,
+so this follow-up found no source-preserving compiler or feature-closure change that resolves the
+analysis/editor budget overages. Their limits remain unchanged pending a real size reduction or an
+explicit product decision.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
