@@ -581,6 +581,22 @@ size verification, license/consumer checks, and source-backed Flowchart/State/Se
 residual review. Do not accept old reports overwritten by focused negative-evidence tests;
 exact browser residuals require reviewed evidence rather than blanket signature refresh.
 
+# Recovery verification on 2026-09-25
+
+The strict verifier reached the workspace nextest stage but its default Windows linker
+parallelism exhausted memory (`LNK1102`). A serial recovery run with `CARGO_BUILD_JOBS=1`
+and two nextest test threads compiled and executed all 8,693 workspace tests: 8,692 passed,
+one layout-golden aggregate failed, and seven were skipped. The failure listed exactly 14
+goldens whose expected values predated the already reviewed Class, Flowchart, Sequence, and
+State layout changes; no source assertion failed.
+
+Those 14 files were regenerated individually with `xtask update-layout-snapshots` and the
+dedicated layout test passed 3/3. The focused refresh is committed as `59191dd81`
+(`test(layout): refresh post-convergence golden snapshots`). No other tracked paths were
+staged. A subsequent renderer-wide attempt was stopped before test execution by
+`LNK1201` while writing a PDB, because the shared target drive had only 85 MB free; the
+affected debug artifacts are generated build output and the source tree is unchanged.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
