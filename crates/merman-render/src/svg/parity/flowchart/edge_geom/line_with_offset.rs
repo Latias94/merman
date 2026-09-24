@@ -18,9 +18,8 @@ pub(in crate::svg::parity::flowchart) fn ensure_elk_marker_segment_lengths(
         return;
     }
     let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge_type);
-    let min_segment = |arrow: Option<&str>| {
-        marker_offset_for(arrow).map(|offset| 8.0_f64.max(offset * 2.0))
-    };
+    let min_segment =
+        |arrow: Option<&str>| marker_offset_for(arrow).map(|offset| 8.0_f64.max(offset * 2.0));
     if let (Some(boundary), Some(min_segment)) = (start_boundary, min_segment(arrow_type_start)) {
         let segment_len = (points[1].x - points[0].x).hypot(points[1].y - points[0].y);
         if segment_len < min_segment && point_is_on_rect_border(&boundary, &points[1], 1.0) {
@@ -31,8 +30,8 @@ pub(in crate::svg::parity::flowchart) fn ensure_elk_marker_segment_lengths(
         && let (Some(boundary), Some(min_segment)) = (end_boundary, min_segment(arrow_type_end))
     {
         let last = points.len() - 1;
-        let segment_len = (points[last].x - points[last - 1].x)
-            .hypot(points[last].y - points[last - 1].y);
+        let segment_len =
+            (points[last].x - points[last - 1].x).hypot(points[last].y - points[last - 1].y);
         if segment_len < min_segment && point_is_on_rect_border(&boundary, &points[last - 1], 1.0) {
             points.remove(last - 1);
         }

@@ -2756,10 +2756,12 @@ mod tests {
         preprocess_self_loops(&mut graph);
         restore_self_loop_ports(&mut graph);
 
-        assert!(graph.layerless_nodes[node]
-            .ports
-            .iter()
-            .all(|port| port.side == PortSide::North));
+        assert!(
+            graph.layerless_nodes[node]
+                .ports
+                .iter()
+                .all(|port| port.side == PortSide::North)
+        );
     }
 
     #[test]

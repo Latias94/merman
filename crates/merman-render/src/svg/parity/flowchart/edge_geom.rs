@@ -30,8 +30,7 @@ pub(super) use intersect::{
 };
 pub(super) use line_with_offset::{
     arrow_types_for_edge, collapse_short_terminal_marker_stub, ensure_elk_marker_segment_lengths,
-    line_with_offset_for_edge_type,
-    rounded_line_with_marker_offsets_for_edge_type,
+    line_with_offset_for_edge_type, rounded_line_with_marker_offsets_for_edge_type,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
 pub(super) use trace::{FlowchartEdgeTraceInput, record_flowchart_edge_trace};
