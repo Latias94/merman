@@ -78,19 +78,9 @@ impl<'a> SequenceConfigView<'a> {
                 token.to_css_string()
             }
             cssparser::Token::Ident(value)
-                if [
-                    "normal",
-                    "bold",
-                    "bolder",
-                    "lighter",
-                    "inherit",
-                    "initial",
-                    "unset",
-                    "revert",
-                    "revert-layer",
-                ]
-                .iter()
-                .any(|keyword| value.eq_ignore_ascii_case(keyword)) =>
+                if ["normal", "bold"]
+                    .iter()
+                    .any(|keyword| value.eq_ignore_ascii_case(keyword)) =>
             {
                 value.to_ascii_lowercase()
             }
@@ -274,6 +264,12 @@ mod tests {
             (
                 json!({"sequence": {"noteFontWeight": "700 !important"}}),
                 None,
+            ),
+            (json!({"sequence": {"noteFontWeight": "bolder"}}), None),
+            (json!({"sequence": {"noteFontWeight": "inherit"}}), None),
+            (
+                json!({"sequence": {"noteFontWeight": 700.5}}),
+                Some("700.5"),
             ),
             (json!({"sequence": {"noteFontWeight": 0}}), None),
         ] {
