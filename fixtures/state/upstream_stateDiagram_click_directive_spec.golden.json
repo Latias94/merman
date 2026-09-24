@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -58,8 +64,8 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "S1": {
-        "id": "S1",
+      "S2": {
+        "id": "S2",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -69,8 +75,8 @@
         "textStyles": [],
         "start": null
       },
-      "S2": {
-        "id": "S2",
+      "S1": {
+        "id": "S1",
         "type": "default",
         "descriptions": [],
         "doc": null,

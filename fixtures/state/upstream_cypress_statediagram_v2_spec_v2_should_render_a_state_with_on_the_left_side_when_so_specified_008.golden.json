@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": []
       },
@@ -35,8 +38,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "left of"
+        "look": "neo",
+        "position": "left of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -47,12 +53,15 @@
         "cssCompiledStyles": [],
         "id": "State1----note-0",
         "domId": "state-State1----note-0",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "left of",
-        "parentId": "State1----parent"
+        "parentId": "State1----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -69,7 +78,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},

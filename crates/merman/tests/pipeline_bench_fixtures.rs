@@ -43,9 +43,8 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
     let layout = merman::svg::LayoutOptions::headless_svg_defaults();
-    let environment = merman::SvgEnvironment::deterministic().with_resource_policy(
-        merman::svg::RenderResourcePolicy::unbounded_for_trusted_input(),
-    );
+    let environment = merman::SvgEnvironment::deterministic()
+        .with_resource_policy(merman::svg::RenderResourcePolicy::unbounded_for_trusted_input());
 
     for path in fixtures {
         let name = path

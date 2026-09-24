@@ -1841,7 +1841,7 @@ mod tests {
                     == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 33);
         let zenuml = ascii_capability(&capabilities, "zenuml");
         assert_eq!(zenuml.semantic_coverage, None);
         assert_eq!(zenuml.primary_projection, "none");

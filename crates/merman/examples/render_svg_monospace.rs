@@ -75,8 +75,9 @@ impl ShapedTextWidth {
     }
 }
 
-fn installed_monospace_font() -> Result<(String, String, Arc<[u8]>, u32), Box<dyn std::error::Error>>
-{
+type InstalledMonospaceFont = (String, String, Arc<[u8]>, u32);
+
+fn installed_monospace_font() -> Result<InstalledMonospaceFont, Box<dyn std::error::Error>> {
     let mut fonts = usvg::fontdb::Database::new();
     fonts.load_system_fonts();
     let face = fonts

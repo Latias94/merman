@@ -1614,6 +1614,9 @@ mod tests {
             ry: None,
             shape: "rect".to_string(),
             position: None,
+            color_index: None,
+            wrapping_width: None,
+            min_width: None,
         }
     }
 }

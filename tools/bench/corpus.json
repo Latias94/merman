@@ -992,6 +992,26 @@
       "quality": ["svg_sanity", "dom_compare"]
     },
     {
+      "name": "agentflow_basic",
+      "family": "agentflow",
+      "size": "small",
+      "category": "standard",
+      "source": "fixtures/agentflow/basic.mmd",
+      "suites": ["cross_family"],
+      "features": ["nodes", "edges", "containers"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "usecase_basic",
+      "family": "usecase",
+      "size": "small",
+      "category": "standard",
+      "source": "fixtures/usecase/basic.mmd",
+      "suites": ["cross_family"],
+      "features": ["actors", "relationships", "notes"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
       "name": "frontmatter_basic",
       "family": "frontmatter",
       "size": "small",
