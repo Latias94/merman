@@ -20,7 +20,8 @@ status: active
   WASM artifacts predate the latest renderer repairs and require rebuilding.
 - Remaining parity gates: Class passes all 750 mode comparisons. Flowchart has 68
   distinct DOM blockers and 34 stale receipt fixtures; State has 18 DOM blockers;
-  Sequence has 25; Timeline has one newly diagnosed browser wrapping residual.
+  Sequence has 25. Timeline passes all 279 comparisons after one source-reviewed
+  exact browser wrapping receipt was added.
   Shared rounded-corner line-hop filtering and Sequence per-line height accumulation
   are confirmed source-semantic gaps being repaired before residual admission.
 - Artifact-size focus: production theme audit snapshots were removed in `6dc4c9f6f`

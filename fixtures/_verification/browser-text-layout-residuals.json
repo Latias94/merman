@@ -868,6 +868,18 @@
     },
     {
       "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "eb0aeb1b8bf6885d50ab26aee280864b3e7cd4df4acd91653b783727fec598c1",
+      "input_sha256": "913f05bbfa2bfba5177aeb5b34b64e40720bcd3e03617d0fd9d19aa9f8ed6bb9",
+      "upstream_svg_sha256": "75d2c562ccc20d50e430afb785f0854383b821bfd36cf8b33c0ca433ac842d1a"
+    },
+    {
+      "diagram": "timeline",
       "fixture": "upstream_cypress_timeline_spec_14_should_render_a_vertical_timeline_diagram_with_sections_014",
       "modes": [
         "structure",

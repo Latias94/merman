@@ -118,6 +118,28 @@ Mermaid 12 rounded-corner exclusion, 2px clearance, and 60% useful-radius filter
 Sequence drawing must accumulate each actual text line's height and preserve signed
 margin/dy/JavaScript rounding behavior. State style-spec HTML height is under audit.
 
+# Timeline exact residual admission
+
+The new Timeline 012 receipt binds input SHA-256
+`913f05bbfa2bfba5177aeb5b34b64e40720bcd3e03617d0fd9d19aa9f8ed6bb9`, upstream SVG
+`75d2c562ccc20d50e430afb785f0854383b821bfd36cf8b33c0ca433ac842d1a`, and canonical
+local signature `eb0aeb1b8bf6885d50ab26aee280864b3e7cd4df4acd91653b783727fec598c1`.
+Both SVGs preserve all 34 text elements and word sequences. Seven labels wrap at
+different words with the same Fira Sans 17px style and 150px width. Pinned Timeline
+`svgDraw.js:456` uses `getComputedTextLength`; local `timeline.rs:145` uses its
+headless measurement counterpart. Both use first-row 1em and subsequent-row 1.1em.
+The resulting row heights propagate into the viewport. Outside text subtrees,
+224 elements retain order, IDs, classes, and path command sequences. Additional
+upstream Neo CSS is inactive because this fixture has no `data-look` attributes.
+This receipt does not admit missing text, topology, or active-style differences.
+
+The existing comparator captured the canonical signature, then a fresh full
+Timeline comparison passed all 93 fixtures / 279 mode comparisons, including 81
+exact residual comparisons. Only this one entry was added; the 26 historical
+Timeline entries were unchanged. Detailed local evidence is in
+`target/mermaid12-timeline-012-residual-audit.md` and the verification log is
+`target/mermaid12-timeline-receipt-verified.log`.
+
 # Artifact-size gate
 
 All values below are bytes measured by the checked-in `wasm-size-matrix` command
