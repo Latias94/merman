@@ -617,13 +617,28 @@ fn materialize_hierarchy_edge_segments(edge: &HierarchyEdge) -> Vec<ScopedHierar
         .collect()
 }
 
+// A child graph cannot look up its original parent's ports through GraphPortIndex. Capture only
+// the border-offset property before segment introduction creates exported parent ports.
+type ParentPortBorderOffsets = HashMap<PortType, HashMap<String, f64>>;
+
 pub(crate) fn introduce_source_ported_scoped_edge_segments(
     graph: &mut LGraph,
     segments: Vec<ScopedHierarchySegment>,
 ) {
     let mut segments_by_parent: HashMap<Option<String>, Vec<ScopedHierarchySegment>> =
         HashMap::new();
+    let mut original_parent_offsets: HashMap<String, ParentPortBorderOffsets> = HashMap::new();
     for scoped in segments {
+        for endpoint in [&scoped.pending.source, &scoped.pending.target] {
+            if let PendingSegmentEndpoint::ParentBoundary {
+                node_id,
+                connects_parent_node: true,
+                ..
+            } = endpoint
+            {
+                original_parent_offsets.entry(node_id.clone()).or_default();
+            }
+        }
         segments_by_parent
             .entry(scoped.pending.graph_parent.clone())
             .or_default()
@@ -631,6 +646,24 @@ pub(crate) fn introduce_source_ported_scoped_edge_segments(
     }
     let mut first_graph = true;
     let result = graph.try_for_each_graph_mut(|graph| {
+        // The existing traversal visits parents before children. Each requested parent's ports
+        // are copied once, preserving the same first-match identity as GraphPortIndex.
+        for node in &graph.layerless_nodes {
+            if let Some(offsets) = original_parent_offsets.get_mut(&node.id) {
+                for port in &node.ports {
+                    offsets
+                        .entry(port.port_type)
+                        .or_default()
+                        .entry(port.id.clone())
+                        .or_insert(port.border_offset.unwrap_or(0.0));
+                }
+            }
+        }
+        let parent_offsets = graph
+            .parent_node_id
+            .as_ref()
+            .and_then(|id| original_parent_offsets.remove(id))
+            .unwrap_or_default();
         let segments = if first_graph {
             first_graph = false;
             segments_by_parent.remove(&None)
@@ -648,6 +681,7 @@ pub(crate) fn introduce_source_ported_scoped_edge_segments(
                     scoped.labels,
                     &mut external_ports,
                     &mut local_ports,
+                    &parent_offsets,
                 );
                 let model_order = scoped.edge.model_order;
                 record_cross_hierarchy_edge_segment(
@@ -901,6 +935,7 @@ fn introduce_hierarchical_edge_segment(
     labels: Vec<LLabel>,
     external_ports: &mut HashMap<ExternalPortKey, ExternalPort>,
     local_ports: &mut GraphPortIndex,
+    parent_offsets: &ParentPortBorderOffsets,
 ) -> usize {
     let parent_boundary = match (&pending.source, &pending.target) {
         (
@@ -942,9 +977,20 @@ fn introduce_hierarchical_edge_segment(
         }
     }
 
-    let source =
-        ensure_segment_endpoint_port(graph, local_ports, &pending.source, PortType::Output);
-    let target = ensure_segment_endpoint_port(graph, local_ports, &pending.target, PortType::Input);
+    let source = ensure_segment_endpoint_port(
+        graph,
+        local_ports,
+        &pending.source,
+        PortType::Output,
+        parent_offsets,
+    );
+    let target = ensure_segment_endpoint_port(
+        graph,
+        local_ports,
+        &pending.target,
+        PortType::Input,
+        parent_offsets,
+    );
 
     if source.node == target.node {
         graph.graph_properties.self_loops = true;
@@ -1029,6 +1075,7 @@ fn ensure_segment_endpoint_port(
     local_ports: &mut GraphPortIndex,
     endpoint: &PendingSegmentEndpoint,
     port_type: PortType,
+    parent_offsets: &ParentPortBorderOffsets,
 ) -> PortRef {
     match endpoint {
         PendingSegmentEndpoint::LocalNode { node_id, port_key } => local_ports
@@ -1041,7 +1088,13 @@ fn ensure_segment_endpoint_port(
             endpoint_port_type(endpoint, port_type),
             endpoint_parent_port_type(endpoint, port_type),
             endpoint_port_key(endpoint).unwrap_or_default(),
-            endpoint_connects_parent_node(endpoint),
+            endpoint_connects_parent_node(endpoint).then(|| {
+                parent_offsets
+                    .get(&endpoint_parent_port_type(endpoint, port_type))
+                    .and_then(|ports| ports.get(endpoint_port_key(endpoint).unwrap_or_default()))
+                    .copied()
+                    .unwrap_or(0.0)
+            }),
         ),
     }
 }
@@ -1528,8 +1581,9 @@ fn create_parent_boundary_port(
     dummy_port_type: PortType,
     parent_port_type: PortType,
     parent_port_key: &str,
-    connects_parent_node: bool,
+    original_parent_border_offset: Option<f64>,
 ) -> PortRef {
+    let connects_parent_node = original_parent_border_offset.is_some();
     graph.graph_properties.external_ports = true;
     graph.graph_properties.non_free_ports = true;
     graph.options.port_constraints = if graph.options.port_constraints.is_side_fixed() {
@@ -1555,7 +1609,11 @@ fn create_parent_boundary_port(
     } else {
         PortSide::Undefined
     };
-    let border_offset = graph.options.spacing.edge_edge / 2.0;
+    // CompoundGraphPreprocessor#createExternalPortDummy inherits the original port's properties
+    // for a direct parent connection. Only a genuinely exported port gets createExternalPortProperties
+    // and its spacing/2 margin; that margin is not a default for ports on the parent itself.
+    let border_offset =
+        original_parent_border_offset.unwrap_or(graph.options.spacing.edge_edge / 2.0);
     let mut dummy = create_external_port_dummy(
         format!("external:{parent_node_id}"),
         if parent_port_key.is_empty() {
@@ -2021,6 +2079,170 @@ mod tests {
             // Only group-0 owns an external dummy. Unrelated compound siblings must not trigger
             // whole-parent port-index rebuilds.
             assert_eq!(work.parent_port_indexes_built, 1);
+        }
+    }
+
+    fn parent_and_crossing_edge_graph(
+        reverse: bool,
+        spacing: f64,
+        original_offset: Option<f64>,
+    ) -> (LGraph, String) {
+        let mut group = node("group");
+        group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("child");
+        child.parent = Some("group".to_string());
+        let edges = if reverse {
+            vec![
+                edge("direct", "child", "group"),
+                edge("crossing", "child", "outside"),
+            ]
+        } else {
+            vec![
+                edge("direct", "group", "child"),
+                edge("crossing", "outside", "child"),
+            ]
+        };
+        let mut input = graph(vec![group, child, node("outside")], edges);
+        input.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+        input.options.merge_hierarchy_edges = false;
+        input.options.spacing.edge_edge = spacing;
+        let mut graph = import_graph(&input).unwrap();
+        let direct = graph
+            .hierarchy_edges
+            .iter()
+            .find(|edge| edge.id == "direct")
+            .unwrap();
+        let original_key = if reverse {
+            direct.target_port_key.clone()
+        } else {
+            direct.source_port_key.clone()
+        };
+        let group = graph
+            .layerless_nodes
+            .iter_mut()
+            .find(|node| node.id == "group")
+            .unwrap();
+        group
+            .ports
+            .iter_mut()
+            .find(|port| port.id == original_key)
+            .unwrap()
+            .border_offset = original_offset;
+        group
+            .nested_graph
+            .as_deref_mut()
+            .unwrap()
+            .options
+            .spacing
+            .edge_edge = spacing;
+        (graph, original_key)
+    }
+
+    #[test]
+    fn parent_border_offsets_survive_alongside_crossing_spacing_margins() {
+        // Captured elkjs oracle: spacing 20/40 never changes a direct parent's offset;
+        // original port offsets +7/-4 survive, while exported crossing ports keep spacing/2.
+        for reverse in [false, true] {
+            for spacing in [20.0, 40.0] {
+                for original_offset in [None, Some(7.0), Some(-4.0)] {
+                    let (mut graph, key) =
+                        parent_and_crossing_edge_graph(reverse, spacing, original_offset);
+                    let group_index = graph
+                        .layerless_nodes
+                        .iter()
+                        .position(|node| node.id == "group")
+                        .unwrap();
+                    let original_port = graph.layerless_nodes[group_index]
+                        .ports
+                        .iter()
+                        .position(|port| port.id == key)
+                        .unwrap();
+                    preprocess_source_ported_compound_graph(&mut graph);
+                    let group = &graph.layerless_nodes[group_index];
+                    let nested = group.nested_graph.as_deref().unwrap();
+                    let parent = &group.ports[original_port];
+                    let dummy_ref = parent.port_dummy.as_ref().unwrap();
+                    let direct = &nested.layerless_nodes[dummy_ref.node];
+                    assert_eq!(
+                        direct.origin_port.as_ref().unwrap().port,
+                        PortRef {
+                            node: group_index,
+                            port: original_port
+                        }
+                    );
+                    assert_eq!(parent.border_offset, Some(original_offset.unwrap_or(0.0)));
+                    assert_eq!(
+                        direct.ports[0].border_offset,
+                        Some(original_offset.unwrap_or(0.0))
+                    );
+                    if original_offset == Some(-4.0) {
+                        let depth = match direct.external_port_side {
+                            PortSide::North | PortSide::South => direct.size.height,
+                            PortSide::East | PortSide::West => direct.size.width,
+                            PortSide::Undefined => panic!("external port side must be resolved"),
+                        };
+                        assert_eq!(
+                            depth, 4.0,
+                            "negative offsets must size the dummy before layout"
+                        );
+                    }
+                    let crossing = nested
+                        .edges
+                        .iter()
+                        .find(|edge| edge.id == "crossing")
+                        .unwrap();
+                    let boundary = if reverse {
+                        crossing.target
+                    } else {
+                        crossing.source
+                    };
+                    let crossing_dummy = &nested.layerless_nodes[boundary.node];
+                    assert_eq!(crossing_dummy.kind, LNodeKind::ExternalPort);
+                    assert_ne!(boundary.node, dummy_ref.node);
+                    assert_eq!(
+                        crossing_dummy.ports[boundary.port].border_offset,
+                        Some(spacing / 2.0)
+                    );
+                    let crossing_parent = crossing_dummy.origin_port.as_ref().unwrap().port;
+                    assert_eq!(
+                        graph.layerless_nodes[crossing_parent.node].ports[crossing_parent.port]
+                            .border_offset,
+                        Some(spacing / 2.0)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn routed_parent_ports_keep_their_original_border_offset() {
+        for reverse in [false, true] {
+            for original_offset in [None, Some(7.0), Some(-4.0)] {
+                let (mut graph, key) =
+                    parent_and_crossing_edge_graph(reverse, 40.0, original_offset);
+                crate::pipeline::execute_ported_compound_processors(&mut graph).unwrap();
+                let group = graph
+                    .layerless_nodes
+                    .iter()
+                    .find(|node| node.id == "group")
+                    .unwrap();
+                let port = group.ports.iter().find(|port| port.id == key).unwrap();
+                let anchor = LPoint {
+                    x: port.position.x + port.anchor.x,
+                    y: port.position.y + port.anchor.y,
+                };
+                let offset = match port.side {
+                    PortSide::North => -anchor.y,
+                    PortSide::South => anchor.y - group.size.height,
+                    PortSide::West => -anchor.x,
+                    PortSide::East => anchor.x - group.size.width,
+                    PortSide::Undefined => panic!("routed parent port has no side"),
+                };
+                assert!(
+                    (offset - original_offset.unwrap_or(0.0)).abs() < 1e-9,
+                    "reverse={reverse}, requested={original_offset:?}, actual={offset}"
+                );
+            }
         }
     }
 
