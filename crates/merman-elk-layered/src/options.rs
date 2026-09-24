@@ -576,7 +576,9 @@ impl LayeredOptions {
             consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
             spacing: SpacingOptions::layered_base_value(40.0),
             unnecessary_bendpoints: true,
-            self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            // Mermaid sets EQUALLY on the root graph, but ELK resolves this node-scoped
+            // option from each node's default (NORTH) unless a node overrides it.
+            self_loop_distribution: SelfLoopDistributionStrategy::North,
             self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,

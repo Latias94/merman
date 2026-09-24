@@ -74,6 +74,16 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
                 },
             )
             .unwrap_or(preset_alignment);
+    let self_loop_distribution = config_string(
+        effective_config,
+        &["elk", "layered", "edgeRouting", "selfLoopDistribution"],
+    )
+    .map(|strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+        "EQUALLY" => elk::SelfLoopDistributionStrategy::Equally,
+        "NORTH_SOUTH" => elk::SelfLoopDistributionStrategy::NorthSouth,
+        _ => elk::SelfLoopDistributionStrategy::North,
+    })
+    .unwrap_or(elk::SelfLoopDistributionStrategy::North);
     let self_loop_ordering = config_string(
         effective_config,
         &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
@@ -126,7 +136,7 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
                 &["elk", "insideSelfLoops", "activate"],
             )
             .unwrap_or(false),
-            self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
+            self_loop_distribution,
             self_loop_ordering,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
@@ -146,6 +156,31 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn elk_layout_options_use_mermaid_node_self_loop_default() {
+        assert_eq!(
+            layout_options(&serde_json::Value::Null)
+                .layered
+                .self_loop_distribution,
+            elk::SelfLoopDistributionStrategy::North
+        );
+    }
+
+    #[test]
+    fn elk_layout_options_allow_explicit_self_loop_distribution() {
+        let options = layout_options(&serde_json::json!({
+            "elk": {
+                "layered": {
+                    "edgeRouting": { "selfLoopDistribution": "EQUALLY" }
+                }
+            }
+        }));
+        assert_eq!(
+            options.layered.self_loop_distribution,
+            elk::SelfLoopDistributionStrategy::Equally
+        );
+    }
 
     #[test]
     fn registered_root_names_select_the_corresponding_provider() {

@@ -157,7 +157,7 @@ impl Default for LayeredOptions {
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: true,
             inside_self_loops_activate: false,
-            self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            self_loop_distribution: SelfLoopDistributionStrategy::North,
             self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
         }
     }
