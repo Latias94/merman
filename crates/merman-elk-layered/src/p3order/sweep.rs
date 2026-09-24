@@ -80,6 +80,9 @@ pub struct HierarchySweepRunDebug {
     pub graph_id: String,
     pub run_index: usize,
     pub first_try_with_initial_order: bool,
+    /// The pinned source gives FIRST_TRY and SECOND_TRY the same Property ID.
+    /// This legacy diagnostic mirrors `first_try_with_initial_order`.
+    #[deprecated(note = "the pinned ELK property aliases first_try_with_initial_order")]
     pub second_try_with_initial_order: bool,
     pub initial_crossings: f64,
     pub early_returned: bool,
@@ -943,6 +946,7 @@ impl HierarchySweep {
         }
     }
 
+    #[allow(deprecated)] // Populate the published diagnostic alias without a second execution state.
     fn compare_different_randomized_layouts(&mut self, root: &mut LGraph, info_index: usize) {
         self.random.set_seed(self.random_seed);
         if self.infos[info_index].path.0.is_empty() {
@@ -950,6 +954,9 @@ impl HierarchySweep {
         }
         self.changed.clear();
 
+        // ELK InternalProperties uses "firstTryWithInitialOrder" for BOTH initial-order
+        // flags, and Property equality is ID-based. Clearing SECOND also clears FIRST,
+        // so only run zero preserves model order; run one already randomizes its first layer.
         let first_try_with_initial_order = graph_at_path(root, &self.infos[info_index].path)
             .options
             .consider_model_order_strategy
@@ -966,7 +973,6 @@ impl HierarchySweep {
                 root,
                 info_index,
                 first_try_with_initial_order && run_index == 0,
-                first_try_with_initial_order && run_index == 1,
                 use_node_port_order_counter,
             );
             let crossings = result.crossings;
@@ -977,7 +983,7 @@ impl HierarchySweep {
                     graph_id,
                     run_index,
                     first_try_with_initial_order: first_try_with_initial_order && run_index == 0,
-                    second_try_with_initial_order: first_try_with_initial_order && run_index == 1,
+                    second_try_with_initial_order: first_try_with_initial_order && run_index == 0,
                     initial_crossings: result.initial_crossings,
                     early_returned: result.early_returned,
                     crossings,
@@ -1000,7 +1006,6 @@ impl HierarchySweep {
         root: &mut LGraph,
         info_index: usize,
         first_try_with_initial_order: bool,
-        second_try_with_initial_order: bool,
         use_node_port_order_counter: bool,
     ) -> BarycenterRunResult {
         let mut is_forward_sweep = self.next_sweep_direction(info_index);
@@ -1017,7 +1022,7 @@ impl HierarchySweep {
 
         let should_set_first_layer_order = {
             let graph = graph_at_path(root, &self.infos[info_index].path);
-            (!first_try_with_initial_order && !second_try_with_initial_order)
+            !first_try_with_initial_order
                 || graph.options.consider_model_order_strategy == OrderingStrategy::None
         };
         if should_set_first_layer_order {
@@ -1033,7 +1038,7 @@ impl HierarchySweep {
             info_index,
             is_forward_sweep,
             true,
-            first_try_with_initial_order || second_try_with_initial_order,
+            first_try_with_initial_order,
         );
 
         let mut crossings_in_graph =
@@ -3404,6 +3409,8 @@ fn minimize_barycenter(
 
     let mut best_crossings = usize::MAX;
     let thoroughness = graph.options.thoroughness.max(1);
+    // Match the shared FIRST_TRY / SECOND_TRY Property ID, as in the hierarchy sweep:
+    // only the first run preserves model order before randomized attempts begin.
     let first_try_with_initial_order =
         graph.options.consider_model_order_strategy != OrderingStrategy::None;
 
@@ -3417,7 +3424,6 @@ fn minimize_barycenter(
             &mut graph_info,
             &mut heuristic,
             first_try_with_initial_order && run_index == 0,
-            first_try_with_initial_order && run_index == 1,
             work_control,
             &reorder_work,
         )?;
@@ -3521,7 +3527,6 @@ fn minimize_crossings_with_counter(
     graph_info: &mut GraphInfoHolder,
     heuristic: &mut BarycenterHeuristic,
     first_try_with_initial_order: bool,
-    second_try_with_initial_order: bool,
     work_control: &mut dyn WorkControl,
     reorder_work: &ReorderNodePortsWorkContext,
 ) -> Result<usize, WorkError> {
@@ -3537,7 +3542,7 @@ fn minimize_crossings_with_counter(
         return Ok(0);
     }
 
-    if (!first_try_with_initial_order && !second_try_with_initial_order)
+    if !first_try_with_initial_order
         || graph.options.consider_model_order_strategy == OrderingStrategy::None
     {
         charge_barycenter_work(
@@ -3562,7 +3567,7 @@ fn minimize_crossings_with_counter(
         graph_info,
         heuristic,
         is_forward_sweep,
-        !first_try_with_initial_order && !second_try_with_initial_order,
+        !first_try_with_initial_order,
         work_control,
         reorder_work,
     )?;
@@ -4395,6 +4400,85 @@ mod tests {
             .iter()
             .map(|node| graph.layerless_nodes[*node].id.clone())
             .collect()
+    }
+
+    #[test]
+    fn complete_dag_randomizes_after_the_shared_initial_order_attempt() {
+        // Pinned elkjs 0.9.3, seed 1: both property names have the same ID. Giving
+        // SECOND_TRY a distinct ID instead leaves this graph at four crossings.
+        for hierarchical in [false, true] {
+            let nodes = (0..6).map(|i| node(&format!("n{i}"))).collect();
+            let mut edges = Vec::new();
+            for source in 0..6 {
+                for target in source + 1..6 {
+                    edges.push(edge(
+                        &format!("e{source}{target}"),
+                        &format!("n{source}"),
+                        &format!("n{target}"),
+                    ));
+                }
+            }
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "root".into(),
+                options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+                nodes,
+                edges,
+            })
+            .unwrap();
+            crate::pipeline::execute_processors_until_processor(
+                &mut graph,
+                crate::pipeline::ProcessorKind::SortByInputModelProcessor,
+            )
+            .unwrap();
+
+            if hierarchical {
+                let trace = debug_crossings_layer_sweep_hierarchical_with_type(
+                    &mut graph,
+                    CrossMinType::Barycenter,
+                )
+                .unwrap();
+                assert_eq!(
+                    trace
+                        .runs
+                        .iter()
+                        .map(|run| run.crossings)
+                        .collect::<Vec<_>>(),
+                    vec![4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 3.0],
+                );
+                assert!(trace.runs[0].first_try_with_initial_order);
+                assert!(
+                    trace.runs[1..]
+                        .iter()
+                        .all(|run| !run.first_try_with_initial_order)
+                );
+            } else {
+                minimize_crossings_layer_sweep(&mut graph);
+            }
+
+            assert_eq!(CrossingsCounter::new().count_all_crossings(&graph), 3);
+            let layer_order = graph.layers[2]
+                .nodes
+                .iter()
+                .map(|&index| {
+                    let node = &graph.layerless_nodes[index];
+                    if node.kind == LNodeKind::Normal {
+                        node.id.as_str()
+                    } else {
+                        let edge = node
+                            .ports
+                            .iter()
+                            .flat_map(|port| &port.outgoing_edges)
+                            .next()
+                            .unwrap();
+                        graph.edges[*edge].id.as_str()
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                layer_order,
+                ["e03", "e15", "e13", "e14", "n2", "e04", "e05"]
+            );
+        }
     }
 
     #[test]
@@ -5289,11 +5373,14 @@ mod tests {
 
         let first_layer_order = node_order_by_id(&graph, &graph.layers[0].nodes);
         let last_layer_order = node_order_by_id(&graph, &graph.layers[2].nodes);
-        assert_eq!(first_layer_order[0], "bar");
-        assert_eq!(first_layer_order[1], "B");
-        assert!(first_layer_order[2].starts_with("invertedPort:"));
-        assert_eq!(last_layer_order[0], "foo");
-        assert!(last_layer_order[1].starts_with("invertedPort:"));
+        // Pinned elkjs 0.9.3 puts the inverted L_D_E port dummy before both groups.
+        // Assigning SECOND_TRY a distinct Property ID instead reproduces the old
+        // [bar, B, dummy] / [foo, dummy] order, rather than the source's shared-ID behavior.
+        assert!(first_layer_order[0].starts_with("invertedPort:"));
+        assert_eq!(first_layer_order[1], "bar");
+        assert_eq!(first_layer_order[2], "B");
+        assert!(last_layer_order[0].starts_with("invertedPort:"));
+        assert_eq!(last_layer_order[1], "foo");
     }
 
     #[test]
