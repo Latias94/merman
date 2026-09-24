@@ -4130,6 +4130,37 @@ fn parse_diagram_flowchart_accepts_non_ascii_node_ids() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accepts_ecmascript_unicode_whitespace_in_header() {
+    let engine = Engine::new();
+    for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
+        for newline in ["\n", "\r\n"] {
+            let text = format!(
+                "flowchart{whitespace}TD{newline}{whitespace}A --> B{newline}\
+                 {whitespace}B --> C{newline}"
+            );
+            let res = engine
+                .parse_diagram_sync(&text, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(res.model["direction"], json!("TB"), "{text:?}");
+            assert_eq!(res.model["vertexCalls"], json!(["A", "B", "B", "C"]));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_accepts_unicode_whitespace_in_subgraph_direction() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph S\ndirection\u{3000}LR\u{3000}\nA --> B\nend\n";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["subgraphs"][0]["dir"], "LR");
+    assert_eq!(res.model["vertexCalls"], json!(["A", "B"]));
+}
+
+#[test]
 fn parse_diagram_flowchart_rejects_non_ascii_digits_and_punctuation_in_ids() {
     // mermaid@11.17.2 rejects both of these with "Lexical error ... Unrecognized text".
     let engine = Engine::new();

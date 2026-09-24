@@ -49,6 +49,7 @@ pub mod gantt;
 pub mod git_graph;
 pub mod info;
 pub mod ishikawa;
+mod jison_unicode;
 pub mod journey;
 pub mod kanban;
 pub(crate) mod langium_common;

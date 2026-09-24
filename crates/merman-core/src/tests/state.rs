@@ -63,6 +63,60 @@ fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
 }
 
 #[test]
+fn parse_diagram_state_v2_accepts_ecmascript_unicode_whitespace() {
+    let engine = Engine::new();
+    for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
+        for newline in ["\n", "\r\n"] {
+            let text = format!(
+                "stateDiagram-v2{newline}state{whitespace}\"正常\" as{whitespace}用户{whitespace}{newline}\
+                 用户{whitespace}-->{whitespace}完成{newline}"
+            );
+            let res = engine
+                .parse_diagram_sync(&text, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                res.model["states"]["用户"]["descriptions"][0], "正常",
+                "{text:?}"
+            );
+            assert_eq!(res.model["states"].as_object().unwrap().len(), 2);
+            assert_eq!(res.model["edges"].as_array().unwrap().len(), 1);
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_v2_accepts_unicode_whitespace_in_direction() {
+    let engine = Engine::new();
+    let text = "stateDiagram-v2\ndirection\u{3000}LR\nA --> B\n";
+
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["direction"], json!("LR"));
+}
+
+#[test]
+fn parse_diagram_state_v2_accepts_unicode_whitespace_before_composite_block() {
+    let engine = Engine::new();
+    let text =
+        "stateDiagram-v2\nstate\u{3000}外部\u{3000}\n\u{3000}{\n用户\u{3000}-->\u{3000}完成\n}\n";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        res.model["states"]["外部"]["doc"][0]["state1"]["id"],
+        "用户"
+    );
+    assert_eq!(
+        res.model["states"]["外部"]["doc"][0]["state2"]["id"],
+        "完成"
+    );
+}
+
+#[test]
 fn parse_diagram_state_v2_preserves_colons_in_transition_labels() {
     let res = block_on(Engine::new().parse_diagram(
         r#"stateDiagram-v2

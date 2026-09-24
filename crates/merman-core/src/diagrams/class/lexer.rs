@@ -1,7 +1,10 @@
 use std::collections::VecDeque;
 
 use super::MERMAID_DOM_ID_PREFIX;
-use crate::diagrams::scan::consume_line_ending;
+use crate::diagrams::{
+    jison_unicode::is_mermaid_unicode_text,
+    scan::{consume_line_ending, is_ecmascript_inline_whitespace, is_ecmascript_whitespace},
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -126,19 +129,18 @@ impl<'input> Lexer<'input> {
         self.input.as_bytes().get(self.pos).copied()
     }
 
-    fn bump(&mut self) -> Option<u8> {
-        let b = self.peek()?;
-        self.pos += 1;
-        Some(b)
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.input[self.pos..].chars().next()?;
+        self.pos += ch.len_utf8();
+        Some(ch)
     }
 
     fn skip_ws(&mut self) {
-        while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_inline_whitespace(ch) {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -154,8 +156,10 @@ impl<'input> Lexer<'input> {
         if after >= self.input.len() {
             return true;
         }
-        let b = self.input.as_bytes()[after];
-        b.is_ascii_whitespace() || matches!(b, b'{' | b'}' | b'[' | b']' | b'"' | b'`' | b':')
+        let next = self.input[after..].chars().next();
+        next.is_some_and(|ch| {
+            is_ecmascript_whitespace(ch) || matches!(ch, '{' | '}' | '[' | ']' | '"' | '`' | ':')
+        })
     }
 
     fn read_to_newline(&mut self) -> String {
@@ -315,11 +319,11 @@ impl<'input> Lexer<'input> {
         self.pos += "direction".len();
         self.skip_ws();
         let direction_start = self.pos;
-        while self
-            .peek()
-            .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b';')
-        {
-            self.pos += 1;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if is_ecmascript_whitespace(ch) || ch == ';' {
+                break;
+            }
+            self.pos += ch.len_utf8();
         }
         let direction_end = self.pos;
         let _ = self.read_to_newline();
@@ -588,6 +592,13 @@ impl<'input> Lexer<'input> {
         let mut end = self.pos;
         while end < self.input.len() {
             let b = bytes[end];
+            // Jison's exclusive <generic> state accepts any character except its closing '~'.
+            if b == b'~'
+                && let Some(close) = self.input[end + 1..].find('~')
+            {
+                end += close + 2;
+                continue;
+            }
             if b.is_ascii_whitespace()
                 || b == b'\n'
                 || b == b'{'
@@ -610,6 +621,14 @@ impl<'input> Lexer<'input> {
             }
             if b == b'-' && end + 1 < bytes.len() && bytes[end + 1] == b'-' {
                 break;
+            }
+            if !b.is_ascii() {
+                let ch = self.input[end..].chars().next()?;
+                if !is_mermaid_unicode_text(ch) {
+                    break;
+                }
+                end += ch.len_utf8();
+                continue;
             }
             end += 1;
         }

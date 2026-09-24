@@ -73,6 +73,70 @@ class 顧客
 }
 
 #[test]
+fn parse_diagram_class_accepts_ecmascript_unicode_whitespace() {
+    let engine = Engine::new();
+    for whitespace in ['\u{00A0}', '\u{202F}', '\u{3000}', '\u{FEFF}'] {
+        for newline in ["\n", "\r\n"] {
+            let text = format!(
+                "classDiagram{newline}direction{whitespace}LR{whitespace}{newline}\
+                 class{whitespace}顾客{whitespace}{newline}\
+                 class{whitespace}订单{newline}顾客{whitespace}-->{whitespace}订单{newline}"
+            );
+            let res = engine
+                .parse_diagram_sync(&text, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert!(res.model["classes"]["顾客"].is_object(), "{text:?}");
+            assert!(res.model["classes"]["订单"].is_object(), "{text:?}");
+            assert_eq!(res.model["direction"], "LR");
+            assert_eq!(res.model["relations"].as_array().unwrap().len(), 1);
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_rejects_characters_outside_mermaid_unicode_text() {
+    let engine = Engine::new();
+    for name in ["𠀀", "顾客１", "顾客、", "A\u{0345}", "😀"] {
+        let text = format!("classDiagram\nclass {name}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&text, ParseOptions::default())
+                .is_err(),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_class_preserves_unicode_in_quoted_names_and_generics() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass `𠀀、１`\nclass Box~𠀀、１~\n";
+    let res = engine
+        .parse_diagram_sync(text, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert!(res.model["classes"]["𠀀、１"].is_object());
+    assert_eq!(res.model["classes"]["Box"]["type"], "𠀀、１");
+}
+
+#[test]
+fn parse_class_editor_facts_recovers_after_invalid_unicode_name() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass 𠀀\nclass User\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .expect("class editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+    let start = text.find('𠀀').unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.span == Some(SourceSpan::new(start, start + '𠀀'.len_utf8()))
+    }));
+}
+
+#[test]
 fn parse_diagram_class_css_class_shorthand() {
     let engine = Engine::new();
     let text = r#"classDiagram
