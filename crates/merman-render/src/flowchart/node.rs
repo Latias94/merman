@@ -679,10 +679,12 @@ fn node_render_dimensions(
 
         // Flowchart v2 window-pane ("internal-storage").
         "win-pane" | "internal-storage" | "window-pane" => {
-            // Mermaid `windowPane.ts`: base `w/h` uses `2 * padding`, then the final bbox expands
-            // by `rectOffset` (only on the top/left edges) after `updateNodeBounds(...)`.
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
+            // Mermaid `windowPane.ts` uses fixed 16px/12px axis padding in Neo. The final
+            // rendered bbox adds the 10px frame offset on both axes.
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
             let rect_offset = 10.0;
             (w + rect_offset, h + rect_offset)
         }
@@ -752,10 +754,14 @@ fn node_render_dimensions(
 
         // Flowchart v2 lined cylinder (Disk storage).
         "lin-cyl" | "disk" | "lined-cylinder" => {
-            let w = text_w + 2.0 * p;
+            // Mermaid `linedCylinder.ts` uses fixed axis padding for Neo and the configured
+            // padding for Classic. The cylinder height includes the top, body, and bottom
+            // ellipse radii from the rendered path.
+            let (padding_x, padding_y) = if look_is_neo { (16.0, 24.0) } else { (p, p) };
+            let w = text_w + 2.0 * padding_x;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
-            let height = text_h + 2.0 * p + 3.0 * ry;
+            let height = text_h + 2.0 * padding_y + 3.0 * ry;
             (w, height)
         }
 
@@ -767,8 +773,11 @@ fn node_render_dimensions(
 
         // Flowchart v2 divided rectangle (Divided process).
         "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => {
-            let w = text_w + p;
-            let h = text_h + p;
+            // Mermaid `dividedRect.ts` uses a single 16px Neo padding term before the
+            // rendered 20% top band expands the final height.
+            let padding = if look_is_neo { 16.0 } else { p };
+            let w = text_w + padding;
+            let h = text_h + padding;
             let rect_offset = h * 0.2;
             let x = -w / 2.0;
             let y = -h / 2.0 - rect_offset / 2.0;
@@ -858,21 +867,23 @@ fn node_render_dimensions(
 
         // Flowchart v2 stacked rectangle (multi-process).
         "st-rect" | "procs" | "processes" | "stacked-rectangle" => {
-            // Mermaid `multiRect.ts`: base `w/h` uses `2 * padding` and the final bbox expands by
-            // `2 * rectOffset` in both dimensions.
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
-            let rect_offset = 5.0;
+            // Mermaid `multiRect.ts` uses fixed Neo label padding and a larger layer offset.
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
+            let rect_offset = if look_is_neo { 10.0 } else { 5.0 };
             (w + 2.0 * rect_offset, h + 2.0 * rect_offset)
         }
 
         // Flowchart v2 paper-tape / wave rectangle.
         "paper-tape" | "flag" => {
-            // Mermaid 11.15 `waveRectangle.ts`: base width uses horizontal padding twice, but
-            // base height adds the vertical padding once before the two wave bands expand the
-            // final bbox.
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + p).max(0.0);
+            // Mermaid `waveRectangle.ts` uses look-specific label padding: Neo reserves
+            // 16px horizontally and 20px vertically, while Classic uses the configured padding.
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 20.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + padding_y).max(0.0);
             let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude * 2.0;
 
@@ -942,8 +953,11 @@ fn node_render_dimensions(
 
         // Flowchart v2 tagged rectangle.
         "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => {
-            let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
+            // Mermaid `taggedRect.ts` applies label padding before adding the tag width.
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = (text_w + 2.0 * padding_x).max(0.0);
+            let h = (text_h + 2.0 * padding_y).max(0.0);
             let x = -w / 2.0;
             let y = -h / 2.0;
             let tag_width = 0.2 * h;
@@ -1015,17 +1029,19 @@ fn node_render_dimensions(
 
         // Flowchart v2 trapezoidal pentagon (Loop limit).
         "notch-pent" | "loop-limit" | "notched-pentagon" => {
-            let min_width = 60.0;
-            let min_height = 20.0;
-            let w = (text_w + 2.0 * p).max(min_width);
-            let h = (text_h + 2.0 * p).max(min_height);
-            (w, h)
+            // The source's 15x5 minimum only applies to an explicitly sized node.
+            // Flowchart's automatic size comes directly from the measured label.
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            (text_w + 2.0 * padding_x, text_h + 2.0 * padding_y)
         }
 
         // Flowchart v2 bow-tie rect (Stored data).
         "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
-            let w = text_w + 2.0 * p;
-            let h = text_h + p;
+            let padding_x = if look_is_neo { 16.0 } else { p };
+            let padding_y = if look_is_neo { 12.0 } else { p };
+            let w = text_w + 2.0 * padding_x;
+            let h = text_h + padding_y;
             let ry = h / 2.0;
             let rx = ry / (2.5 + h / 50.0);
             let mut points: Vec<(f64, f64)> = Vec::new();
@@ -1058,7 +1074,7 @@ fn node_render_dimensions(
         // Hourglass/collate (label cleared, but label group still emitted).
         "hourglass" | "collate" => (30.0, 30.0),
 
-        // Card/notched rectangle: Neo reserves 28px on each axis before drawing the notch.
+        // Card/notched rectangle: Neo adds 28px horizontally and 24px vertically before drawing the notch.
         "notch-rect" | "notched-rectangle" | "card" => {
             if look_is_neo {
                 (text_w + 56.0, text_h + 48.0)
@@ -1890,6 +1906,24 @@ mod render_dimension_tests {
         let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
         assert_eq!(cylinder_w, 124.0);
         assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+
+        // `linedCylinder.ts` uses independent fixed x/y padding in Neo mode.
+        for (neo, padding_x, padding_y) in [(false, 15.0, 15.0), (true, 16.0, 24.0)] {
+            let (width, height) =
+                node_render_dimensions(Some("lined-cylinder"), metrics(), 15.0, neo);
+            let expected_width = 100.0 + 2.0 * padding_x;
+            let rx = expected_width / 2.0;
+            let ry = rx / (2.5 + expected_width / 50.0);
+            let expected_height = 20.0 + 2.0 * padding_y + 3.0 * ry;
+            assert!(
+                (width - expected_width).abs() < 1e-9,
+                "{neo}: width={width}"
+            );
+            assert!(
+                (height - expected_height).abs() < 1e-9,
+                "{neo}: height={height}"
+            );
+        }
         assert_eq!(
             node_render_dimensions(Some("triangle"), metrics(), 15.0, true),
             (150.0, 150.0)
@@ -1942,6 +1976,123 @@ mod render_dimension_tests {
             node_render_dimensions(Some("card"), metrics(), 15.0, true),
             (156.0, 68.0)
         );
+
+        for (neo, padding_x, padding_y) in [(false, 15.0, 15.0), (true, 16.0, 20.0)] {
+            let (width, height) = node_render_dimensions(Some("paper-tape"), metrics(), 15.0, neo);
+            let base_w = 100.0 + 2.0 * padding_x;
+            let base_h = 20.0 + padding_y;
+            let amplitude = base_h / 8.0;
+            let final_h = base_h + 2.0 * amplitude;
+            let sampled_peak = (0..=50)
+                .map(|i| ((i as f64) / 50.0 * std::f64::consts::TAU).sin().abs())
+                .fold(0.0, f64::max);
+            let expected_h = final_h + 2.0 * amplitude * sampled_peak;
+            assert!(
+                (width - base_w).abs() < 1e-9,
+                "paper tape neo={neo}: {width}"
+            );
+            assert!(
+                (height - expected_h).abs() < 1e-9,
+                "paper tape neo={neo}: {height}"
+            );
+        }
+
+        for (neo, padding_x, padding_y) in [(false, 15.0, 15.0), (true, 16.0, 12.0)] {
+            let (width, height) = node_render_dimensions(Some("tag-rect"), metrics(), 15.0, neo);
+            let base_h = 20.0 + 2.0 * padding_y;
+            let expected_width = 100.0 + 2.0 * padding_x + 0.2 * base_h;
+            assert!(
+                (width - expected_width).abs() < 1e-9,
+                "tag rect neo={neo}: {width}"
+            );
+            assert!(
+                (height - base_h).abs() < 1e-9,
+                "tag rect neo={neo}: {height}"
+            );
+        }
+
+        for (neo, padding_x, padding_y, offset) in
+            [(false, 15.0, 15.0, 5.0), (true, 16.0, 12.0, 10.0)]
+        {
+            let actual = node_render_dimensions(Some("stacked-rectangle"), metrics(), 15.0, neo);
+            let expected = (
+                100.0 + 2.0 * padding_x + 2.0 * offset,
+                20.0 + 2.0 * padding_y + 2.0 * offset,
+            );
+            assert!(
+                (actual.0 - expected.0).abs() < 1e-9,
+                "stacked rectangle neo={neo}: {actual:?}"
+            );
+            assert!(
+                (actual.1 - expected.1).abs() < 1e-9,
+                "stacked rectangle neo={neo}: {actual:?}"
+            );
+        }
+        // The trapezoidal pentagon has no automatic minimum; 15x5 is only applied
+        // by Mermaid when an explicit node width or height is supplied.
+        assert_eq!(
+            node_render_dimensions(Some("notched-pentagon"), metrics(), 15.0, false),
+            (130.0, 50.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("notched-pentagon"), metrics(), 15.0, true),
+            (132.0, 44.0)
+        );
+        assert_eq!(
+            node_render_dimensions(
+                Some("notched-pentagon"),
+                crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                },
+                0.0,
+                false,
+            ),
+            (0.0, 0.0)
+        );
+        assert_eq!(
+            node_render_dimensions(
+                Some("notched-pentagon"),
+                crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                },
+                0.0,
+                true,
+            ),
+            (32.0, 24.0)
+        );
+
+        // Stored data uses Neo's 16px/12px axis padding before the sampled arc bbox.
+        let neo_bow = node_render_dimensions(Some("bow-tie-rectangle"), metrics(), 15.0, true);
+        assert!((neo_bow.0 - 137.07813754398302).abs() < 1e-9);
+        assert!((neo_bow.1 - 32.0).abs() < 1e-9);
+        let classic_bow = node_render_dimensions(Some("bow-tie-rectangle"), metrics(), 15.0, false);
+        assert!((classic_bow.0 - 135.4500714461302).abs() < 1e-9);
+        assert!((classic_bow.1 - 35.0).abs() < 1e-9);
+
+        // Window pane: Neo uses 16px horizontal and 12px vertical padding before the
+        // fixed 10px frame offset; Classic keeps the configured padding on both axes.
+        assert_eq!(
+            node_render_dimensions(Some("window-pane"), metrics(), 15.0, false),
+            (140.0, 60.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("window-pane"), metrics(), 15.0, true),
+            (142.0, 54.0)
+        );
+
+        // Divided rectangle: the source adds one 16px Neo padding term to each label
+        // axis, then the polygon's 20% top band expands only the rendered height.
+        assert_eq!(
+            node_render_dimensions(Some("divided-rectangle"), metrics(), 15.0, false),
+            (115.0, 42.0)
+        );
+        let divided_neo = node_render_dimensions(Some("divided-rectangle"), metrics(), 15.0, true);
+        assert!((divided_neo.0 - 116.0).abs() < 1e-9);
+        assert!((divided_neo.1 - 43.2).abs() < 1e-9);
     }
 
     #[test]

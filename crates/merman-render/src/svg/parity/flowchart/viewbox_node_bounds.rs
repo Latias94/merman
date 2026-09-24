@@ -490,8 +490,12 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 if matches!(shape, "notch-pent" | "loop-limit" | "notched-pentagon") {
                     let label_w = n.label_width.unwrap_or(0.0);
                     let label_h = n.label_height.unwrap_or(0.0);
-                    let w = (label_w + 2.0 * node_padding).max(60.0);
-                    let h = (label_h + 2.0 * node_padding).max(20.0);
+                    let look_is_neo =
+                        crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+                    let padding_x = if look_is_neo { 16.0 } else { node_padding };
+                    let padding_y = if look_is_neo { 12.0 } else { node_padding };
+                    let w = label_w + 2.0 * padding_x;
+                    let h = label_h + 2.0 * padding_y;
                     let points = vec![
                         ((-w / 2.0) * 0.8, -h / 2.0),
                         ((w / 2.0) * 0.8, -h / 2.0),

@@ -101,7 +101,11 @@ fn assert_close(actual: f64, expected: f64, name: &str) {
 #[test]
 fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
     let _session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let text = r#"flowchart
+    let text = r#"---
+config:
+  look: classic
+---
+flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
     let engine = Engine::new();
@@ -160,6 +164,80 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
 
     assert_close(label_x, -label_w / 2.0 - 5.0, "stacked rectangle label x");
     assert_close(label_y, -label_h / 2.0 + 5.0, "stacked rectangle label y");
+}
+
+#[test]
+fn flowchart_stacked_rectangle_neo_uses_source_padding_and_layer_offset() {
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let text = r#"---
+config:
+  look: neo
+---
+flowchart
+ n0@{ shape: procs, label: "procs" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
+    let node = layout.nodes.iter().find(|n| n.id == "n0").expect("node n0");
+
+    let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
+    let node_start = svg.find(r#"<g class="node default""#).expect("node group");
+    let node_chunk = &svg[node_start..];
+    let label_start = node_chunk.find(r#"<g class="label""#).expect("label group");
+    let shape_chunk = &node_chunk[..label_start];
+    let label_chunk = &node_chunk[label_start..];
+
+    let (min_x, min_y, max_x, max_y) = shape_path_bbox(shape_chunk);
+    assert_close(
+        max_x - min_x,
+        node.width,
+        "neo stacked rectangle rendered width",
+    );
+    assert_close(
+        max_y - min_y,
+        node.height,
+        "neo stacked rectangle rendered height",
+    );
+
+    let label_open_end = label_chunk.find('>').expect("label open end");
+    let label_open = &label_chunk[..label_open_end];
+    let (label_x, label_y) = parse_translate(attr_value(label_open, "transform"));
+    let foreign_object_start = label_chunk
+        .find("<foreignObject ")
+        .expect("foreignObject start");
+    let foreign_object_open_end = label_chunk[foreign_object_start..]
+        .find('>')
+        .expect("foreignObject open end")
+        + foreign_object_start;
+    let foreign_object_open = &label_chunk[foreign_object_start..foreign_object_open_end];
+    let label_w: f64 = attr_value(foreign_object_open, "width")
+        .parse()
+        .expect("label width");
+    let label_h: f64 = attr_value(foreign_object_open, "height")
+        .parse()
+        .expect("label height");
+    assert_close(
+        label_x,
+        -label_w / 2.0 - 10.0,
+        "neo stacked rectangle label x",
+    );
+    assert_close(
+        label_y,
+        -label_h / 2.0 + 10.0,
+        "neo stacked rectangle label y",
+    );
 }
 
 #[test]

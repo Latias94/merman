@@ -108,6 +108,11 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "tagged-rectangle"
                 | "tag-proc"
                 | "tagged-process"
+                | "paper-tape"
+                | "flag"
+                | "notch-rect"
+                | "notched-rectangle"
+                | "card"
                 | "doc"
                 | "document"
                 | "lin-doc"
@@ -710,6 +715,32 @@ fn polygon_points_for_layout_shape(
     }
 }
 
+fn intersect_wave_rectangle(
+    node: &BoundaryNode,
+    width: f64,
+    height: f64,
+    point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    // `waveRectangle.ts` intersects the two sampled sine waves, rather than their bbox.
+    let amplitude = height / 8.0;
+    let final_height = height + amplitude * 2.0;
+    let mut points = Vec::with_capacity(104);
+    for (left, right, y, cycles) in [
+        (-width / 2.0, width / 2.0, final_height / 2.0, 1.0),
+        (width / 2.0, -width / 2.0, -final_height / 2.0, -1.0),
+    ] {
+        points.push(crate::model::LayoutPoint { x: left, y });
+        points.extend(
+            super::super::render::node::geom::generate_full_sine_wave_points(
+                left, y, right, y, amplitude, cycles,
+            )
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y }),
+        );
+    }
+    intersect_polygon(node, &points, point)
+}
+
 fn compute_node_label_metrics_for_intersection(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
@@ -794,6 +825,40 @@ fn intersect_curly_brace(
         .into_iter()
         .map(|(x, y)| crate::model::LayoutPoint { x, y })
         .collect();
+    intersect_polygon(node, &points, point)
+}
+
+fn intersect_notched_rectangle(
+    node: &BoundaryNode,
+    point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let width = node.width.max(1.0);
+    let height = node.height.max(1.0);
+    let notch = 12.0;
+    let half_width = width / 2.0;
+    let half_height = height / 2.0;
+    let points = vec![
+        crate::model::LayoutPoint {
+            x: -half_width + notch,
+            y: -half_height,
+        },
+        crate::model::LayoutPoint {
+            x: half_width,
+            y: -half_height,
+        },
+        crate::model::LayoutPoint {
+            x: half_width,
+            y: half_height,
+        },
+        crate::model::LayoutPoint {
+            x: -half_width,
+            y: half_height,
+        },
+        crate::model::LayoutPoint {
+            x: -half_width,
+            y: -half_height + notch,
+        },
+    ];
     intersect_polygon(node, &points, point)
 }
 
@@ -1060,8 +1125,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = metrics.width + 2.0 * p;
-        let h = metrics.height + p;
+        let neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if neo { 16.0 } else { p };
+        let padding_y = if neo { 12.0 } else { p };
+        let w = metrics.width + 2.0 * padding_x;
+        let h = metrics.height + padding_y;
         let ry = h / 2.0;
         let rx = ry / (2.5 + h / 50.0);
 
@@ -1171,8 +1239,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = metrics.width + 2.0 * p;
-        let h = metrics.height + 2.0 * p;
+        let look_is_neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if look_is_neo { 16.0 } else { p };
+        let padding_y = if look_is_neo { 12.0 } else { p };
+        let w = metrics.width + 2.0 * padding_x;
+        let h = metrics.height + 2.0 * padding_y;
         let x = -w / 2.0;
         let y = -h / 2.0;
         let tag_width = 0.2 * h;
@@ -1338,8 +1409,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = (metrics.width + 2.0 * p).max(60.0);
-        let h = (metrics.height + 2.0 * p).max(20.0);
+        let neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if neo { 16.0 } else { p };
+        let padding_y = if neo { 12.0 } else { p };
+        let w = metrics.width + 2.0 * padding_x;
+        let h = metrics.height + 2.0 * padding_y;
         let points = vec![
             crate::model::LayoutPoint {
                 x: (-w / 2.0) * 0.8,
@@ -1440,8 +1514,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = metrics.width + 2.0 * p;
-        let h = metrics.height + 2.0 * p;
+        let look_is_neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        let padding_x = if look_is_neo { 16.0 } else { p };
+        let padding_y = if look_is_neo { 12.0 } else { p };
+        let w = metrics.width + 2.0 * padding_x;
+        let h = metrics.height + 2.0 * padding_y;
         let rect_offset = 10.0;
         let x = -w / 2.0;
         let y = -h / 2.0;
@@ -1500,6 +1577,23 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process") => {
             intersect_tagged_rect(ctx, node_id, node, point)
         }
+        Some("paper-tape" | "flag") => {
+            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+                return intersect_rect(node, point);
+            };
+            let look_is_neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+            let padding_x = if look_is_neo { 16.0 } else { ctx.node_padding };
+            let padding_y = if look_is_neo { 20.0 } else { ctx.node_padding };
+            intersect_wave_rectangle(
+                node,
+                (metrics.width + 2.0 * padding_x).max(0.0),
+                (metrics.height + padding_y).max(0.0),
+                point,
+            )
+        }
+        Some("notch-rect" | "notched-rectangle" | "card") => {
+            intersect_notched_rectangle(node, point)
+        }
         Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, point),
         Some("lin-doc" | "lined-document") => {
             intersect_lined_wave_document(ctx, node_id, node, point)
@@ -1530,7 +1624,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
 mod tests {
     use super::{
         BoundaryNode, force_intersect_for_layout_shape, intersect_curly_brace, intersect_line,
-        intersect_polygon, intersect_polygon_hourglass,
+        intersect_notched_rectangle, intersect_polygon, intersect_polygon_hourglass,
+        intersect_wave_rectangle,
     };
     use crate::model::LayoutPoint;
 
@@ -1539,9 +1634,54 @@ mod tests {
     }
 
     #[test]
+    fn paper_tape_intersects_the_sampled_wave_instead_of_the_bounding_box() {
+        // Pinned source: label 100x20, Neo padding 16/20 produces base 132x40;
+        // the two sine waves have amplitude 5 and baselines at +/-25.
+        let node = BoundaryNode {
+            x: 0.0,
+            y: 0.0,
+            width: 132.0,
+            height: 59.98026728428272,
+        };
+        for shape in ["paper-tape", "flag"] {
+            assert!(force_intersect_for_layout_shape(Some(shape)));
+        }
+        for (target, expected) in [
+            (point(0.0, -500.0), point(0.0, -25.0)),
+            (point(0.0, 500.0), point(0.0, 25.0)),
+            (point(-500.0, 0.0), point(-66.0, 0.0)),
+            (point(500.0, 0.0), point(66.0, 0.0)),
+        ] {
+            let actual = intersect_wave_rectangle(&node, 132.0, 40.0, &target);
+            assert!((actual.x - expected.x).abs() < 1e-9, "{actual:?}");
+            assert!((actual.y - expected.y).abs() < 1e-9, "{actual:?}");
+        }
+    }
+
+    #[test]
     fn lined_documents_force_source_polygon_intersections() {
         assert!(force_intersect_for_layout_shape(Some("lin-doc")));
         assert!(force_intersect_for_layout_shape(Some("lined-document")));
+    }
+
+    #[test]
+    fn cards_intersect_the_source_notched_polygon() {
+        for shape in ["notch-rect", "notched-rectangle", "card"] {
+            assert!(force_intersect_for_layout_shape(Some(shape)));
+            let node = BoundaryNode {
+                x: 0.0,
+                y: 0.0,
+                width: 156.0,
+                height: 68.0,
+            };
+            let actual = intersect_notched_rectangle(&node, &point(-780.0, -340.0));
+            // The diagonal clips the twelve-pixel notch, before the bounding-box corner.
+            assert!((actual.x - (-69.64285714285714)).abs() < 1e-9, "{actual:?}");
+            assert!(
+                (actual.y - (-30.357142857142858)).abs() < 1e-9,
+                "{actual:?}"
+            );
+        }
     }
 
     #[test]
