@@ -390,6 +390,24 @@ produces 103, and the current implementation derives width from sampled points a
 samples again in layout, shrinking the theoretical source width twice. The batch remains
 in the isolation tree until those source-semantic issues are corrected and re-reviewed.
 
+# Flowchart Neo curved-shape transfer
+
+The stadium, delay, and display batch was transferred as `6d64c3774` after independent
+review. Stadium now preserves the theoretical source width/height while sharing its
+sampled outline across paint and intersection; Delay and Display use the source cap and
+minimum-size formulas with the same shared point geometry. Obsolete duplicated circle
+helpers and the no-longer-used trig table were removed after Clippy identified them as
+dead code. The source-shaped layout contract was corrected in the existing aggregate
+test: doublecircle uses the label diagonal plus the classic ring gap, and curved shapes
+assert theoretical dimensions rather than sampled-bbox shrinkage.
+
+Validation is 45/45 `flowchart_layout_test`, 77/77 `flowchart_svg_test`, the focused
+Neo geometry unit tests, and the three-package all-target/all-feature Clippy check. A
+fresh `compare-flowchart-svgs` run still reports 62 distinct DOM blockers, so this batch
+closes shape semantics without constituting Flowchart admission. Remaining blockers are
+primarily route/path geometry and the unrepaired Neo shape groups listed in the current
+state document.
+
 # Open gates
 
 Verify the transferred provider/brace batch and the source-compatible model-order
