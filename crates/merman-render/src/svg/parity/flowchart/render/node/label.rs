@@ -120,6 +120,20 @@ fn render_flowchart_node_label_with_wrapper(
                 | "win-pane"
                 | "internal-storage"
                 | "window-pane"
+                | "st-rect"
+                | "procs"
+                | "processes"
+                | "stacked-rectangle"
+                | "lin-rect"
+                | "lined-rectangle"
+                | "lined-process"
+                | "lin-proc"
+                | "shaded-process"
+                | "brace"
+                | "brace-l"
+                | "comment"
+                | "brace-r"
+                | "braces"
         )
     {
         // Mermaid shape renderers override `labelHelper(...)`'s default centering using

@@ -509,3 +509,76 @@ fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
         }
     }
 }
+
+#[test]
+fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
+    struct BboxYOffset(f64);
+    impl HostTextMeasurer for BboxYOffset {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(
+                (request.operation == TextMeasurementOperation::CreateTextBBoxYOffset)
+                    .then_some(HostTextMeasurement::Length(self.0)),
+            )
+        }
+    }
+
+    for shape in ["st-rect", "lin-rect", "brace", "brace-r", "braces"] {
+        for html in [false, true] {
+            let render_y = |offset| {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nA@{{ shape: {shape}, label: 'First **bold** </br>second line' }}\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let identity = TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.shape-label-bbox-y").unwrap(),
+                    "1",
+                )
+                .unwrap();
+                let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                    TextMeasurementPolicy::host_display(
+                        identity,
+                        Arc::new(BboxYOffset(offset)),
+                        TextMeasurementPhase::ALL,
+                    ),
+                );
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::default(),
+                    environment.begin_session().unwrap(),
+                )
+                .unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("label")
+                            && node.attribute("transform").is_some()
+                    })
+                    .unwrap();
+                let transform = label.attribute("transform").unwrap();
+                transform
+                    .strip_prefix("translate(")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap()
+                    .split([',', ' '])
+                    .filter(|value| !value.is_empty())
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            };
+            let delta = render_y(7.0) - render_y(0.0);
+            assert!(
+                (delta - if html { 0.0 } else { -7.0 }).abs() < 1e-6,
+                "{shape}, html={html}: label y delta={delta}"
+            );
+        }
+    }
+}
