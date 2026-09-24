@@ -100,6 +100,158 @@ pub(crate) fn flowchart_stacked_document_geometry(
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum LeanKind {
+    Right,
+    Left,
+    Trapezoid,
+    InvertedTrapezoid,
+}
+
+pub(crate) struct LeanGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) points: [(f64, f64); 4],
+    pub(crate) translate_x: f64,
+    pub(crate) translate_y: f64,
+}
+
+impl LeanGeometry {
+    pub(crate) fn from_label(
+        kind: LeanKind,
+        label_width: f64,
+        label_height: f64,
+        padding: f64,
+        neo: bool,
+    ) -> Self {
+        let padding = padding.max(0.0);
+        let scale = if matches!(kind, LeanKind::InvertedTrapezoid) {
+            2.0
+        } else {
+            1.0
+        };
+        let h = label_height.max(0.0) + padding * scale;
+        let w = label_width.max(0.0) + padding * scale * if neo { 2.0 } else { 1.0 };
+        Self::from_bounds(kind, w + h, h)
+    }
+
+    pub(crate) fn from_bounds(kind: LeanKind, width: f64, height: f64) -> Self {
+        let h = height.max(0.0);
+        let w = (width - h).max(0.0);
+        let dx = 3.0 * h / 6.0;
+        let points = match kind {
+            LeanKind::Right => [(-dx, 0.0), (w, 0.0), (w + dx, -h), (0.0, -h)],
+            LeanKind::Left => [(0.0, 0.0), (w + dx, 0.0), (w, -h), (-dx, -h)],
+            LeanKind::Trapezoid => [(-dx, 0.0), (w + dx, 0.0), (w, -h), (0.0, -h)],
+            LeanKind::InvertedTrapezoid => [(0.0, 0.0), (w, 0.0), (w + dx, -h), (-dx, -h)],
+        };
+        Self {
+            width: w + h,
+            height: h,
+            points,
+            translate_x: -w / 2.0,
+            translate_y: h / 2.0,
+        }
+    }
+}
+
+pub(crate) struct OddGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) points: [(f64, f64); 5],
+    pub(crate) shift_x: f64,
+}
+
+impl OddGeometry {
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let p = padding.max(0.0);
+        let w = label_width.max(0.0) + if neo { 42.0 } else { p };
+        let h = label_height.max(0.0) + if neo { 24.0 } else { p };
+        Self::from_bounds(w + h / 4.0, h)
+    }
+
+    pub(crate) fn from_bounds(width: f64, height: f64) -> Self {
+        let h = height.max(0.0);
+        let w = (width - h / 4.0).max(0.0);
+        let x = -w / 2.0;
+        let y = -h / 2.0;
+        let notch = y / 2.0;
+        Self {
+            width: w + h / 4.0,
+            height: h,
+            points: [(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)],
+            shift_x: -notch / 2.0,
+        }
+    }
+}
+
+pub(crate) struct HexagonGeometry {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) points: [(f64, f64); 6],
+}
+
+impl HexagonGeometry {
+    fn shoulder(height: f64, neo: bool) -> f64 {
+        height / if neo { 3.5 } else { 4.0 }
+    }
+
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let p = padding.max(0.0);
+        // Pinned hexagon.ts intentionally uses 70 on the height and 32 on the width.
+        let h = label_height.max(0.0) + if neo { 70.0 } else { p };
+        let w = label_width.max(0.0) + 2.0 * Self::shoulder(h, neo) + if neo { 32.0 } else { p };
+        Self::from_bounds(w, h, neo)
+    }
+
+    pub(crate) fn from_bounds(width: f64, height: f64, neo: bool) -> Self {
+        let w = width.max(0.0);
+        let h = height.max(0.0);
+        let m = Self::shoulder(h, neo);
+        Self {
+            width: w,
+            height: h,
+            points: [
+                (m, 0.0),
+                (w - m, 0.0),
+                (w, -h / 2.0),
+                (w - m, -h),
+                (m, -h),
+                (0.0, -h / 2.0),
+            ],
+        }
+    }
+}
+
+pub(crate) struct DoubleCircleGeometry {
+    pub(crate) inner_radius: f64,
+    pub(crate) outer_radius: f64,
+}
+
+impl DoubleCircleGeometry {
+    fn gap(neo: bool) -> f64 {
+        if neo { 12.0 } else { 5.0 }
+    }
+
+    pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
+        let w = label_width.max(0.0);
+        let h = label_height.max(0.0);
+        let inner_radius = (w * w + h * h).sqrt() / 2.0 + if neo { 16.0 } else { padding.max(0.0) };
+        Self {
+            inner_radius,
+            outer_radius: inner_radius + Self::gap(neo),
+        }
+    }
+
+    pub(crate) fn from_outer_diameter(diameter: f64, neo: bool) -> Self {
+        let outer_radius = (diameter / 2.0).max(Self::gap(neo));
+        Self {
+            outer_radius,
+            inner_radius: outer_radius - Self::gap(neo),
+        }
+    }
+}
+
 fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
@@ -320,12 +472,9 @@ fn node_render_dimensions(
             (w, body_height + 2.0 * head_radius - overlap)
         }
 
-        // Hexagon / prepare. Mermaid 11.15 computes the shoulder from the padded height, then
-        // adds that shoulder on both sides plus the regular horizontal padding.
         "hexagon" | "hex" | "prepare" => {
-            let h = text_h + p;
-            let m = h / 4.0;
-            (text_w + 2.0 * m + p, h)
+            let geometry = HexagonGeometry::from_label(text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
 
         // Stadium/terminator.
@@ -415,12 +564,10 @@ fn node_render_dimensions(
             ((text_w + 16.0).max(80.0), text_h + 8.0 + 20.0 + 16.0)
         }
 
-        // Double circle.
         "doublecircle" | "dbl-circ" | "double-circle" => {
-            // Mermaid `doubleCircle.ts`: outer radius is `bbox.width / 2 + padding`;
-            // the inner circle uses a fixed 5px gap.
-            let d = text_w + 2.0 * p;
-            (d, d)
+            let geometry = DoubleCircleGeometry::from_label(text_w, text_h, p, look_is_neo);
+            let diameter = 2.0 * geometry.outer_radius;
+            (diameter, diameter)
         }
 
         // Small start circle (stateStart in rendering-elements).
@@ -1031,26 +1178,26 @@ fn node_render_dimensions(
             ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
-        // Lean and trapezoid variants (parallelograms/trapezoids).
+        // The first three variants share dimensions; only their vertex order differs.
         "lean_right" | "lean-r" | "lean-right" | "in-out" | "lean_left" | "lean-l"
         | "lean-left" | "out-in" | "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
-            let w = text_w + p;
-            let h = text_h + p;
-            (w + h, h)
+            let geometry =
+                LeanGeometry::from_label(LeanKind::Right, text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
-
-        // Inverted trapezoid uses `2 * padding` on both axes in Mermaid.
         "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
-            let w = text_w + 2.0 * p;
-            let h = text_h + 2.0 * p;
-            (w + h, h)
+            let geometry = LeanGeometry::from_label(
+                LeanKind::InvertedTrapezoid,
+                text_w,
+                text_h,
+                p,
+                look_is_neo,
+            );
+            (geometry.width, geometry.height)
         }
-
-        // Odd node (`>... ]`) is rendered using `rect_left_inv_arrow`.
         "odd" | "rect_left_inv_arrow" => {
-            let w = text_w + p;
-            let h = text_h + p;
-            (w + h / 4.0, h)
+            let geometry = OddGeometry::from_label(text_w, text_h, p, look_is_neo);
+            (geometry.width, geometry.height)
         }
 
         // Ellipses are currently broken upstream but still emitted by FlowDB.
@@ -1262,6 +1409,211 @@ mod render_dimension_tests {
             width: 100.0,
             height: 20.0,
             line_count: 1,
+        }
+    }
+
+    #[test]
+    fn neo_shape_dimensions_match_pinned_source() {
+        // Executed Mermaid12 shape prefixes, with synthetic label bounds 100x20.
+        for (
+            neo,
+            padding,
+            lean_w,
+            lean_h,
+            inverted_w,
+            inverted_h,
+            odd_w,
+            odd_h,
+            hex_w,
+            hex_h,
+            circle_d,
+        ) in [
+            (
+                false,
+                0.0,
+                120.0,
+                20.0,
+                120.0,
+                20.0,
+                105.0,
+                20.0,
+                110.0,
+                20.0,
+                111.9803902718557,
+            ),
+            (
+                false,
+                15.0,
+                150.0,
+                35.0,
+                180.0,
+                50.0,
+                123.75,
+                35.0,
+                132.5,
+                35.0,
+                141.9803902718557,
+            ),
+            (
+                false,
+                31.0,
+                182.0,
+                51.0,
+                244.0,
+                82.0,
+                143.75,
+                51.0,
+                156.5,
+                51.0,
+                173.9803902718557,
+            ),
+            (
+                true,
+                0.0,
+                120.0,
+                20.0,
+                120.0,
+                20.0,
+                153.0,
+                44.0,
+                183.42857142857144,
+                90.0,
+                157.9803902718557,
+            ),
+            (
+                true,
+                15.0,
+                165.0,
+                35.0,
+                210.0,
+                50.0,
+                153.0,
+                44.0,
+                183.42857142857144,
+                90.0,
+                157.9803902718557,
+            ),
+            (
+                true,
+                31.0,
+                213.0,
+                51.0,
+                306.0,
+                82.0,
+                153.0,
+                44.0,
+                183.42857142857144,
+                90.0,
+                157.9803902718557,
+            ),
+        ] {
+            for (shape, expected) in [
+                ("lean_right", (lean_w, lean_h)),
+                ("lean_left", (lean_w, lean_h)),
+                ("trapezoid", (lean_w, lean_h)),
+                ("inv_trapezoid", (inverted_w, inverted_h)),
+                ("odd", (odd_w, odd_h)),
+                ("hexagon", (hex_w, hex_h)),
+                ("doublecircle", (circle_d, circle_d)),
+            ] {
+                let actual = node_render_dimensions(Some(shape), metrics(), padding, neo);
+                assert!(
+                    (actual.0 - expected.0).abs() < 1e-9 && (actual.1 - expected.1).abs() < 1e-9,
+                    "{shape}, neo={neo}, padding={padding}: {actual:?}, expected {expected:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn neo_shape_vertices_preserve_empty_and_tall_labels() {
+        for (kind, expected) in [
+            (
+                LeanKind::Right,
+                [(-17.5, 0.0), (130.0, 0.0), (147.5, -35.0), (0.0, -35.0)],
+            ),
+            (
+                LeanKind::Left,
+                [(0.0, 0.0), (147.5, 0.0), (130.0, -35.0), (-17.5, -35.0)],
+            ),
+            (
+                LeanKind::Trapezoid,
+                [(-17.5, 0.0), (147.5, 0.0), (130.0, -35.0), (0.0, -35.0)],
+            ),
+            (
+                LeanKind::InvertedTrapezoid,
+                [(0.0, 0.0), (160.0, 0.0), (185.0, -50.0), (-25.0, -50.0)],
+            ),
+        ] {
+            assert_eq!(
+                LeanGeometry::from_label(kind, 100.0, 20.0, 15.0, true).points,
+                expected
+            );
+            let empty = LeanGeometry::from_label(kind, 0.0, 0.0, 0.0, false);
+            assert_eq!((empty.width, empty.height), (0.0, 0.0));
+            assert!(empty.points.iter().all(|&(x, y)| x == 0.0 && y == 0.0));
+        }
+        let odd = OddGeometry::from_label(100.0, 20.0, 15.0, true);
+        assert_eq!(
+            odd.points,
+            [
+                (-82.0, -22.0),
+                (-71.0, 0.0),
+                (-82.0, 22.0),
+                (71.0, 22.0),
+                (71.0, -22.0)
+            ]
+        );
+        assert_eq!(odd.shift_x, 5.5);
+        let empty = OddGeometry::from_label(0.0, 0.0, 0.0, true);
+        assert_eq!(
+            (empty.width, empty.height, empty.shift_x),
+            (48.0, 24.0, 3.0)
+        );
+        let hex = HexagonGeometry::from_label(0.0, 0.0, 0.0, true);
+        assert_eq!(
+            (hex.width, hex.height, hex.points[0]),
+            (72.0, 70.0, (20.0, 0.0))
+        );
+        let empty = HexagonGeometry::from_label(0.0, 0.0, 0.0, false);
+        assert_eq!((empty.width, empty.height), (0.0, 0.0));
+        let tall = HexagonGeometry::from_label(20.0, 160.0, 15.0, true);
+        assert_eq!(tall.height, 230.0);
+        assert!((tall.points[0].0 - 65.71428571428571).abs() < 1e-9);
+        for (neo, inner, outer) in [(false, 40.0, 45.0), (true, 41.0, 53.0)] {
+            let circle = DoubleCircleGeometry::from_label(40.0, 30.0, 15.0, neo);
+            assert_eq!((circle.inner_radius, circle.outer_radius), (inner, outer));
+            let painted = DoubleCircleGeometry::from_outer_diameter(2.0 * circle.outer_radius, neo);
+            assert_eq!((painted.inner_radius, painted.outer_radius), (inner, outer));
+            let tall = DoubleCircleGeometry::from_label(20.0, 160.0, 15.0, neo);
+            let expected = if neo {
+                108.62257748298549
+            } else {
+                100.62257748298549
+            };
+            assert!((tall.outer_radius - expected).abs() < 1e-9);
+        }
+        let empty = DoubleCircleGeometry::from_label(0.0, 0.0, 0.0, false);
+        assert_eq!((empty.inner_radius, empty.outer_radius), (0.0, 5.0));
+        let painted = DoubleCircleGeometry::from_outer_diameter(10.0, false);
+        assert_eq!(painted.inner_radius, 0.0);
+        let empty = DoubleCircleGeometry::from_label(0.0, 0.0, 0.0, true);
+        assert_eq!((empty.inner_radius, empty.outer_radius), (16.0, 28.0));
+        for shape in [
+            "lean_right",
+            "lean_left",
+            "trapezoid",
+            "inv_trapezoid",
+            "odd",
+            "hexagon",
+            "doublecircle",
+        ] {
+            for neo in [false, true] {
+                assert_eq!(
+                    node_render_dimensions(Some(shape), metrics(), -2.0, neo),
+                    node_render_dimensions(Some(shape), metrics(), 0.0, neo)
+                );
+            }
         }
     }
 

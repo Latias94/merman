@@ -79,6 +79,9 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "braces"
                 | "circle"
                 | "circ"
+                | "doublecircle"
+                | "dbl-circ"
+                | "double-circle"
                 | "diamond"
                 | "diam"
                 | "question"
@@ -589,29 +592,13 @@ fn polygon_points_for_layout_shape(
     let h = node.height.max(1.0);
 
     match layout_shape {
-        // Mermaid "odd" nodes (`>... ]`) are rendered using `rect_left_inv_arrow`.
-        //
-        // Reference: Mermaid@11.12.2 `rectLeftInvArrow.ts`.
-        //
-        // Note: Flowchart layout dimensions model this as `node.width = w + h/4`, where `w`
-        // corresponds to Mermaid's `w = max(bbox.width + padding, node.width)` prior to the
-        // `updateNodeBounds(...)` bbox expansion.
-        "odd" | "rect_left_inv_arrow" => {
-            let base_w = (w - h / 4.0).max(1.0);
-            let x = -base_w / 2.0;
-            let y = -h / 2.0;
-            let notch = y / 2.0; // negative
-            Some(vec![
-                crate::model::LayoutPoint { x: x + notch, y },
-                crate::model::LayoutPoint { x, y: 0.0 },
-                crate::model::LayoutPoint {
-                    x: x + notch,
-                    y: -y,
-                },
-                crate::model::LayoutPoint { x: -x, y: -y },
-                crate::model::LayoutPoint { x: -x, y },
-            ])
-        }
+        "odd" | "rect_left_inv_arrow" => Some(
+            crate::flowchart::OddGeometry::from_bounds(node.width, node.height)
+                .points
+                .into_iter()
+                .map(|(x, y)| crate::model::LayoutPoint { x, y })
+                .collect(),
+        ),
         "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             // Port of Mermaid@11.12.2 `subroutine.ts` points used for polygon intersection.
             //
@@ -637,90 +624,50 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: -8.0, y: 0.0 },
             ])
         }
-        "hexagon" | "hex" | "prepare" => {
-            let half_width = w / 2.0;
-            let half_height = h / 2.0;
-            let fixed_length = half_height / 2.0;
-            let deduced_width = half_width - fixed_length;
-            Some(vec![
-                crate::model::LayoutPoint {
-                    x: -deduced_width,
-                    y: -half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: 0.0,
-                    y: -half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: deduced_width,
-                    y: -half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: half_width,
-                    y: 0.0,
-                },
-                crate::model::LayoutPoint {
-                    x: deduced_width,
-                    y: half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: 0.0,
-                    y: half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: -deduced_width,
-                    y: half_height,
-                },
-                crate::model::LayoutPoint {
-                    x: -half_width,
-                    y: 0.0,
-                },
-            ])
-        }
-        "lean_right" | "lean-r" | "lean-right" | "in-out" => {
-            let total_w = w;
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            Some(vec![
-                crate::model::LayoutPoint { x: -dx, y: 0.0 },
-                crate::model::LayoutPoint { x: w, y: 0.0 },
-                crate::model::LayoutPoint { x: w + dx, y: -h },
-                crate::model::LayoutPoint { x: 0.0, y: -h },
-            ])
-        }
-        "lean_left" | "lean-l" | "lean-left" | "out-in" => {
-            let total_w = w;
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            Some(vec![
-                crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-                crate::model::LayoutPoint { x: w + dx, y: 0.0 },
-                crate::model::LayoutPoint { x: w, y: -h },
-                crate::model::LayoutPoint { x: -dx, y: -h },
-            ])
-        }
-        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
-            let total_w = w;
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            Some(vec![
-                crate::model::LayoutPoint { x: -dx, y: 0.0 },
-                crate::model::LayoutPoint { x: w + dx, y: 0.0 },
-                crate::model::LayoutPoint { x: w, y: -h },
-                crate::model::LayoutPoint { x: 0.0, y: -h },
-            ])
-        }
-        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
-            let total_w = w;
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            Some(vec![
-                crate::model::LayoutPoint { x: 0.0, y: 0.0 },
-                crate::model::LayoutPoint { x: w, y: 0.0 },
-                crate::model::LayoutPoint { x: w + dx, y: -h },
-                crate::model::LayoutPoint { x: -dx, y: -h },
-            ])
-        }
+        "lean_right" | "lean-r" | "lean-right" | "in-out" => Some(
+            crate::flowchart::LeanGeometry::from_bounds(
+                crate::flowchart::LeanKind::Right,
+                node.width,
+                node.height,
+            )
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect(),
+        ),
+        "lean_left" | "lean-l" | "lean-left" | "out-in" => Some(
+            crate::flowchart::LeanGeometry::from_bounds(
+                crate::flowchart::LeanKind::Left,
+                node.width,
+                node.height,
+            )
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect(),
+        ),
+        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => Some(
+            crate::flowchart::LeanGeometry::from_bounds(
+                crate::flowchart::LeanKind::Trapezoid,
+                node.width,
+                node.height,
+            )
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect(),
+        ),
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => Some(
+            crate::flowchart::LeanGeometry::from_bounds(
+                crate::flowchart::LeanKind::InvertedTrapezoid,
+                node.width,
+                node.height,
+            )
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect(),
+        ),
         "tri" | "extract" | "triangle" => Some(vec![
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: h, y: 0.0 },
@@ -1125,62 +1072,23 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         node: &BoundaryNode,
         point: &crate::model::LayoutPoint,
     ) -> crate::model::LayoutPoint {
-        // Port of Mermaid@11.12.2 `hexagon.ts` intersection behavior:
-        // - `points` are generated from the theoretical render dimensions,
-        // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
-        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
-            return intersect_rect(node, point);
+        let neo = crate::config::mermaid_config_diagram_look(ctx.config).is_neo();
+        // Source points precede updateNodeBounds; prefer the measured label when available.
+        let geometry = match compute_node_label_metrics_for_intersection(ctx, node_id) {
+            Some(metrics) => crate::flowchart::HexagonGeometry::from_label(
+                metrics.width,
+                metrics.height,
+                ctx.node_padding,
+                neo,
+            ),
+            None => crate::flowchart::HexagonGeometry::from_bounds(node.width, node.height, neo),
         };
-
-        let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
-            Some("hexagon"),
-            metrics,
-            ctx.node_padding,
-            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
-        );
-        let w = render_w.max(1.0);
-        let h = render_h.max(1.0);
-        let half_width = w / 2.0;
-        let half_height = h / 2.0;
-        let fixed_length = half_height / 2.0;
-        let deduced_width = half_width - fixed_length;
-
-        let pts: Vec<crate::model::LayoutPoint> = vec![
-            crate::model::LayoutPoint {
-                x: -deduced_width,
-                y: -half_height,
-            },
-            crate::model::LayoutPoint {
-                x: 0.0,
-                y: -half_height,
-            },
-            crate::model::LayoutPoint {
-                x: deduced_width,
-                y: -half_height,
-            },
-            crate::model::LayoutPoint {
-                x: half_width,
-                y: 0.0,
-            },
-            crate::model::LayoutPoint {
-                x: deduced_width,
-                y: half_height,
-            },
-            crate::model::LayoutPoint {
-                x: 0.0,
-                y: half_height,
-            },
-            crate::model::LayoutPoint {
-                x: -deduced_width,
-                y: half_height,
-            },
-            crate::model::LayoutPoint {
-                x: -half_width,
-                y: 0.0,
-            },
-        ];
-
-        intersect_polygon(node, &pts, point)
+        let points: Vec<_> = geometry
+            .points
+            .into_iter()
+            .map(|(x, y)| crate::model::LayoutPoint { x, y })
+            .collect();
+        intersect_polygon(node, &points, point)
     }
 
     fn intersect_curved_trapezoid(
@@ -1609,7 +1517,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 point,
             )
         }
-        Some("anchor" | "circle" | "circ") => intersect_circle(node, point),
+        Some("anchor" | "circle" | "circ" | "doublecircle" | "dbl-circ" | "double-circle") => {
+            intersect_circle(node, point)
+        }
         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),

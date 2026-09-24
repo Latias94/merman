@@ -529,74 +529,87 @@ mod tests {
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
+    fn render_measured_shape(
+        shape: &str,
+        neo: bool,
+        padding: f64,
+        metrics: crate::text::TextMetrics,
+    ) -> String {
+        let look = if neo { "neo" } else { "classic" };
+        let source = format!(
+            "---\nconfig:\n  look: {look}\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let render_context = parsed.flowchart_render_context().unwrap().clone();
+        let (metadata, semantic) = parsed.into_parts();
+        let RenderSemanticModel::Flowchart(model) = semantic else {
+            panic!("expected Flowchart");
+        };
+        let (width, height) =
+            crate::flowchart::flowchart_node_render_dimensions(Some(shape), metrics, padding, neo);
+        let layout = FlowchartLayout {
+            nodes: vec![LayoutNode {
+                id: "A".into(),
+                x: 100.0,
+                y: 100.0,
+                width,
+                height,
+                is_cluster: false,
+                label_width: Some(metrics.width),
+                label_height: Some(metrics.height),
+            }],
+            edges: Vec::new(),
+            clusters: Vec::new(),
+            bounds: None,
+            dom_node_order_by_root: std::collections::HashMap::from([(
+                String::new(),
+                vec!["A".into()],
+            )]),
+            uses_elk_adapter_dom: false,
+        };
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let request = SvgRenderOptions {
+            diagram_id: Some("brace-label-bounds".into()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+        let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        render_flowchart_svg_model(
+            FlowchartSvgModelRequest {
+                layout: &layout,
+                swimlane_layout: None,
+                model: &model,
+                render_context: &render_context,
+                effective_config: &metadata.effective_config,
+                diagram_type: metadata.diagram_type.as_str(),
+                diagram_title: None,
+                presentation_policy: None,
+                svg_label_sidecar: &sidecar,
+            },
+            &execution,
+        )
+        .unwrap()
+        .to_string()
+    }
+
     fn assert_neo_shape_viewport_contains_shifted_label(shape: &str) {
         for padding in [15.0, 100.0] {
-            let source = format!(
-                "---\nconfig:\n  look: neo\n  flowchart:\n    htmlLabels: true\n    minNodeWidth: 0\n    padding: {padding}\n---\nflowchart TD\nA@{{ shape: {shape}, label: Label }}\n"
-            );
-            let parsed = Engine::new()
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                .unwrap()
-                .unwrap();
-            let render_context = parsed.flowchart_render_context().unwrap().clone();
-            let (metadata, semantic) = parsed.into_parts();
-            let RenderSemanticModel::Flowchart(model) = semantic else {
-                panic!("expected Flowchart");
+            let metrics = crate::text::TextMetrics {
+                width: 100.0,
+                height: 20.0,
+                line_count: 1,
             };
             let (width, height) = crate::flowchart::flowchart_node_render_dimensions(
                 Some(shape),
-                crate::text::TextMetrics {
-                    width: 100.0,
-                    height: 20.0,
-                    line_count: 1,
-                },
+                metrics,
                 padding,
                 true,
             );
-            let layout = FlowchartLayout {
-                nodes: vec![LayoutNode {
-                    id: "A".into(),
-                    x: 100.0,
-                    y: 100.0,
-                    width,
-                    height,
-                    is_cluster: false,
-                    label_width: Some(100.0),
-                    label_height: Some(20.0),
-                }],
-                edges: Vec::new(),
-                clusters: Vec::new(),
-                bounds: None,
-                dom_node_order_by_root: std::collections::HashMap::from([(
-                    String::new(),
-                    vec!["A".into()],
-                )]),
-                uses_elk_adapter_dom: false,
-            };
-            let session = RenderEnvironment::deterministic().begin_session().unwrap();
-            let request = SvgRenderOptions {
-                diagram_id: Some("brace-label-bounds".into()),
-                ..SvgRenderOptions::default()
-            };
-            let debug = SvgDebugOptions::default();
-            let execution = SvgExecution::new(&request, &debug, &session).unwrap();
-            let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-            let svg = render_flowchart_svg_model(
-                FlowchartSvgModelRequest {
-                    layout: &layout,
-                    swimlane_layout: None,
-                    model: &model,
-                    render_context: &render_context,
-                    effective_config: &metadata.effective_config,
-                    diagram_type: metadata.diagram_type.as_str(),
-                    diagram_title: None,
-                    presentation_policy: None,
-                    svg_label_sidecar: &sidecar,
-                },
-                &execution,
-            )
-            .unwrap()
-            .to_string();
+            let svg = render_measured_shape(shape, true, padding, metrics);
             let doc = roxmltree::Document::parse(&svg).unwrap();
             let viewbox: Vec<f64> = doc
                 .root_element()
@@ -673,5 +686,138 @@ mod tests {
     #[test]
     fn neo_stacked_document_viewport_contains_source_positioned_label() {
         assert_neo_shape_viewport_contains_shifted_label("documents");
+    }
+    #[test]
+    fn neo_shape_svg_uses_source_vertices_rings_and_label_shift() {
+        let metrics = crate::text::TextMetrics {
+            width: 100.0,
+            height: 20.0,
+            line_count: 1,
+        };
+        for (shape, expected) in [
+            (
+                "lean-r",
+                vec![(-17.5, 0.0), (130.0, 0.0), (147.5, -35.0), (0.0, -35.0)],
+            ),
+            (
+                "lean-l",
+                vec![(0.0, 0.0), (147.5, 0.0), (130.0, -35.0), (-17.5, -35.0)],
+            ),
+            (
+                "trap-b",
+                vec![(-17.5, 0.0), (147.5, 0.0), (130.0, -35.0), (0.0, -35.0)],
+            ),
+            (
+                "trap-t",
+                vec![(0.0, 0.0), (160.0, 0.0), (185.0, -50.0), (-25.0, -50.0)],
+            ),
+            (
+                "hex",
+                vec![
+                    (25.714285714285715, 0.0),
+                    (157.71428571428572, 0.0),
+                    (183.42857142857144, -45.0),
+                    (157.71428571428572, -90.0),
+                    (25.714285714285715, -90.0),
+                    (0.0, -45.0),
+                ],
+            ),
+        ] {
+            let svg = render_measured_shape(shape, true, 15.0, metrics);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let polygon = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("polygon")
+                        && node.attribute("class") == Some("label-container")
+                })
+                .unwrap();
+            let actual: Vec<(f64, f64)> = polygon
+                .attribute("points")
+                .unwrap()
+                .split_whitespace()
+                .map(|point| {
+                    let (x, y) = point.split_once(',').unwrap();
+                    (x.parse().unwrap(), y.parse().unwrap())
+                })
+                .collect();
+            assert_eq!(actual.len(), expected.len(), "{shape}");
+            for (actual, expected) in actual.iter().zip(&expected) {
+                // SVG formatting rounds coordinates; the pure source test retains full precision.
+                assert!(
+                    (actual.0 - expected.0).abs() < 0.001 && (actual.1 - expected.1).abs() < 0.001,
+                    "{shape}: {actual:?} != {expected:?}"
+                );
+            }
+        }
+        for padding in [0.0, 15.0, 31.0] {
+            let svg = render_measured_shape("odd", true, padding, metrics);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let body = doc
+                .descendants()
+                .find(|node| node.attribute("class") == Some("basic label-container outer-path"))
+                .unwrap();
+            assert_eq!(body.attribute("transform"), Some("translate(5.5,0)"));
+            // Exact RoughJS path bounds are covered by pure geometry tests; this DOM check
+            // only guards the source label shift and final containment.
+            let label = doc
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(
+                label.parent_element().unwrap().attribute("transform"),
+                Some("translate(-44.5,-10)")
+            );
+            let viewbox: Vec<f64> = doc
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.parse().unwrap())
+                .collect();
+            let label_width: f64 = label.attribute("width").unwrap().parse().unwrap();
+            let label_height: f64 = label.attribute("height").unwrap().parse().unwrap();
+            assert!(viewbox[2] >= label_width + 16.0 && viewbox[3] >= label_height + 16.0);
+        }
+        let metrics = crate::text::TextMetrics {
+            width: 40.0,
+            height: 30.0,
+            line_count: 1,
+        };
+        for (neo, padding, inner, outer) in [
+            (false, 0.0, 25.0, 30.0),
+            (false, 15.0, 40.0, 45.0),
+            (false, 31.0, 56.0, 61.0),
+            (true, 0.0, 41.0, 53.0),
+            (true, 15.0, 41.0, 53.0),
+            (true, 31.0, 41.0, 53.0),
+        ] {
+            let svg = render_measured_shape("dbl-circ", neo, padding, metrics);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            for (class, expected) in [("inner-circle", inner), ("outer-circle", outer)] {
+                let circle = doc
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .unwrap();
+                let radius: f64 = circle.attribute("r").unwrap().parse().unwrap();
+                assert_eq!(radius, expected, "neo={neo}, padding={padding}, {class}");
+            }
+            let viewbox: Vec<f64> = doc
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|v| v.parse().unwrap())
+                .collect();
+            assert_eq!(
+                viewbox,
+                vec![
+                    100.0 - outer - 8.0,
+                    100.0 - outer - 8.0,
+                    2.0 * outer + 16.0,
+                    2.0 * outer + 16.0
+                ]
+            );
+        }
     }
 }
