@@ -31,9 +31,7 @@ pub(crate) fn sequence_actor_popup_min_width(
         .links
         .keys()
         .map(|label| {
-            measurer.measure(label, style).width.round().max(0.0)
-                + 2.0 * wrap_padding
-                + 2.0 * box_margin
+            measurer.measure(label, style).width.max(0.0) + 2.0 * wrap_padding + 2.0 * box_margin
         })
         .fold(0.0, f64::max)
 }
@@ -46,9 +44,9 @@ pub(crate) fn sequence_actor_popup_rect_height(
     mirror_actors: bool,
 ) -> f64 {
     // drawPopup inherits the last drawActor call's rectData. Top drawing keeps the pre-shape
-    // actor height for collections/databases; mirrored drawing runs after shape mutation and uses
+    // actor height for collection, queue, and database shapes; mirrored drawing runs after shape mutation and uses
     // the footer's visual node height. Neo collections shorten both rectData copies by six pixels.
-    let height = if mirror_actors || !matches!(actor_type, "collections" | "database") {
+    let height = if mirror_actors || !matches!(actor_type, "collections" | "queue" | "database") {
         visual_height
     } else {
         base_height
@@ -133,6 +131,18 @@ mod tests {
         assert_eq!(super::SEQUENCE_ACTOR_POPUP_ROW_HEIGHT, 30.0);
         assert_eq!(super::sequence_actor_popup_panel_height(0), 20.0);
         assert_eq!(super::sequence_actor_popup_panel_height(4), 140.0);
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("queue", 74.0, 65.0, false, false),
+            65.0
+        );
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("queue", 74.0, 65.0, false, true),
+            74.0
+        );
+        assert_eq!(
+            super::sequence_actor_popup_rect_height("collections", 80.0, 80.0, true, false),
+            74.0
+        );
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);

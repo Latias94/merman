@@ -19,6 +19,7 @@ pub(super) struct SequenceRenderSettings {
     pub(super) actor_wrap_width: f64,
     pub(super) rect_default_fill: String,
     pub(super) loop_text_style: TextStyle,
+    pub(super) actor_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
 }
 
@@ -62,6 +63,19 @@ impl SequenceRenderSettings {
             font_weight: Some("400".to_string()),
             font_style: None,
         };
+        let actor_text_style = TextStyle {
+            font_family: config
+                .root_string("fontFamily")
+                .or_else(|| config.sequence_string("actorFontFamily")),
+            font_size: config
+                .root_json_number("fontSize")
+                .or_else(|| config.sequence_json_number("actorFontSize"))
+                .unwrap_or(16.0),
+            font_weight: config
+                .root_string("fontWeight")
+                .or_else(|| config.sequence_string("actorFontWeight")),
+            font_style: None,
+        };
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
             font_size: actor_label_font_size,
@@ -97,6 +111,7 @@ impl SequenceRenderSettings {
             actor_wrap_width,
             rect_default_fill,
             loop_text_style,
+            actor_text_style,
             note_text_style,
         }
     }
