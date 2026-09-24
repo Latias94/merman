@@ -15,7 +15,8 @@ use std::collections::{BTreeSet, BinaryHeap, HashMap};
 pub(in crate::svg::parity) const ROUNDED_CORNER_RADIUS: f64 = 5.0;
 const CORNER_EPSILON: f64 = 1e-5;
 const ENDPOINT_EPSILON: f64 = 1e-6;
-const MIN_JUMP_RADIUS: f64 = 1e-3;
+const CORNER_JUMP_CLEARANCE: f64 = 2.0;
+const MIN_USEFUL_RADIUS_RATIO: f64 = 0.6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::svg::parity) enum LineHopStyle {
@@ -259,6 +260,11 @@ pub(in crate::svg::parity) fn find_edge_intersections<'a>(
 
         let edge_a = edges[segment_a.edge_index];
         let edge_b = edges[segment_b.edge_index];
+        if crossing_sits_in_rounded_corner(edge_a, segment_a.segment_index, intersection.t_a)
+            || crossing_sits_in_rounded_corner(edge_b, segment_b.segment_index, intersection.t_b)
+        {
+            continue;
+        }
         let a_is_horizontal = is_horizontally_dominant(segment_a.segment);
         let b_is_horizontal = is_horizontally_dominant(segment_b.segment);
         let jump_on_a = a_is_horizontal != b_is_horizontal && a_is_horizontal;
@@ -399,6 +405,30 @@ fn segment_intersection(
 
 fn is_horizontally_dominant(segment: Segment<'_>) -> bool {
     (segment.end.x - segment.start.x).abs() >= (segment.end.y - segment.start.y).abs()
+}
+
+// Rounded strokes leave their provider polylines around a bend. A crossing on
+// either of those replaced stretches does not locate a crossing of the strokes.
+fn crossing_sits_in_rounded_corner(edge: LineHopEdge<'_>, index: usize, t: f64) -> bool {
+    if edge.curve != Some("rounded") {
+        return false;
+    }
+    let points = edge.points;
+    let (Some(start), Some(end)) = (points.get(index), points.get(index + 1)) else {
+        return false;
+    };
+    let length = (end.x - start.x).hypot(end.y - start.y);
+    let distance = t * length;
+    let entering = index
+        .checked_sub(1)
+        .and_then(|previous| compute_rounded_corner(&points[previous], start, end));
+    if entering.is_some_and(|corner| distance < corner.cut_length) {
+        return true;
+    }
+    points
+        .get(index + 2)
+        .and_then(|next| compute_rounded_corner(start, end, next))
+        .is_some_and(|corner| length - distance < corner.cut_length)
 }
 
 fn fmt_number(value: f64) -> String {
@@ -620,12 +650,16 @@ fn rewrite_edge_path(
         let mut segment_jumps = jumps_by_segment.remove(&segment_index).unwrap_or_default();
         segment_jumps
             .sort_by(|left, right| left.t.partial_cmp(&right.t).unwrap_or(Ordering::Equal));
-        for jump in &mut segment_jumps {
-            jump.radius = jump
-                .radius
-                .min(jump.distance - segment_start_consumed)
-                .min(segment_end_stop - jump.distance);
-        }
+        // Discard corner-squeezed hops before adjacency so they cannot shrink a
+        // usable neighbour. Mermaid reserves the same clearance on linear edges.
+        let min_useful_radius = config.jump_radius * MIN_USEFUL_RADIUS_RATIO;
+        segment_jumps.retain_mut(|jump| {
+            let room = (jump.distance - segment_start_consumed)
+                .min(segment_end_stop - jump.distance)
+                - CORNER_JUMP_CLEARANCE;
+            jump.radius = jump.radius.min(room);
+            jump.radius >= min_useful_radius
+        });
         for index in 0..segment_jumps.len().saturating_sub(1) {
             let (before, after) = segment_jumps.split_at_mut(index + 1);
             let first = &mut before[index];
@@ -639,7 +673,7 @@ fn rewrite_edge_path(
         }
 
         for jump in &segment_jumps {
-            if jump.radius < MIN_JUMP_RADIUS {
+            if jump.radius < min_useful_radius {
                 continue;
             }
             emit_jump(jump, unit_x, unit_y, sweep, config.jump_style, &mut parts);
@@ -716,6 +750,17 @@ mod tests {
                         let Some(intersection) = segment_intersection(segment_a, segment_b) else {
                             continue;
                         };
+                        if crossing_sits_in_rounded_corner(
+                            *edge_a,
+                            segment_a_index,
+                            intersection.t_a,
+                        ) || crossing_sits_in_rounded_corner(
+                            *edge_b,
+                            segment_b_index,
+                            intersection.t_b,
+                        ) {
+                            continue;
+                        }
                         let a_is_horizontal = is_horizontally_dominant(segment_a);
                         let b_is_horizontal = is_horizontally_dominant(segment_b);
                         let jump_on_a = a_is_horizontal != b_is_horizontal && a_is_horizontal;
@@ -1020,8 +1065,8 @@ mod tests {
 
     #[test]
     fn crossings_are_emitted_in_segment_order_and_adjacent_radii_are_clamped() {
-        let vertical_a = [point(4.5, 0.0), point(4.5, 10.0)];
-        let vertical_b = [point(5.5, 0.0), point(5.5, 10.0)];
+        let vertical_a = [point(4.2, 0.0), point(4.2, 10.0)];
+        let vertical_b = [point(5.8, 0.0), point(5.8, 10.0)];
         let horizontal = [point(0.0, 5.0), point(10.0, 5.0)];
         let edges = [
             edge("vertical-a", &vertical_a),
@@ -1034,7 +1079,7 @@ mod tests {
                 &process_edges_with_line_hops(&edges, arc_config(1.0)),
                 "horizontal"
             ),
-            "M0,5 L4,5 A0.5,0.5 0 0 1 5,5 L5,5 A0.5,0.5 0 0 1 6,5 L10,5"
+            "M0,5 L3.4,5 A0.8,0.8 0 0 1 5,5 L5,5 A0.8,0.8 0 0 1 6.6,5 L10,5"
         );
     }
 
@@ -1051,7 +1096,7 @@ mod tests {
                 &process_edges_with_line_hops(&edges, arc_config(2.0)),
                 "horizontal"
             ),
-            "M0,0 L0,0 A0.5,0.5 0 0 1 1,0 L10,0"
+            "M0,0 L10,0"
         );
 
         let almost_at_start = [point(0.0005, -1.0), point(0.0005, 1.0)];
@@ -1065,7 +1110,7 @@ mod tests {
     }
 
     #[test]
-    fn rounded_edges_preserve_five_pixel_corners_and_share_space_with_hops() {
+    fn rounded_edges_preserve_corners_when_a_hop_has_too_little_room() {
         let vertical = [point(14.0, 0.0), point(14.0, 10.0)];
         let rounded_points = [point(0.0, 5.0), point(20.0, 5.0), point(20.0, 15.0)];
         let rounded = LineHopEdge {
@@ -1075,11 +1120,142 @@ mod tests {
         let paths =
             process_edges_with_line_hops(&[edge("vertical", &vertical), rounded], arc_config(5.0));
 
-        assert_eq!(
-            path_for(&paths, "rounded"),
-            "M0,5 L13,5 A1,1 0 0 1 15,5 L15,5 Q20,5 20,10 L20,15"
-        );
+        assert_eq!(path_for(&paths, "rounded"), "M0,5 L15,5 Q20,5 20,10 L20,15");
         assert_eq!(ROUNDED_CORNER_RADIUS, 5.0);
+    }
+
+    #[test]
+    fn state_api_014_crossing_inside_either_direction_of_other_corner_is_ignored() {
+        // These are the exact data-points of edge1 and edge5 in the pinned State
+        // upstream_pkgtests_mermaidapi_spec_014 SVG. The crossing is only 2px
+        // from edge1's final bend, inside its 7.071px rounded stretch.
+        let edge1_points = [
+            point(202.0, 41.125),
+            point(222.0, 41.125),
+            point(222.0, 12.0),
+            point(330.0, 12.0),
+            point(506.0, 12.0),
+            point(614.0, 12.0),
+            point(614.0, 35.875),
+            point(634.0, 35.875),
+        ];
+        let edge5_points = [
+            point(574.0, 51.5),
+            point(594.0, 51.5),
+            point(594.0, 33.875),
+            point(634.0, 33.875),
+        ];
+        let hopping = LineHopEdge {
+            curve: Some("rounded"),
+            arrow_type_end: Some("arrow_barb_neo"),
+            ..edge("edge5", &edge5_points)
+        };
+        for reverse in [false, true] {
+            let mut points = edge1_points.to_vec();
+            if reverse {
+                points.reverse();
+            }
+            for curve in [Some("rounded"), Some("linear")] {
+                let other = LineHopEdge {
+                    curve,
+                    ..edge("edge1", &points)
+                };
+                for edges in [[other, hopping], [hopping, other]] {
+                    let crossings = find_edge_intersections(&edges);
+                    let paths = process_edges_with_line_hops(&edges, arc_config(6.0));
+                    if curve == Some("rounded") {
+                        assert!(crossings.is_empty());
+                        assert!(!path_for(&paths, "edge5").contains('A'));
+                    } else {
+                        assert_eq!(crossings.len(), 1);
+                        assert!(path_for(&paths, "edge5").contains("A6,6"));
+                    }
+                }
+            }
+        }
+
+        let mut clear_points = edge1_points;
+        clear_points[6].y = 45.875;
+        clear_points[7].y = 45.875;
+        let clear = LineHopEdge {
+            curve: Some("rounded"),
+            ..edge("edge1", &clear_points)
+        };
+        let edges = [clear, hopping];
+        assert_eq!(find_edge_intersections(&edges).len(), 1);
+        assert!(
+            path_for(
+                &process_edges_with_line_hops(&edges, arc_config(6.0)),
+                "edge5"
+            )
+            .contains("A6,6")
+        );
+    }
+
+    #[test]
+    fn rounded_corner_crossing_boundary_is_strict() {
+        let points = [point(0.0, 0.0), point(20.0, 0.0), point(20.0, 10.0)];
+        let rounded = LineHopEdge {
+            curve: Some("rounded"),
+            ..edge("rounded", &points)
+        };
+        assert!(!crossing_sits_in_rounded_corner(rounded, 0, 0.75));
+        assert!(crossing_sits_in_rounded_corner(rounded, 0, 0.8));
+        assert!(crossing_sits_in_rounded_corner(rounded, 1, 0.4));
+        assert!(!crossing_sits_in_rounded_corner(rounded, 1, 0.5));
+    }
+
+    #[test]
+    fn rounded_hops_keep_two_pixels_clear_of_the_corner() {
+        // Port of lineJump.spec.ts's just-roomy-enough radius-6 example.
+        let points = [point(100.0, 0.0), point(100.0, 100.0), point(300.0, 100.0)];
+        let vertical = [point(113.0, 0.0), point(113.0, 200.0)];
+        let rounded = LineHopEdge {
+            curve: Some("rounded"),
+            ..edge("rounded", &points)
+        };
+        let paths =
+            process_edges_with_line_hops(&[rounded, edge("vertical", &vertical)], arc_config(6.0));
+        assert!(
+            path_for(&paths, "rounded").contains("L109.071,100 A3.929,3.929 0 0 1 116.929,100")
+        );
+    }
+
+    #[test]
+    fn corner_squeezed_hop_is_removed_before_it_can_shrink_its_neighbour() {
+        let points = [point(0.0, -20.0), point(0.0, 0.0), point(100.0, 0.0)];
+        let squeezed = [point(10.0, -10.0), point(10.0, 10.0)];
+        let usable = [point(17.0, -10.0), point(17.0, 10.0)];
+        let rounded = LineHopEdge {
+            curve: Some("rounded"),
+            ..edge("rounded", &points)
+        };
+        let edges = [
+            rounded,
+            edge("squeezed", &squeezed),
+            edge("usable", &usable),
+        ];
+        assert_eq!(find_edge_intersections(&edges).len(), 2);
+        let paths = process_edges_with_line_hops(&edges, arc_config(6.0));
+        let path = path_for(&paths, "rounded");
+        assert_eq!(path.matches('A').count(), 1);
+        assert!(path.contains("L11,0 A6,6 0 0 1 23,0"));
+    }
+
+    #[test]
+    fn adjacency_squeezed_hops_are_filtered_again_before_emission() {
+        let horizontal = [point(0.0, 5.0), point(10.0, 5.0)];
+        let first = [point(4.5, 0.0), point(4.5, 10.0)];
+        let second = [point(5.5, 0.0), point(5.5, 10.0)];
+        let edges = [
+            edge("h", &horizontal),
+            edge("a", &first),
+            edge("b", &second),
+        ];
+        assert_eq!(find_edge_intersections(&edges).len(), 2);
+        let paths = process_edges_with_line_hops(&edges, arc_config(1.0));
+        assert_eq!(path_for(&paths, "h"), "M0,5 L10,5");
+        assert!(!paths[0].has_hops);
     }
 
     #[test]
