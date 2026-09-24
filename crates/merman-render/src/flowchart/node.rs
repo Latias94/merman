@@ -787,16 +787,16 @@ fn node_render_dimensions(
 
         // Flowchart v2 triangle (Extract).
         "tri" | "extract" | "triangle" => {
-            // Mermaid's triangle keeps the full horizontal label padding before deriving
-            // its equilateral height. The same width feeds both layout and SVG geometry.
-            let w = text_w + 2.0 * p;
+            // Mermaid uses two-side horizontal padding for Neo and one-side padding for Classic.
+            // The same width feeds both layout and SVG geometry.
+            let w = text_w + if look_is_neo { 2.0 * p } else { p };
             let h = w + text_h;
             (h, h)
         }
 
         // Flowchart v2 flipped triangle (Manual file).
         "manual-file" | "flipped-triangle" | "flip-tri" => {
-            let w = text_w + 2.0 * p;
+            let w = text_w + if look_is_neo { 2.0 * p } else { p };
             let h = w + text_h;
             (h, h)
         }
@@ -1885,6 +1885,14 @@ mod render_dimension_tests {
         assert_eq!(
             node_render_dimensions(Some("flipped-triangle"), metrics(), 15.0, true),
             (150.0, 150.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("triangle"), metrics(), 15.0, false),
+            (135.0, 135.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("flipped-triangle"), metrics(), 15.0, false),
+            (135.0, 135.0)
         );
     }
 
