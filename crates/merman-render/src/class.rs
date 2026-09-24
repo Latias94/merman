@@ -111,13 +111,9 @@ pub(crate) fn class_layout_work_units(
 pub(crate) fn class_member_display_text(
     member: &merman_core::models::class_diagram::ClassMember,
 ) -> String {
-    let text = member.display_text.trim();
-    if member.member_type == "attribute"
-        && let Some((name, value_type)) = text.split_once(':')
-    {
-        return format!("{}:{}", name.trim_end(), value_type.trim_start());
-    }
-    text.to_string()
+    // Mermaid ClassMember.parseMember preserves internal attribute whitespace in `text`;
+    // shapeUtil.addText passes that text directly to createText, including spaces around ':'.
+    member.display_text.trim().to_string()
 }
 
 pub(crate) fn class_member_create_text_input(
@@ -3060,6 +3056,45 @@ mod tests {
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+
+    #[test]
+    fn class_member_display_preserves_authored_colon_spaces_and_classifiers() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nclass Box {\n+left :String\n+right: String\n+both : String$\n+tight:String\n+convert(value: String) Result\n}",
+                ParseOptions::default(),
+            )
+            .expect("parse Class member whitespace")
+            .expect("detect Class diagram");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class model");
+        };
+        let class = &model.classes["Box"];
+        let members = class
+            .members
+            .iter()
+            .map(super::class_member_display_text)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            members,
+            [
+                "+left :String",
+                "+right: String",
+                "+both : String",
+                "+tight:String"
+            ]
+        );
+        assert_eq!(class.members[2].classifier, "$");
+        assert_eq!(class.members[2].css_style, "text-decoration:underline;");
+        assert_eq!(
+            super::class_member_display_text(&class.methods[0]),
+            "+convert(value: String) : Result"
+        );
+        assert_eq!(
+            super::class_member_create_text_input(&class.members[1]),
+            "+right: String"
+        );
+    }
 
     #[test]
     fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
