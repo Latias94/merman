@@ -21,7 +21,7 @@ test("every browser artifact profile has an exact scoped legal projection", () =
     );
     assert.equal(rustReports.length, 1);
     assert.match(
-      rustReports[0].source,
+      rustReports[0].source.replaceAll("\\", "/"),
       new RegExp(`platforms/web/legal/rust-cargo-dependencies/${profileId}\\.json$`),
     );
     assert.deepEqual(

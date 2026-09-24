@@ -12,7 +12,11 @@ describe("WASM artifact freshness CLI", () => {
   it("selects every package-owned WASM artifact", () => {
     const targets = parseVerificationTargets(["--all-packages"]);
     assert.deepEqual(
-      targets.map((target) => [target.descriptor.id, target.profile.name, target.outputDir.relative]),
+      targets.map((target) => [
+        target.descriptor.id,
+        target.profile.name,
+        target.outputDir.relative.replaceAll("\\", "/"),
+      ]),
       [
         ["full", "web-full", "pkg/full"],
         ["analysis", "web-analysis", "pkg/analysis"],

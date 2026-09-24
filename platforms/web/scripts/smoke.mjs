@@ -564,7 +564,7 @@ if (hasCapability("analysis")) {
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
-  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
+  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "elk");
   assert.equal(
     flowchartFacts.diagrams[0].syntax.semantic_items.some(
       (item) => item.name === "A" && item.span.document
@@ -577,7 +577,7 @@ if (hasCapability("analysis")) {
     validity: "valid",
     diagramType: "flowchart",
     syntaxId: "flowchart-v2",
-    effectiveLayoutId: "dagre",
+    effectiveLayoutId: "elk",
   });
   assert.deepEqual(
     api.detectDiagramFacts("classDiagram\nclass A\n", {
@@ -591,6 +591,13 @@ if (hasCapability("analysis")) {
       syntaxId: "classDiagram",
       effectiveLayoutId: "elk",
     }
+  );
+  assert.equal(
+    api.detectDiagramFacts("flowchart TD\nA-->B\n", {
+      ...deterministicTime,
+      site_config: { layout: "dagre" },
+    }).effectiveLayoutId,
+    "dagre",
   );
   const unavailableDetection = {
     status: "unavailable",
@@ -611,7 +618,7 @@ if (hasCapability("analysis")) {
       validity: "recoverable-invalid",
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
-      effectiveLayoutId: "dagre",
+      effectiveLayoutId: "elk",
     }
   );
   assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
@@ -1455,7 +1462,7 @@ function assertEditorLanguageSurface(enabled) {
       validity: "recoverable-invalid",
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
-      effectiveLayoutId: "dagre",
+      effectiveLayoutId: "elk",
     }
   );
 
