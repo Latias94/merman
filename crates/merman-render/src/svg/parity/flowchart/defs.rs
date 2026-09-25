@@ -130,26 +130,6 @@ fn marker_paint_value(raw: &str, security_level_loose: bool) -> Option<&str> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::marker_paint_value;
-
-    #[test]
-    fn strict_mode_drops_raw_stroke_tokens_but_loose_mode_preserves_them() {
-        assert_eq!(marker_paint_value("stroke:DarkGray", false), None);
-        assert_eq!(marker_paint_value(" stroke:DarkGray", false), None);
-        assert_eq!(marker_paint_value("#333", false), Some("#333"));
-        assert_eq!(
-            marker_paint_value("stroke:#123456", false),
-            Some("stroke:#123456")
-        );
-        assert_eq!(
-            marker_paint_value("stroke:DarkGray", true),
-            Some("stroke:DarkGray")
-        );
-    }
-}
-
 fn collect_edge_markers(ctx: &FlowchartRenderCtx<'_>) -> Vec<ColoredMarker> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -204,4 +184,23 @@ fn collect_edge_markers(ctx: &FlowchartRenderCtx<'_>) -> Vec<ColoredMarker> {
         }
     }
     out
+}
+#[cfg(test)]
+mod tests {
+    use super::marker_paint_value;
+
+    #[test]
+    fn strict_mode_drops_raw_stroke_tokens_but_loose_mode_preserves_them() {
+        assert_eq!(marker_paint_value("stroke:DarkGray", false), None);
+        assert_eq!(marker_paint_value(" stroke:DarkGray", false), None);
+        assert_eq!(marker_paint_value("#333", false), Some("#333"));
+        assert_eq!(
+            marker_paint_value("stroke:#123456", false),
+            Some("stroke:#123456")
+        );
+        assert_eq!(
+            marker_paint_value("stroke:DarkGray", true),
+            Some("stroke:DarkGray")
+        );
+    }
 }
