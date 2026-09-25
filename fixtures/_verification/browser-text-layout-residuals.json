@@ -142,7 +142,6 @@
       "diagram": "flowchart",
       "fixture": "stress_flowchart_svg_label_entity_provenance_080",
       "modes": [
-        "structure",
         "parity",
         "parity-root"
       ],
@@ -164,39 +163,6 @@
     },
     {
       "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "5280b8877db34c82ee5f3890c310d1d4961ee863de192d459e6537c87f00cc4f",
-      "input_sha256": "5a77779a04dd406ecf74b92b4ce39a1462ec5096ae49f86d61db7597239a7311",
-      "upstream_svg_sha256": "1abfa4f3a68f6f8848afc1fae39c7fce6d35b3b9f18997db2513f4e45ad87397"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_002",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "6dda0f312ec2c29634ab08e82d3ff6cc67596f6dbfa18b55dc870cba617256a6",
-      "input_sha256": "5afcaef2770ae141fb832ecbf8b9d10e95547067b447b9b513af1dd1a5615e12",
-      "upstream_svg_sha256": "5e3cb161ebd218da220f616d2e366a5b27f28c1d3de43a4cd22d395df7175a48"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_2_elk_should_render_a_simple_flowchart_with_diagrampadding_set_t_003",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "3a9a8279a3565218fb551fdbe1406629ad48b9d162aecdab8487b70dc07f750d",
-      "input_sha256": "6c368dfbec7975bdcd4dbe8ff2221cce0e193c95a82678176b95c62c35c6244b",
-      "upstream_svg_sha256": "9c929ebfb99692a7ef6b4e0b73db78fcb936c5345c26438fbb7896586113b8bf"
-    },
-    {
-      "diagram": "flowchart",
       "fixture": "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021",
       "modes": [
         "parity",
@@ -205,116 +171,6 @@
       "local_svg_signature_sha256": "f53d2771fef4f553e7b0311808c237d7c0ba4683ab85d234cfa0bfa29aa6b04c",
       "input_sha256": "bbd7a553cffec41409bb08275eac9101abe74024bde703abe08859268ff85963",
       "upstream_svg_sha256": "ffe55a8a3b3ab2cbbf49e8a847dc9b74428e9b91a314e9dcf66adee1a74865ee"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "3da57da6d54821ab4a7c2a53df7b0904834b6ea73489ade4c6cd271854374524",
-      "input_sha256": "892001b030f8c0581eeb1bbdb5a196c54763f4bd41d5ffd93ca96658a7347de7",
-      "upstream_svg_sha256": "1121efa5b4a8d50b00dd8d0a2d2fba72a905dca3c126a9f910ef7bb70fd8c64e"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "969d1eac2868281815a39a25a0ff006c7f9405165127293c76c6262881c62e10",
-      "input_sha256": "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
-      "upstream_svg_sha256": "7f814ae26c5b039ea9e9b4469e35261c567dca4296227ae6797adc70393bcf8d"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_7_elk_should_render_a_flowchart_when_usemaxwidth_is_true_default_059",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "7d9990defb5bc5e2a18e5c21278a33318129bdd13b1a02dee769a8bbb7755cf0",
-      "input_sha256": "097317b85af3b491e8dcda60e79c1308a77a3496170849453606833d089c783e",
-      "upstream_svg_sha256": "655628e47d2e0130abfa4969ca096530be613e43b5d6f5c07b8d2c998d641afc"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_8_elk_should_render_a_flowchart_when_usemaxwidth_is_false_060",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "3dcaa290e08537379f21e0105478a7c16139957f8b71ca725ad4f7840db2cc37",
-      "input_sha256": "c29c162855a3dc40106e47065e58575940b1080ec760ff7f981e43526cf06198",
-      "upstream_svg_sha256": "82ad2590ce5b366b600ea571cceddeac533a9a96ff65a700ccb45321b911472f"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_sub_graphs_049",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "de3806a0ade83a41ebe40d1f83254cdb33c92ed97eff046cf87d8973b7b81486",
-      "input_sha256": "9d7b12b1d6a4089afa6840303a8dd07dd0a49baedc57c4528395afe5d50c5a60",
-      "upstream_svg_sha256": "45588f0f2ab7d7470ad316470b7840391ad01e8d6a564dd6e48a382741f24d8a"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "ec89f1a1e109774b5fc29a430f1ec43c6c9c7e98dadd39b4b1ef6c76bb49a0a1",
-      "input_sha256": "a955ea641d8a353cd8c632a6ab2d35fe341cf1c30031afed817a0ec648640e22",
-      "upstream_svg_sha256": "5bad25c07970b287e285f87038a922799b3c71c29dbd2dbf02ec46da5175f69a"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_045",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "981743006d8a31f238a9683a6b360c3208e850edd9b5ea11657848d4b5396548",
-      "input_sha256": "8dc230fc47d717c7bb403e6a982d7a16a630372b430f67b273417461f1154536",
-      "upstream_svg_sha256": "2b1f456154c1423ab91136d672e9099cb28a68f6d21e41c261b506da085ad923"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_v2_spec_3_a_link_with_correct_arrowhead_to_a_subgraph_003",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "1f4d5774066afbffb398405c52169fed74a1af96f5b675f5093f314100d93692",
-      "input_sha256": "081b8bfc4bf3e0424bb93e08d7aaac9de8adce6ef29ce7d069c214a809150ce8",
-      "upstream_svg_sha256": "065b8bca911f2c9f2075a49d7dc9c045222735b5d0fb2af0c99cee67fb3d8dcc"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_v2_spec_5059_should_render_when_subgraph_contains_only_subgraphs_has_lin_045",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "fb764c3b92b22bfc6f3d618d7526762274e2868e84ab1d782549c04e75ccd21d",
-      "input_sha256": "6f1e807a7df22e6ab4540fa0175eca9c2443d5a7552398b3e71e85bd212e7ca2",
-      "upstream_svg_sha256": "cc4d293b85f1deb56b5f4188ac749b4719a03f9d4fd05e0adf339054773ce4e6"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_v2_spec_should_render_self_loops_elk_064",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "8f686fc8806aa1c063e4e96fb7a3bb48f1a7630c91bd96cbdc621e151cbf828a",
-      "input_sha256": "2ada2dac48de239638668cf63815a83bb231d318e0143b9437ce03b5e51bb5b1",
-      "upstream_svg_sha256": "79e542531b7032f14dc64919524471aa6cf7a4d49450486094d5bf3e1f7abce2"
     },
     {
       "diagram": "flowchart",
@@ -509,28 +365,6 @@
       "upstream_svg_sha256": "cc08700f611374e87e9a1af58081b84e9efd4640a4a09566181a9d14e41d3fda"
     },
     {
-      "diagram": "flowchart",
-      "fixture": "upstream_flowchart_v2_link_to_subgraph_arrowhead_spec",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "992f7af16ec4bf757b02907b967f4fe033b1288b99282a85217c6b858f91daa6",
-      "input_sha256": "ad07b4f1e16969fe654a83599c03185e5b779d91f8d2dcc40500c3a915e50320",
-      "upstream_svg_sha256": "a389944cd5c1730ec305cab6fc92ccb8e744d0c777a548158c75e0c6586609f3"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_flowchart_v2_subgraph_only_subgraphs_links_outside_spec",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "e44e4511e40a62c8d9e14b35fc9ced6d81503ccc25ca816d93f01fb30c118b70",
-      "input_sha256": "1766beea4cad50e58716f4bc90ddc8f502a370f218f026649bbb238e72d12eb1",
-      "upstream_svg_sha256": "9132963fc2172f96f3ff2849adf19423e4bee81de372b28063a576487287b8ca"
-    },
-    {
       "diagram": "gantt",
       "fixture": "upstream_cypress_gantt_spec_example_001",
       "modes": [
@@ -613,18 +447,6 @@
       "local_svg_signature_sha256": "b80cae7b08209836eb35cea2b963cb446646e5d1a3ec87485064e93ba90194e9",
       "input_sha256": "fcf4ef949317bb5aaed77c32f865c6a2b54aa18ad7e7f529762a8bc5aae5235f",
       "upstream_svg_sha256": "ea32a3daea4622f6fb1f1c193613d9746d22767c480e9f004ba7e5b1e3493211"
-    },
-    {
-      "diagram": "sequence",
-      "fixture": "stress_br_in_messages_notes_011",
-      "modes": [
-        "structure",
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "fe464985f0500db4123ecb02bf8d50965911baf20ca0db038bde322210edaf2b",
-      "input_sha256": "02d97bafbbd4350a1cb9fb350a583a9ff43f0f72334efadee1cce8364634c236",
-      "upstream_svg_sha256": "71ef95a7c0c7a965fdc812c5b7661404a41350e4b50408f395c83b715a14afb2"
     },
     {
       "diagram": "sequence",

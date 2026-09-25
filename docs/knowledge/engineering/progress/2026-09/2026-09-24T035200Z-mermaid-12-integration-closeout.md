@@ -702,3 +702,24 @@ State 11 / 22 with no stale receipts, Sequence 25 plus four stale receipts, and 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
 - [Default ELK boundary](../../../../adr/0089-mermaid-12-default-elk-products.md)
 - [Performance measurement contract](../../../../performance/BENCHMARKING.md)
+
+# Browser residual receipt cleanup on 2026-09-25
+
+The exact browser-text-layout diagnostic suite was rerun after the 38 reviewed local-signature
+refreshes. The receipts were then reduced to the modes that still differ: 16 entries became
+fully matched and were removed, one remaining Flowchart entry lost its matched `structure` mode,
+and the catalog now contains 81 entries. Input hashes and pinned upstream SVG hashes were
+unchanged; no comparator rule or production renderer behavior was relaxed. The committed
+catalog integrity test was updated from 97 to 81 entries.
+
+With `--diagnostic-browser-text-layout`, the Flowchart suite now accepts 55 exact residual
+comparisons and reports no stale receipts; its remaining blockers are 69 distinct fixtures /
+162 mode rows. Sequence accepts 9 exact residual comparisons and reports no stale receipts;
+its remaining blockers are 28 distinct fixtures / 84 mode rows. The remaining Flowchart rows are
+route/curve/marker or text-structure differences, and the remaining Sequence rows are actor,
+note, message and block wrapping differences. They still require source-backed fixes or an
+explicitly documented browser-measurement boundary; no new receipt is admitted by this cleanup.
+
+`cargo nextest run -p xtask --no-fail-fast --test-threads 2` passed 599/599 tests with serial
+Cargo jobs. The focused diagnostic comparisons intentionally remain non-zero because the actual
+69 Flowchart and 28 Sequence DOM blockers are still present.
