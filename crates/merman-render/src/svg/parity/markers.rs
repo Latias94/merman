@@ -32,7 +32,7 @@ pub(in crate::svg::parity) fn push_edge_marker(
     diagram_type: &str,
     base: &str,
     margin: bool,
-    color: Option<(&str, &str)>,
+    color: Option<(&str, Option<&str>)>,
 ) {
     let (attrs, shape, shape_attrs) = match (base, margin) {
         ("pointEnd", false) => (
@@ -123,7 +123,7 @@ pub(in crate::svg::parity) fn push_edge_marker(
     );
     // Mermaid clones only path/circle/line children; the Neo start-point polygon stays intact.
     if shape != "polygon"
-        && let Some((_, color)) = color
+        && let Some((_, Some(color))) = color
     {
         let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
         if base.starts_with("point") {

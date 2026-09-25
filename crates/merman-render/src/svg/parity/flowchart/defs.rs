@@ -45,12 +45,7 @@ impl FlowchartDefs<'_> {
 
     pub(in crate::svg::parity::flowchart) fn push_extra_markers(&self, out: &mut String) {
         for marker in &self.extra_markers {
-            let color = if self.security_level_loose {
-                marker.color.as_str()
-            } else {
-                // DOMPurify trims ordinary SVG attribute values in strict/sandbox output.
-                marker.color.trim()
-            };
+            let color = marker_paint_value(&marker.color, self.security_level_loose);
             push_edge_marker(
                 out,
                 self.diagram_id,
@@ -117,6 +112,41 @@ pub(in crate::svg::parity::flowchart) fn write_flowchart_marker_id_xml(
         } else {
             out.push('_');
         }
+    }
+}
+
+fn marker_paint_value(raw: &str, security_level_loose: bool) -> Option<&str> {
+    if security_level_loose {
+        return Some(raw);
+    }
+
+    // Mermaid's strict/sandbox DOMPurify pass drops raw `stroke:<token>` values from
+    // presentation attributes while preserving the marker id suffix.
+    let value = raw.trim_start().strip_prefix("stroke:");
+    if value.is_some_and(|value| !value.trim_start().starts_with('#')) {
+        None
+    } else {
+        Some(raw.trim())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::marker_paint_value;
+
+    #[test]
+    fn strict_mode_drops_raw_stroke_tokens_but_loose_mode_preserves_them() {
+        assert_eq!(marker_paint_value("stroke:DarkGray", false), None);
+        assert_eq!(marker_paint_value(" stroke:DarkGray", false), None);
+        assert_eq!(marker_paint_value("#333", false), Some("#333"));
+        assert_eq!(
+            marker_paint_value("stroke:#123456", false),
+            Some("stroke:#123456")
+        );
+        assert_eq!(
+            marker_paint_value("stroke:DarkGray", true),
+            Some("stroke:DarkGray")
+        );
     }
 }
 
