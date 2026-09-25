@@ -679,7 +679,7 @@ artifact grew from 3,454,447/3,454,224/1,358,830/1,044,105 raw/stripped/gzip/Bro
 semantic capability surface, not an accidental dependency or compression regression.
 
 The existing roughly three-percent-headroom policy is retained. The analysis caps are now
-3,700,000 raw/stripped, 1,500,000 gzip and 1,150,000 Brotli; editor caps are 3,800,000
+3,675,000 raw/stripped, 1,475,000 gzip and 1,125,000 Brotli; editor caps are 3,775,000
 raw/stripped, 1,525,000 gzip and 1,175,000 Brotli. These remain above the measured artifacts
 with explicit margin, while the unchanged full/render profiles retain their previous budgets.
 The size experiment and raw logs remain under `target/bench/experiments/mermaid12-slim-size-budget`.

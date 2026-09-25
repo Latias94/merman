@@ -11,10 +11,10 @@
       "max_brotli_bytes": 2750000
     },
     "web-analysis": {
-      "max_raw_bytes": 3700000,
-      "max_stripped_bytes": 3700000,
-      "max_gzip_bytes": 1500000,
-      "max_brotli_bytes": 1150000
+      "max_raw_bytes": 3675000,
+      "max_stripped_bytes": 3675000,
+      "max_gzip_bytes": 1475000,
+      "max_brotli_bytes": 1125000
     },
     "web-ascii": {
       "max_raw_bytes": 5175000,
@@ -23,8 +23,8 @@
       "max_brotli_bytes": 1475000
     },
     "web-editor": {
-      "max_raw_bytes": 3800000,
-      "max_stripped_bytes": 3800000,
+      "max_raw_bytes": 3775000,
+      "max_stripped_bytes": 3775000,
       "max_gzip_bytes": 1525000,
       "max_brotli_bytes": 1175000
     },
