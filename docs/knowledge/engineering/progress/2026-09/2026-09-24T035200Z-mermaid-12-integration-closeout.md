@@ -687,6 +687,16 @@ No dependency, sanitizer, compiler, compression pipeline or capability was remov
 The budget file is a measured product decision, not a blanket gate bypass. Remaining family
 parity and final integrated checks are still open; this is not completion of U1–U15.
 
+# Strict verification after budget review on 2026-09-25
+
+The strict verifier was rerun after the budget change with serial Cargo jobs. All 117 feature
+builds, generated contracts, alignment checks, 14 artifact closures, open-source license
+projections, and workspace nextest passed (8,697 tests, with the repository's skipped cases).
+The run reached the integrated SVG suite and stopped at the existing Flowchart parity blockers;
+it did not report a new failure in the budget, feature, license, or Rust test stages. Current
+family counts remain Flowchart 50 distinct DOM fixtures / 107 rows plus 34 stale receipts,
+State 11 / 22 with no stale receipts, Sequence 25 plus four stale receipts, and Class 0.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
