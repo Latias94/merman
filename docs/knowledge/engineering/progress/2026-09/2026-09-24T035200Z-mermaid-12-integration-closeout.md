@@ -659,8 +659,33 @@ modes with three-decimal precision and exact browser-text-layout receipts. Flowc
 mismatches decreased from 52 distinct fixtures / 111 rows to 50 / 107; its 34 stale receipts
 remain blocking. Both corrected fixtures pass all three modes. State remains at 11 fixtures /
 22 rows with no stale receipts. Class passes with its three existing accepted residual comparisons.
-No comparator, upstream SVG, receipt, dependency, or budget was changed. Remaining family
-parity and WASM size gates are still open; this is a source correction, not completion of U1–U15.
+No comparator or upstream SVG was changed. The two State controlled measurement experiments
+passed: fixed upstream label bounds reproduce both the 0.046875px parallel-port jog and the
+three previously failing compound route topologies. This supports the measurement-residual
+classification without changing production clipping or comparator policy.
+
+# Slim WASM budget review on 2026-09-25
+
+The maintainer authorized a reasoned budget review for the remaining analysis/editor overages.
+An identical Rust 1.95.0, wasm-pack 0.15.0, `wasm-size`, wasm-opt, strip, gzip and Brotli
+recipe was run on the same Windows host for pre-upgrade `54d257aa8` and the current graph.
+The normal dependency name sets were identical for both `analysis` and `editor`. The analysis
+artifact grew from 3,454,447/3,454,224/1,358,830/1,044,105 raw/stripped/gzip/Brotli bytes to
+3,544,491/3,544,268/1,413,098/1,089,462. Editor grew from
+3,567,757/3,567,534/1,404,294/1,071,993 to
+3,658,011/3,657,788/1,458,179/1,119,888. The current analysis module's code section is
+2,694,808 bytes versus 2,537,041 before the upgrade, while its data section is smaller
+(838,438 versus 906,522). This is consistent with the added Mermaid 12 parser, diagram and
+semantic capability surface, not an accidental dependency or compression regression.
+
+The existing roughly three-percent-headroom policy is retained. The analysis caps are now
+3,700,000 raw/stripped, 1,500,000 gzip and 1,150,000 Brotli; editor caps are 3,800,000
+raw/stripped, 1,525,000 gzip and 1,175,000 Brotli. These remain above the measured artifacts
+with explicit margin, while the unchanged full/render profiles retain their previous budgets.
+The size experiment and raw logs remain under `target/bench/experiments/mermaid12-slim-size-budget`.
+No dependency, sanitizer, compiler, compression pipeline or capability was removed or altered.
+The budget file is a measured product decision, not a blanket gate bypass. Remaining family
+parity and final integrated checks are still open; this is not completion of U1–U15.
 
 # Citations
 

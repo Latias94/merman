@@ -227,3 +227,215 @@ fn state_elk_fork_join_uses_painted_bounds_after_measurement() {
         }
     }
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_subpixel_label_width_changes_route_topology() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+    use std::sync::Arc;
+
+    struct FixtureMeasurements {
+        selection_width: f64,
+    }
+
+    impl TextMeasurer for FixtureMeasurements {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            // Attribution experiment: widths and heights are the foreignObject bounds in
+            // upstream_pkgtests_statediagram_spec_015.svg, not a production font profile.
+            let width = match text {
+                "Configuring" => 71.609375,
+                "NewValueSelection" => self.selection_width,
+                "NewValuePreview" => 120.0,
+                "EvNewValue" => 79.125,
+                "EvNewValueRejected" => 134.375,
+                "EvNewValueSaved1" => 126.609375,
+                "" => 0.0,
+                other => panic!("unexpected measurement in the controlled fixture: {other:?}"),
+            };
+            TextMetrics {
+                width,
+                height: if text.is_empty() { 0.0 } else { 21.0 },
+                line_count: usize::from(!text.is_empty()),
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+    }
+
+    let controlled_layout = |selection_width| {
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.state-015-browser-bounds").unwrap(),
+                "fixture",
+            )
+            .unwrap(),
+            Arc::new(FixtureMeasurements { selection_width }),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "layout": "elk", "htmlLabels": true,
+            })))
+            .parse_diagram_for_render_model_sync(
+                include_str!("../../../fixtures/state/upstream_pkgtests_statediagram_spec_015.mmd"),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        artifact.layout_json().unwrap()["layout"]["StateDiagramV2"].clone()
+    };
+
+    for (selection_width, expected_points) in [(120.0, 2), (120.375, 4)] {
+        let layout = controlled_layout(selection_width);
+        let nodes = layout["nodes"].as_array().unwrap();
+        let selection = nodes
+            .iter()
+            .find(|node| node["id"] == "NewValueSelection")
+            .unwrap();
+        let preview = nodes
+            .iter()
+            .find(|node| node["id"] == "NewValuePreview")
+            .unwrap();
+        assert_eq!(selection["width"], selection_width + 16.0);
+        assert_eq!(preview["width"], 136.0);
+        let edge = layout["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|edge| edge["from"] == "NewValuePreview" && edge["to"] == "NewValueSelection")
+            .unwrap();
+        let points = edge["points"].as_array().unwrap();
+        assert_eq!(
+            points.len(),
+            expected_points,
+            "{selection_width}: {points:?}"
+        );
+        if expected_points == 4 {
+            // The pinned SVG has x=250.0625 and x=250.109375 at these ports. ELK
+            // retains their 0.046875px offset because its routing tolerance is 0.001.
+            let x = |i: usize| points[i]["x"].as_f64().unwrap();
+            let y = |i: usize| points[i]["y"].as_f64().unwrap();
+            assert!((x(2) - x(1) - 0.046875).abs() < 1e-9, "{points:?}");
+            assert_eq!(x(0), x(1));
+            assert_eq!(y(1), y(2));
+            assert_eq!(x(2), x(3));
+        }
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_compound_routes_with_controlled_browser_measurements() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+    use std::sync::Arc;
+
+    struct FixtureMeasurements;
+
+    impl TextMeasurer for FixtureMeasurements {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            // The pinned 040 fixture uses the same browser bounds for every group title,
+            // transition label, and minimum-width child label, respectively.
+            let width = if text.starts_with("State") && text.ends_with("_____________") {
+                154.984375
+            } else if text.starts_with("Transition") {
+                120.515625
+            } else if matches!(
+                text,
+                "c0" | "c1" | "c2" | "c3" | "c4" | "c5" | "c6" | "c7" | "c9"
+            ) {
+                120.0
+            } else if text == "Multiple Transitions" || text.is_empty() {
+                // The diagram title is outside the routed graph.
+                return DeterministicTextMeasurer::default().measure(text, style);
+            } else {
+                panic!("unexpected measurement in the controlled fixture: {text:?}");
+            };
+            TextMetrics {
+                width,
+                height: 24.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+    }
+
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.state-040-browser-bounds").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        Arc::new(FixtureMeasurements),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({ "layout": "elk", "htmlLabels": true })))
+        .parse_diagram_for_render_model_sync(
+            include_str!("../../../fixtures/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040.mmd"),
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let actual = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let upstream = roxmltree::Document::parse(include_str!(
+        "../../../fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040.svg"
+    )).unwrap();
+    for id in ["edge3", "edge4", "edge7"] {
+        let commands = |document: &roxmltree::Document<'_>| {
+            document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some(id) && node.has_tag_name("path"))
+                .unwrap()
+                .attribute("d")
+                .unwrap()
+                .chars()
+                .filter(char::is_ascii_uppercase)
+                .collect::<String>()
+        };
+        // Compare only the previously failing route topology. A match here attributes
+        // those extra corners to measurement inputs without relaxing the DOM comparator.
+        assert_eq!(commands(&actual), commands(&upstream), "{id}");
+    }
+}
