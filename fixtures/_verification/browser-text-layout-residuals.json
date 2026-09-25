@@ -198,6 +198,30 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset2_lr_md_html_false_062",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "6ca1391fc7482d310716c1d4a37e5b5a6f2d460771f63d5e262d65a74ef3eb28",
+      "input_sha256": "d8f9a8cf72d901d8c32f19eab8d4c7fe111500f5a836c6131177965a0b148da3",
+      "upstream_svg_sha256": "0eb394129f6ef1751543387969f881ccaa5bd40c672c16e7efa34e5a7b5dbe70"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset2_tb_md_html_false_014",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "3c243df4ef10eac3840bbfb732aca845b7706d5bf8e2b4be6dbadf1593dde060",
+      "input_sha256": "46df861b1b153300ed69407d5e3618436f2db4bccce80150c09d758c7fb9b428",
+      "upstream_svg_sha256": "310bf6534746048a6fda645446f13d67132bdeb8343042eeca71d8dd9ddeed9c"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_md_html_false_070",
       "modes": [
         "structure",
@@ -267,6 +291,18 @@
       "local_svg_signature_sha256": "ddb66dd942cc08ef05b9ea0eaace750d58506e26965b24959f88e34f5aaedddc",
       "input_sha256": "2427b26fc30aae931e0293c324f75f1f2e085d6d46c27909f0a54743262a65a2",
       "upstream_svg_sha256": "de76debeddaba0cd3e8f3e4bf453eb91e7639ffc8763eb6437c355c16487830e"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_tb_md_html_false_046",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "d46744bb6a02c1a0193db706146d06482501e0bc5534cfdb1c38a16bfc7f1567",
+      "input_sha256": "d663df2adf4f8a76a764cc10f85ffcda51308adb4a6bfc52f135a1b12e44d7fc",
+      "upstream_svg_sha256": "99ae2410e786b291f3cb2924d6ce30dcd7179f38ff9b5d74c009515efba3f13f"
     },
     {
       "diagram": "flowchart",
@@ -363,6 +399,30 @@
       "local_svg_signature_sha256": "9a43737e187a991c0a220907bf9c5b489a0dbc2f8f2b0d6d4ff6c5e2c07dc71e",
       "input_sha256": "9ffb06af06068d4203ead08066f4710f1afc11edad697dab3f6e750eb0fee9fa",
       "upstream_svg_sha256": "cc08700f611374e87e9a1af58081b84e9efd4640a4a09566181a9d14e41d3fda"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_md_html_false_078",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "2789c50a586ee820983bf5b641b29a6c9e45c3c787a9e45f37e2e269a592aced",
+      "input_sha256": "73947c18e51d8e744b49827cb9e495978555f3059267b0d8999a2c354c3970b8",
+      "upstream_svg_sha256": "9d991942dab33fbc4f93df026f5c403540b32d7e7cdb643d1561c0ff49bb0fe8"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "d61b5b8ba8376a8e1de33e8832c831e2095c598ae38c666cac6e59b2b8e3cb74",
+      "input_sha256": "634b06eda7bc64772eabc63e8fc6cc3731344f4ad62c4dfd704bc75ec7489098",
+      "upstream_svg_sha256": "c3eb96c238cfbfe43be1a089e812f2189161a60c44349ebdd8b2e984ba36ed9c"
     },
     {
       "diagram": "gantt",
