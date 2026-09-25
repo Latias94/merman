@@ -637,6 +637,31 @@ so this follow-up found no source-preserving compiler or feature-closure change 
 analysis/editor budget overages. Their limits remain unchanged pending a real size reduction or an
 explicit product decision.
 
+# Hierarchical ELK random-state handoff on 2026-09-25
+
+The dense-child crossing routes traced to the hierarchy sweep's random-state ownership.
+Pinned ELK `62d5909f96fad541bc101ad52dabaece6b7eab7e` shares each `LGraph` random generator
+between `GraphInfoHolder`, the sweep, and later orthogonal routing. The Rust hierarchy sweep
+copied those generators but did not return their consumed states to the graphs. It now writes
+the root and child streams back before transferring node/port order, including early convergence
+and both greedy-switch strategies. The flat sweep already performed this handoff.
+
+A regression first failed with six route points instead of four, then passed with both affected
+edges matching all pinned upstream coordinates. A lower-level test covers all three sweep
+strategies when the node order remains unchanged. Independent correctness review found no
+blocking issues. The combined ELK provider, adapter, and all-feature renderer run passed 2,505
+of 2,506 tests; the only failure identified two expected layout goldens. Those two route-only
+snapshots were refreshed individually, and the complete layout snapshot harness then passed
+3/3. No other golden changed.
+
+The complete Flowchart/State/Class comparison was rerun in structure, parity, and parity-root
+modes with three-decimal precision and exact browser-text-layout receipts. Flowchart DOM
+mismatches decreased from 52 distinct fixtures / 111 rows to 50 / 107; its 34 stale receipts
+remain blocking. Both corrected fixtures pass all three modes. State remains at 11 fixtures /
+22 rows with no stale receipts. Class passes with its three existing accepted residual comparisons.
+No comparator, upstream SVG, receipt, dependency, or budget was changed. Remaining family
+parity and WASM size gates are still open; this is a source correction, not completion of U1–U15.
+
 # Citations
 
 - [Mermaid 12 plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)

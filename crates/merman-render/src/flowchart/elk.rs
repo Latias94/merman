@@ -3155,6 +3155,60 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_elk_compound_sweep_preserves_upstream_crossing_routes() {
+        let source = include_str!(
+            "../../../../fixtures/flowchart/stress_flowchart_cluster_dense_children_021.mmd"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse")
+            .expect("diagram");
+        let graph = super::build_flowchart_elk_graph(
+            &parsed,
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+        )
+        .expect("graph");
+        let layout = elk::layout(&graph).expect("layout");
+        // Mermaid 12's committed SVG data-points retain the source router's choice of
+        // which crossing edge to split. Both edges share the same endpoint coordinates.
+        for (id, expected) in [
+            (
+                "L_b2_c3_0",
+                vec![
+                    (415.0, 269.0),
+                    (415.0, 311.0),
+                    (652.8, 311.0),
+                    (652.8, 353.0),
+                ],
+            ),
+            (
+                "L_c2_a3_0",
+                vec![
+                    (652.8, 269.0),
+                    (652.8, 299.0),
+                    (533.9, 299.0),
+                    (533.9, 323.0),
+                    (415.0, 323.0),
+                    (415.0, 353.0),
+                ],
+            ),
+        ] {
+            let actual = &layout
+                .edges
+                .iter()
+                .find(|edge| edge.id == id)
+                .unwrap()
+                .points;
+            assert_eq!(actual.len(), expected.len(), "{id}: {actual:?}");
+            for (point, (x, y)) in actual.iter().zip(expected) {
+                assert!((point.x - x).abs() < 1e-9, "{id}: {point:?}");
+                assert!((point.y - y).abs() < 1e-9, "{id}: {point:?}");
+            }
+        }
+    }
+
+    #[test]
     #[cfg(feature = "layout-elk")]
     fn flowchart_source_backed_elk_uses_exported_edge_label_position() {
         let model = model(

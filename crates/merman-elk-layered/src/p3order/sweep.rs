@@ -876,6 +876,12 @@ impl HierarchySweep {
             }
         }
 
+        // GraphInfoHolder and BarycenterHeuristic share each LGraph's Random in ELK.
+        // Return every consumed stream even when no better node order was found, so
+        // later processors continue from the same state as the source implementation.
+        for (index, info) in self.infos.iter().enumerate() {
+            graph_mut_at_path(root, &info.path).random = self.barycenter_random(index);
+        }
         self.transfer_node_and_port_orders_to_graph(root)
     }
 
@@ -4477,6 +4483,54 @@ mod tests {
             assert_eq!(
                 layer_order,
                 ["e03", "e15", "e13", "e14", "n2", "e04", "e05"]
+            );
+        }
+    }
+
+    #[test]
+    fn hierarchical_sweep_advances_graph_random_streams_without_order_changes() {
+        for cross_min_type in [
+            CrossMinType::Barycenter,
+            CrossMinType::OneSidedGreedySwitch,
+            CrossMinType::TwoSidedGreedySwitch,
+        ] {
+            let mut root = LGraph::new("root", LayeredOptions::default());
+            root.options.consider_model_order_strategy = OrderingStrategy::NodesAndEdges;
+            root.random = JavaRandom::new(17);
+            let mut child = LGraph::new("child", LayeredOptions::default());
+            child.random = JavaRandom::new(31);
+            let mut parent = LNode::new("parent", 10.0, 10.0, None);
+            parent.nested_graph = Some(Box::new(child));
+            root.layerless_nodes.push(parent);
+            root.set_node_layer(0, 0);
+
+            // Source initialize() draws nextLong from the root. GraphInfoHolder draws
+            // a distributor boolean from each graph except for two-sided greedy switch.
+            // Barycenter then resets only the root stream before its first sweep; the
+            // zero-crossing early return still consumes the sweep-direction boolean.
+            let mut expected_root = JavaRandom::new(17);
+            let seed = expected_root.next_long();
+            let mut expected_child = JavaRandom::new(31);
+            if cross_min_type != CrossMinType::TwoSidedGreedySwitch {
+                expected_root.next_bool();
+                expected_child.next_bool();
+            }
+            if cross_min_type == CrossMinType::Barycenter {
+                expected_root.set_seed(seed);
+            }
+            expected_root.next_bool();
+
+            minimize_crossings_layer_sweep_hierarchical_with_type(&mut root, cross_min_type);
+            assert_eq!(root.layers[0].nodes, vec![0]);
+            assert_eq!(root.random, expected_root, "{cross_min_type:?}");
+            assert_eq!(
+                root.layerless_nodes[0]
+                    .nested_graph
+                    .as_ref()
+                    .unwrap()
+                    .random,
+                expected_child,
+                "{cross_min_type:?}",
             );
         }
     }
