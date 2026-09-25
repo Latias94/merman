@@ -183,19 +183,30 @@ fn intersect_circle(
     node: &BoundaryNode,
     point: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    let dx = point.x - node.x;
-    let dy = point.y - node.y;
-    let dist = (dx * dx + dy * dy).sqrt();
-    if dist <= 1e-12 {
+    // Mermaid's circle shapes use the ellipse intersection with the measured node
+    // bounds; labels can make those bounds non-square.
+    let rx = node.width / 2.0;
+    let ry = node.height / 2.0;
+    let px = node.x - point.x;
+    let py = node.y - point.y;
+    let det = (rx * rx * py * py + ry * ry * px * px).sqrt();
+    if det <= 1e-12 {
         return crate::model::LayoutPoint {
             x: node.x,
             y: node.y,
         };
     }
-    let r = (node.width.min(node.height) / 2.0).max(0.0);
+    let mut dx = ((rx * ry * px) / det).abs();
+    if point.x < node.x {
+        dx = -dx;
+    }
+    let mut dy = ((rx * ry * py) / det).abs();
+    if point.y < node.y {
+        dy = -dy;
+    }
     crate::model::LayoutPoint {
-        x: node.x + dx / dist * r,
-        y: node.y + dy / dist * r,
+        x: node.x + dx,
+        y: node.y + dy,
     }
 }
 
@@ -1681,14 +1692,28 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundaryNode, force_intersect_for_layout_shape, intersect_curly_brace, intersect_line,
-        intersect_notched_rectangle, intersect_polygon, intersect_polygon_hourglass,
-        intersect_wave_rectangle, stacked_rectangle_intersection_points,
+        BoundaryNode, force_intersect_for_layout_shape, intersect_circle, intersect_curly_brace,
+        intersect_line, intersect_notched_rectangle, intersect_polygon,
+        intersect_polygon_hourglass, intersect_wave_rectangle,
+        stacked_rectangle_intersection_points,
     };
     use crate::model::LayoutPoint;
 
     fn point(x: f64, y: f64) -> LayoutPoint {
         LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn circle_intersection_uses_the_measured_ellipse_bounds() {
+        let node = BoundaryNode {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        };
+        let actual = intersect_circle(&node, &point(100.0, 100.0));
+        assert!((actual.x - 8.94427190999916).abs() < 1e-12, "{actual:?}");
+        assert!((actual.y - 8.94427190999916).abs() < 1e-12, "{actual:?}");
     }
 
     #[test]
