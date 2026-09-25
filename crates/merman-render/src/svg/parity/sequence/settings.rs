@@ -39,7 +39,9 @@ impl SequenceRenderSettings {
         let message_align = config
             .sequence_string("messageAlign")
             .unwrap_or_else(|| "center".to_string());
-        let label_box_height = config.sequence_json_number_min("labelBoxHeight", 20.0, 0.0);
+        let label_box_height = config
+            .sequence_json_number("labelBoxHeight")
+            .unwrap_or(20.0);
         let label_box_width = config
             .sequence_json_number_min("labelBoxWidth", 50.0, 0.0)
             .max(50.0);
@@ -58,9 +60,11 @@ impl SequenceRenderSettings {
             .unwrap_or(16.0)
             .max(1.0);
         let loop_text_style = TextStyle {
-            font_family: config.root_string("fontFamily"),
+            font_family: config
+                .root_string("fontFamily")
+                .or_else(|| config.sequence_string("messageFontFamily")),
             font_size: actor_label_font_size,
-            font_weight: Some("400".to_string()),
+            font_weight: config.font_weight("messageFontWeight"),
             font_style: None,
         };
         let actor_text_style = TextStyle {
@@ -71,15 +75,13 @@ impl SequenceRenderSettings {
                 .root_json_number("fontSize")
                 .or_else(|| config.sequence_json_number("actorFontSize"))
                 .unwrap_or(16.0),
-            font_weight: config
-                .root_string("fontWeight")
-                .or_else(|| config.sequence_string("actorFontWeight")),
+            font_weight: config.configured_font_weight("actorFontWeight"),
             font_style: None,
         };
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
             font_size: actor_label_font_size,
-            font_weight: config.note_font_weight(),
+            font_weight: config.font_weight("noteFontWeight"),
             font_style: None,
         };
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
@@ -215,7 +217,7 @@ mod tests {
         assert_eq!(settings.actor_height, 1.0);
         assert_eq!(settings.box_text_margin, -1.0);
         assert_eq!(settings.message_align, "left");
-        assert_eq!(settings.label_box_height, 0.0);
+        assert_eq!(settings.label_box_height, -1.0);
         assert!(settings.right_angles);
         assert_eq!(settings.wrap_padding, -2.0);
         assert_eq!(settings.note_margin, -3.0);

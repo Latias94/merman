@@ -75,6 +75,7 @@ pub(super) fn render_sequence_interaction_overlays(
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
         label_box_width: ctx.settings.label_box_width,
+        label_box_height: ctx.settings.label_box_height,
         box_margin: ctx.settings.box_margin,
         box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,

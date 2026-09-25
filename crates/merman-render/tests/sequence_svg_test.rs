@@ -1450,6 +1450,177 @@ sequenceDiagram
 }
 
 #[test]
+fn sequence_control_labels_follow_look_height_margin_and_font() {
+    let source = r#"sequenceDiagram
+    Alice->>Bob: Start
+    loop Retry
+        Alice->>Bob: Again
+    end
+    alt Accepted
+        Alice->>Bob: Continue
+    else Rejected
+        Bob-->>Alice: Stop
+    end
+    critical Establish connection
+        Alice->>Bob: Connect
+    option Retry later
+        Bob-->>Alice: Retry
+    end
+"#;
+    // Mermaid 12 drawLoop adds Neo height before applying the zero-height fallback.
+    for (look, configured_height, margin, expected_height) in [
+        ("neo", 20.0, 5.0, 35.0),
+        ("classic", 20.0, 5.0, 20.0),
+        ("neo", 42.0, 0.0, 57.0),
+        ("classic", 42.0, -5.0, 42.0),
+        ("neo", 0.0, 5.5, 15.0),
+        ("classic", 0.0, 5.5, 20.0),
+        ("neo", -15.0, 5.0, 20.0),
+        ("neo", -5.0, 5.0, 10.0),
+        ("classic", -5.0, 5.0, -5.0),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "fontSize": 22,
+            "sequence": {
+                "labelBoxHeight": configured_height,
+                "labelBoxWidth": 96,
+                "boxTextMargin": margin
+            }
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(engine, source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let controls = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g") && node.attribute("data-et") == Some("control-structure")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(controls.len(), 3);
+        for control in controls {
+            let polygon = control
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("polygon") && node.attribute("class") == Some("labelBox")
+                })
+                .expect("control label box");
+            let points = polygon
+                .attribute("points")
+                .expect("label box points")
+                .split_whitespace()
+                .map(|point| {
+                    let (x, y) = point.split_once(',').expect("coordinate pair");
+                    (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(points.len(), 5);
+            assert!(
+                (points[3].1 - points[0].1 - expected_height).abs() <= 1e-6,
+                "{look} control label height: configured={configured_height}, points={points:?}"
+            );
+            assert!((points[2].1 - points[3].1 + 7.0).abs() <= 1e-6);
+            assert!((points[1].0 - points[0].0 - 96.0).abs() <= 1e-6);
+            assert!((points[2].0 - points[3].0 - 8.4).abs() <= 1e-6);
+            let label = control
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("labelText")
+                })
+                .expect("control label text");
+            let label_y = label
+                .attribute("y")
+                .expect("label y")
+                .parse::<f64>()
+                .unwrap();
+            let center_y = points[0].1 + expected_height / 2.0;
+            let expected_y = if margin > 0.0 {
+                (center_y + margin / 2.0 + 0.5).floor()
+            } else {
+                center_y
+            };
+            assert!(
+                (label_y - expected_y).abs() <= 1e-6,
+                "{look} label baseline"
+            );
+            assert!(
+                label
+                    .attribute("style")
+                    .expect("label style")
+                    .contains("font-size: 22px;")
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_control_titles_use_resolved_message_font_weight() {
+    let source = r#"sequenceDiagram
+    alt Accepted
+        A->>B: Continue
+    else Rejected
+        B-->>A: Stop
+    end
+"#;
+    for (config, expected_weight) in [
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": 700}}),
+            Some("700"),
+        ),
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": "bold"}}),
+            Some("bold"),
+        ),
+        (
+            serde_json::json!({"fontWeight": 500, "sequence": {"messageFontWeight": 700}}),
+            Some("500"),
+        ),
+        (
+            serde_json::json!({"fontWeight": "600", "sequence": {"messageFontWeight": 700}}),
+            Some("600"),
+        ),
+        (
+            serde_json::json!({"fontWeight": 0, "sequence": {"messageFontWeight": 700}}),
+            Some("700"),
+        ),
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": "700; font-style: italic"}}),
+            None,
+        ),
+    ] {
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            source,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let titles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && matches!(
+                        node.attribute("class"),
+                        Some("labelText" | "loopText" | "sectionTitle")
+                    )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(titles.len(), 3, "control keyword, title and section");
+        for title in titles {
+            let style = title.attribute("style").expect("title style");
+            match expected_weight {
+                Some(weight) => assert!(
+                    style.contains(&format!("font-weight: {weight};")),
+                    "{config}: {style}"
+                ),
+                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
+            }
+            assert!(
+                !style.contains("font-style"),
+                "invalid CSS weight must not add declarations"
+            );
+        }
+    }
+}
+
+#[test]
 fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
     let cases = [
         "activation_explicit.mmd",
@@ -2070,35 +2241,49 @@ A->>B: Filled"#,
 }
 
 #[test]
-fn sequence_neo_headless_strokes_share_typed_endpoint_geometry() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "neo"
-    })));
-    let svg = render_sequence_svg_from_text_with_engine(
-        engine,
-        r#"sequenceDiagram
+fn sequence_headless_strokes_follow_mermaid_neo_endpoint_spacing() {
+    for (look, dotted_offset) in [("classic", 0.0), ("neo", 3.0)] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(
+            engine,
+            r#"sequenceDiagram
 participant A
 participant B
 A->B: Headless solid
-A-->B: Headless dotted"#,
-    );
-    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
-    let endpoints = |id: &str| {
-        let message = document
-            .descendants()
-            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
-            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
-        let coordinate = |name: &str| {
-            message
-                .attribute(name)
-                .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
-                .parse::<f64>()
-                .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+A-->B: Headless dotted
+B->A: Headless solid left
+B-->A: Headless dotted left"#,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let endpoints = |id: &str| {
+            let message = document
+                .descendants()
+                .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+                .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
+            assert!(message.attribute("marker-start").is_none());
+            assert!(message.attribute("marker-end").is_none());
+            let coordinate = |name: &str| {
+                message
+                    .attribute(name)
+                    .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
+                    .parse::<f64>()
+                    .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+            };
+            (coordinate("x1"), coordinate("x2"))
         };
-        (coordinate("x1"), coordinate("x2"))
-    };
 
-    assert_eq!(endpoints("i0"), endpoints("i1"));
+        // buildMessageModel exempts only SOLID_OPEN from the Neo target offset.
+        for (solid_id, dotted_id, target_offset) in
+            [("i0", "i1", -dotted_offset), ("i2", "i3", dotted_offset)]
+        {
+            let solid = endpoints(solid_id);
+            let dotted = endpoints(dotted_id);
+            assert_eq!(solid.0, dotted.0, "{look} headless start");
+            assert_eq!(solid.1 + target_offset, dotted.1, "{look} headless target");
+        }
+    }
 }
 
 #[test]
@@ -3033,6 +3218,55 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
                 }
             }
         }
+    }
+}
+
+#[test]
+fn sequence_popup_text_uses_resolved_actor_font_style() {
+    let source = "sequenceDiagram\nparticipant A\nlinks A: {\"Docs\": \"https://example.com\"}";
+    for (config, expected_size, expected_weight) in [
+        (
+            serde_json::json!({
+                "fontSize": 22,
+                "fontWeight": 600,
+                "sequence": {"forceMenus": true}
+            }),
+            "22px",
+            "600",
+        ),
+        (
+            serde_json::json!({
+                "sequence": {
+                    "forceMenus": true,
+                    "actorFontSize": 19,
+                    "actorFontWeight": "bold"
+                }
+            }),
+            "16px",
+            "bold",
+        ),
+    ] {
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            source,
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence popup SVG");
+        let text = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("class") == Some("actorPopupMenu")
+            })
+            .and_then(|popup| popup.descendants().find(|node| node.has_tag_name("text")))
+            .expect("popup text");
+        let style = text.attribute("style").expect("popup style");
+        assert!(
+            style.contains(&format!("font-size: {expected_size};")),
+            "{style}"
+        );
+        assert!(
+            style.contains(&format!("font-weight: {expected_weight};")),
+            "{style}"
+        );
     }
 }
 

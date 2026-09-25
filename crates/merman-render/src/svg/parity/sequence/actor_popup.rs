@@ -94,6 +94,7 @@ pub(super) fn render_sequence_actor_popup_menus(
         );
         let panel_width = n.width.max(min_menu_width);
         let panel_height = crate::sequence::sequence_actor_popup_panel_height(actor.links.len());
+        let text_style = super::settings::sequence_text_style_attribute(options.actor_text_style);
 
         let _ = write!(
             out,
@@ -133,19 +134,21 @@ pub(super) fn render_sequence_actor_popup_menus(
             if let Some(href) = href {
                 let _ = write!(
                     out,
-                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; {style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     href = href.as_serialized_str(),
                     target = target_attr,
                     x = fmt(text_x),
                     y = fmt(text_y),
+                    style = escape_attr(&text_style),
                     label = escape_xml(label)
                 );
             } else {
                 let _ = write!(
                     out,
-                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; {style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     x = fmt(text_x),
                     y = fmt(text_y),
+                    style = escape_attr(&text_style),
                     label = escape_xml(label)
                 );
             }

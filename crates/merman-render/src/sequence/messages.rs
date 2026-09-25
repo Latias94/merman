@@ -14,7 +14,7 @@ use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
-    SequenceSignalSemantics,
+    SequenceMessageStroke, SequenceSignalSemantics,
 };
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
@@ -131,9 +131,11 @@ fn message_horizontal_model_from_request(
 
     if req.is_neo {
         const NEO_MARKER_OFFSET: f64 = 3.0;
-        if req.semantics.target_marker != SequenceMessageMarker::None
-            || req.semantics.direction == SequenceMessageDirection::Reverse
-        {
+        // Mermaid exempts only SOLID_OPEN, not the headless dotted signal.
+        let is_solid_open = req.semantics.stroke == SequenceMessageStroke::Solid
+            && req.semantics.target_marker == SequenceMessageMarker::None
+            && req.semantics.direction == SequenceMessageDirection::Forward;
+        if !is_solid_open {
             stop_x += if is_arrow_to_right {
                 -NEO_MARKER_OFFSET
             } else {
@@ -744,7 +746,7 @@ mod tests {
         );
         assert_eq!(
             (neo_dotted_headless.start_x, neo_dotted_headless.stop_x),
-            (101.0, 199.0)
+            (101.0, 196.0)
         );
     }
 

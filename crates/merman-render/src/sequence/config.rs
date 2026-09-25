@@ -50,26 +50,14 @@ impl<'a> SequenceConfigView<'a> {
         crate::config::config_string(self.sequence_config, &[key])
     }
 
-    pub(crate) fn note_font_weight(&self) -> Option<String> {
+    fn parse_font_weight(value: &Value) -> Option<String> {
         use cssparser::ToCss;
 
-        // sequenceRenderer.setConf overrides noteFontWeight only for a truthy global weight.
-        let root = self
-            .effective_config
-            .get("fontWeight")
-            .filter(|value| match value {
-                Value::String(value) => !value.is_empty(),
-                Value::Number(value) => value.as_f64().is_some_and(|value| value != 0.0),
-                _ => false,
-            });
-        let raw = match root.or_else(|| self.sequence_config.get("noteFontWeight")) {
-            Some(Value::String(value)) => value.clone(),
-            Some(Value::Number(value)) => value.to_string(),
-            None => return Some("400".to_string()),
+        let raw = match value {
+            Value::String(value) => value.clone(),
+            Value::Number(value) => value.to_string(),
             _ => return None,
         };
-        // CSSOM accepts a single static weight, not a declaration list. Token serialization
-        // preserves escaped keywords without allowing config text to add another property.
         let mut input = cssparser::ParserInput::new(&raw);
         let mut parser = cssparser::Parser::new(&mut input);
         let token = parser.next().ok()?;
@@ -87,6 +75,44 @@ impl<'a> SequenceConfigView<'a> {
             _ => return None,
         };
         parser.is_exhausted().then_some(css)
+    }
+
+    pub(crate) fn configured_font_weight(&self, key: &str) -> Option<String> {
+        // sequenceRenderer.setConf gives a truthy global fontWeight precedence over the
+        // family-specific value. Invalid CSS is rejected by the same CSSOM-shaped parser.
+        let root = self.effective_config.get("fontWeight").filter(|value| {
+            matches!(value, Value::String(value) if !value.is_empty())
+                || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
+        });
+        root.and_then(Self::parse_font_weight).or_else(|| {
+            self.sequence_config
+                .get(key)
+                .and_then(Self::parse_font_weight)
+        })
+    }
+
+    pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
+        let root = self.effective_config.get("fontWeight").filter(|value| {
+            matches!(value, Value::String(value) if !value.is_empty())
+                || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
+        });
+        if let Some(root) = root {
+            return Self::parse_font_weight(root);
+        }
+        match self.sequence_config.get(key) {
+            Some(value) => Self::parse_font_weight(value),
+            None => Some("400".to_string()),
+        }
+    }
+
+    pub(crate) fn root_font_weight(&self) -> Option<String> {
+        self.effective_config
+            .get("fontWeight")
+            .filter(|value| {
+                matches!(value, Value::String(value) if !value.is_empty())
+                    || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
+            })
+            .and_then(Self::parse_font_weight)
     }
 
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
@@ -176,7 +202,7 @@ impl SequenceLayoutSettings {
         // the global `fontFamily` / `fontSize` / `fontWeight` are present.
         let root_font_family = config.root_string("fontFamily");
         let root_font_size = config.root_compat_f64("fontSize");
-        let root_font_weight = config.root_string("fontWeight");
+        let root_font_weight = config.root_font_weight();
         let actor_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
@@ -193,8 +219,8 @@ impl SequenceLayoutSettings {
             "noteFontSize",
             "noteFontWeight",
         );
-        note_text_style.font_weight = config.note_font_weight();
-        let msg_text_style = config.layout_text_style(
+        note_text_style.font_weight = config.font_weight("noteFontWeight");
+        let mut msg_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
             &root_font_weight,
@@ -202,6 +228,7 @@ impl SequenceLayoutSettings {
             "messageFontSize",
             "messageFontWeight",
         );
+        msg_text_style.font_weight = config.font_weight("messageFontWeight");
 
         Self {
             diagram_margin_x,
