@@ -831,3 +831,10 @@ browser-text receipt (`upstream_cypress_sequencediagram_spec_should_render_with_
 now reports local-signature drift in all three modes after the actor measurement fix; the
 receipt was not changed. This remains a blocking verification result, as intended by the
 receipt contract.
+
+
+# LSP admission for Agentflow and Usecase on 2026-09-26
+
+The editor and language surfaces already had parser-complete semantic facts, recovery input, completion, navigation, rename, and Tree-sitter grammar/query fixtures for Agentflow and Usecase, but the LSP capability contract still classified both public types as not yet admitted. Commit `18097c666` moves both types into the explicit first-class LSP admission list and adds their two rows to `docs/lsp/CAPABILITIES.md`; the matrix now covers all 37 public diagram types.
+
+The focused admission/editor run passed 87 tests, the complete `merman-lsp` nextest passed 292 tests, and the Tree-sitter package nextest passed 26 tests. `xtask verify-editor-language-contract`, `verify-binding-contract`, `verify-generated`, and `check-alignment` passed. Third-party license verification, release legal material projection checks, and governed Cargo package legal-material checks also passed. These results close the R8 admission evidence for these two families; final U14/U15 parity, size, and integrated gates remain open.
