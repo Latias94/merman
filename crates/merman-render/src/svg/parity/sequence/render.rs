@@ -134,7 +134,10 @@ fn render_sequence_diagram_svg_inner(
         model,
         &nodes_by_id,
         SequenceFrameRenderOptions {
-            actor_label_font_size: settings.actor_label_font_size,
+            actor_text_style: &settings.actor_text_style,
+            box_layouts: prepared.box_layouts(),
+            box_title_height: prepared.box_title_height(),
+            box_height: prepared.box_height(),
             box_margin: settings.box_margin,
             box_text_margin: settings.box_text_margin,
             rect_default_fill: &settings.rect_default_fill,

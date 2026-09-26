@@ -19,6 +19,7 @@ mod notes;
 mod render;
 mod root;
 mod settings;
+mod text;
 
 use crate::Result;
 use crate::resources::OperationWorkMeter;

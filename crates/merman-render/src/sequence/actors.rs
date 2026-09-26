@@ -1,7 +1,6 @@
 use super::SequenceLayoutCheckpoints;
 use super::constants::{
     sequence_actor_lifeline_start_y, sequence_actor_stack_height, sequence_actor_visual_height,
-    sequence_text_dimensions_height_px,
 };
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
@@ -10,7 +9,7 @@ use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
+use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceActor;
@@ -33,7 +32,6 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
-    pub(super) message_font_size: f64,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
@@ -42,10 +40,9 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
     pub(super) actor_widths: Vec<f64>,
     pub(super) actor_base_heights: Vec<f64>,
     pub(super) actor_text_heights: Vec<f64>,
-    pub(super) actor_box: Vec<Option<usize>>,
-    pub(super) actor_left_x: Vec<f64>,
     pub(super) actor_centers_x: Vec<f64>,
-    pub(super) box_margins: Vec<f64>,
+    pub(super) box_layouts: Vec<super::SequenceBoxLayout>,
+    pub(super) box_title_height: f64,
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
     pub(super) has_boxes: bool,
@@ -64,7 +61,6 @@ pub(super) fn plan_sequence_actors<'a>(
     ctx: SequenceActorLayoutPlanContext<'a>,
 ) -> Result<SequenceActorLayoutPlan<'a>> {
     let has_boxes = !ctx.model.boxes.is_empty();
-    let has_box_titles = has_box_titles(&ctx)?;
 
     if ctx.model.actor_order.is_empty() {
         return Err(Error::InvalidModel {
@@ -72,27 +68,29 @@ pub(super) fn plan_sequence_actors<'a>(
         });
     }
 
-    let max_box_title_height = max_box_title_height(&ctx, has_box_titles)?;
     let (actor_widths, mut actor_base_heights, actor_text_heights) = measure_actor_boxes(&ctx)?;
     let actor_index = actor_index(&ctx)?;
     let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index)?;
     let actor_margins = actor_margins(&ctx, &actor_widths, &actor_to_message_width)?;
-    let box_margins = box_margins(
+    let (mut box_layouts, box_title_height) = measure_boxes(
         &ctx,
         &actor_index,
         &actor_widths,
         &actor_margins,
         &actor_to_message_width,
     )?;
-    let actor_top_offset_y =
-        actor_top_offset_y(&ctx, has_boxes, has_box_titles, max_box_title_height);
+    let actor_top_offset_y = if has_boxes {
+        ctx.box_margin + box_title_height
+    } else {
+        0.0
+    };
     let actor_box = actor_box(&ctx, &actor_index)?;
     let actor_left_x = actor_left_x(
         &ctx,
         &actor_widths,
         &actor_margins,
         &actor_box,
-        &box_margins,
+        &mut box_layouts,
     )?;
     let actor_centers_x = actor_centers_x(&ctx, &actor_left_x, &actor_widths)?;
     let max_actor_layout_height = max_actor_layout_height(&ctx, &actor_base_heights)?;
@@ -106,53 +104,14 @@ pub(super) fn plan_sequence_actors<'a>(
         actor_widths,
         actor_base_heights,
         actor_text_heights,
-        actor_box,
-        actor_left_x,
         actor_centers_x,
-        box_margins,
+        box_layouts,
+        box_title_height,
         actor_top_offset_y,
         max_actor_layout_height,
         has_boxes,
         message_metrics,
     })
-}
-
-fn has_box_titles(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<bool> {
-    for (box_index, sequence_box) in ctx.model.boxes.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(box_index)?;
-        if sequence_box
-            .name
-            .as_deref()
-            .is_some_and(|name| !name.trim().is_empty())
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn max_box_title_height(
-    ctx: &SequenceActorLayoutPlanContext<'_>,
-    has_box_titles: bool,
-) -> Result<f64> {
-    if !has_box_titles {
-        return Ok(0.0);
-    }
-
-    // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles and stores the max
-    // across boxes in `box.textMaxHeight` (used for bumping actor `starty` when any title exists).
-    //
-    // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
-    // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
-    let line_h = sequence_text_dimensions_height_px(ctx.message_font_size);
-    let mut max_height = 0.0_f64;
-    for (box_index, sequence_box) in ctx.model.boxes.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(box_index)?;
-        if let Some(name) = sequence_box.name.as_deref() {
-            max_height = max_height.max(split_html_br_lines(name).len().max(1) as f64 * line_h);
-        }
-    }
-    Ok(max_height)
 }
 
 fn measure_actor_boxes(
@@ -368,17 +327,18 @@ fn actor_margins(
     Ok(actor_margins)
 }
 
-fn box_margins(
+fn measure_boxes(
     ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
     actor_widths: &[f64],
     actor_margins: &[f64],
     actor_to_message_width: &[f64],
-) -> Result<Vec<f64>> {
+) -> Result<(Vec<super::SequenceBoxLayout>, f64)> {
     // Mermaid's `calculateActorMargins(...)` computes per-box `box.margin` based on total actor
     // widths/margins and the box title width. For totalWidth, Mermaid only counts `actor.margin`
     // if it was set (actors without messages have `margin === undefined` until render-time).
-    let mut box_margins: Vec<f64> = vec![ctx.box_text_margin; ctx.model.boxes.len()];
+    let mut box_layouts = Vec::with_capacity(ctx.model.boxes.len());
+    let mut max_title_height = 0.0_f64;
     let mut membership_index = 0usize;
     for (box_idx, b) in ctx.model.boxes.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(box_idx)?;
@@ -400,42 +360,42 @@ fn box_margins(
         total_width += ctx.box_margin * 8.0;
         total_width -= 2.0 * ctx.box_text_margin;
 
-        let Some(name) = b.name.as_deref().filter(|s| !s.trim().is_empty()) else {
-            continue;
+        let mut layout = super::SequenceBoxLayout {
+            label: b.name.clone(),
+            margin: ctx.box_text_margin,
+            x: None,
+            width: 0.0,
         };
-
-        let (text_w, _text_h) = measure_sequence_label_for_layout(
-            ctx.measurer,
-            name,
-            ctx.msg_text_style,
-            ctx.math_config,
-            ctx.math_renderer,
-            SequenceMathHeightMode::Bound,
-            ctx.checkpoints.text(),
-        )?;
-        let min_width = total_width.max(text_w + 2.0 * ctx.wrap_padding);
+        let text_width = if let Some(name) = layout.label.as_mut() {
+            if b.wrap {
+                *name = wrap_sequence_label_like_mermaid_lines(
+                    name,
+                    ctx.measurer,
+                    ctx.msg_text_style,
+                    (total_width - 2.0 * ctx.wrap_padding).max(1.0),
+                    ctx.checkpoints.text(),
+                )?
+                .join("<br>");
+            }
+            // Box titles always use calculateTextDimensions, even when they contain math.
+            let (text_w, text_h) = measure_svg_like_with_html_br(
+                ctx.measurer,
+                name,
+                ctx.msg_text_style,
+                ctx.checkpoints.text(),
+            )?;
+            max_title_height = max_title_height.max(text_h);
+            text_w
+        } else {
+            0.0
+        };
+        let min_width = total_width.max(text_width + 2.0 * ctx.wrap_padding);
         if total_width < min_width {
-            box_margins[box_idx] += (min_width - total_width) / 2.0;
+            layout.margin += (min_width - total_width) / 2.0;
         }
+        box_layouts.push(layout);
     }
-    Ok(box_margins)
-}
-
-fn actor_top_offset_y(
-    ctx: &SequenceActorLayoutPlanContext<'_>,
-    has_boxes: bool,
-    has_box_titles: bool,
-    max_box_title_height: f64,
-) -> f64 {
-    // Actors start lower when boxes exist, to make room for box headers.
-    let mut actor_top_offset_y = 0.0;
-    if has_boxes {
-        actor_top_offset_y += ctx.box_margin;
-        if has_box_titles {
-            actor_top_offset_y += max_box_title_height;
-        }
-    }
-    actor_top_offset_y
+    Ok((box_layouts, max_title_height))
 }
 
 fn actor_box(
@@ -464,7 +424,7 @@ fn actor_left_x(
     actor_widths: &[f64],
     actor_margins: &[f64],
     actor_box: &[Option<usize>],
-    box_margins: &[f64],
+    box_layouts: &mut [super::SequenceBoxLayout],
 ) -> Result<Vec<f64>> {
     let mut actor_left_x: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut prev_width = 0.0;
@@ -480,7 +440,7 @@ fn actor_left_x(
             && prev_box != cur_box
             && let Some(prev) = prev_box
         {
-            prev_margin += ctx.box_margin + box_margins[prev];
+            prev_margin += ctx.box_margin + box_layouts[prev].margin;
         }
 
         // new box
@@ -488,7 +448,8 @@ fn actor_left_x(
             && cur_box != prev_box
             && let Some(bi) = cur_box
         {
-            prev_margin += box_margins[bi];
+            box_layouts[bi].x = Some(prev_width + prev_margin);
+            prev_margin += box_layouts[bi].margin;
         }
 
         // Mermaid widens the margin before a created actor by `actor.width / 2`.
@@ -498,6 +459,10 @@ fn actor_left_x(
         let x = prev_width + prev_margin;
         actor_left_x.push(x);
         prev_width += w + prev_margin;
+        if let Some(bi) = cur_box {
+            let box_layout = &mut box_layouts[bi];
+            box_layout.width = prev_width + box_layout.margin - box_layout.x.unwrap_or(0.0);
+        }
         prev_margin = actor_margins[i];
         prev_box = cur_box;
     }

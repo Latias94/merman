@@ -19,10 +19,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
-    pub(super) actor_left_x: &'a [f64],
-    pub(super) actor_widths: &'a [f64],
-    pub(super) actor_box: &'a [Option<usize>],
-    pub(super) box_margins: &'a [f64],
+    pub(super) box_layouts: &'a [super::SequenceBoxLayout],
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
     pub(super) bottom_box_top_y: f64,
@@ -335,17 +332,11 @@ impl ActorHorizontalBounds {
     }
 
     fn include_actor_boxes(&mut self, ctx: &SequenceRootBoundsContext<'_>) -> Result<()> {
-        // Mermaid's bounds box includes the per-box inner margins (`box.margin`) when boxes exist.
-        // Approximate this by extending actor bounds by their enclosing box margin.
-        for i in 0..ctx.model.actor_order.len() {
-            ctx.checkpoints.checkpoint_loop(i)?;
-            let left = ctx.actor_left_x[i];
-            let right = left + ctx.actor_widths[i];
-            if let Some(bi) = ctx.actor_box[i] {
-                let m = ctx.box_margins[bi];
-                self.include(left - m, right + m);
-            } else {
-                self.include(left, right);
+        // addActorRenderingData records box coordinates before created-actor spacing.
+        for (index, box_layout) in ctx.box_layouts.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(index)?;
+            if let Some(x) = box_layout.x {
+                self.include(x, x + box_layout.width);
             }
         }
         Ok(())

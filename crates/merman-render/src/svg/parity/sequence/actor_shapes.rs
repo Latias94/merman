@@ -432,72 +432,26 @@ fn write_actor_label(
             h = fmt(katex.height),
             html = katex.html,
         );
-        let raw_lines = crate::text::split_html_br_lines(rendered_label);
-        let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
+        super::text::write_centered_tspan_text(
+            out,
+            cx,
+            cy,
+            rendered_label,
+            &format!("actor {label_class}"),
+            ctx.style,
+            ctx.checkpoints,
+        )?;
         out.push_str("</switch>");
         return ctx.checkpoints.checkpoint();
     }
 
-    // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
-    // literal text rather than being treated as an actual `<br>` break.
-    if let Some(wrapped_label) = wrapped_label {
-        let raw_lines = crate::text::split_html_br_lines(&wrapped_label);
-        write_actor_label_lines(
-            out,
-            cx,
-            cy,
-            raw_lines.iter().copied(),
-            raw_lines.len(),
-            label_class,
-            ctx,
-        )?;
-    } else {
-        let raw_lines = crate::text::split_html_br_lines(label);
-        let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
-    }
-    ctx.checkpoints.checkpoint()
-}
-
-fn write_actor_label_lines<'a>(
-    out: &mut String,
-    cx: f64,
-    cy: f64,
-    raw_lines: impl IntoIterator<Item = &'a str>,
-    line_count: usize,
-    label_class: &str,
-    ctx: &ActorLabelContext<'_>,
-) -> Result<()> {
-    let n = line_count.max(1) as f64;
-    // byTspan applies actor size, weight and family through CSSOM in this order.
-    let mut style = format!(
-        "text-anchor: middle; font-size: {}px;",
-        fmt(ctx.style.font_size)
-    );
-    if let Some(weight) = &ctx.style.font_weight {
-        let _ = write!(style, " font-weight: {weight};");
-    }
-    if let Some(family) = crate::sequence::sequence_inline_font_family(ctx.style) {
-        let _ = write!(style, " font-family: {family};");
-    }
-    for (i, raw) in raw_lines.into_iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(i)?;
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
-        let dy = if n <= 1.0 {
-            0.0
-        } else {
-            (i as f64 - (n - 1.0) / 2.0) * ctx.style.font_size
-        };
-        let _ = write!(
-            out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor {label_class}" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
-            x = fmt(cx),
-            y = fmt(cy),
-            style = escape_attr(&style),
-            dy = fmt(dy),
-            text = escape_xml_display(decoded.as_ref())
-        );
-    }
-    ctx.checkpoints.checkpoint()
+    super::text::write_centered_tspan_text(
+        out,
+        cx,
+        cy,
+        rendered_label,
+        &format!("actor {label_class}"),
+        ctx.style,
+        ctx.checkpoints,
+    )
 }

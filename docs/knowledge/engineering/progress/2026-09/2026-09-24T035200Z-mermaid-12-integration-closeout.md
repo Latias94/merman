@@ -808,3 +808,26 @@ The latest three-family comparison has Flowchart 45 distinct unadmitted fixtures
 rows, State 11 / 22, and Sequence 25 / 75, with no stale residual receipts. Rerunning Sequence
 after this fix retains the same 25 / 75 blockers. No comparator or residual catalog was
 modified. Box title measurement/rendering remains a separately identified source mismatch.
+
+# Sequence box title and frame geometry on 2026-09-26
+
+Mermaid 12 `calculateActorMargins` and `drawBox` use measured box title dimensions,
+source box coordinates, and one shared vertical cursor. The renderer now retains wrapped
+box labels, measured title height, box x/width, and final cursor height in the prepared
+artifact. SVG emission reuses those values, emits titles through the same `byTspan`
+line model as actor labels, and applies `box.starty = box.y - boxMargin / 2` plus the
+source bottom padding formula. Empty titles still receive width/margin calculations but
+produce no background or title node.
+
+Regression coverage passed 152 focused Sequence tests, including host-measured multiline
+titles, automatic title wrapping, custom box margins, mirror/no-mirror frames, created
+participants, empty boxes, and narrow unnamed boxes. The Sequence layout snapshot suite
+passed 71 tests with one existing skip; all-target/all-feature Clippy passed. A fresh
+read-only correctness and standards review found no remaining findings. Twelve affected
+Sequence layout goldens changed only numeric y/max-y fields.
+
+The Sequence comparison still has 25 unadmitted fixtures / 75 mode rows. One existing
+browser-text receipt (`upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048`)
+now reports local-signature drift in all three modes after the actor measurement fix; the
+receipt was not changed. This remains a blocking verification result, as intended by the
+receipt contract.

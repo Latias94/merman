@@ -6,7 +6,7 @@
         {
           "id": "actor-top-a",
           "x": 80.0,
-          "y": 64.0,
+          "y": 65.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -14,7 +14,7 @@
         {
           "id": "actor-top-b",
           "x": 280.0,
-          "y": 64.0,
+          "y": 65.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "actor-top-c",
           "x": 495.0,
-          "y": 64.0,
+          "y": 65.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "actor-bottom-a",
           "x": 80.0,
-          "y": 158.0,
+          "y": 159.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "actor-bottom-b",
           "x": 280.0,
-          "y": 158.0,
+          "y": 159.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "actor-bottom-c",
           "x": 495.0,
-          "y": 158.0,
+          "y": 159.0,
           "width": 150.0,
           "height": 74.0,
           "is_cluster": false
@@ -62,11 +62,11 @@
           "points": [
             {
               "x": 80.0,
-              "y": 101.0
+              "y": 102.0
             },
             {
               "x": 80.0,
-              "y": 121.0
+              "y": 122.0
             }
           ],
           "label": null,
@@ -87,11 +87,11 @@
           "points": [
             {
               "x": 280.0,
-              "y": 101.0
+              "y": 102.0
             },
             {
               "x": 280.0,
-              "y": 121.0
+              "y": 122.0
             }
           ],
           "label": null,
@@ -112,11 +112,11 @@
           "points": [
             {
               "x": 495.0,
-              "y": 101.0
+              "y": 102.0
             },
             {
               "x": 495.0,
-              "y": 121.0
+              "y": 122.0
             }
           ],
           "label": null,

@@ -3507,3 +3507,245 @@ fn sequence_wrapped_actor_height_uses_host_text_dimensions() {
         }
     }
 }
+
+#[test]
+fn sequence_box_titles_share_measured_height_and_use_actor_font_when_drawn() {
+    let config = serde_json::json!({
+        "fontSize": 26,
+        "sequence": {"actorFontWeight": 700, "messageFontWeight": 400}
+    });
+    let source = format!(
+        "---\nconfig: {config}\n---\nsequenceDiagram\nbox probe-one<br>probe-two\nparticipant A\nend\nbox probe-other\nparticipant B\nend\nA->>B: hello"
+    );
+    let observation = render_sequence_with_host_environment(
+        &source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-box-height",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+    let actors = doc
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actors.len(), 2);
+    for actor in actors {
+        assert_eq!(
+            actor.attribute("y"),
+            Some("58"),
+            "10px margin plus tallest 48px title"
+        );
+    }
+    let titles = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(titles.len(), 3, "one text/tspan pair per title line");
+    let mut offsets = Vec::new();
+    for title in titles {
+        assert_eq!(
+            title.attribute("y"),
+            Some("29"),
+            "all boxes share the maximum title height"
+        );
+        let style = title.attribute("style").expect("title style");
+        assert!(style.contains("font-size: 26px;"), "{style}");
+        assert!(style.contains("font-weight: 700;"), "{style}");
+        let tspan = title
+            .children()
+            .find(|node| node.has_tag_name("tspan"))
+            .unwrap();
+        offsets.push(tspan.attribute("dy").unwrap().parse::<i32>().unwrap());
+    }
+    offsets.sort_unstable();
+    assert_eq!(offsets, [-13, 0, 13]);
+    for request in observation.requests.iter().filter(|request| {
+        request.text.starts_with("probe-")
+            && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+    }) {
+        assert_eq!(
+            f64::from_bits(request.font_size_bits),
+            26.0,
+            "box dimensions use the resolved messageFont"
+        );
+        assert_eq!(request.font_weight.as_deref(), Some("400"));
+    }
+}
+
+#[test]
+fn sequence_box_frames_use_source_padding_and_global_cursor() {
+    for (mirror, expected_height) in [(false, 139.0), (true, 264.0)] {
+        let config = serde_json::json!({
+            "look": "classic",
+            "sequence": {"boxMargin": 20, "boxTextMargin": 3, "mirrorActors": mirror}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nbox probe-one\nparticipant A\nend"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::WeightSensitiveMetrics,
+            "sequence-box-frame",
+            RenderEnvironment::deterministic(),
+        );
+        let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+        let frame = doc
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+            .unwrap();
+        assert_eq!(frame.attribute("x"), Some("-40"));
+        assert_eq!(frame.attribute("y"), Some("-10"));
+        assert_eq!(frame.attribute("width"), Some("236"));
+        assert_eq!(
+            frame.attribute("height").unwrap().parse::<f64>().unwrap(),
+            expected_height
+        );
+        let title = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+            .unwrap();
+        assert_eq!(title.attribute("y"), Some("15"));
+    }
+}
+
+#[test]
+fn sequence_unnamed_narrow_box_still_reserves_wrap_padding() {
+    let config = serde_json::json!({
+        "sequence": {"width": 20, "wrap": true, "boxMargin": 0, "boxTextMargin": 5, "wrapPadding": 10}
+    });
+    let source = format!("---\nconfig: {config}\n---\nsequenceDiagram\nbox\nparticipant A\nend");
+    let observation =
+        render_sequence_with_environment(&source, &RenderEnvironment::deterministic());
+    let doc = roxmltree::Document::parse(&observation.svg).unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("x"), Some("10"));
+    let frame = doc
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+        .unwrap();
+    assert_eq!(frame.attribute("x"), Some("0"));
+    assert_eq!(frame.attribute("width"), Some("40"));
+    assert!(
+        !doc.descendants()
+            .any(|node| { node.has_tag_name("text") && node.attribute("class") == Some("text") })
+    );
+}
+
+#[test]
+fn sequence_box_wraps_title_before_measurement_and_emission() {
+    let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nbox probe-long-one probe-long-two probe-long-three\nparticipant A\nend";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-wrapped-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("y"), Some("82"));
+    let titles = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(titles.len(), 3);
+    let lines = titles
+        .iter()
+        .map(|node| {
+            node.children()
+                .find(|child| child.has_tag_name("tspan"))
+                .unwrap()
+                .text()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        ["probe-long-one", "probe-long-two", "probe-long-three"]
+    );
+    assert!(
+        observation
+            .requests
+            .iter()
+            .filter(|request| { request.text.starts_with("probe-") })
+            .all(|request| request.phase == TextMeasurementPhase::SvgBBox
+                && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions)
+    );
+}
+
+#[test]
+fn sequence_box_start_precedes_created_actor_half_width_spacing() {
+    let source = "---\nconfig: {look: classic, sequence: {boxMargin: 20, boxTextMargin: 3}}\n---\nsequenceDiagram\nparticipant A\ncreate participant B\nA->>B: hello\nbox probe-one\nparticipant B as Bee\nend";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-created-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    let frame = doc
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+        .unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class") == Some("actor actor-top")
+                && node.attribute("name") == Some("B")
+        })
+        .unwrap();
+    let actor_x = actor.attribute("x").unwrap().parse::<f64>().unwrap();
+    let actor_width = actor.attribute("width").unwrap().parse::<f64>().unwrap();
+    assert_eq!(
+        frame.attribute("x").unwrap().parse::<f64>().unwrap(),
+        actor_x - 3.0 - actor_width / 2.0 - 40.0
+    );
+    assert_eq!(
+        frame.attribute("width").unwrap().parse::<f64>().unwrap(),
+        actor_width * 1.5 + 6.0 + 80.0
+    );
+    assert_eq!(
+        frame.attribute("y"),
+        Some("-10"),
+        "created actor's later y must not move the frame"
+    );
+}
+
+#[test]
+fn sequence_empty_box_is_measured_but_not_drawn() {
+    let source = "sequenceDiagram\nbox probe-empty\nend\nparticipant A";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-empty-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    assert!(
+        !doc.descendants()
+            .any(|node| node.attribute("class") == Some("rect"))
+    );
+    assert!(
+        !doc.descendants()
+            .any(|node| node.attribute("class") == Some("text"))
+    );
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("y"), Some("34"));
+}

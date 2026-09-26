@@ -60,6 +60,7 @@ pub(super) struct SequenceLayoutGraph {
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     pub(super) bottom_box_top_y: f64,
+    pub(super) box_height: f64,
     pub(super) bounds_start_x: f64,
     pub(super) bounds_stop_x: f64,
 }
@@ -554,11 +555,25 @@ pub(super) fn build_sequence_layout_graph(
     )?;
     ctx.checkpoints.checkpoint()?;
 
+    // drawActors advances one shared footer cursor, including destroyed actors' heights.
+    let box_height = if ctx.mirror_actors {
+        let mut max_footer_height = 0.0_f64;
+        for (index, node) in nodes.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(index)?;
+            if node.id.starts_with("actor-bottom-") {
+                max_footer_height = max_footer_height.max(node.height);
+            }
+        }
+        bottom_box_top_y + max_footer_height + ctx.box_margin
+    } else {
+        state.cursor_y
+    };
     Ok(SequenceLayoutGraph {
         nodes,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
         bottom_box_top_y,
+        box_height,
         bounds_start_x: state.bounds_start_x,
         bounds_stop_x: state.bounds_stop_x,
     })

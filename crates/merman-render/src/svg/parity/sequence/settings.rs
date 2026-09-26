@@ -15,7 +15,6 @@ pub(super) struct SequenceRenderSettings {
     pub(super) note_margin: f64,
     pub(super) sequence_width: f64,
     pub(super) activation_width: f64,
-    pub(super) actor_label_font_size: f64,
     pub(super) actor_wrap_width: f64,
     pub(super) rect_default_fill: String,
     pub(super) loop_text_style: TextStyle,
@@ -54,7 +53,7 @@ impl SequenceRenderSettings {
         // Upstream Mermaid's Sequence renderer treats the global `fontSize` as authoritative.
         // Per-sequence overrides like `sequence.messageFontSize` apply only when the global value
         // is absent.
-        let actor_label_font_size = config
+        let message_font_size = config
             .root_json_number("fontSize")
             .or_else(|| config.sequence_json_number("messageFontSize"))
             .unwrap_or(16.0)
@@ -63,7 +62,7 @@ impl SequenceRenderSettings {
             font_family: config
                 .root_string("fontFamily")
                 .or_else(|| config.sequence_string("messageFontFamily")),
-            font_size: actor_label_font_size,
+            font_size: message_font_size,
             font_weight: config.font_weight("messageFontWeight"),
             font_style: None,
         };
@@ -80,7 +79,7 @@ impl SequenceRenderSettings {
         };
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
-            font_size: actor_label_font_size,
+            font_size: message_font_size,
             font_weight: config.font_weight("noteFontWeight"),
             font_style: None,
         };
@@ -109,7 +108,6 @@ impl SequenceRenderSettings {
             note_margin,
             sequence_width,
             activation_width,
-            actor_label_font_size,
             actor_wrap_width,
             rect_default_fill,
             loop_text_style,
@@ -180,7 +178,7 @@ mod tests {
         assert_eq!(settings.sequence_width, 150.0);
         assert_eq!(settings.wrap_padding, 10.0);
         assert_eq!(settings.activation_width, 10.0);
-        assert_eq!(settings.actor_label_font_size, 16.0);
+        assert_eq!(settings.loop_text_style.font_size, 16.0);
         assert_eq!(settings.actor_wrap_width, 130.0);
     }
 
@@ -223,7 +221,7 @@ mod tests {
         assert_eq!(settings.note_margin, -3.0);
         assert_eq!(settings.sequence_width, 1.0);
         assert_eq!(settings.activation_width, 1.0);
-        assert_eq!(settings.actor_label_font_size, 22.0);
+        assert_eq!(settings.loop_text_style.font_size, 22.0);
         assert_eq!(settings.actor_wrap_width, 5.0);
         assert_eq!(
             settings.loop_text_style.font_family.as_deref(),
