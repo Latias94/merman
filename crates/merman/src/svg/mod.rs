@@ -62,6 +62,15 @@ pub fn sanitize_svg_id(raw: &str) -> String {
     merman_render::svg::sanitize_svg_id(raw)
 }
 
+#[cfg(feature = "diagram-class")]
+pub use merman_render::ClassComplexity;
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub use merman_render::FlowchartComplexity;
+
+#[cfg(feature = "diagram-mindmap")]
+pub use merman_render::MindmapComplexity;
+
 #[cfg(test)]
 mod sanitize_svg_id_tests {
     use super::sanitize_svg_id;
@@ -105,12 +114,3 @@ mod sanitize_svg_id_tests {
         assert_eq!(sanitize_svg_id("m--"), "m-untitled");
     }
 }
-
-#[cfg(feature = "diagram-class")]
-pub use merman_render::ClassComplexity;
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-pub use merman_render::FlowchartComplexity;
-
-#[cfg(feature = "diagram-mindmap")]
-pub use merman_render::MindmapComplexity;
