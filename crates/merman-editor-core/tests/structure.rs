@@ -684,3 +684,63 @@ fn new_families_support_navigation_and_rename_across_preamble() {
         ));
     }
 }
+
+#[test]
+fn usecase_recovery_refuses_rename_for_non_mergeable_declarations() {
+    let harness = SnapshotHarness::new();
+    for (declarations, position) in [
+        ("actor A\nA(Usecase)\nA --> B\n", Position::new(1, 6)),
+        (
+            "json Data@{\"x\":1}\njson Data@{\"y\":2}\nstyle Data fill:red\n",
+            Position::new(1, 5),
+        ),
+        (
+            "A link@--> B\nB link@--> C\nstyle link stroke:red\n",
+            Position::new(1, 2),
+        ),
+    ] {
+        for suffix in ["", "D -->"] {
+            let snapshot = harness
+                .analyze(
+                    "file:///tmp/usecase.mmd",
+                    1,
+                    format!("usecase-beta\n{declarations}{suffix}"),
+                    DocumentKind::Diagram,
+                )
+                .expect("recovered snapshot");
+            assert!(
+                prepare_rename(&snapshot, position).is_none(),
+                "{declarations}{suffix}"
+            );
+            assert!(
+                matches!(
+                    rename(&snapshot, position, "Renamed"),
+                    Err(RenameError::InvalidName)
+                ),
+                "{declarations}{suffix}"
+            );
+        }
+    }
+    for declarations in [
+        "actor A\nactor A\nA --> B\n",
+        "A(Usecase)\nA(Usecase)\nA --> B\n",
+    ] {
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/usecase.mmd",
+                1,
+                format!("usecase-beta\n{declarations}C -->"),
+                DocumentKind::Diagram,
+            )
+            .expect("recovered snapshot");
+        let position = Position::new(3, 0);
+        assert!(
+            prepare_rename(&snapshot, position).is_some(),
+            "{declarations}"
+        );
+        let edit = rename(&snapshot, position, "Renamed")
+            .unwrap()
+            .expect("mergeable declarations");
+        assert_eq!(edit.changes[snapshot.uri()].len(), 3, "{declarations}");
+    }
+}

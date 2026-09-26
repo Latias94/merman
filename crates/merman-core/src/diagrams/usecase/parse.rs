@@ -939,61 +939,97 @@ impl<'a> Parser<'a> {
             ));
         }
     }
-    pub fn resolve_fact_kinds(&mut self, model: &UsecaseDiagramRenderModel) {
+    pub fn finalize_editor_facts(&mut self) -> OperationControlResult<()> {
         use std::collections::{HashMap, HashSet};
-        let mut kinds: HashMap<&str, EditorSemanticKind> = model
-            .nodes
-            .iter()
-            .map(|node| {
-                (
-                    node.id.as_str(),
-                    if node.kind == UsecaseNodeKind::Actor {
-                        EditorSemanticKind::Variable
-                    } else {
-                        EditorSemanticKind::Function
-                    },
+
+        // Completed declarations own identity even if a later statement is incomplete. Do not
+        // require a renderable model to bind references from the parser's recovery journal.
+        let declarations =
+            self.draft
+                .entities
+                .iter()
+                .map(|entity| {
+                    (
+                        entity.id.as_str(),
+                        if entity.actor {
+                            EditorSemanticKind::Variable
+                        } else {
+                            EditorSemanticKind::Function
+                        },
+                    )
+                })
+                .chain(
+                    self.draft.boundaries.iter().map(|boundary| {
+                        (boundary.entity.id.as_str(), EditorSemanticKind::Namespace)
+                    }),
                 )
-            })
-            .collect();
-        kinds.extend(
-            model
-                .boundaries
-                .iter()
-                .map(|node| (node.id.as_str(), EditorSemanticKind::Namespace)),
-        );
-        kinds.extend(
-            model
-                .json_nodes
-                .iter()
-                .map(|node| (node.id.as_str(), EditorSemanticKind::Object)),
-        );
-        kinds.extend(
-            model
-                .relationships
-                .iter()
-                .filter(|edge| edge.explicit_id)
-                .map(|edge| (edge.id.as_str(), EditorSemanticKind::Event)),
-        );
-        let mut defined: HashSet<String> = self
-            .facts
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.role == EditorSemanticRole::Entity)
-            .map(|symbol| symbol.name.clone())
-            .collect();
+                .chain(
+                    self.draft
+                        .json
+                        .iter()
+                        .map(|json| (json.node.id.as_str(), EditorSemanticKind::Object)),
+                )
+                .chain(self.draft.relationships.iter().filter_map(|relation| {
+                    relation
+                        .edge
+                        .explicit_id
+                        .then_some((relation.edge.id.as_str(), EditorSemanticKind::Event))
+                }));
+        let mut kinds: HashMap<&str, Option<EditorSemanticKind>> = HashMap::new();
+        for (id, kind) in declarations {
+            self.control.checkpoint()?;
+            kinds
+                .entry(id)
+                .and_modify(|previous| {
+                    if *previous != Some(kind)
+                        || matches!(kind, EditorSemanticKind::Object | EditorSemanticKind::Event)
+                    {
+                        *previous = None;
+                    }
+                })
+                .or_insert(Some(kind));
+        }
+        // Only completed relationships can introduce implicit use cases. A dangling style or
+        // note target must not become a declaration merely because parsing stopped later.
+        for relation in &self.draft.relationships {
+            self.control.checkpoint()?;
+            for entity in [&relation.source, &relation.target] {
+                kinds
+                    .entry(entity.id.as_str())
+                    .or_insert(Some(EditorSemanticKind::Function));
+            }
+        }
+        let mut defined = HashSet::new();
+        for symbol in &self.facts.symbols {
+            self.control.checkpoint()?;
+            if symbol.role == EditorSemanticRole::Entity {
+                defined.insert(symbol.name.clone());
+            }
+        }
         for symbol in &mut self.facts.symbols {
+            self.control.checkpoint()?;
             if !matches!(
                 symbol.role,
                 EditorSemanticRole::Entity | EditorSemanticRole::Reference
             ) {
                 continue;
             }
-            if let Some(kind) = kinds.get(symbol.name.as_str()) {
-                symbol.kind = *kind;
-            }
-            if symbol.role == EditorSemanticRole::Reference && defined.insert(symbol.name.clone()) {
-                symbol.role = EditorSemanticRole::Entity;
+            match kinds.get(symbol.name.as_str()) {
+                Some(Some(kind)) => {
+                    symbol.kind = *kind;
+                    if symbol.role == EditorSemanticRole::Reference
+                        && defined.insert(symbol.name.clone())
+                    {
+                        symbol.role = EditorSemanticRole::Entity;
+                    }
+                }
+                Some(None) => {
+                    // Conflicting kinds and duplicate JSON/edge declarations cannot be renamed together.
+                    symbol.rename_policy = EditorRenamePolicy::None;
+                }
+                None => {}
             }
         }
+        Ok(())
     }
 }

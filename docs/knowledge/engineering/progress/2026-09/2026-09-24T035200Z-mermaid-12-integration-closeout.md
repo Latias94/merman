@@ -837,4 +837,31 @@ receipt contract.
 
 The editor and language surfaces already had parser-complete semantic facts, recovery input, completion, navigation, rename, and Tree-sitter grammar/query fixtures for Agentflow and Usecase, but the LSP capability contract still classified both public types as not yet admitted. Commit `18097c666` moves both types into the explicit first-class LSP admission list and adds their two rows to `docs/lsp/CAPABILITIES.md`; the matrix now covers all 37 public diagram types.
 
-The focused admission/editor run passed 87 tests, the complete `merman-lsp` nextest passed 292 tests, and the Tree-sitter package nextest passed 26 tests. `xtask verify-editor-language-contract`, `verify-binding-contract`, `verify-generated`, and `check-alignment` passed. Third-party license verification, release legal material projection checks, and governed Cargo package legal-material checks also passed. These results close the R8 admission evidence for these two families; final U14/U15 parity, size, and integrated gates remain open.
+The focused admission/editor run passed 87 tests, the complete `merman-lsp` nextest passed 292 tests, and the Tree-sitter package nextest passed 26 tests. `xtask verify-editor-language-contract`, `verify-binding-contract`, `verify-generated`, and `check-alignment` passed. Third-party license verification, release legal material projection checks, and governed Cargo package legal-material checks also passed. These results establish capability admission for these two families. They did not yet establish navigation after partial edits; the follow-up below covers that gap. Final U14/U15 parity, size, and integrated gates remain open.
+
+
+# Usecase recovery identity on 2026-09-26
+
+A new JSON-RPC regression exposed a gap in the prior admission evidence: appending an
+unfinished relationship to a Usecase document kept the actor declaration but left its
+references with a different semantic kind, so definition returned null. Type binding
+previously required successful construction of the complete render model.
+
+Editor facts now bind identities from completed parser draft declarations on both
+successful and recovered paths. Completed relationships introduce implicit use cases;
+dangling note/style targets do not. Conflicting kinds and duplicate JSON/explicit edge
+IDs disable rename, while legal same-kind actor/usecase declarations remain mergeable.
+The projection retains operation-control checkpoints and does not run a second parser
+or relax render-model validation.
+
+The regression covers complete and partial Agentflow/Usecase documents through LSP
+open/change notifications, versioned diagnostics, definition, versioned rename edits,
+and semantic tokens, with CRLF and a Unicode frontmatter title. Core/editor coverage
+also checks forward references, implicit endpoints, boundary/JSON/edge references,
+unclosed boundaries, unresolved style targets, and conflicting declaration rename.
+
+The final all-feature nextest run for `merman-core`, `merman-editor-core`, and
+`merman-lsp` passed all 2,108 tests with no skips. All-target/all-feature Clippy with
+warnings denied, formatting, and diff checks passed. Independent standards and
+correctness reviews have no remaining findings. No comparator, accepted residual, baseline, or
+render-model semantics changed; the previously documented family parity blockers remain.

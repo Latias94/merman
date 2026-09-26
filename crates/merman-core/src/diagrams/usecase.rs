@@ -283,18 +283,16 @@ fn construct(
     };
     let mut parser = parse::Parser::new(code, tokens, control);
     let parsed = parser.parse()?;
+    parser.finalize_editor_facts()?;
     if let Err(issue) = parsed {
         return Ok(Err(failure(meta, issue, parser.facts)));
     }
     let model = resolve::resolve(&parser.draft, meta, control)?;
     match model {
-        Ok(model) => {
-            parser.resolve_fact_kinds(&model);
-            Ok(Ok(Construction {
-                model,
-                editor_facts: parser.facts,
-            }))
-        }
+        Ok(model) => Ok(Ok(Construction {
+            model,
+            editor_facts: parser.facts,
+        })),
         Err(issue) => Ok(Err(failure(meta, issue, parser.facts))),
     }
 }
