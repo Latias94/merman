@@ -5,14 +5,14 @@ use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, Rend
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementRoute,
     TextMeasurementSource,
 };
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, WrapMode};
 use merman_render::{
     Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     ResourceLimitPhase,
@@ -2029,6 +2029,43 @@ fn sequence_wrap_true_splits_the_first_message_without_losing_text() {
         row_count > 1,
         "wrap=true must split the first long message: {message_rows:#?}"
     );
+}
+
+#[test]
+fn sequence_critical_wrap_responds_to_source_measured_svg_widths() {
+    let source = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join("upstream_critical_without_options_spec.mmd"),
+    )
+    .expect("critical fixture");
+    let measurer =
+        DeterministicTextMeasurer::default().with_width_callback(|text, style| match text {
+            "[Establish a" => 90.0,
+            "[Establish a connection" => 160.0,
+            "connection to the" => 125.0,
+            "connection to the DB]" => 170.0,
+            "DB]" => 26.0,
+            _ => {
+                DeterministicTextMeasurer::default()
+                    .measure(text, style)
+                    .width
+            }
+        });
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.sequence-critical-browser-bounds").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        measurer,
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let svg = render_sequence_with_environment(&source, &environment).svg;
+    let lines = text_rows_by_class(&svg, "loopText");
+    assert_eq!(lines, vec!["[Establish a", "connection to the", "DB]"]);
 }
 
 #[test]

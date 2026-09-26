@@ -890,3 +890,18 @@ fixture-group mapping are in `docs/alignment/STATE_ROOT_VIEWBOX_PARITY_GAPS.md`.
 Review of the remaining skip found that `upstream_state_parser_spec` now renders with the
 installed Mermaid 12 runtime. Its old Mermaid 11.16 crash exclusion is being removed and
 the existing source-bound generator has added its baseline; the final State family comparison now renders all 286 selected fixtures.
+
+# Sequence critical wrapping measurement attribution on 2026-09-26
+
+The remaining `upstream_critical_without_options_spec` mismatch is now covered by a
+controlled production-path regression. A deterministic text-measurement profile supplies
+the source SVG width boundaries for the wrapped loop label, and the renderer consequently
+produces the same three logical rows (`[Establish a`, `connection to the`, `DB]`) as the
+Mermaid 12 browser output. This demonstrates that the residual is sensitive to the host text
+measurement boundary rather than requiring a separate wrapping algorithm.
+
+The exact browser-text receipt binds the fixture input, Mermaid 12 upstream SVG, and the
+full local SVG signature for `structure`, `parity`, and `parity-root`. The final diagnostic
+comparison accepted all three rows for this fixture. The existing receipt for fixture 048
+still reports local-signature drift after the actor measurement changes and remains a
+blocking result. No comparator normalization or production layout behavior changed.
