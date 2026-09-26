@@ -891,17 +891,17 @@ Review of the remaining skip found that `upstream_state_parser_spec` now renders
 installed Mermaid 12 runtime. Its old Mermaid 11.16 crash exclusion is being removed and
 the existing source-bound generator has added its baseline; the final State family comparison now renders all 286 selected fixtures.
 
-# Sequence critical wrapping measurement attribution on 2026-09-26
+# Sequence critical wrapping evidence boundary on 2026-09-26
 
-The remaining `upstream_critical_without_options_spec` mismatch is now covered by a
-controlled production-path regression. A deterministic text-measurement profile supplies
-the source SVG width boundaries for the wrapped loop label, and the renderer consequently
-produces the same three logical rows (`[Establish a`, `connection to the`, `DB]`) as the
-Mermaid 12 browser output. This demonstrates that the residual is sensitive to the host text
-measurement boundary rather than requiring a separate wrapping algorithm.
+A controlled production-path regression for `upstream_critical_without_options_spec`
+shows that the loop label changes to the browser-shaped three rows when supplied with
+explicit width boundaries. Those widths are test controls, not measurements extracted from
+the pinned Mermaid 12 browser run, so this test records sensitivity only and does not admit
+the fixture as a browser-text residual.
 
-The exact browser-text receipt binds the fixture input, Mermaid 12 upstream SVG, and the
-full local SVG signature for `structure`, `parity`, and `parity-root`. The final diagnostic
-comparison accepted all three rows for this fixture. The existing receipt for fixture 048
-still reports local-signature drift after the actor measurement changes and remains a
-blocking result. No comparator normalization or production layout behavior changed.
+The provisional exact receipt was removed because the upstream SVG does not carry the
+per-token browser measurements needed to establish causality. The fixture remains a
+blocking Sequence comparison until a reproducible browser measurement artifact and a
+complete DOM-difference proof are available. The existing receipt for fixture 048 still
+reports local-signature drift after the actor measurement changes and remains blocking.
+No comparator normalization or production layout behavior changed.

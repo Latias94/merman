@@ -510,18 +510,6 @@
     },
     {
       "diagram": "sequence",
-      "fixture": "upstream_critical_without_options_spec",
-      "modes": [
-        "structure",
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "61cbad20fec14f50b7498b51b9cc1085ef8ed49bca5a30f40431aff1c10d3858",
-      "upstream_svg_sha256": "f6fb0ddeb0bc87cfb036e870a252db26de6fba6da0d1ca3634ff9ea09dbd35dd",
-      "local_svg_signature_sha256": "cfd08ae0f3cd7c21e927c905706d04b2048ca4be4f4da7ed2e087c7b61ddd53d"
-    },
-    {
-      "diagram": "sequence",
       "fixture": "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_right_of_actor_028",
       "modes": [
         "structure",

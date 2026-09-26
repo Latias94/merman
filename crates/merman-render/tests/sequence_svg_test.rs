@@ -2032,7 +2032,7 @@ fn sequence_wrap_true_splits_the_first_message_without_losing_text() {
 }
 
 #[test]
-fn sequence_critical_wrap_responds_to_source_measured_svg_widths() {
+fn sequence_critical_wrap_responds_to_controlled_width_boundaries() {
     let source = std::fs::read_to_string(
         workspace_root()
             .join("fixtures")
