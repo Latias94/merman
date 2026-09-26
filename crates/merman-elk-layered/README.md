@@ -21,6 +21,22 @@ license and caller-owned work-control boundary. They do not introduce a second f
 budget system. A kernel entry point alone does not advertise Mermaid renderer support;
 adapter dispatch and compound integration are admitted separately.
 
+## Connected components
+
+The flat layered executor follows `ComponentsProcessor` and `SimpleRowGraphPlacer`:
+DFS component order, shared Java random state, priority/area ordering, and row packing.
+It preserves input node and edge indices while remapping processor-created dummies,
+ports, labels, and self-loop references. Root padding and minimum size apply only after
+packing; component spacing follows the layered base spacing. The source mappings are
+in `src/components.rs`, within this crate's existing EPL-2.0 boundary.
+
+`INCLUDE_CHILDREN` uses the compound executor and does not split components, including
+when the input has no nested nodes. Single-graph barycenter sweeps keep that executor's
+random and ordering behavior while charging actual attempts and sweeps. Nested graphs,
+greedy sweeps, and model-order crossing scores retain hierarchy-wide admission. Free or
+side-fixed external-port component grouping is not implemented by the flat executor;
+it returns a typed error rather than substituting SimpleRow packing.
+
 ## Layer assignment
 
 The layered pipeline supports `NETWORK_SIMPLEX`, `LONGEST_PATH`, `LONGEST_PATH_SOURCE`,

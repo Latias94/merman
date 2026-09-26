@@ -6,29 +6,13 @@
         {
           "id": "55",
           "x": 128.0,
-          "y": 102.5,
+          "y": 320.5,
           "width": 136.0,
           "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "divider-id-1",
-          "x": 362.0,
-          "y": 102.5,
-          "width": 184.0,
-          "height": 85.0,
-          "is_cluster": true
-        },
-        {
-          "id": "divider-id-2",
-          "x": 596.0,
-          "y": 102.5,
-          "width": 184.0,
-          "height": 85.0,
-          "is_cluster": true
-        },
-        {
-          "id": "id-38dvt516gkfs-1",
           "x": 128.0,
           "y": 102.5,
           "width": 184.0,
@@ -36,16 +20,32 @@
           "is_cluster": true
         },
         {
+          "id": "divider-id-2",
+          "x": 128.0,
+          "y": 211.5,
+          "width": 184.0,
+          "height": 85.0,
+          "is_cluster": true
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 128.0,
+          "y": 320.5,
+          "width": 184.0,
+          "height": 85.0,
+          "is_cluster": true
+        },
+        {
           "id": "s2",
-          "x": 362.0,
-          "y": 90.5,
-          "width": 700.0,
-          "height": 157.0,
+          "x": 128.0,
+          "y": 199.5,
+          "width": 232.0,
+          "height": 375.0,
           "is_cluster": true
         },
         {
           "id": "s3",
-          "x": 362.0,
+          "x": 128.0,
           "y": 102.5,
           "width": 136.0,
           "height": 37.0,
@@ -53,8 +53,8 @@
         },
         {
           "id": "s4",
-          "x": 596.0,
-          "y": 102.5,
+          "x": 128.0,
+          "y": 211.5,
           "width": 136.0,
           "height": 37.0,
           "is_cluster": false
@@ -64,48 +64,6 @@
       "clusters": [
         {
           "id": "divider-id-1",
-          "x": 362.0,
-          "y": 102.5,
-          "width": 184.0,
-          "height": 85.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "",
-          "title_label": {
-            "x": 362.0,
-            "y": 60.0,
-            "width": 0.0,
-            "height": 0.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
-        },
-        {
-          "id": "divider-id-2",
-          "x": 596.0,
-          "y": 102.5,
-          "width": 184.0,
-          "height": 85.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "",
-          "title_label": {
-            "x": 596.0,
-            "y": 60.0,
-            "width": 0.0,
-            "height": 0.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
-        },
-        {
-          "id": "id-38dvt516gkfs-1",
           "x": 128.0,
           "y": 102.5,
           "width": 184.0,
@@ -126,16 +84,58 @@
           "title_margin_bottom": 0.0
         },
         {
+          "id": "divider-id-2",
+          "x": 128.0,
+          "y": 211.5,
+          "width": 184.0,
+          "height": 85.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "",
+          "title_label": {
+            "x": 128.0,
+            "y": 169.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 128.0,
+          "y": 320.5,
+          "width": 184.0,
+          "height": 85.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "",
+          "title_label": {
+            "x": 128.0,
+            "y": 278.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
           "id": "s2",
-          "x": 362.0,
-          "y": 90.5,
-          "width": 700.0,
-          "height": 157.0,
+          "x": 128.0,
+          "y": 199.5,
+          "width": 232.0,
+          "height": 375.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "s2",
           "title_label": {
-            "x": 362.0,
+            "x": 128.0,
             "y": 22.5,
             "width": 13.86,
             "height": 21.0
@@ -150,8 +150,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 712.0,
-        "max_y": 169.0
+        "max_x": 244.0,
+        "max_y": 387.0
       }
     }
   }

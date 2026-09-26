@@ -8,6 +8,7 @@
 
 pub mod algorithms;
 mod common;
+mod components;
 mod compound;
 mod configurator;
 mod graph;
@@ -32,6 +33,7 @@ mod work;
 // work; diagnostics must go through the guarded pipeline APIs below.
 pub use common::networksimplex::NetworkSimplexError;
 pub use common::nodespacing::inside_top_center_micro_layout;
+pub use components::ComponentError;
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,

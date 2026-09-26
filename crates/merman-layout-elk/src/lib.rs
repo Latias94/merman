@@ -1845,7 +1845,8 @@ fn translate_edge_layout(edge: &mut EdgeLayout, offset: Point) {
 }
 
 fn source_graph_requires_compound_pipeline(graph: &LGraph) -> bool {
-    graph.graph_properties.external_ports
+    graph.options.hierarchy_handling == source_port::HierarchyHandling::IncludeChildren
+        || graph.graph_properties.external_ports
         || !graph.hierarchy_edges.is_empty()
         || !graph.cross_hierarchy_edges.is_empty()
         || graph
@@ -2213,6 +2214,7 @@ fn resolved_container_options(
     options.node_size_minimum = mode.minimum(node);
     options.node_size_include_labels = node.label.is_some();
     if matches!(mode, ContainerMode::Explicit(_)) {
+        options.aspect_ratio = 2.0;
         options.horizontal_content_alignment = source_port::ContentAlignment::Center;
     }
     options

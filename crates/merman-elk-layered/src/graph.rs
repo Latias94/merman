@@ -187,6 +187,26 @@ impl LGraph {
         }
     }
 
+    /// Copies configured properties without copying the graph's dense arenas.
+    /// Components use the already-resolved random stream through their serial executor.
+    pub(crate) fn component_shell(&self) -> Self {
+        let mut graph = Self::new_with_random_seed_authority_at_scope(
+            self.id.clone(),
+            self.options.clone(),
+            self.random_seed_context.authority,
+            self.random_seed_context.graph_scope.clone(),
+        );
+        graph.options.node_size_minimum = None;
+        graph.padding = self.padding;
+        graph.graph_properties = self.graph_properties.clone();
+        graph.parent_node_id = self.parent_node_id.clone();
+        graph.random = self.random.clone();
+        graph.random_seed_context = self.random_seed_context.clone();
+        graph.in_layer_successor_constraints_between_non_dummies =
+            self.in_layer_successor_constraints_between_non_dummies;
+        graph
+    }
+
     pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
         let invocation = self.random_seed_context.configuration_invocations;
         let seed = self.random_seed_context.authority.resolve_scope(
@@ -326,6 +346,7 @@ pub struct LNode {
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
     pub model_order: Option<usize>,
+    pub component_priority: i32,
     pub layer_index: Option<usize>,
     pub layer_constraint: super::options::LayerConstraint,
     pub node_alignment: Alignment,
@@ -369,6 +390,7 @@ impl LNode {
             ports: Vec::new(),
             nested_graph: None,
             model_order,
+            component_priority: 0,
             layer_index: None,
             layer_constraint: super::options::LayerConstraint::None,
             node_alignment: Alignment::Automatic,

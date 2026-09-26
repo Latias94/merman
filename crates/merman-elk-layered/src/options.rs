@@ -279,6 +279,8 @@ pub struct LayeredOptions {
     pub direction: ElkDirection,
     pub direction_congruency: DirectionCongruency,
     pub hierarchy_handling: HierarchyHandling,
+    pub separate_connected_components: bool,
+    pub aspect_ratio: f64,
     pub port_labels_placement_next_to_port_if_possible: bool,
     pub port_labels_treat_as_group: bool,
     pub inside_self_loops_activate: bool,
@@ -364,6 +366,7 @@ impl Default for ElkPadding {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpacingOptions {
+    pub component_component: f64,
     pub node_node: f64,
     pub node_self_loop: f64,
     pub edge_edge: f64,
@@ -391,6 +394,7 @@ pub struct SpacingMargin {
 impl Default for SpacingOptions {
     fn default() -> Self {
         Self {
+            component_component: 20.0,
             node_node: 20.0,
             node_self_loop: 10.0,
             edge_edge: 10.0,
@@ -418,6 +422,7 @@ impl SpacingOptions {
         let defaults = Self::default();
         let scale = base_value / defaults.node_node;
         Self {
+            component_component: defaults.component_component * scale,
             node_node: base_value,
             node_self_loop: defaults.node_self_loop * scale,
             edge_edge: defaults.edge_edge * scale,
@@ -442,6 +447,8 @@ impl Default for LayeredOptions {
             direction: ElkDirection::Undefined,
             direction_congruency: DirectionCongruency::ReadingDirection,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
+            separate_connected_components: true,
+            aspect_ratio: f64::from(1.6_f32),
             port_labels_placement_next_to_port_if_possible: false,
             port_labels_treat_as_group: true,
             inside_self_loops_activate: false,

@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "C",
-          "x": 314.0,
-          "y": 126.5,
+          "x": 128.0,
+          "y": 187.5,
           "width": 136.0,
           "height": 37.0,
           "is_cluster": false
@@ -14,25 +14,25 @@
         {
           "id": "Other",
           "x": 104.0,
-          "y": 114.5,
+          "y": 78.5,
           "width": 136.0,
           "height": 37.0,
           "is_cluster": false
         },
         {
           "id": "Parent",
-          "x": 314.0,
-          "y": 114.5,
+          "x": 128.0,
+          "y": 175.5,
           "width": 184.0,
           "height": 109.0,
           "is_cluster": true
         },
         {
           "id": "PersonalizedCockpit",
-          "x": 221.0,
-          "y": 102.5,
-          "width": 418.0,
-          "height": 181.0,
+          "x": 128.0,
+          "y": 133.0,
+          "width": 232.0,
+          "height": 242.0,
           "is_cluster": true
         }
       ],
@@ -40,16 +40,16 @@
       "clusters": [
         {
           "id": "Parent",
-          "x": 314.0,
-          "y": 114.5,
+          "x": 128.0,
+          "y": 175.5,
           "width": 184.0,
           "height": 109.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Parent",
           "title_label": {
-            "x": 314.0,
-            "y": 70.5,
+            "x": 128.0,
+            "y": 131.5,
             "width": 38.5,
             "height": 21.0
           },
@@ -61,15 +61,15 @@
         },
         {
           "id": "PersonalizedCockpit",
-          "x": 221.0,
-          "y": 102.5,
-          "width": 418.0,
-          "height": 181.0,
+          "x": 128.0,
+          "y": 133.0,
+          "width": 232.0,
+          "height": 242.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "PersonalizedCockpit",
           "title_label": {
-            "x": 221.0,
+            "x": 128.0,
             "y": 22.5,
             "width": 114.52,
             "height": 21.0
@@ -84,8 +84,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 430.0,
-        "max_y": 193.0
+        "max_x": 244.0,
+        "max_y": 254.0
       }
     }
   }

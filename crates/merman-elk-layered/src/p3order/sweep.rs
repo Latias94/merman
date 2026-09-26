@@ -719,6 +719,22 @@ impl BarycenterPortDistributor {
     }
 }
 
+// Full hierarchies retain pipeline admission. A single graph can admit only the
+// randomized attempts and sweeps it actually executes, without changing the algorithm.
+struct BarycenterSweepWork<'a> {
+    control: &'a mut dyn WorkControl,
+    snapshot: usize,
+    count: usize,
+    first_layer: usize,
+    sweep: usize,
+}
+
+impl BarycenterSweepWork<'_> {
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        charge_barycenter_work(self.control, units)
+    }
+}
+
 impl HierarchySweep {
     fn new(root: &mut LGraph, cross_min_type: CrossMinType) -> Self {
         let mut random = root.random.clone();
@@ -868,7 +884,16 @@ impl HierarchySweep {
             } else if self.cross_min_type.is_deterministic() {
                 self.minimize_with_counter(root, info_index);
             } else {
-                self.compare_different_randomized_layouts(root, info_index);
+                let mut control = NoopWorkControl;
+                let mut work = BarycenterSweepWork {
+                    control: &mut control,
+                    snapshot: 0,
+                    count: 0,
+                    first_layer: 0,
+                    sweep: 0,
+                };
+                self.compare_different_randomized_layouts(root, info_index, &mut work)
+                    .expect("pre-admitted hierarchy sweep must complete");
             }
 
             if self.infos[info_index].parent_path.is_some() {
@@ -953,7 +978,12 @@ impl HierarchySweep {
     }
 
     #[allow(deprecated)] // Populate the published diagnostic alias without a second execution state.
-    fn compare_different_randomized_layouts(&mut self, root: &mut LGraph, info_index: usize) {
+    fn compare_different_randomized_layouts(
+        &mut self,
+        root: &mut LGraph,
+        info_index: usize,
+        work: &mut BarycenterSweepWork<'_>,
+    ) -> Result<(), WorkError> {
         self.random.set_seed(self.random_seed);
         if self.infos[info_index].path.0.is_empty() {
             self.infos[info_index].random = self.random.clone();
@@ -980,7 +1010,8 @@ impl HierarchySweep {
                 info_index,
                 first_try_with_initial_order && run_index == 0,
                 use_node_port_order_counter,
-            );
+                work,
+            )?;
             let crossings = result.crossings;
             let improved_best = crossings < best_crossings;
             if let Some(trace) = self.debug_trace.as_mut() {
@@ -999,12 +1030,14 @@ impl HierarchySweep {
             }
             if improved_best {
                 best_crossings = crossings;
+                work.charge(work.snapshot)?;
                 self.save_all_node_orders_of_changed_graphs(root);
                 if best_crossings == 0.0 {
                     break;
                 }
             }
         }
+        Ok(())
     }
 
     fn minimize_barycenter_with_counter(
@@ -1013,17 +1046,20 @@ impl HierarchySweep {
         info_index: usize,
         first_try_with_initial_order: bool,
         use_node_port_order_counter: bool,
-    ) -> BarycenterRunResult {
+        work: &mut BarycenterSweepWork<'_>,
+    ) -> Result<BarycenterRunResult, WorkError> {
         let mut is_forward_sweep = self.next_sweep_direction(info_index);
+        work.charge(work.count)?;
         let initial_crossings =
             self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
         if initial_crossings == 0.0 && first_try_with_initial_order {
+            work.charge(work.snapshot)?;
             self.set_currently_best_node_orders(root);
-            return BarycenterRunResult {
+            return Ok(BarycenterRunResult {
                 crossings: 0.0,
                 initial_crossings,
                 early_returned: true,
-            };
+            });
         }
 
         let should_set_first_layer_order = {
@@ -1032,6 +1068,7 @@ impl HierarchySweep {
                 || graph.options.consider_model_order_strategy == OrderingStrategy::None
         };
         if should_set_first_layer_order {
+            work.charge(work.first_layer)?;
             self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
                 heuristic.set_first_layer_order(graph, order, is_forward_sweep);
             });
@@ -1039,6 +1076,7 @@ impl HierarchySweep {
             is_forward_sweep = first_try_with_initial_order;
         }
 
+        work.charge(work.sweep)?;
         self.sweep_reducing_crossings_barycenter(
             root,
             info_index,
@@ -1047,20 +1085,23 @@ impl HierarchySweep {
             first_try_with_initial_order,
         );
 
+        work.charge(work.count)?;
         let mut crossings_in_graph =
             self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
         loop {
+            work.charge(work.snapshot)?;
             self.set_currently_best_node_orders(root);
             if crossings_in_graph == 0.0 {
-                return BarycenterRunResult {
+                return Ok(BarycenterRunResult {
                     crossings: 0.0,
                     initial_crossings,
                     early_returned: false,
-                };
+                });
             }
 
             is_forward_sweep = !is_forward_sweep;
             let old_number_of_crossings = crossings_in_graph;
+            work.charge(work.sweep)?;
             self.sweep_reducing_crossings_barycenter(
                 root,
                 info_index,
@@ -1068,14 +1109,15 @@ impl HierarchySweep {
                 false,
                 false,
             );
+            work.charge(work.count)?;
             crossings_in_graph =
                 self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
             if old_number_of_crossings <= crossings_in_graph {
-                return BarycenterRunResult {
+                return Ok(BarycenterRunResult {
                     crossings: old_number_of_crossings,
                     initial_crossings,
                     early_returned: false,
-                };
+                });
             }
         }
     }
@@ -3256,6 +3298,94 @@ pub(crate) fn minimize_crossings_layer_sweep_hierarchical_with_type(
     initialize_crossing_minimization_port_ids_hierarchy(graph);
     let mut sweep = HierarchySweep::new(graph, cross_min_type);
     sweep.minimize(graph)
+}
+
+/// Preserve the hierarchy sweep's single-node, random-stream and model-order semantics.
+/// The caller admits initialization and selects this only for a physical single graph with
+/// the ordinary crossing counter. Other strategies retain complete hierarchy admission.
+pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
+    graph: &mut LGraph,
+    control: &mut dyn WorkControl,
+) -> Result<bool, WorkError> {
+    debug_assert!(
+        graph
+            .layerless_nodes
+            .iter()
+            .all(|node| node.nested_graph.is_none())
+    );
+    debug_assert_eq!(
+        graph
+            .options
+            .consider_model_order_crossing_counter_node_influence,
+        0.0
+    );
+    if graph.layers.is_empty() || graph.layers.iter().all(|layer| layer.nodes.is_empty()) {
+        return Ok(false);
+    }
+    let scan = barycenter_scan_work(graph)?;
+    // SweepCopy always retains fallback port IDs, including when numeric IDs are available.
+    let snapshot = checked_add(
+        scan,
+        checked_sum(
+            graph
+                .layerless_nodes
+                .iter()
+                .flat_map(|node| &node.ports)
+                .map(|port| port.id.len()),
+        )?,
+    )?;
+    charge_barycenter_work(control, snapshot)?;
+    let reorder = ReorderNodePortsWorkContext::new(graph)?;
+    let mut layer_work = 0;
+    let mut first_layer = 0;
+    for layer in &graph.layers {
+        let units = barycenter_layer_work(graph, &layer.nodes)?;
+        layer_work = checked_add(layer_work, units)?;
+        first_layer = first_layer.max(units);
+    }
+    let mut port_work = 0;
+    for (index, node) in graph.layerless_nodes.iter().enumerate() {
+        if !node.port_constraints.is_order_fixed() {
+            port_work = checked_sum([
+                port_work,
+                node.ports.len(),
+                checked_n_log_n(node.ports.len())?,
+                reorder.node_work(graph, index)?,
+            ])?;
+        }
+    }
+    // A node participates at most twice per sweep: once in the free layer and once
+    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
+    let sweep_work = checked_sum([
+        layer_work,
+        checked_mul(port_work, 2)?,
+        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
+    ])?;
+    let mut work = BarycenterSweepWork {
+        control,
+        snapshot,
+        first_layer,
+        count: barycenter_crossing_count_work(graph)?,
+        sweep: sweep_work,
+    };
+    initialize_crossing_minimization_port_ids_hierarchy(graph);
+    let mut sweep = HierarchySweep::new(graph, CrossMinType::Barycenter);
+    sweep.compare_different_randomized_layouts(graph, 0, &mut work)?;
+    let mut transfer_work = snapshot;
+    if let Some(best) = sweep.infos[0].get_best_sweep(CrossMinType::Barycenter) {
+        for (nodes, port_orders) in best.node_order.iter().zip(&best.port_orders) {
+            for (&node, keys) in nodes.iter().zip(port_orders) {
+                transfer_work = checked_sum([
+                    transfer_work,
+                    super::port_order_lookup_work_units(graph, node, keys)?,
+                    reorder.node_work(graph, node)?,
+                ])?;
+            }
+        }
+    }
+    work.charge(transfer_work)?;
+    graph.random = sweep.barycenter_random(0);
+    Ok(sweep.transfer_node_and_port_orders_to_graph(graph))
 }
 
 pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_type(

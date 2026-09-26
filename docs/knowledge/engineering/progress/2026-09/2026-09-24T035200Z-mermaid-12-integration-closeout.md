@@ -723,3 +723,68 @@ explicitly documented browser-measurement boundary; no new receipt is admitted b
 `cargo nextest run -p xtask --no-fail-fast --test-threads 2` passed 599/599 tests with serial
 Cargo jobs. The focused diagnostic comparisons intentionally remain non-zero because the actual
 69 Flowchart and 28 Sequence DOM blockers are still present.
+
+
+# Session recovery and font consistency on 2026-09-26
+
+Recovery imported historical root `01a0d984-0472-7632-8fa6-b81f9b584223` into the receiving
+session. Its Sequence review is historical evidence; its interrupted component implementation
+was reconciled with the working tree before continuation. Neither persisted child handle was
+reported as live. The receiving session and subsequent repository state are now authoritative.
+
+The selected graph remains Mermaid 12.0.0 at `98a0945418c76238f15df2afaddbba4272656c3b`
+and Eclipse ELK at `62d5909f96fad541bc101ad52dabaece6b7eab7e`. The selection identity remains
+`9634181804174022a42a1288be799a7612226a4a95b3374642a32515348b40e7`, with receipt SHA-256
+`5a77f613f2d1f380ddaa5d9bab5e8111adb2cd833f319462a916694bebf10e28`.
+`xtask verify-mermaid-reference --materialized` passed again against the current checkout.
+No package graph, source pin, upstream SVG or comparator was changed.
+
+Commit `92cd0ab1a` makes Sequence select the source-authoritative font weight before CSS
+validation, accepts static relative and global CSS keywords, and shares that result between
+layout measurement, actor labels and menus. Invalid truthy global weights no longer reveal
+a family fallback; numeric and string weights produce identical menu geometry and root bounds.
+The focused Sequence run passed 140 tests, and renderer all-target/all-feature Clippy passed.
+Independent correctness and standards review found no remaining issue in that change.
+The family comparison still has 25 unadmitted DOM differences and three existing exact
+browser-text-layout residuals. Dynamic CSS weight expressions were not added by this change.
+
+# Layered components and single-graph hierarchy work on 2026-09-26
+
+The flat layered executor now follows the pinned `ComponentsProcessor` and
+`SimpleRowGraphPlacer`, including DFS order, one shared random stream, priority/area sorting,
+component spacing and aspect ratio. Dense arena indices are restored across component-local
+processing, including long-edge dummies, labels and self loops. Root minimum size is retained
+and applied after combination. The translations remain in the existing EPL-2.0 crate with
+source references in `components.rs`; no new license or feature boundary was introduced.
+
+`INCLUDE_CHILDREN` retains compound semantics even without nested nodes. Moving those graphs
+onto the correct pipeline exposed an overlarge upfront hierarchy sweep charge: the existing
+`upstream_docs_diagrams_flowchart_code_flow` fixture required 915,430 work units against its
+unchanged 800,000 limit. The single-graph Barycenter path now charges actual randomized
+attempts and sweeps while retaining the same hierarchy algorithm. Every sweep admits the
+structural upper bound for free/fixed port visits and complete reference rewrites. Initial
+state, crossing counts, snapshots and final transfer are charged separately. Nested graphs,
+greedy strategies and nonzero node model-order influence keep their prior admission path.
+
+The regression compares complete graph and random state with the original hierarchy sweep,
+covering single nodes, crossing graphs, long edges/self loops and both initial-order choices.
+Zero, partial, one-unit-short and exact budgets prove that interruption remains enforced.
+The original failing Flowchart fixture now renders within the unchanged limit and passes
+`parity-root` without an accepted residual. The component tests separately cover upstream
+isolated-node packing, chain node/edge translations, continued randomness, root minimum size,
+and restored label/dummy/self-loop references. ELK and adapter all-target Clippy passed.
+
+Source-backed snapshot review identified 7 Flowchart and 15 State layout updates from
+component processing, plus 61 pending Sequence goldens from the earlier Neo endpoint fix.
+All seven Flowchart cases passed individual upstream `parity-root` comparisons. The State
+concurrent-region and divider examples now match upstream node coordinates and root viewports;
+the full State comparison retains the same eleven previously reported DOM blockers.
+The existing `xtask update-layout-snapshots` owner refreshed only the 83 identified goldens.
+A recursive JSON review found only numeric geometry changes, with no node, edge, label or
+field additions/removals. Remaining family parity and final integrated verification are still
+open; these results do not complete U1-U15.
+
+The final affected-crate all-feature nextest run passed 2,522 tests across 61 binaries,
+with two existing skipped tests. The focused renderer integration run passed 92 tests
+with one existing skip. Standards and correctness review reported no remaining findings
+in the component and single-graph work-accounting changes.

@@ -5,64 +5,64 @@
       "nodes": [
         {
           "id": "p",
-          "x": 362.0,
+          "x": 248.0,
           "y": 222.0,
-          "width": 700.0,
+          "width": 472.0,
           "height": 420.0,
           "is_cluster": true
         },
         {
           "id": "c1",
-          "x": 261.0,
-          "y": 234.0,
-          "width": 450.0,
-          "height": 348.0,
+          "x": 248.0,
+          "y": 268.5,
+          "width": 424.0,
+          "height": 279.0,
           "is_cluster": true
         },
         {
           "id": "p1",
-          "x": 612.0,
-          "y": 234.0,
+          "x": 112.0,
+          "y": 82.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "c2",
-          "x": 160.0,
-          "y": 211.5,
+          "x": 336.0,
+          "y": 280.5,
           "width": 200.0,
           "height": 207.0,
           "is_cluster": true
         },
         {
           "id": "c1a",
-          "x": 386.0,
-          "y": 292.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "c1b",
-          "x": 386.0,
-          "y": 361.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "g1",
-          "x": 160.0,
+          "x": 136.0,
           "y": 199.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
         },
         {
-          "id": "g2",
-          "x": 160.0,
+          "id": "c1b",
+          "x": 136.0,
           "y": 268.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "g1",
+          "x": 336.0,
+          "y": 268.5,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "g2",
+          "x": 336.0,
+          "y": 337.5,
           "width": 152.0,
           "height": 45.0,
           "is_cluster": false
@@ -77,12 +77,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 386.0,
-              "y": 315.0
+              "x": 136.0,
+              "y": 222.0
             },
             {
-              "x": 386.0,
-              "y": 339.0
+              "x": 136.0,
+              "y": 246.0
             }
           ],
           "label": null,
@@ -102,12 +102,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 160.0,
-              "y": 222.0
+              "x": 336.0,
+              "y": 291.0
             },
             {
-              "x": 160.0,
-              "y": 246.0
+              "x": 336.0,
+              "y": 315.0
             }
           ],
           "label": null,
@@ -123,16 +123,16 @@
       "clusters": [
         {
           "id": "c1",
-          "x": 261.0,
-          "y": 234.0,
-          "width": 450.0,
-          "height": 348.0,
+          "x": 248.0,
+          "y": 268.5,
+          "width": 424.0,
+          "height": 279.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "child-1 title",
           "title_label": {
-            "x": 261.0,
-            "y": 69.5,
+            "x": 248.0,
+            "y": 138.5,
             "width": 68.88,
             "height": 19.0
           },
@@ -144,16 +144,16 @@
         },
         {
           "id": "c2",
-          "x": 160.0,
-          "y": 211.5,
+          "x": 336.0,
+          "y": 280.5,
           "width": 200.0,
           "height": 207.0,
           "diff": -4.0,
           "offset_y": 36.0,
           "title": "grand child title with spaces",
           "title_label": {
-            "x": 160.0,
-            "y": 128.0,
+            "x": 336.0,
+            "y": 197.0,
             "width": 120.0,
             "height": 40.0
           },
@@ -165,15 +165,15 @@
         },
         {
           "id": "p",
-          "x": 362.0,
+          "x": 248.0,
           "y": 222.0,
-          "width": 700.0,
+          "width": 472.0,
           "height": 420.0,
           "diff": -4.0,
           "offset_y": 15.0,
           "title": "parent title",
           "title_label": {
-            "x": 362.0,
+            "x": 248.0,
             "y": 21.5,
             "width": 66.64,
             "height": 19.0
@@ -188,7 +188,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 712.0,
+        "max_x": 484.0,
         "max_y": 432.0
       }
     }
