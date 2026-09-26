@@ -558,9 +558,7 @@ fn escape_xml_raw_into_mode(out: &mut String, text: &str, escape_greater_than: b
 
     let mut start = 0usize;
     for (i, ch) in text.char_indices() {
-        let replacement = if escape_greater_than && ch == '>' {
-            Some("&gt;")
-        } else if ch == '>' && text[..i].ends_with("]]") {
+        let replacement = if ch == '>' && (escape_greater_than || text[..i].ends_with("]]")) {
             Some("&gt;")
         } else {
             xml_text_replacement(ch)
