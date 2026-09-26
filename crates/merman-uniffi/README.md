@@ -19,13 +19,13 @@ Use this crate directly when maintaining one of those projections or building a 
 ## Build A Binding Library
 
 ```sh
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --release --no-default-features --features 'all-diagrams,svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 ```
 
 For the repository's Python package generator:
 
 ```sh
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --release --no-default-features --features 'all-diagrams,svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 export MERMAN_UNIFFI_LIBRARY=target/release/libmerman_uniffi.dylib
 cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- \
   --cdylib "$MERMAN_UNIFFI_LIBRARY" \
@@ -106,7 +106,7 @@ See the [UniFFI contract](https://github.com/Latias94/merman/blob/main/docs/bind
 
 ## Features
 
-This crate has no default features. `analysis`, `svg`, and `ascii` can be selected independently; `layout-cytoscape`, `layout-elk`, and `math` imply `svg` and add their named SVG backends. There is intentionally no broad `complete-svg`, `render`, or `raster` feature: applications opt into the outputs they actually call. `layout-elk` is an explicit EPL-2.0 boundary, while `math` brings the separately licensed RaTeX/font closure. `png`, `jpeg`, and `pdf` each imply `svg` and expose their matching byte-returning methods. `native-runtime` is the one binding-owned aggregate and enables the complete system clock, time-zone, and random adapter set; partial native-runtime combinations are not supported by this crate. `binding-generation` is a development feature for local Python and Swift source generation; do not include it in a distributed native library. Use the exact artifact recipe and notices—not feature names alone—as the legal authority for a shipped binding.
+This crate has no default features. Select `all-diagrams` or required `diagram-*` families separately from operation capabilities. `analysis`, `svg`, and `ascii` can be selected independently; `layout-cytoscape`, `layout-elk`, and `math` imply `svg` and add their named SVG backends. There is intentionally no broad `complete-svg`, `render`, or `raster` feature: applications opt into the outputs they actually call. `layout-elk` is an explicit EPL-2.0 boundary, while `math` brings the separately licensed RaTeX/font closure. `png`, `jpeg`, and `pdf` each imply `svg` and expose their matching byte-returning methods. `native-runtime` is the one binding-owned aggregate and enables the complete system clock, time-zone, and random adapter set; partial native-runtime combinations are not supported by this crate. `binding-generation` is a development feature for local Python and Swift source generation; do not include it in a distributed native library. Use the exact artifact recipe and notices—not feature names alone—as the legal authority for a shipped binding.
 
 Unavailable feature-gated operations report a structured binding error. The generated API is synchronous, and each generated language wrapper remains responsible for native-library packaging and platform lifecycle integration.
 

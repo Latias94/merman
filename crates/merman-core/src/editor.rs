@@ -17,6 +17,22 @@ use crate::{OperationControl, OperationControlResult};
 ))]
 use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
 
+/// Public shape names supported by the compiled Flowchart grammar.
+///
+/// Editor consumers use the core feature union, including when another dependency enables the
+/// shared Flowchart/Swimlane grammar independently of the editor's local feature selection.
+/// Returns an empty iterator when that grammar is not compiled.
+pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    {
+        crate::diagrams::flowchart::flowchart_public_shape_names()
+    }
+    #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+    {
+        std::iter::empty()
+    }
+}
+
 /// Byte span attached to an editor-visible semantic fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceSpan {

@@ -1,9 +1,24 @@
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod adapter;
 mod charset;
 mod draw;
 mod horizontal_label;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "State and Flowchart use different shared graph model operations"
+    )
+)]
 mod label;
 mod layout;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "State and Flowchart use different shared graph model operations"
+    )
+)]
 mod model;
 mod routing;
 mod shape;
@@ -11,14 +26,21 @@ pub(crate) mod style;
 mod surface;
 mod topology;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use adapter::from_flowchart_model_with_execution;
 #[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
 pub(crate) use draw::render_graph_with_resolved_policy_and_execution;
+#[cfg(feature = "diagram-state")]
 pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{
-    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
-    GraphNodeSemantics, GraphNodeShape, GraphNodeSide, GraphNodeSideConstraint, GraphNodeStyle,
+    AsciiGraph, GraphDirection, GraphNodeSemantics, GraphNodeSide, GraphNodeSideConstraint,
+};
+
+#[cfg(feature = "diagram-state")]
+pub(crate) use model::{
+    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle, GraphNodeShape,
+    GraphNodeStyle,
 };
 
 #[cfg(test)]

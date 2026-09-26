@@ -36,7 +36,10 @@ Transport API `4` changed the `ascii-capabilities` metadata payload: it replaced
 
 Call `runtimeCatalog()` after initialization to discover the loaded artifact's exact capability, operation, output, system-adapter, resource, and text-measurement IDs. Do not infer availability from exported function names, package names, or Cargo feature names. A stable function whose backend is absent returns a typed `missing-capability` error.
 
-All profiles retain the same pinned Mermaid language catalog. Slim artifacts remove callable rendering, analysis, ASCII, editor, or layout capabilities, not diagram parsers.
+All current distributed profiles explicitly select `all-diagrams`. Their slim variants remove
+callable rendering, analysis, ASCII, editor, or layout capabilities. Custom source builds may
+select `diagram-*` families independently; their family capability catalog reports actual parser
+availability, which does not imply local SVG or ASCII support.
 
 ## Cooperative cancellation and deadlines
 

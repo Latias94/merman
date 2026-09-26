@@ -180,7 +180,9 @@ fn layout_allocation_error() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    #[cfg(feature = "diagram-journey")]
     use merman_core::diagrams::journey::JourneyRenderTask;
+    #[cfg(feature = "diagram-timeline")]
     use merman_core::diagrams::timeline::TimelineRenderTask;
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
@@ -221,6 +223,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-timeline")]
     fn timeline_section_plan_admits_exact_work_before_allocating() {
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![
@@ -248,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-journey")]
     fn journey_section_plan_admits_exact_work_before_allocating() {
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![
@@ -275,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-journey")]
     fn ambiguous_section_materialization_rolls_back_admission_work() {
         const PRIOR_WORK: usize = 3;
         const PRIOR_CELLS: usize = 2;

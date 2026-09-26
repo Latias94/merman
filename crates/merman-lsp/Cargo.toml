@@ -24,7 +24,7 @@ include = [
     "../../THIRD_PARTY_LICENSES/",
     "README.md",
 ]
-features = ["stdio"]
+features = ["all-diagrams", "stdio"]
 
 [package.metadata.merman]
 artifact-profile-required = true

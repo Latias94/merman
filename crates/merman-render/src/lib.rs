@@ -5,60 +5,183 @@
 //! This crate consumes `merman-core`'s semantic models and produces:
 //! - a layout JSON (geometry + routes)
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
+//!
+//! This low-level crate has no default diagram families. Select `diagram-*` features or
+//! `all-diagrams` explicitly; optional layout engines and math remain independent selectors.
+//! Family-owned typed layout APIs are conditional on those selections. Use
+//! [`family::supports_diagram_type`] to inspect this renderer's local handler availability:
+//! another dependency may enable additional core parsers without enabling their renderers.
 
 #[cfg(feature = "layout-cytoscape")]
+#[cfg(feature = "diagram-architecture")]
 pub mod architecture;
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) mod architecture_metrics;
+#[cfg(feature = "diagram-block")]
 pub mod block;
+#[cfg(feature = "diagram-c4")]
 pub mod c4;
+#[cfg(feature = "diagram-xychart")]
 mod chart_palette;
+#[cfg(feature = "diagram-class")]
 pub mod class;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod config;
+#[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state"
+))]
 mod dagre;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod entities;
 pub mod environment;
+#[cfg(feature = "diagram-er")]
 pub mod er;
 pub mod error;
+#[cfg(feature = "diagram-event-modeling")]
 pub mod eventmodeling;
 pub mod family;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub mod flowchart;
+#[cfg(feature = "diagram-gantt")]
 pub mod gantt;
 mod generated;
+#[cfg(feature = "diagram-git-graph")]
 pub mod gitgraph;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-mindmap"
+))]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod graph_label;
+#[cfg(feature = "diagram-info")]
 pub mod info;
+#[cfg(feature = "diagram-ishikawa")]
 pub mod ishikawa;
+#[cfg(feature = "diagram-journey")]
 pub mod journey;
+#[cfg(feature = "diagram-kanban")]
 pub mod kanban;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod layout_work;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 pub mod math;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod mermaid_style;
+#[cfg(feature = "diagram-mindmap")]
 pub mod mindmap;
 pub mod model;
+#[cfg(feature = "diagram-packet")]
 pub mod packet;
+#[cfg(feature = "diagram-pie")]
 pub mod pie;
 pub mod presentation;
+#[cfg(feature = "diagram-quadrant-chart")]
 pub mod quadrantchart;
+#[cfg(feature = "diagram-radar")]
 pub mod radar;
+#[cfg(feature = "diagram-railroad")]
 pub mod railroad;
+#[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
+#[cfg(feature = "diagram-sankey")]
 pub mod sankey;
+#[cfg(feature = "diagram-sequence")]
 pub mod sequence;
+#[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub mod swimlane;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 pub mod text;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod theme;
+#[cfg(feature = "diagram-timeline")]
 pub mod timeline;
+#[cfg(feature = "diagram-tree-view")]
 pub mod tree_view;
+#[cfg(feature = "diagram-treemap")]
 pub mod treemap;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod trig_tables;
+#[cfg(feature = "diagram-venn")]
 pub mod venn;
+#[cfg(feature = "diagram-wardley")]
 pub mod wardley;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod xml;
+#[cfg(feature = "diagram-xychart")]
 pub mod xychart;
+#[cfg(feature = "diagram-zenuml")]
 pub mod zenuml;
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
@@ -158,15 +281,16 @@ impl std::fmt::Display for RenderCapability {
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::OperationPhase;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::FlowchartModel;
+#[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
-    CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
-    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
+    CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
-    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
     resource_limit_descriptors, resource_profile_descriptors,
 };
 
@@ -242,12 +366,26 @@ impl Error {
         }
     }
 
+    #[cfg_attr(
+        not(feature = "all-diagrams"),
+        allow(
+            dead_code,
+            reason = "Shared operation support has different consumers in each diagram selection."
+        )
+    )]
     pub(crate) fn invalid_icon_output(message: impl Into<String>) -> Self {
         Self::InvalidIconOutput {
             message: message.into(),
         }
     }
 
+    #[cfg_attr(
+        not(feature = "all-diagrams"),
+        allow(
+            dead_code,
+            reason = "Shared operation support has different consumers in each diagram selection."
+        )
+    )]
     pub(crate) fn icon_processing(message: impl Into<String>) -> Self {
         Self::IconProcessing {
             message: message.into(),
@@ -312,12 +450,26 @@ impl LayoutOptions {
     }
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
     session: &'a RenderSession,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 impl<'a> LayoutExecution<'a> {
     pub(crate) fn new(request: &'a LayoutOptions, session: &'a RenderSession) -> Self {
         Self {
@@ -374,6 +526,7 @@ fn uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
     effective_config.get_str("layout") == Some("elk")
 }
 
+#[cfg(feature = "diagram-class")]
 pub(crate) fn layout_class_typed_by_engine(
     diagram_type: &str,
     model: &ClassDiagram,
@@ -400,6 +553,7 @@ pub(crate) fn layout_class_typed_by_engine(
 }
 
 #[cfg(feature = "layout-elk")]
+#[cfg(feature = "diagram-class")]
 fn layout_class_elk_typed_by_feature(
     _diagram_type: &str,
     model: &ClassDiagram,
@@ -423,6 +577,7 @@ fn layout_class_elk_typed_by_feature(
 }
 
 #[cfg(not(feature = "layout-elk"))]
+#[cfg(feature = "diagram-class")]
 fn layout_class_elk_typed_by_feature(
     diagram_type: &str,
     _model: &ClassDiagram,
@@ -436,6 +591,7 @@ fn layout_class_elk_typed_by_feature(
 }
 
 #[cfg(all(test, feature = "layout-elk"))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn layout_flowchart_typed_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
@@ -452,6 +608,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     )
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
@@ -483,6 +640,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
 }
 
 #[cfg(feature = "layout-elk")]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
@@ -506,6 +664,7 @@ fn layout_flowchart_elk_typed_by_feature(
 }
 
 #[cfg(not(feature = "layout-elk"))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
@@ -520,7 +679,7 @@ fn layout_flowchart_elk_typed_by_feature(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
     #[cfg(feature = "layout-elk")]
@@ -1351,3 +1510,18 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
             .collect()
     }
 }
+
+#[cfg(feature = "diagram-class")]
+pub use resources::ClassComplexity;
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub use resources::FlowchartComplexity;
+
+#[cfg(feature = "diagram-mindmap")]
+pub use resources::MindmapComplexity;
+
+#[cfg(feature = "diagram-sequence")]
+pub use resources::SequenceComplexity;
+
+#[cfg(feature = "diagram-zenuml")]
+pub use resources::ZenumlComplexity;

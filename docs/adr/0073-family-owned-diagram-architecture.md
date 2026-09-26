@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted. Identity/implementation availability and actionable editor suggestions are amended by
+[ADR-0089](0089-selectable-diagram-families.md); family-owned semantics and catalog ownership remain
+in force. The original decision below is retained as historical context.
 
 ## Date
 

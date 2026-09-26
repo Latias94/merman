@@ -18,7 +18,7 @@
       "engine_lifecycle": "reused-engine",
       "logical_operations_per_estimate": 1,
       "transport": "native-criterion",
-      "required_features": ["ascii"],
+      "required_features": ["all-diagrams", "ascii"],
       "selector": "ascii_end_to_end/{fixture}",
       "history_aliases": [],
       "size_vector": [],

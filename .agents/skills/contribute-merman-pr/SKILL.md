@@ -143,7 +143,7 @@ cargo deny check advisories bans licenses sources
 
 Security Audit owns this check in CI; record it as deferred when the local tool is unavailable
 instead of replacing it with an ad hoc dependency parser. Derive feature strings from
-`capabilities/artifact-profiles-v1.json` or the owner workflow. For a real public-consumer proof,
+`capabilities/artifact-profiles-v2.json` or the owner workflow. For a real public-consumer proof,
 reuse the exact recipe in `.github/workflows/ci.yml` (C `c_consumer_smoke`, the Apple UniFFI smoke,
 or the platform binding verifier) rather than inventing a second feature list. For an intentional
 breaking API, update all in-repository consumers and tests to the new contract; do not restore a

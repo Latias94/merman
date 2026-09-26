@@ -1617,7 +1617,7 @@ def _inspect_native_memory_report(
         "features": list(canonical_recipe.features),
         "default_features": canonical_recipe.default_features,
         "locked": canonical_recipe.locked,
-        "target_dir": str(canonical_recipe.target_dir),
+        "target_dir": canonical_recipe.target_dir.as_posix(),
         "requested_toolchain": canonical_recipe.toolchain,
     }
     for field, expected in canonical_fields.items():

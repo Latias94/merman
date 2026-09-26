@@ -5,6 +5,10 @@
 //! - 1:1 parity with the repository's pinned upstream Mermaid baseline
 //! - deterministic, testable outputs (semantic snapshot goldens)
 //! - runtime-agnostic async APIs (no specific executor required)
+//!
+//! Default features are empty. Select `diagram-*` features for the required logical families or
+//! `all-diagrams` for the complete parser surface. Family-exclusive public model types and enum
+//! variants are conditional; recognition and custom registries remain available without a family.
 
 pub mod baseline;
 pub mod common;

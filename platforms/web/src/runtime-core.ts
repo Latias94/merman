@@ -405,7 +405,7 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
   }
   assertRequiredRecordKeys(
     value.registry,
-    ["diagram_family_count"],
+    ["diagram_family_count", "diagram_families"],
     "Merman WASM runtime registry catalog"
   );
   const diagramFamilyCount = assertSafeIntegerField(
@@ -413,6 +413,18 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     "runtime registry diagram family count",
     0
   );
+  const diagramFamilies = value.registry.diagram_families;
+  if (
+    !Array.isArray(diagramFamilies) ||
+    diagramFamilies.some((family, index) =>
+      typeof family !== "string" ||
+      !/^[a-z][A-Za-z0-9]*$/.test(family) ||
+      family === "error" ||
+      (index > 0 && diagramFamilies[index - 1] >= family)
+    )
+  ) {
+    throw new Error("Merman WASM runtime registry diagram families must be sorted, unique logical IDs excluding error.");
+  }
   if (!isRecord(value.resources)) {
     throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
@@ -451,6 +463,7 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     registry: {
       ...structuredCloneValue(value.registry),
       diagram_family_count: diagramFamilyCount,
+      diagram_families: [...diagramFamilies],
     },
     resources: normalizeRuntimeResourceContract(
       value.resources,

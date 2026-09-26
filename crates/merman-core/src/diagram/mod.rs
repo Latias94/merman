@@ -432,6 +432,10 @@ impl CustomJsonRenderModel {
 /// sharing that payload does not enable the other language. `Error` and `CustomJson` remain
 /// available in infrastructure-only builds.
 #[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Family selection changes variant size ratios; keep the public typed payloads unboxed."
+)]
 pub enum RenderSemanticModel {
     Error(crate::diagrams::error_diagram::ErrorDiagramRenderModel),
     CustomJson(CustomJsonRenderModel),

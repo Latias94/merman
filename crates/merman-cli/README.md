@@ -335,19 +335,21 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The default feature set is the complete local product. Cargo features are additive capabilities, not diagram-family switches. For a slim binary, disable defaults and select only the required leaves:
+The default feature set is the complete local product. It includes `all-diagrams`. For a slim current-source binary, disable defaults and select the
+required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language
+surface. Published alpha.6 install examples below predate these selectors:
 
 | Build | Capabilities |
 | --- | --- |
-| `--no-default-features` | `detect`, `parse`, and `capabilities` |
-| `--no-default-features --features analysis` | Lint, fixes, and rule metadata without render dependencies |
-| `--no-default-features --features svg` | Basic deterministic SVG |
-| `--no-default-features --features ascii` | ASCII/Unicode without SVG |
-| `--no-default-features --features markdown` | Sequential native Markdown batch and SVG |
-| `--no-default-features --features rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
-| `--no-default-features --features icons` | SVG plus bounded local Iconify packs |
-| `--no-default-features --features png` | SVG plus PNG only |
-| `--no-default-features --features pdf` | SVG plus vector PDF only |
+| `--no-default-features --features all-diagrams` | `detect`, `parse`, and `capabilities` |
+| `--no-default-features --features all-diagrams,analysis` | Lint, fixes, and rule metadata without render dependencies |
+| `--no-default-features --features all-diagrams,svg` | Basic deterministic SVG |
+| `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |
+| `--no-default-features --features all-diagrams,markdown` | Sequential native Markdown batch and SVG |
+| `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, Cytoscape layout, and math |
+| `--no-default-features --features all-diagrams,icons` | SVG plus bounded local Iconify packs |
+| `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
+| `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |
 
 Install a lint-only binary:
 

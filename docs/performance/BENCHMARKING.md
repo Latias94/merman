@@ -56,7 +56,7 @@ boundaries remain covered by exact resource tests rather than benchmark admissio
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman \
-  --no-default-features --features ascii --bench ascii_pipeline
+  --no-default-features --features all-diagrams,ascii --bench ascii_pipeline
 ```
 
 Its schema-v2 metadata is `tools/bench/ascii_corpus.json`. The `closeout` and `large-closeout`

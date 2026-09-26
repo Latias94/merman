@@ -49,7 +49,7 @@ Compare these authorities instead of inferring behavior from names:
 
 - Language and family support: `crates/merman-core/src/family.rs`, `docs/alignment/STATUS.md`, and `docs/alignment/ADMISSION_INVENTORY.md`.
 - Public Cargo vocabulary: `capabilities/feature-surface-v1.json`, generated capability projections, and each package `Cargo.toml`.
-- Exact release closure: `capabilities/artifact-profiles-v1.json`, package manifests and platform descriptors, owner package-contract tests, and `docs/release/WASM_SIZE_BUDGETS.json`.
+- Exact release closure: `capabilities/artifact-profiles-v2.json`, package manifests and platform descriptors, owner package-contract tests, and `docs/release/WASM_SIZE_BUDGETS.json`.
 - Browser package behavior: `platforms/web/web-surface-descriptor.json`, package manifests, and package contract tests.
 - Node status: `platforms/node/candidate-builds.json`, `platforms/node/README.md`, and `docs/performance/NODE_TRANSPORT_ADMISSION.md`. Do not call a private candidate a shipped product.
 - ASCII support: `docs/rendering/ASCII_SUPPORT_MATRIX.md` and runtime

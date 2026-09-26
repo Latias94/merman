@@ -112,7 +112,8 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-This checkout defaults to `svg` and `layout-cytoscape`: deterministic SVG rendering with
+This checkout defaults to `all-diagrams`, `svg`, and `layout-cytoscape`: all built-in families and
+deterministic SVG rendering with
 Cytoscape layout. Math is opt-in; add `math` to your dependency's features when diagrams contain
 math labels, or select `complete-svg` for SVG, Cytoscape, and math together. Existing users of
 alpha.6's math-enabled default must make that selection when upgrading to the next release.
@@ -120,7 +121,7 @@ alpha.6's math-enabled default must make that selection when upgrading to the ne
 The default does not enable the optional EPL-2.0 ELK implementation or host clock, time-zone,
 random, or timing adapters. Use `complete-svg-elk` only when the published artifact is prepared
 with the corresponding ELK notices and source provenance. The separate `merman` facade retains
-its `complete-svg` default.
+its `all-diagrams + complete-svg` default.
 
 Use a smaller closure when the documented diagrams need only the base SVG renderer:
 
@@ -138,7 +139,16 @@ merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, feature
 | `layout-elk` | ELK-backed layouts; implies `svg` |
 | `math` | RaTeX math rendering; implies `svg` |
 
-If build weight matters, start with `svg` and add only the capabilities required by the diagrams in your docs.
+For the current checkout, disable defaults and select both families and outputs explicitly:
+
+```toml
+merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
+```
+
+Use `all-diagrams` to retain the complete parser surface. The version-pinned alpha.6 recipes above
+predate family selectors and retain their original meaning. `complete-svg` and `complete-svg-elk`
+select output/engine closures; neither enables a family when defaults are disabled. See the
+[migration guide](../../docs/FEATURES.md#select-diagram-families).
 
 ## Include Mermaid Files
 

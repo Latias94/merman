@@ -112,21 +112,24 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
-labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
+The default `merman` dependency enables `all-diagrams` and `complete-svg`: all built-in families,
+SVG rendering, Cytoscape layout, and math labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
 dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters, and
 ELK remain opt-in.
 
-Cargo features select capabilities and output backends, not Mermaid diagram families. Every
-parser-capable build retains the same language catalog.
+In the current source, positive `diagram-*` features select built-in families independently of
+outputs and engines. Low-level crates and facade consumers disabling defaults must select
+`all-diagrams` or their required families explicitly. Published alpha.6 packages predate this
+feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG | defaults, or `complete-svg` |
-| Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
-| Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
-| Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
-| Terminal output | `default-features = false, features = ["ascii"]` |
+| Complete deterministic SVG | defaults, or `all-diagrams, complete-svg` |
+| Complete SVG plus ELK layout | `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
+| Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
+| Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
+| Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |
+| Flowchart + Gantt SVG only | `default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
 The [capability guide] documents feature forwarding, artifact profiles, system adapters, and

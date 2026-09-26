@@ -1,15 +1,17 @@
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::FlowchartModel;
+#[cfg(feature = "diagram-mindmap")]
 use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
+#[cfg(feature = "diagram-zenuml")]
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
+#[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
-pub use merman_core::resources::{
-    ClassComplexity, FlowchartComplexity, MindmapComplexity, ModelComplexity,
-    RESOURCE_PROFILE_DESCRIPTORS, ResourceProfile as RenderResourceProfile,
-    ResourceProfileDescriptor as RenderResourceProfileDescriptor, SequenceComplexity,
-    ZenumlComplexity,
-};
 use merman_core::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
+};
+pub use merman_core::resources::{
+    ModelComplexity, RESOURCE_PROFILE_DESCRIPTORS, ResourceProfile as RenderResourceProfile,
+    ResourceProfileDescriptor as RenderResourceProfileDescriptor,
 };
 use merman_core::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
@@ -523,11 +525,14 @@ impl RenderResourcePolicy {
     ) -> Result<(), ResourceLimitExceeded> {
         self.check_model_complexity(complexity)?;
 
-        if matches!(
-            model,
-            RenderSemanticModel::Treemap(_) | RenderSemanticModel::Ishikawa(_)
-        ) && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH
-        {
+        let recursive_tree = match model {
+            #[cfg(feature = "diagram-treemap")]
+            RenderSemanticModel::Treemap(_) => true,
+            #[cfg(feature = "diagram-ishikawa")]
+            RenderSemanticModel::Ishikawa(_) => true,
+            _ => false,
+        };
+        if recursive_tree && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH {
             return Err(ResourceLimitExceeded {
                 cause: ResourceLimitCause::Ceiling,
                 phase: ResourceLimitPhase::LayoutModel,
@@ -592,6 +597,7 @@ impl RenderResourcePolicy {
         )
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn check_flowchart_complexity(
         &self,
         model: &FlowchartModel,
@@ -601,6 +607,7 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    #[cfg(feature = "diagram-class")]
     pub fn check_class_complexity(
         &self,
         model: &ClassDiagram,
@@ -610,6 +617,7 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    #[cfg(feature = "diagram-mindmap")]
     pub fn check_mindmap_complexity(
         &self,
         model: &MindmapDiagramRenderModel,
@@ -619,6 +627,7 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    #[cfg(feature = "diagram-zenuml")]
     pub fn check_zenuml_complexity(
         &self,
         model: &ZenumlDiagramRenderModel,
@@ -628,6 +637,7 @@ impl RenderResourcePolicy {
             .map_err(|error| ResourceLimitExceeded::from_input(self, error))
     }
 
+    #[cfg(feature = "diagram-sequence")]
     pub fn check_sequence_complexity(
         &self,
         model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
@@ -662,6 +672,13 @@ pub(crate) enum OperationWorkError {
     ForeignResourceTerminal(OperationLedgerError),
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 pub(crate) struct OperationWorkMeter {
     policy: RenderResourcePolicy,
     control: OperationControl,
@@ -669,11 +686,25 @@ pub(crate) struct OperationWorkMeter {
     projected_svg_bytes: std::sync::atomic::AtomicUsize,
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 pub(crate) struct SvgByteReservation {
     pub(crate) additional_bytes: usize,
     pub(crate) limit_error: Option<ResourceLimitExceeded>,
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 impl OperationWorkMeter {
     #[cfg_attr(not(feature = "layout-elk"), allow(dead_code))]
     pub(crate) fn new(policy: RenderResourcePolicy) -> Self {
@@ -865,6 +896,7 @@ impl OperationWorkMeter {
         result.map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
     }
 
+    #[cfg(feature = "diagram-class")]
     pub(crate) fn preflight_class_complexity(
         &self,
         model: &ClassDiagram,
@@ -876,6 +908,7 @@ impl OperationWorkMeter {
         result.map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
     }
 
+    #[cfg(feature = "diagram-sequence")]
     pub(crate) fn preflight_sequence_complexity(
         &self,
         model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
@@ -1169,6 +1202,13 @@ fn accumulation_overflow(
     }
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> ResourceLimitExceeded {
     ResourceLimitExceeded {
         cause: ResourceLimitCause::Ceiling,
@@ -1184,6 +1224,13 @@ fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> Resourc
     }
 }
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared operation support has different consumers in each diagram selection."
+    )
+)]
 fn svg_reservation_limit_error(
     policy: RenderResourcePolicy,
     maximum: usize,
@@ -1254,7 +1301,7 @@ pub struct ResourceLimitOverride {
     pub value: usize,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
     use merman_core::diagrams::flowchart::{
@@ -1831,3 +1878,18 @@ mod tests {
         assert!(complexity.label_bytes >= "AlphaedgeCluster".len());
     }
 }
+
+#[cfg(feature = "diagram-class")]
+pub use merman_core::resources::ClassComplexity;
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub use merman_core::resources::FlowchartComplexity;
+
+#[cfg(feature = "diagram-mindmap")]
+pub use merman_core::resources::MindmapComplexity;
+
+#[cfg(feature = "diagram-sequence")]
+pub use merman_core::resources::SequenceComplexity;
+
+#[cfg(feature = "diagram-zenuml")]
+pub use merman_core::resources::ZenumlComplexity;

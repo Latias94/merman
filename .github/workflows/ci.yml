@@ -457,6 +457,13 @@ jobs:
           cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-feature-matrix
 
+      - name: Test isolated consumers without diagram families
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-analysis --no-default-features --test diagram_features --cargo-quiet
+          cargo nextest run --locked -p merman-editor-core --no-default-features --test diagram_features --cargo-quiet
+
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: cargo nextest run --locked --cargo-quiet
@@ -476,7 +483,7 @@ jobs:
           cargo nextest run --locked -p merman-ffi \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features rustdoc \
+          cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
             --test rustdoc_cli --cargo-quiet
 
       - name: Check committed Rustdoc fragments before documentation
@@ -486,8 +493,8 @@ jobs:
       - name: Test architecture compile-fail contracts
         if: matrix.parity
         run: |
-          cargo test -p merman-render --doc
-          cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
+          cargo test -p merman-render --doc --features all-diagrams
+          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Test Rustdoc math opt-in and exact artifact recipe
         if: matrix.parity
@@ -500,10 +507,10 @@ jobs:
       - name: Test representative Cargo feature unification contract
         if: matrix.parity
         run: |
-          ambient_render_features="merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
+          ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
           cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
             --no-default-features \
-            --features "$ambient_render_features,merman-ffi/svg" \
+            --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
             --lib --cargo-quiet \
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
 
@@ -558,7 +565,7 @@ jobs:
         if: matrix.parity
         run: |
           cargo nextest run -p merman --no-default-features \
-            --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
+            --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
             --test runtime_determinism --test render_timezone --cargo-quiet
 
       - name: Test C FFI artifact-profile contract
@@ -582,19 +589,19 @@ jobs:
       - name: Test representative ASCII public contracts
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman --no-default-features --features ascii \
+          cargo nextest run --locked -p merman --no-default-features --features all-diagrams,ascii \
             --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(every_ascii_resource_limit_round_trips_exact_public_boundaries) | test(ascii_request_propagates_caller_control_into_the_canonical_renderer)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-uniffi --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
           cargo nextest run --locked -p merman-wasm --no-default-features \
-            --features ascii --lib \
+            --features all-diagrams,ascii --lib \
             -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
 

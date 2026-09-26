@@ -2,6 +2,7 @@ use super::*;
 use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
 impl<'a> PresentationTheme<'a> {
+    #[cfg(feature = "diagram-xychart")]
     pub(crate) fn xychart(&self) -> XyChartTheme {
         let background = self
             .raw
@@ -64,6 +65,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-quadrant-chart")]
     pub(crate) fn quadrantchart(&self) -> QuadrantChartTheme {
         let value = |key: &str, fallback: &str| self.raw.color(key, fallback);
         let primary_text = self.raw.color("primaryTextColor", "#131300");
@@ -92,6 +94,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-tree-view")]
     pub(crate) fn tree_view(&self) -> TreeViewTheme {
         TreeViewTheme {
             label_font_size: self
@@ -130,6 +133,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-treemap")]
     pub(crate) fn treemap(&self) -> crate::Result<TreemapTheme> {
         let text_color = self.raw.color("textColor", "#333");
         let title_color = self
@@ -217,6 +221,7 @@ impl<'a> PresentationTheme<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-gantt")]
     pub(crate) fn gantt(&self) -> GanttTheme {
         let option = |key: &str, default_value: &str| -> String {
             self.raw
@@ -259,6 +264,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-kanban")]
     pub(crate) fn kanban(&self) -> crate::Result<KanbanTheme> {
         let dark_mode = self.raw.bool_root_or_theme("darkMode").unwrap_or(false);
         let sections = (0..12)
@@ -292,6 +298,7 @@ impl<'a> PresentationTheme<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-event-modeling")]
     pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
         EventModelingTheme {
             font_family_css: self.raw.font_family_css_root_first(),
@@ -321,6 +328,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-ishikawa")]
     pub(crate) fn ishikawa(&self) -> IshikawaTheme {
         IshikawaTheme {
             line_color: self.raw.color("lineColor", "#333"),
@@ -332,6 +340,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-venn")]
     pub(crate) fn venn(&self) -> crate::Result<VennTheme> {
         let background = self.raw.color("background", "#f4f4f4");
         let is_dark_theme = is_dark(&background)?;
@@ -357,6 +366,7 @@ impl<'a> PresentationTheme<'a> {
         })
     }
 
+    #[cfg(feature = "diagram-journey")]
     pub(crate) fn journey(&self) -> JourneyTheme {
         let text_color = self.raw.color("textColor", "#333");
 
@@ -390,6 +400,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-radar")]
     pub(crate) fn radar(&self) -> RadarTheme {
         let font_family_css = self
             .raw
@@ -438,6 +449,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-timeline")]
     pub(crate) fn timeline(&self) -> TimelineTheme {
         let theme_name = self.common.theme_name.clone();
         let theme_color_limit = self
@@ -493,12 +505,18 @@ impl<'a> PresentationTheme<'a> {
         &self.common
     }
 
+    #[cfg(feature = "diagram-treemap")]
     fn treemap_style_option(&self, key: &str, default_value: &str) -> String {
         self.raw
             .optional_root_scoped_css_value("treemap", key)
             .unwrap_or_else(|| default_value.to_string())
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-block"
+    ))]
     pub(in crate::svg::parity) fn node_diagram(&self) -> NodeDiagramTheme {
         let node_border = self.raw.color("nodeBorder", "#9370DB");
         let main_bkg = self.raw.color("mainBkg", "#ECECFF");
@@ -530,6 +548,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-class")]
     pub(in crate::svg::parity) fn class_diagram(&self) -> ClassDiagramTheme {
         let class_text = self.raw.color(
             "classText",
@@ -556,6 +575,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-sequence")]
     pub(in crate::svg::parity) fn sequence_diagram(&self) -> SequenceDiagramTheme {
         let actor_border = self.raw.color("actorBorder", "#9370DB");
         let actor_fill = self.raw.color("actorBkg", "#ECECFF");
@@ -595,6 +615,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    #[cfg(feature = "diagram-state")]
     pub(in crate::svg::parity) fn state_diagram(&self) -> StateDiagramTheme {
         let node_border = self.raw.color("nodeBorder", "#9370DB");
         let main_bkg = self.raw.color("mainBkg", "#ECECFF");

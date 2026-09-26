@@ -28,6 +28,7 @@ include = [
     "assets/man/",
 ]
 features = [
+    "all-diagrams",
     "analysis",
     "ascii",
     "icons",

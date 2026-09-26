@@ -3,12 +3,47 @@
   "artifact_profile": {
     "id": "web-editor",
     "semantic_target": "web",
+    "diagram_families": [
+      "architecture",
+      "block",
+      "c4",
+      "class",
+      "cynefin",
+      "er",
+      "eventmodeling",
+      "flowchart",
+      "gantt",
+      "gitGraph",
+      "info",
+      "ishikawa",
+      "journey",
+      "kanban",
+      "mindmap",
+      "packet",
+      "pie",
+      "quadrantChart",
+      "radar",
+      "railroad",
+      "requirement",
+      "sankey",
+      "sequence",
+      "state",
+      "swimlane",
+      "timeline",
+      "treeView",
+      "treemap",
+      "venn",
+      "wardley",
+      "xychart",
+      "zenuml"
+    ],
     "cargo": {
       "package": "merman-wasm",
       "manifest": "crates/merman-wasm/Cargo.toml",
       "profile": "wasm-size",
       "default_features": false,
       "features": [
+        "all-diagrams",
         "editor"
       ],
       "target": {
@@ -38,7 +73,7 @@
     "offline": true,
     "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "40ed32809ff00898cd9c49a8b9df98f373ccb0651f770d881f9a8891ed74c565"
+    "artifact_profile_sha256": "4f7610b277f62a3c1766c887e3fa351b4bf5c818659a0481201528c49ca572a7"
   },
   "dependency_closure": {
     "package_count": 101,

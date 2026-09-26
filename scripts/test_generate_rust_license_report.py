@@ -463,7 +463,7 @@ def write_web_profile_fixture(root: Path) -> dict[str, object]:
         'layout-cytoscape = []\nlayout-elk = []\nmath = []\nsvg = []\n',
         encoding="utf-8",
     )
-    profiles: dict[str, object] = {"schema_version": 1, "profiles": []}
+    profiles: dict[str, object] = {"schema_version": 2, "profiles": []}
     entries = profiles["profiles"]
     assert isinstance(entries, list)
     for profile_id, features in WEB_PROFILE_FEATURES.items():
@@ -488,7 +488,7 @@ def write_web_profile_fixture(root: Path) -> dict[str, object]:
                         "triples": ["wasm32-unknown-unknown"],
                     },
                 },
-                "expected": {"capabilities": features, "runtime_ids": features, "outputs": []},
+                "expected": {"diagram_families": ["flowchart"], "capabilities": features, "runtime_ids": features, "outputs": []},
             }
         )
     write_json(root / report.ARTIFACT_PROFILES_PATH, profiles)

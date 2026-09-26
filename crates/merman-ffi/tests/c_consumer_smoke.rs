@@ -285,7 +285,7 @@ fn assert_c_abi_native_runtime_catalog() {
     assert_runtime_output_contracts(&catalog);
     let profiles: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/artifact-profiles-v1.json"
+        "/../../capabilities/artifact-profiles-v2.json"
     )))
     .expect("artifact profile descriptor must be valid JSON");
     let capability_surface: Value = serde_json::from_str(include_str!(concat!(
@@ -303,6 +303,11 @@ fn assert_c_abi_native_runtime_catalog() {
         .find(|profile| profile["id"] == profile_id)
         .unwrap_or_else(|| panic!("missing {profile_id} artifact profile"));
     let expected = &profile["expected"];
+    assert_eq!(
+        string_ids(&catalog["registry"]["diagram_families"]),
+        string_ids(&expected["diagram_families"]),
+        "the real C ABI parser families drifted from {profile_id}"
+    );
 
     assert_eq!(
         string_ids(&catalog["capabilities"]["capability_ids"]),

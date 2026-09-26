@@ -40,7 +40,7 @@
             test -f ${source}/Cargo.toml
             test -f ${source}/Cargo.lock
             test -f ${source}/crates/merman-cli/assets/completions/merman-cli.bash
-            test -f ${source}/capabilities/artifact-profiles-v1.json
+            test -f ${source}/capabilities/artifact-profiles-v2.json
             ${nixpkgs.lib.concatMapStringsSep "\n" (relative: "test -f ${source}/${relative}") scriptFiles}
             test ! -e ${source}/.git
             test ! -e ${source}/repo-ref

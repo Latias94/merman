@@ -227,7 +227,7 @@ describe("WASM input manifest", () => {
       "Cargo.lock",
       "rust-toolchain.toml",
       "contracts/abi/text-measurement-v1.json",
-      "capabilities/artifact-profiles-v1.json",
+      "capabilities/artifact-profiles-v2.json",
       "capabilities/feature-surface-v1.json",
       "platforms/web/web-surface-descriptor.schema.json",
       "platforms/web/web-surface-descriptor.json",
@@ -504,7 +504,7 @@ function createFixture() {
     "rust-toolchain.toml": "[toolchain]\nchannel = \"1.95.0\"\n",
     "README.md": "initial docs\n",
     "contracts/abi/text-measurement-v1.json": "{\"protocol_version\":1}\n",
-    "capabilities/artifact-profiles-v1.json": "{\"schema_version\":1}\n",
+    "capabilities/artifact-profiles-v2.json": "{\"schema_version\":2}\n",
     "capabilities/feature-surface-v1.json": "{\"schema_version\":1}\n",
     "crates/merman-core/Cargo.toml": "[package]\nname = \"merman-core\"\n",
     "crates/merman-core/src/lib.rs": [

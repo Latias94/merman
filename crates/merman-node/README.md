@@ -4,6 +4,8 @@ This private crate contains the two U14 transport candidates. It is deliberately
 
 It is not a public Node binding. Applications that need a supported Node or static-site path should invoke `merman-cli` as a child process until one in-process transport passes the repository's admission gates.
 
+Both candidate artifact recipes explicitly select `all-diagrams`. Family selectors are independent
+of outputs; custom source subsets must be validated against the actual consumer graph.
 Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`, and
 `layout-elk` features. Those leaves forward to `merman-bindings-core`; both candidates call the
 same `BindingEngine::execute(BindingOperationRequest)` path. These private static-SVG candidates

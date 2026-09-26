@@ -9,42 +9,126 @@ mod normalization;
 mod width;
 mod wrapped;
 
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use composed::ComposedTextPlan;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use deferred::{
     DeferredTextLine, DeferredTextLineMetrics, DeferredTextPart, DeferredTextRegistry,
 };
 #[cfg(test)]
 use document::encode_text_lines;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use document::{
     BudgetedTextDocument, BudgetedTextLine, charge_text_layout, visit_safe_line_fragments,
     visit_safe_line_graphemes,
 };
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use encode::visit_html_escaped_text;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use framing::{
     push_document_field, push_document_list, push_line_field, push_line_list,
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
     visit_quoted_terminal_text,
 };
 #[cfg(test)]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use label::try_build_normalized_label_lines;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use label::{
     LabelBreakPolicy, NormalizedLabelMetrics, NormalizedLabelPlan,
     try_measure_normalized_label_lines, try_plan_normalized_label_lines,
     try_plan_normalized_label_lines_with_policy,
     try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use layout::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use normalization::{
     grapheme_safe_trim, terminal_single_line_text_requires_normalization, terminal_text_is_blank,
     terminal_text_requires_normalization,
 };
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 #[cfg(test)]
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use width::SafeText;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use width::{SafeLine, terminal_char_display_width, terminal_line_display_width};
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        unused_imports,
+        reason = "Family adapters use different projections of the shared text API"
+    )
+)]
 pub(crate) use wrapped::BudgetedWrappedText;
 
 #[cfg(test)]

@@ -63,7 +63,7 @@ pub use layout::{
     debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
 };
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-state"))]
 mod tests {
     use super::RectWithTitleGeometry;
 

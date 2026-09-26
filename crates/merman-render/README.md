@@ -24,7 +24,15 @@ Direct use is reserved for Merman maintainers and advanced integrations that del
 
 ## Feature Selection
 
-The base crate provides SVG and the shared Mermaid/Dagre rendering path with no Cargo features. Optional features add only distinct backends or system adapters:
+Defaults are empty. Select `all-diagrams` or the required `diagram-*` families for layout and SVG
+handlers; these selectors also forward to core. SVG itself is intrinsic to this crate. For example,
+`default-features = false, features = ["diagram-flowchart", "diagram-gantt"]` selects those two
+families without optional engines or math. Family payloads and artifacts are conditional public
+types. If another dependency widens core, a family missing its local render handler returns an
+explicit unsupported result before backend planning. See the
+[migration guide](../../docs/FEATURES.md#select-diagram-families).
+
+Optional features add distinct backends or system adapters:
 
 | Feature | Adds |
 | --- | --- |

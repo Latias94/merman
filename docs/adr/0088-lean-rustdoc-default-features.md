@@ -3,6 +3,9 @@
 ## Status
 
 Accepted for the next release after `0.8.0-alpha.6`.
+[ADR-0089](0089-selectable-diagram-families.md) adds `all-diagrams` to the default and introduces
+independent family selectors; this ADR retains ownership of explicit math and the lean output
+closure. The original decision below is preserved.
 
 ## Date
 

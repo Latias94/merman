@@ -2,7 +2,7 @@ use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, LayoutNode, SequenceDiagramLayout};
 use crate::resources::OperationWorkMeter;
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
 use merman_core::diagrams::sequence::{
@@ -249,7 +249,7 @@ fn sequence_text_work_units_controlled(
     Ok(Some(work_units))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> Option<usize> {
     let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
     sequence_layout_work_units_controlled(model, None, SequenceLayoutCheckpoints::new(&meter))
@@ -541,7 +541,7 @@ pub(crate) fn sequence_render_title<'a>(
     model_title
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-sequence"))]
 mod resource_tests {
     use super::{
         SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceLayoutWorkShape,

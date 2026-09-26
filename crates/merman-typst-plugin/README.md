@@ -41,13 +41,13 @@ Changing an imported or exported function, its WebAssembly signature, or one of 
 
 ## Profiles
 
-`wasm-profiles.json` owns the plugin ABI number and points package tooling to the sole public `publish` profile and canonical `typst-wasm` artifact. Cargo features, compiled capabilities, target, and expected outputs are owned by the exact recipe in `capabilities/artifact-profiles-v1.json`. Cargo defaults stay empty.
+`wasm-profiles.json` owns the plugin ABI number and points package tooling to the sole public `publish` profile and canonical `typst-wasm` artifact. Cargo features, compiled capabilities, target, and expected outputs are owned by the exact recipe in `capabilities/artifact-profiles-v2.json`. Cargo defaults stay empty.
 
 | Package profile | Capabilities |
 | --- | --- |
 | `publish` | Render, canonical analysis, and the Cytoscape and ELK layout backends |
 
-There are no bridge-only or render-only package profiles. Maintainers can build direct Cargo feature leaves for local closure experiments, but those combinations are not named product identities, publication choices, or release evidence. Mermaid configuration, sanitization, detection, and semantic parsing are invariant core behavior; a missing layout backend produces a typed capability error only when a diagram requires it.
+There are no bridge-only or render-only package profiles. Maintainers can build direct Cargo feature leaves for local closure experiments, but those combinations are not named product identities, publication choices, or release evidence. The distributed recipe explicitly selects `all-diagrams`; source builds can select `diagram-*` families separately. Selected families preserve Mermaid configuration, sanitization, and semantic parsing; a missing layout backend produces a typed capability error only when a diagram requires it.
 
 ASCII, PNG, JPEG, and PDF are not compiled into the publish artifact because Typst ABI 2 has no
 callable operation for those outputs. Adding an unreachable capability would only enlarge the

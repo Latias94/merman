@@ -1,12 +1,17 @@
 #[cfg(test)]
 use super::label::GraphLabel;
-use super::model::{GraphDirection, GraphNodeShape};
-use crate::error::{AsciiError, Result};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use super::model::GraphDirection;
+use super::model::GraphNodeShape;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::error::AsciiError;
+use crate::error::Result;
 #[cfg(test)]
 use crate::options::AsciiRenderOptions;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::ResourceContext;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraphNodeShapeProjection {
     Fixed(GraphNodeShape),
@@ -15,12 +20,14 @@ enum GraphNodeShapeProjection {
     Unsupported,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraphNodeLabelPolicy {
     Preserve,
     Suppress,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[derive(Debug, Clone, Copy)]
 struct GraphNodeShapeDefinition {
     names: &'static [&'static str],
@@ -28,18 +35,21 @@ struct GraphNodeShapeDefinition {
     label_policy: GraphNodeLabelPolicy,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl GraphNodeShapeDefinition {
     fn contains(self, name: &str) -> bool {
         self.names.contains(&name)
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ResolvedGraphNodeShape {
     pub(super) shape: GraphNodeShape,
     label_policy: GraphNodeLabelPolicy,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl ResolvedGraphNodeShape {
     pub(super) fn projected_label(self, label: &str) -> &str {
         match self.label_policy {
@@ -49,6 +59,7 @@ impl ResolvedGraphNodeShape {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 macro_rules! shape_definition {
     ($names:expr, $projection:expr, $label_policy:expr) => {
         GraphNodeShapeDefinition {
@@ -59,6 +70,7 @@ macro_rules! shape_definition {
     };
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
     shape_definition!(
         &[
@@ -321,6 +333,7 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
     ),
 ];
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) fn resolve_flowchart_node_shape(
     name: Option<&str>,
     direction: GraphDirection,
@@ -495,15 +508,18 @@ impl GraphNodeShapeSemantics {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        GRAPH_NODE_SHAPE_DEFINITIONS, GraphNodeShapeSemantics, GraphNodeShapeSize,
-        resolve_flowchart_node_shape,
-    };
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    use super::{GRAPH_NODE_SHAPE_DEFINITIONS, resolve_flowchart_node_shape};
+    use super::{GraphNodeShapeSemantics, GraphNodeShapeSize};
     use crate::AsciiRenderOptions;
     use crate::graph::label::GraphLabel;
-    use crate::graph::model::{GraphDirection, GraphNodeShape};
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    use crate::graph::model::GraphDirection;
+    use crate::graph::model::GraphNodeShape;
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     use std::collections::HashSet;
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     #[test]
     fn shape_registry_is_unique_and_covers_every_pinned_mermaid_name() {
         let mut registered = HashSet::new();
@@ -524,6 +540,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     #[test]
     fn shape_registry_resolves_process_and_flow_perpendicular_fork_semantics() {
         let process =
@@ -542,6 +559,7 @@ mod tests {
         assert_eq!(top_down_fork.projected_label("implementation id"), "");
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     #[test]
     fn shape_registry_preserves_upstream_alias_handler_families() {
         let alias_families = [

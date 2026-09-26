@@ -1,7 +1,7 @@
 mod config;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
-mod label;
+use crate::graph_label as label;
 mod layout;
 mod node;
 mod self_loop;
@@ -127,7 +127,7 @@ pub(crate) use label::{
     flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
     flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
 };
-#[cfg(test)]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };

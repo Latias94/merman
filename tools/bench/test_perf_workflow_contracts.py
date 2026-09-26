@@ -38,6 +38,11 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
             with self.subTest(lane=lane["id"]):
                 self.assertTrue((ROOT / str(lane["corpus"])).is_file())
 
+    def test_current_ascii_lane_selects_full_diagram_coverage_without_defaults(self) -> None:
+        lane = self.registry.by_id["ascii"]
+        self.assertEqual(lane["features"], "all-diagrams,ascii")
+        self.assertIs(lane["default_features"], False)
+
     def test_event_selection_is_owned_by_the_registry(self) -> None:
         select = performance_workflow.select_lane_ids
 

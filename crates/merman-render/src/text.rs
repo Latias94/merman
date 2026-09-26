@@ -53,5 +53,12 @@ pub use wrap::{
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-mindmap"
+    )
+))]
 mod tests;

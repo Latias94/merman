@@ -584,7 +584,6 @@ impl ModelComplexity {
     }
 
     #[cfg(feature = "diagram-kanban")]
-
     pub fn from_kanban(model: &KanbanDiagramRenderModel) -> Self {
         let text_bytes = model.nodes.iter().fold(0usize, |total, node| {
             [
@@ -607,7 +606,6 @@ impl ModelComplexity {
     }
 
     #[cfg(feature = "diagram-radar")]
-
     pub fn from_radar(model: &RadarDiagramRenderModel) -> Self {
         let common_text_bytes = [
             model.title.as_deref(),
@@ -649,7 +647,6 @@ impl ModelComplexity {
     }
 
     #[cfg(feature = "diagram-requirement")]
-
     pub fn from_requirement(model: &RequirementDiagramRenderModel) -> Self {
         let common_text_bytes = [
             model.acc_title.as_deref(),
@@ -1726,7 +1723,6 @@ impl ZenumlComplexity {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-
 fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     let mut total = [
         Some(model.keyword.as_str()),
@@ -1839,7 +1835,6 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-
 fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
     if model.subgraphs.is_empty() {
         return 0;
@@ -1881,7 +1876,6 @@ fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
 }
 
 #[cfg(feature = "diagram-class")]
-
 fn class_namespace_depth(model: &ClassDiagram) -> usize {
     if model.namespaces.is_empty() {
         return 0;
@@ -1933,7 +1927,6 @@ fn class_namespace_depth(model: &ClassDiagram) -> usize {
 }
 
 #[cfg(feature = "diagram-kanban")]
-
 fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
     let indices = model
         .nodes

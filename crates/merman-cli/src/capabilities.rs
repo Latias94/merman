@@ -26,6 +26,7 @@ struct CapabilityDocument<'a> {
     compatibility: CompatibilityView<'a>,
     descriptor: DescriptorView<'a>,
     commands: Vec<String>,
+    diagram_families: Vec<&'static str>,
     capabilities: Vec<CapabilityView<'a>>,
     outputs: Vec<OutputView<'a>>,
     #[cfg(feature = "ascii")]
@@ -158,6 +159,13 @@ pub(crate) fn write_compiled_capabilities(
             digest: descriptor::CAPABILITY_DESCRIPTOR_DIGEST,
         },
         commands: compiled_command_ids(),
+        diagram_families: merman::diagram_family_capabilities()
+            .iter()
+            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+            .map(|family| family.logical_family_kind)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         capabilities: descriptor::CAPABILITIES
             .iter()
             .filter(|capability| capability_ids.contains(&capability.id))

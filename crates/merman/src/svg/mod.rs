@@ -26,8 +26,7 @@ pub use merman_render::presentation::{
     theme_preset_descriptors,
 };
 pub use merman_render::resources::{
-    CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
-    GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
+    CLI_DEFAULT_RESOURCE_PROFILE, GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
     ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
@@ -106,3 +105,12 @@ mod sanitize_svg_id_tests {
         assert_eq!(sanitize_svg_id("m--"), "m-untitled");
     }
 }
+
+#[cfg(feature = "diagram-class")]
+pub use merman_render::ClassComplexity;
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub use merman_render::FlowchartComplexity;
+
+#[cfg(feature = "diagram-mindmap")]
+pub use merman_render::MindmapComplexity;

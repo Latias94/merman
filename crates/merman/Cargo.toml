@@ -21,6 +21,7 @@ exclude = [
 
 [package.metadata.docs.rs]
 features = [
+    "all-diagrams",
     "svg",
     "analysis",
     "editor",

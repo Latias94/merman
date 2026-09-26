@@ -105,6 +105,7 @@ class MermanOutputContract(TypedDict):
 
 class MermanRuntimeRegistry(TypedDict):
     diagram_family_count: int
+    diagram_families: List[str]
 
 
 class MermanRuntimeResourceLimit(TypedDict):
@@ -731,7 +732,18 @@ def _validate_embedded_images(value: Any) -> None:
 
 def _validate_registry(value: Any) -> None:
     registry = _expect_object(value, "runtime registry")
-    _require_required_keys(registry, {"diagram_family_count"}, "runtime registry")
+    _require_required_keys(
+        registry, {"diagram_family_count", "diagram_families"}, "runtime registry"
+    )
+    families = registry["diagram_families"]
+    if (
+        not isinstance(families, list)
+        or any(not isinstance(family, str) or not family for family in families)
+        or families != sorted(set(families))
+    ):
+        raise MermanRuntimeCatalogError(
+            "runtime registry diagram_families must be sorted unique strings"
+        )
     count = registry["diagram_family_count"]
     if not _is_safe_integer(count) or count < 0:
         raise MermanRuntimeCatalogError(

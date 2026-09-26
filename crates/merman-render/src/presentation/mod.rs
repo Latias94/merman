@@ -6,6 +6,7 @@ mod profile;
 mod theme;
 
 pub use presets::{HostThemePreset, ThemePresetDescriptor, theme_preset_descriptors};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use profile::FlowchartPresentationPolicy;
 pub use profile::{
     Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
