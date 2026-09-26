@@ -18,9 +18,10 @@ fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
 dugong = { path = "../dugong" }
 lalrpop.workspace = true
-merman = { path = "../merman", default-features = false, features = ["svg"] }
-merman-analysis.workspace = true
+merman = { path = "../merman", default-features = false, features = ["all-diagrams", "svg"] }
+merman-analysis = { workspace = true, features = ["all-diagrams"] }
 merman-bindings-core = { workspace = true, features = [
+    "all-diagrams",
     "analysis",
     "ascii",
     "jpeg",
@@ -32,15 +33,16 @@ merman-bindings-core = { workspace = true, features = [
     "png",
     "svg",
 ] }
-merman-core = { path = "../merman-core", features = ["system-clock", "system-timezone"] }
-merman-editor-core.workspace = true
+merman-core = { path = "../merman-core", features = ["all-diagrams", "system-clock", "system-timezone"] }
+merman-editor-core = { workspace = true, features = ["all-diagrams"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true
 merman-render = { path = "../merman-render", features = [
+    "all-diagrams",
     "layout-cytoscape",
     "layout-elk",
 ] }
-merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false }
+merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false, features = ["all-diagrams"] }
 regex.workspace = true
 roxmltree.workspace = true
 serde.workspace = true

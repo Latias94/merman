@@ -54,8 +54,8 @@ pub use editor::{
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact,
-    diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
+    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
+    DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
     diagram_type_render_model_kind,
 };
 pub use operation::{
@@ -90,6 +90,14 @@ pub fn supported_diagrams() -> &'static [&'static str] {
 /// editor, and typed render-model callbacks compiled into this build.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
+}
+
+/// Returns the complete catalog-owned mapping from logical families to Cargo selectors.
+///
+/// These declarations are independent of enabled features and exclude infrastructure models.
+/// Selecting a family does not enable an output format or optional layout engine.
+pub fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
+    family::diagram_family_selectors()
 }
 
 /// Returns each compiled concrete built-in typed render-model family exactly once.
