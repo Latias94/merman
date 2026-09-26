@@ -1283,12 +1283,30 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         .into_iter()
         .collect::<Vec<_>>()
         .join(",");
-    let manifest = root.join("crates/xtask/tests/fixtures/diagram-features/Cargo.toml");
+    let source_fixture = root.join("crates/xtask/tests/fixtures/diagram-features");
+    let fixture_parent = source_fixture.parent().ok_or_else(|| {
+        matrix_error("isolated diagram consumer fixture has no parent directory".to_owned())
+    })?;
+    let fixture = tempfile::Builder::new()
+        .prefix("diagram-features-")
+        .tempdir_in(fixture_parent)
+        .map_err(|error| {
+            matrix_error(format!("cannot create isolated diagram consumer: {error}"))
+        })?;
     std::fs::copy(
-        root.join("Cargo.lock"),
-        manifest.with_file_name("Cargo.lock"),
+        source_fixture.join("Cargo.toml"),
+        fixture.path().join("Cargo.toml"),
     )
-    .map_err(|error| {
+    .and_then(|_| std::fs::create_dir_all(fixture.path().join("src")))
+    .and_then(|_| {
+        std::fs::copy(
+            source_fixture.join("src/main.rs"),
+            fixture.path().join("src/main.rs"),
+        )
+    })
+    .map_err(|error| matrix_error(format!("cannot stage isolated diagram consumer: {error}")))?;
+    let manifest = fixture.path().join("Cargo.toml");
+    std::fs::copy(root.join("Cargo.lock"), fixture.path().join("Cargo.lock")).map_err(|error| {
         matrix_error(format!(
             "cannot seed isolated consumer dependency lock: {error}"
         ))

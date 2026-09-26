@@ -14,7 +14,7 @@ import subprocess
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "tools/bench/fixtures/diagram-selection/main.rs"
+FIXTURE_RELATIVE = Path("tools/bench/fixtures/diagram-selection/main.rs")
 CORPUS = (
     "crates/merman/benches/fixtures/flowchart_small.mmd",
     "crates/merman/benches/fixtures/flowchart_medium.mmd",
@@ -48,7 +48,7 @@ def main() -> None:
     for key in list(env):
         if key.startswith("CARGO_PROFILE_RELEASE_") or key in {"RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS"}:
             del env[key]
-    env["CARGO_TARGET_DIR"] = str(ROOT / "target")
+    env["CARGO_TARGET_DIR"] = str(output / "cargo-target")
     env["CARGO_INCREMENTAL"] = "0"
     rustc = run(["rustc", "-vV"], cwd=ROOT, env=env).decode()
     target = next(line.removeprefix("host: ") for line in rustc.splitlines() if line.startswith("host: "))
@@ -62,7 +62,8 @@ def main() -> None:
         handle.extractall(source, filter="data")
     consumer = output / "consumer"
     consumer.mkdir()
-    shutil.copyfile(FIXTURE, consumer / "main.rs")
+    fixture = source / FIXTURE_RELATIVE
+    shutil.copyfile(fixture, consumer / "main.rs")
     features = sorted(set(args.features.split(",")))
     manifest = (
         '[package]\nname = "diagram-selection-probe"\nversion = "0.0.0"\nedition = "2024"\n'
@@ -81,23 +82,23 @@ def main() -> None:
         subprocess.run(command, cwd=consumer, env=env, check=True, stdout=log, stderr=subprocess.STDOUT)
     suffix = ".exe" if os.name == "nt" else ""
     executable = output / ("diagram-selection-probe" + suffix)
-    shutil.copyfile(ROOT / "target" / target / "release" / executable.name, executable)
+    shutil.copyfile(output / "cargo-target" / target / "release" / executable.name, executable)
     if os.name != "nt":
         executable.chmod(0o755)
-    families = run([str(executable), "--families"], cwd=ROOT, env=env).decode().splitlines()
+    families = run([str(executable), "--families"], cwd=source, env=env).decode().splitlines()
     tree = run(["cargo", "tree", "--locked", "--offline", "--edges", "normal", "--prefix", "none", "--format", "{p}|{f}"], cwd=consumer, env=env)
     (output / "cargo-tree.txt").write_bytes(tree)
     corpus = []
     for relative in CORPUS:
-        input_path = ROOT / relative
-        svg = run([str(executable), str(input_path)], cwd=ROOT, env=env)
+        input_path = source / relative
+        svg = run([str(executable), str(input_path)], cwd=source, env=env)
         if b"<svg" not in svg:
             raise RuntimeError(f"missing SVG output for {relative}")
         (output / (input_path.stem + ".svg")).write_bytes(svg)
         corpus.append({"path": relative, "input_sha256": digest(input_path), "svg_bytes": len(svg), "svg_sha256": hashlib.sha256(svg).hexdigest()})
     sequence = output / "sequence.mmd"
     sequence.write_text("sequenceDiagram\nAlice->>Bob: Hello\n", encoding="utf-8")
-    rejected = subprocess.run([str(executable), str(sequence)], cwd=ROOT, env=env, capture_output=True)
+    rejected = subprocess.run([str(executable), str(sequence)], cwd=source, env=env, capture_output=True)
     if "sequence" in families:
         if rejected.returncode != 0 or b"<svg" not in rejected.stdout:
             raise RuntimeError("full family build failed Sequence control")
@@ -105,7 +106,7 @@ def main() -> None:
         raise RuntimeError("subset did not return the specified unsupported-diagram error")
     receipt = {
         "label": args.label, "source_revision": revision, "source_archive_sha256": digest(archive),
-        "fixture_sha256": digest(FIXTURE), "root_lock_sha256": digest(source / "Cargo.lock"),
+        "fixture_sha256": digest(fixture), "root_lock_sha256": digest(source / "Cargo.lock"),
         "consumer_lock_sha256": digest(consumer / "Cargo.lock"), "features": features,
         "default_features": False, "profile": PROFILE, "command": command,
         "host": platform.platform(), "cpu": platform.processor(),
