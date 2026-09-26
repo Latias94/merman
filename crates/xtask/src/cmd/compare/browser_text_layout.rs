@@ -15,13 +15,14 @@ const COMPARISON_REVISION: &str = "browser-text-layout-residual-v3";
 const DOM_DECIMALS: u32 = 3;
 const MEASUREMENT_PROVIDER: &str = "deterministic";
 const CATALOG_RELATIVE_PATH: &str = "_verification/browser-text-layout-residuals.json";
-const DIAGRAMS: [&str; 8] = [
+const DIAGRAMS: [&str; 9] = [
     "architecture",
     "class",
     "flowchart",
     "gantt",
     "journey",
     "sequence",
+    "state",
     "timeline",
     "treemap",
 ];
@@ -301,7 +302,7 @@ mod tests {
     #[test]
     fn committed_catalog_is_sorted_valid_and_source_backed() {
         let catalog = load_catalog().expect("browser text layout residual catalog");
-        assert_eq!(catalog.entries.len(), 86);
+        assert_eq!(catalog.entries.len(), 97);
         for diagram in DIAGRAMS {
             assert!(
                 catalog.entries.iter().any(|entry| entry.diagram == diagram),

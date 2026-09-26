@@ -574,6 +574,7 @@ mod tests {
             "gantt",
             "journey",
             "sequence",
+            "state",
             "timeline",
             "treemap",
         ] {
@@ -586,7 +587,7 @@ mod tests {
                 "diagram={diagram}"
             );
         }
-        for diagram in ["info", "requirement", "state", "treeView"] {
+        for diagram in ["info", "requirement", "treeView"] {
             assert_eq!(
                 invocation
                     .for_diagram(diagram, compare_dir)

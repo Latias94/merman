@@ -439,3 +439,205 @@ fn state_elk_compound_routes_with_controlled_browser_measurements() {
         assert_eq!(commands(&actual), commands(&upstream), "{id}");
     }
 }
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_remaining_routes_with_controlled_browser_measurements() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+    use std::sync::Arc;
+
+    struct FixtureMeasurements;
+    impl TextMeasurer for FixtureMeasurements {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            // Bounds are copied from the pinned fixture's foreignObject nodes.
+            let (width, height) = match text {
+                "State1" | "State2" | "ProcessData" | "InnerA" | "Deep" | "After" | "Boot"
+                | "AIdle" | "AWork" | "BIdle" | "BBusy" | "CWaiting" | "CActive" => (120.0, 21.0),
+                "Outer" => (35.015625, 21.0),
+                "InnerB" => (41.25, 21.0),
+                "exit" => (21.796875, 21.0),
+                "container edge" => (92.640625, 21.0),
+                "deep edge" => (66.1875, 21.0),
+                "New Data / append" => (119.859375, 21.0),
+                "Retry" => (33.453125, 21.0),
+                "Done" | "notify" => (33.46875, 21.0),
+                "Accumulate Enough Data\nLong State Name (with dashes - and spaces)" => {
+                    (280.15625, 42.0)
+                }
+                "System" => (46.6875, 21.0),
+                "Running" | "escalate" => (52.15625, 21.0),
+                "start" => (27.234375, 21.0),
+                "tick" => (21.0, 21.0),
+                "done" => (31.15625, 21.0),
+                "request" => (46.703125, 21.0),
+                "response" => (57.59375, 21.0),
+                "signal" => (36.59375, 21.0),
+                "reset" => (31.125, 21.0),
+                "feedback" => (56.828125, 21.0),
+                "restart" => (39.6875, 21.0),
+                "State3" => (40.484375, 21.0),
+                "Accumulate Enough Data\nLong State Name" => (158.765625, 42.0),
+                "Just a test" => (63.8125, 21.0),
+                "Succeeded" => (70.0625, 21.0),
+                "Aborted" => (49.046875, 21.0),
+                "New Data" => (61.46875, 21.0),
+                "Enough Data" => (81.734375, 21.0),
+                "Failed" => (38.140625, 21.0),
+                "Succeeded / Save Result" => (157.21875, 21.0),
+                "" => (0.0, 0.0),
+                other => panic!("unexpected fixture measurement: {other:?}"),
+            };
+            TextMetrics {
+                width,
+                height,
+                line_count: usize::from(height > 0.0) + usize::from(height > 21.0),
+            }
+        }
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+    }
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.state-quoted-browser-bounds").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        Arc::new(FixtureMeasurements),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    use base64::Engine as _;
+    for (fixture, source, baseline) in [
+        (
+            "upstream_stateDiagram_state_definition_with_quotes_spec",
+            include_str!(
+                "../../../fixtures/state/upstream_stateDiagram_state_definition_with_quotes_spec.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg"
+            ),
+        ),
+        (
+            "stress_state_cross_composite_transitions_007",
+            include_str!(
+                "../../../fixtures/state/stress_state_cross_composite_transitions_007.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/upstream-svgs/state/stress_state_cross_composite_transitions_007.svg"
+            ),
+        ),
+        (
+            "stress_state_quoted_multiline_names_015",
+            include_str!("../../../fixtures/state/stress_state_quoted_multiline_names_015.mmd"),
+            include_str!(
+                "../../../fixtures/upstream-svgs/state/stress_state_quoted_multiline_names_015.svg"
+            ),
+        ),
+        (
+            "stress_state_three_way_concurrency_013",
+            include_str!("../../../fixtures/state/stress_state_three_way_concurrency_013.mmd"),
+            include_str!(
+                "../../../fixtures/upstream-svgs/state/stress_state_three_way_concurrency_013.svg"
+            ),
+        ),
+    ] {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(
+                json!({"layout": "elk", "htmlLabels": true}),
+            ))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let actual = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let upstream = roxmltree::Document::parse(baseline).unwrap();
+        for label in upstream
+            .descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+        {
+            let text: String = label
+                .descendants()
+                .filter_map(|node| {
+                    if node.is_text() {
+                        node.text()
+                    } else if node.has_tag_name("br") {
+                        Some("\n")
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let measured = FixtureMeasurements.measure(&text, &TextStyle::default());
+            assert_eq!(
+                measured.width,
+                label.attribute("width").unwrap().parse::<f64>().unwrap(),
+                "{fixture}: {text}"
+            );
+            assert_eq!(
+                measured.height,
+                label.attribute("height").unwrap().parse::<f64>().unwrap(),
+                "{fixture}: {text}"
+            );
+        }
+        for expected in upstream
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        {
+            let id = expected.attribute("data-id").unwrap();
+            let observed = actual
+                .descendants()
+                .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(id))
+                .unwrap();
+            let commands = |node: roxmltree::Node<'_, '_>| {
+                node.attribute("d")
+                    .unwrap()
+                    .chars()
+                    .filter(char::is_ascii_uppercase)
+                    .collect::<String>()
+            };
+            assert_eq!(
+                commands(observed),
+                commands(expected),
+                "{fixture}/{id}: actual={} expected={}",
+                observed.attribute("d").unwrap(),
+                expected.attribute("d").unwrap()
+            );
+            let points = |node: roxmltree::Node<'_, '_>| {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(node.attribute("data-points").unwrap())
+                    .unwrap();
+                serde_json::from_slice::<Vec<Value>>(&bytes).unwrap()
+            };
+            let observed_points = points(observed);
+            let expected_points = points(expected);
+            assert_eq!(
+                observed_points.len(),
+                expected_points.len(),
+                "{fixture}/{id}"
+            );
+            // Numeric coordinates are not proven identical: even with identical label
+            // bounds, one terminal port has an unattributed 0.004px difference. The failing
+            // parity contract is route topology, so compare every edge's commands and
+            // control-point count without admitting a coordinate tolerance.
+        }
+    }
+}

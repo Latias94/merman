@@ -106,10 +106,6 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
         );
     }
 
-    if diagram == "state" && stem == "upstream_state_parser_spec" {
-        return Some("pinned Mermaid 11.16 crashes on this parser-only state fixture");
-    }
-
     if diagram == "class" && stem == "upstream_text_label_variants_spec" {
         return Some(
             "pinned Mermaid 12 fails on the whitespace-only class label with `svg element not in render tree`",
@@ -416,7 +412,7 @@ mod tests {
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("state", "upstream_state_parser_spec.mmd"),
-            Some("pinned Mermaid 11.16 crashes on this parser-only state fixture")
+            None
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("class", "upstream_text_label_variants_spec.mmd"),
@@ -486,7 +482,7 @@ mod tests {
     fn upstream_svg_compare_skip_reason_admits_renderable_class_prototype_ids() {
         assert_eq!(
             upstream_svg_compare_skip_reason("state", "upstream_state_parser_spec"),
-            Some("pinned Mermaid 11.16 crashes on this parser-only state fixture")
+            None
         );
         assert_eq!(
             upstream_svg_compare_skip_reason("class", "upstream_text_label_variants_spec"),

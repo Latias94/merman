@@ -865,3 +865,28 @@ The final all-feature nextest run for `merman-core`, `merman-editor-core`, and
 warnings denied, formatting, and diff checks passed. Independent standards and
 correctness reviews have no remaining findings. No comparator, accepted residual, baseline, or
 render-model semantics changed; the previously documented family parity blockers remain.
+
+
+# State ELK measurement attribution on 2026-09-26
+
+The eleven remaining State DOM failures reduce to six distinct fixture bodies.
+Controlled upstream label measurements already explained parallel reverse edges and the
+compound transition-label fixture. Four additional fixture experiments now run the
+production ELK/render path for quoted multiline descriptions, cross-composite transitions,
+and concurrent regions. Their supplied dimensions are checked against the pinned
+`foreignObject` bounds, and every edge recovers the upstream command sequence and
+control-point count. This supports measurement attribution of the reported topology
+failures. It does not prove all coordinates equal: one terminal port still differs by
+about 0.004px for an unestablished reason.
+
+The exact browser-text catalog admits only the eleven observed `parity`/`parity-root`
+pairs, with input/upstream/full-local-signature binding; `structure` remains fully checked.
+No production renderer, solver, comparator normalization, or accepted numeric tolerance
+changed. The initial State rerun passed 855 comparisons across 285 rendered fixtures with
+22 exact residual diagnostics. All nine State ELK integration tests and all 599 xtask tests
+passed. Independent standards/correctness review found no remaining issue. Details and
+fixture-group mapping are in `docs/alignment/STATE_ROOT_VIEWBOX_PARITY_GAPS.md`.
+
+Review of the remaining skip found that `upstream_state_parser_spec` now renders with the
+installed Mermaid 12 runtime. Its old Mermaid 11.16 crash exclusion is being removed and
+the existing source-bound generator has added its baseline; the final State family comparison now renders all 286 selected fixtures.

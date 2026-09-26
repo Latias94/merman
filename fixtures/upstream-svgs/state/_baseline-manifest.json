@@ -1457,6 +1457,11 @@
       "svg_sha256": "426acb1cb9ef0c6e404bc11de602186dd85f958e97a7e9d17d6c486d7041228f",
       "renderer_profile": "mmdc-default"
     },
+    "upstream_state_parser_spec": {
+      "input_sha256": "ccf4f193cb6c48cbb43af8ef547fe8c375741bac9ccb391b99d4362b59f38b5c",
+      "svg_sha256": "c4296db3a4b07e978669084536944f603e67fd43161b81a7b04899a2a12e59c0",
+      "renderer_profile": "mmdc-default"
+    },
     "upstream_state_style_spec": {
       "input_sha256": "cb33bb2ea5f24aae16cfb0fe235a243e43e302f6f3e6bc18e253906b0c2f41c9",
       "svg_sha256": "9b83c8d5f46363c052e6f46ef36132cd311415483bc1cf19d9c5b0436f1577c3",
@@ -1468,10 +1473,5 @@
       "renderer_profile": "mmdc-default"
     }
   },
-  "excluded": {
-    "upstream_state_parser_spec": {
-      "input_sha256": "ccf4f193cb6c48cbb43af8ef547fe8c375741bac9ccb391b99d4362b59f38b5c",
-      "reason": "pinned Mermaid 11.16 crashes on this parser-only state fixture"
-    }
-  }
+  "excluded": {}
 }
