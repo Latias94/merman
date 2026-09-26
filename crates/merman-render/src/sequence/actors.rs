@@ -6,9 +6,7 @@ use super::constants::{
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
-use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_label_for_layout, measure_sequence_math_label,
-};
+use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
@@ -32,7 +30,6 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) actor_height: f64,
     pub(super) is_neo: bool,
     pub(super) actor_margin: f64,
-    pub(super) actor_font_size: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
@@ -174,9 +171,8 @@ fn measure_actor_boxes(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing actor {id}"),
             })?;
-        if a.wrap {
-            // Upstream wraps actor descriptions to `conf.width - 2*wrapPadding` and clamps the
-            // actor box width to `conf.width`.
+        let description = if a.wrap {
+            // calculateActorMargins measures the wrapped description before sizing the row.
             let wrap_w = (ctx.actor_width_min - 2.0 * ctx.wrap_padding).max(1.0);
             let wrapped_lines = wrap_sequence_label_like_mermaid_lines(
                 &a.description,
@@ -185,51 +181,34 @@ fn measure_actor_boxes(
                 wrap_w,
                 ctx.checkpoints.text(),
             )?;
-            let wrapped_label = wrapped_lines.join("<br>");
-            let text_h = measure_sequence_math_label(
-                ctx.measurer,
-                &wrapped_label,
-                ctx.actor_text_style,
-                ctx.math_config,
-                ctx.math_renderer,
-                SequenceMathHeightMode::Actor,
-                ctx.checkpoints.text(),
-            )?
-            .map_or_else(
-                || {
-                    let line_count = wrapped_lines.len().max(1) as f64;
-                    sequence_text_dimensions_height_px(ctx.actor_font_size) * line_count
-                },
-                |(_, height)| height,
-            );
-            actor_text_heights.push(text_h);
-            let stack_height = if ctx.is_neo {
-                sequence_actor_stack_height(text_h)
-            } else {
-                text_h
-            };
-            actor_base_heights.push(ctx.actor_height.max(stack_height).max(1.0));
-            actor_widths.push(ctx.actor_width_min.max(1.0));
+            std::borrow::Cow::Owned(wrapped_lines.join("<br>"))
         } else {
-            let (w0, text_h) = measure_sequence_label_for_layout(
-                ctx.measurer,
-                &a.description,
-                ctx.actor_text_style,
-                ctx.math_config,
-                ctx.math_renderer,
-                SequenceMathHeightMode::Actor,
-                ctx.checkpoints.text(),
-            )?;
-            let w = (w0 + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min);
-            actor_text_heights.push(text_h);
-            let stack_height = if ctx.is_neo {
-                sequence_actor_stack_height(text_h)
-            } else {
-                0.0
-            };
-            actor_base_heights.push(ctx.actor_height.max(stack_height).max(1.0));
-            actor_widths.push(w.max(1.0));
-        }
+            std::borrow::Cow::Borrowed(a.description.as_str())
+        };
+        let (text_w, text_h) = measure_sequence_label_for_layout(
+            ctx.measurer,
+            &description,
+            ctx.actor_text_style,
+            ctx.math_config,
+            ctx.math_renderer,
+            SequenceMathHeightMode::Actor,
+            ctx.checkpoints.text(),
+        )?;
+        let width = if a.wrap {
+            ctx.actor_width_min
+        } else {
+            (text_w + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min)
+        };
+        let stack_height = if ctx.is_neo {
+            sequence_actor_stack_height(text_h)
+        } else if a.wrap {
+            text_h
+        } else {
+            0.0
+        };
+        actor_text_heights.push(text_h);
+        actor_base_heights.push(ctx.actor_height.max(stack_height).max(1.0));
+        actor_widths.push(width.max(1.0));
     }
     Ok((actor_widths, actor_base_heights, actor_text_heights))
 }

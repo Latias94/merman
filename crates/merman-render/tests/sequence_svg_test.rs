@@ -3469,3 +3469,41 @@ fn sequence_numeric_actor_weight_matches_string_in_popup_measurement_and_bounds(
         "numeric and string weights must have identical geometry and SVG"
     );
 }
+
+#[test]
+fn sequence_wrapped_actor_height_uses_host_text_dimensions() {
+    for description in [
+        "probe-one<br>probe-two<br>probe-three<br>probe-four",
+        "probe-one probe-two probe-three probe-four",
+    ] {
+        for (look, expected_height) in [("classic", 96.0), ("neo", 152.0)] {
+            let config = serde_json::json!({
+                "look": look,
+                "sequence": {"wrap": true, "mirrorActors": false}
+            });
+            let source = format!(
+                "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A as {description}"
+            );
+            let observation = render_sequence_with_host_environment(
+                &source,
+                SequenceHostResponse::WeightSensitiveMetrics,
+                "sequence-wrapped-actor-height",
+                RenderEnvironment::deterministic(),
+            );
+            let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+            let actor = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("name") == Some("A")
+                        && node.attribute("class") == Some("actor actor-top")
+                })
+                .expect("actor rectangle");
+            assert_eq!(
+                actor.attribute("height").unwrap().parse::<f64>().unwrap(),
+                expected_height,
+                "{look}/{description}: all four host-measured 24px lines must size the participant row"
+            );
+        }
+    }
+}

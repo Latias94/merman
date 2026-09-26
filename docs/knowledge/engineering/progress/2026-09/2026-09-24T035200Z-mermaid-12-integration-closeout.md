@@ -788,3 +788,23 @@ The final affected-crate all-feature nextest run passed 2,522 tests across 61 bi
 with two existing skipped tests. The focused renderer integration run passed 92 tests
 with one existing skip. Standards and correctness review reported no remaining findings
 in the component and single-graph work-accounting changes.
+
+# Wrapped Sequence actor measurement on 2026-09-26
+
+`calculateActorMargins` in the selected Mermaid 12 source measures the final actor
+text after optional wrapping. The local wrapped branch still used a fixed 17/16 font-size
+height instead of the selected text measurer. A host returning four 24px lines reproduced
+68px instead of 96px in classic mode. Wrapped and unwrapped actors now share the actual
+measurement path and retain their distinct classic/Neo row-height rules.
+
+Regression coverage includes explicit breaks and automatic wrapping, with exact classic
+96px and Neo 152px rows. The focused Sequence run passed 146 tests; the final integration
+run passed 62 tests with one existing skip. Renderer all-target/all-feature Clippy passed.
+Seventeen Sequence layout goldens were refreshed through the existing owner. JSON review
+found only y/height/max-y changes (397 numeric fields), and all three layout snapshot tests
+passed. Independent standards and correctness review found no remaining issue.
+
+The latest three-family comparison has Flowchart 45 distinct unadmitted fixtures / 91 mode
+rows, State 11 / 22, and Sequence 25 / 75, with no stale residual receipts. Rerunning Sequence
+after this fix retains the same 25 / 75 blockers. No comparator or residual catalog was
+modified. Box title measurement/rendering remains a separately identified source mismatch.

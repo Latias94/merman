@@ -419,7 +419,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_height: settings.actor_height,
         is_neo: settings.is_neo,
         actor_margin: settings.actor_margin,
-        actor_font_size: settings.actor_text_style.font_size,
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
         wrap_padding: settings.wrap_padding,
