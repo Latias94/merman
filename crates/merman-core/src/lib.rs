@@ -75,22 +75,34 @@ pub fn supported_themes() -> &'static [&'static str] {
     theme::SUPPORTED_THEME_NAMES
 }
 
-/// Returns supported diagram metadata names for binding and host capability discovery.
+/// Returns metadata names backed by semantic parsers compiled into this build.
+///
+/// Aliases share their catalog-owned metadata name. This does not promise an output adapter;
+/// use the complete [`diagram_family_capabilities`] catalog to distinguish known identities
+/// from available implementations.
 pub fn supported_diagrams() -> &'static [&'static str] {
     family::supported_diagram_metadata_ids()
 }
 
-/// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
+/// Returns every known Mermaid diagram id in the pinned baseline, including unavailable ones.
+///
+/// Identity, detector, header, and configuration facts are retained independently of the parser,
+/// editor, and typed render-model callbacks compiled into this build.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
 }
 
-/// Returns each concrete built-in typed render family exactly once.
+/// Returns each compiled concrete built-in typed render-model family exactly once.
+///
+/// This is independent of output adapters and deduplicates aliases sharing a typed model.
 pub fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
     family::built_in_typed_render_families()
 }
 
-/// Returns header completion facts for Mermaid diagram starters in the pinned baseline.
+/// Returns known header facts for Mermaid diagram starters in the pinned baseline.
+///
+/// A header identifies a known family; actionable suggestions must also check that its semantic
+/// parser is available in [`diagram_family_capabilities`].
 pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
     family::diagram_header_facts()
 }

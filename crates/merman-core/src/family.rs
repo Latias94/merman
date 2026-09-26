@@ -1,7 +1,9 @@
 //! Diagram family facts for the pinned Mermaid baseline.
 //!
 //! This module owns release-facing Mermaid family facts and projects them into detector,
-//! parser, render-model, and metadata surfaces.
+//! parser, render-model, and metadata surfaces. Identity, detection, headers, and configuration
+//! facts remain available when an implementation is absent. Parser and typed-model lists are
+//! separate projections of the callbacks compiled into this crate.
 
 use crate::detect::DetectorFn;
 use crate::diagram::{
@@ -277,27 +279,27 @@ pub struct DiagramFamilyCapability {
     pub diagram_type: &'static str,
     /// Logical diagram family. This does not change when a family reuses another render model.
     pub logical_family_kind: &'static str,
-    /// Public supported-diagram metadata id, when this family contributes an admitted renderer.
+    /// Public metadata identity, retained even when its implementation is unavailable.
     pub metadata_id: Option<&'static str>,
-    /// Typed render-model kind, when this id owns a typed render projection.
+    /// Known typed render-model kind, independent of whether its parser is compiled.
     pub render_model_kind: Option<&'static str>,
     /// Whether this id participates in automatic detection.
     pub has_detector: bool,
-    /// Whether the pinned catalog has a semantic parser for this diagram type.
+    /// Whether this build includes a semantic parser for this diagram type.
     pub has_semantic_parser: bool,
-    /// Whether the pinned catalog has parser-backed editor facts.
+    /// Whether this build includes parser-backed editor facts.
     pub has_editor_parser: bool,
     /// Whether JSON and editor facts share one combined semantic construction.
     pub has_combined_parser: bool,
-    /// Whether the pinned catalog has a typed render-model parser for this diagram type.
+    /// Whether this build includes a typed render-model parser for this diagram type.
     pub has_render_parser: bool,
-    /// Whether this id contributes at least one authoring header.
+    /// Whether this known id has an authoring header, without promising parser availability.
     pub has_header: bool,
     /// Mermaid configuration namespace associated with this id.
     pub config_namespace: Option<&'static str>,
 }
 
-/// Canonical public identity for one concrete built-in typed render family.
+/// Canonical public identity for one compiled concrete built-in typed render family.
 ///
 /// Parser aliases that share a render model contribute exactly one entry. Error and custom JSON
 /// models are infrastructure variants rather than concrete Mermaid families and are excluded.
@@ -338,7 +340,9 @@ struct FamilyCatalogProjection {
 }
 
 impl FamilyCatalogProjection {
-    fn build() -> Self {
+    fn build<'a>(
+        variants: impl IntoIterator<Item = (&'a DiagramFamilyDefinition, &'a FamilyVariantDefinition)>,
+    ) -> Self {
         let mut detector_facts = Vec::<(u16, DetectorFact)>::new();
         let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
         let mut render_parser_facts = Vec::<(u16, RenderParserFact)>::new();
@@ -347,76 +351,78 @@ impl FamilyCatalogProjection {
         let mut diagram_header_facts = Vec::<(u16, DiagramHeaderFact)>::new();
         let mut diagram_family_capabilities = Vec::<(u16, DiagramFamilyCapability)>::new();
 
-        for (family, variant) in variants() {
-            if let Some(ordered) = variant.detector {
+        for (family, variant) in variants {
+            let identity = &variant.identity;
+            let implementation = &variant.implementation;
+            if let Some(ordered) = identity.detector {
                 detector_facts.push((
                     ordered.order,
                     DetectorFact {
-                        id: variant.id,
+                        id: identity.id,
                         detector: ordered.value,
                     },
                 ));
             }
-            if let Some(ordered) = variant.semantic {
+            if let Some(ordered) = implementation.semantic {
                 semantic_parser_facts.push((
                     ordered.order,
                     SemanticParserFact {
-                        id: variant.id,
+                        id: identity.id,
                         parser: ordered.value,
                     },
                 ));
             }
-            if let Some(ordered) = variant.typed_render {
+            if let Some(ordered) = implementation.typed_render {
                 render_parser_facts.push((
                     ordered.order,
                     RenderParserFact {
-                        id: variant.id,
-                        metadata_id: variant.metadata.map(|metadata| metadata.id),
-                        model_kind: variant
+                        id: identity.id,
+                        metadata_id: identity.metadata.map(|metadata| metadata.id),
+                        model_kind: identity
                             .render_model_kind
                             .expect("typed render variants declare their model kind"),
                         parser: ordered.value,
                     },
                 ));
             }
-            if let Some(ordered) = variant.combined {
+            if let Some(ordered) = implementation.combined {
                 combined_parser_facts.push((
                     ordered.order,
                     CombinedParserFact {
-                        id: variant.id,
+                        id: identity.id,
                         parser: ordered.value,
                     },
                 ));
             }
-            if let Some((order, id)) = variant
+            if let Some((order, id)) = identity
                 .metadata
                 .and_then(|metadata| metadata.order.map(|order| (order, metadata.id)))
             {
                 metadata_facts.push((order, id));
             }
-            for header in variant.headers {
+            for header in identity.headers {
                 diagram_header_facts.push((
                     header.order,
                     DiagramHeaderFact {
-                        diagram_type: variant.id,
+                        diagram_type: identity.id,
                         label: header.label,
                         detail: header.detail,
                     },
                 ));
             }
             diagram_family_capabilities.push((
-                variant.catalog_order,
+                identity.catalog_order,
                 DiagramFamilyCapability {
-                    diagram_type: variant.id,
+                    diagram_type: identity.id,
                     logical_family_kind: family.logical_kind,
-                    metadata_id: variant.metadata.map(|metadata| metadata.id),
-                    render_model_kind: variant.render_model_kind,
-                    has_detector: variant.detector.is_some(),
-                    has_semantic_parser: variant.semantic.is_some(),
-                    has_editor_parser: variant.combined.is_some(),
-                    has_combined_parser: variant.combined.is_some(),
-                    has_render_parser: variant.typed_render.is_some(),
-                    has_header: !variant.headers.is_empty(),
+                    metadata_id: identity.metadata.map(|metadata| metadata.id),
+                    render_model_kind: identity.render_model_kind,
+                    has_detector: identity.detector.is_some(),
+                    has_semantic_parser: implementation.semantic.is_some(),
+                    has_editor_parser: implementation.combined.is_some(),
+                    has_combined_parser: implementation.combined.is_some(),
+                    has_render_parser: implementation.typed_render.is_some(),
+                    has_header: !identity.headers.is_empty(),
                     config_namespace: family.config.map(|config| config.namespace),
                 },
             ));
@@ -430,19 +436,22 @@ impl FamilyCatalogProjection {
         let diagram_header_facts = ordered_values(diagram_header_facts);
         let diagram_family_capabilities = ordered_values(diagram_family_capabilities);
         let supported_diagram_metadata_ids = metadata_facts
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|metadata_id| {
-                render_parser_facts
+                diagram_family_capabilities
                     .iter()
-                    .any(|fact| fact.metadata_id == Some(*metadata_id))
+                    .any(|fact| fact.metadata_id == Some(*metadata_id) && fact.has_semantic_parser)
             })
             .collect::<Vec<&'static str>>();
         let mut built_in_typed_render_families = Vec::<BuiltInTypedRenderFamily>::new();
-        for metadata_id in &supported_diagram_metadata_ids {
-            let fact = render_parser_facts
+        for metadata_id in metadata_facts {
+            let Some(fact) = render_parser_facts
                 .iter()
-                .find(|fact| fact.metadata_id == Some(*metadata_id))
-                .expect("supported metadata is backed by a typed render parser");
+                .find(|fact| fact.metadata_id == Some(metadata_id))
+            else {
+                continue;
+            };
             if !built_in_typed_render_families
                 .iter()
                 .any(|family| family.render_model_kind == fact.model_kind)
@@ -474,7 +483,7 @@ fn ordered_values<T>(mut values: Vec<(u16, T)>) -> Vec<T> {
 
 fn family_catalog_projection() -> &'static FamilyCatalogProjection {
     static CATALOG: OnceLock<FamilyCatalogProjection> = OnceLock::new();
-    CATALOG.get_or_init(FamilyCatalogProjection::build)
+    CATALOG.get_or_init(|| FamilyCatalogProjection::build(variants()))
 }
 
 pub(crate) fn detector_facts() -> &'static [DetectorFact] {
@@ -500,7 +509,7 @@ pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticPars
 }
 
 pub(crate) fn warning_semantic_parser(diagram_type: &str) -> Option<WarningSemanticParser> {
-    find_variant(diagram_type).and_then(|(_, variant)| variant.warning_semantic)
+    find_variant(diagram_type).and_then(|(_, variant)| variant.implementation.warning_semantic)
 }
 
 pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
@@ -543,7 +552,8 @@ pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
 }
 
 pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
-    find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
+    find_variant(diagram_type)
+        .and_then(|(_, variant)| variant.identity.metadata.map(|metadata| metadata.id))
 }
 
 pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
@@ -555,7 +565,7 @@ pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<Editor
 }
 
 pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
-    find_variant(diagram_type).and_then(|(_, variant)| variant.render_model_kind)
+    find_variant(diagram_type).and_then(|(_, variant)| variant.identity.render_model_kind)
 }
 
 pub(crate) fn apply_diagram_type_config_effects(
@@ -564,7 +574,12 @@ pub(crate) fn apply_diagram_type_config_effects(
     effective_config: &mut MermaidConfig,
 ) {
     let (effect, default_effect) = find_variant(diagram_type)
-        .map(|(_, variant)| (variant.known_type_effect, variant.default_effect))
+        .map(|(_, variant)| {
+            (
+                variant.identity.known_type_effect,
+                variant.identity.default_effect,
+            )
+        })
         .unwrap_or((KnownTypeEffect::None, DefaultEffect::None));
     match effect {
         KnownTypeEffect::None => {}
@@ -853,19 +868,34 @@ enum DefaultEffect {
 
 #[derive(Clone, Copy)]
 struct FamilyVariantDefinition {
+    identity: FamilyVariantIdentity,
+    implementation: FamilyImplementation,
+}
+
+/// Lightweight pinned facts survive omission of their parser and model implementations.
+#[derive(Clone, Copy)]
+struct FamilyVariantIdentity {
     id: &'static str,
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
-    semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
-    warning_semantic: Option<WarningSemanticParser>,
-    combined: Option<Ordered<CombinedSemanticParser>>,
-    typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,
     metadata: Option<MetadataDefinition>,
     headers: &'static [HeaderDefinition],
     frontmatter_alias_order: Option<u16>,
     known_type_effect: KnownTypeEffect,
     default_effect: DefaultEffect,
+}
+
+/// Compiled entry points, bound beside the identity facts in the same catalog.
+///
+/// An absent callback makes only its executable projection unavailable; it never removes the
+/// known identity or releases its built-in identity reservation.
+#[derive(Clone, Copy, Default)]
+struct FamilyImplementation {
+    semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
+    warning_semantic: Option<WarningSemanticParser>,
+    combined: Option<Ordered<CombinedSemanticParser>>,
+    typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
 }
 
 #[derive(Clone, Copy)]
@@ -920,19 +950,23 @@ macro_rules! variant {
         default_effect: $default_effect:expr $(,)?
     ) => {
         FamilyVariantDefinition {
-            id: $id,
-            catalog_order: $catalog_order,
-            detector: $detector,
-            semantic: $semantic,
-            warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
-            combined: $combined,
-            typed_render: $typed,
-            render_model_kind: $render_kind,
-            metadata: $metadata,
-            headers: $headers,
-            frontmatter_alias_order: $config_alias_order,
-            known_type_effect: $known_effect,
-            default_effect: $default_effect,
+            identity: FamilyVariantIdentity {
+                id: $id,
+                catalog_order: $catalog_order,
+                detector: $detector,
+                render_model_kind: $render_kind,
+                metadata: $metadata,
+                headers: $headers,
+                frontmatter_alias_order: $config_alias_order,
+                known_type_effect: $known_effect,
+                default_effect: $default_effect,
+            },
+            implementation: FamilyImplementation {
+                semantic: $semantic,
+                warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
+                combined: $combined,
+                typed_render: $typed,
+            },
         }
     };
     (@warning_semantic) => {
@@ -964,7 +998,7 @@ fn find_variant(
         family
             .variants
             .iter()
-            .find(|variant| variant.id == diagram_type)
+            .find(|variant| variant.identity.id == diagram_type)
             .map(|variant| (family, variant))
     })
 }
@@ -983,7 +1017,7 @@ pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFa
                 .iter()
                 .flat_map(|family| {
                     family.variants.iter().filter_map(move |variant| {
-                        variant.frontmatter_alias_order.map(|order| {
+                        variant.identity.frontmatter_alias_order.map(|order| {
                             let namespace = family
                                 .config
                                 .expect("config aliases require a family namespace")
@@ -991,7 +1025,7 @@ pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFa
                             (
                                 order,
                                 FrontmatterConfigAliasFact {
-                                    source: variant.id,
+                                    source: variant.identity.id,
                                     namespace,
                                 },
                             )
@@ -2056,6 +2090,129 @@ mod catalog_tests {
     }
 
     #[test]
+    fn absent_implementations_preserve_the_complete_identity_projection() {
+        let unavailable = variants()
+            .map(|(family, variant)| {
+                (
+                    family,
+                    FamilyVariantDefinition {
+                        identity: variant.identity,
+                        implementation: FamilyImplementation::default(),
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let projected = FamilyCatalogProjection::build(
+            unavailable
+                .iter()
+                .map(|(family, variant)| (*family, variant)),
+        );
+        let complete = family_catalog_projection();
+
+        assert!(projected.semantic_parser_facts.is_empty());
+        assert!(projected.combined_parser_facts.is_empty());
+        assert!(projected.render_parser_facts.is_empty());
+        assert!(projected.supported_diagram_metadata_ids.is_empty());
+        assert!(projected.built_in_typed_render_families.is_empty());
+        assert_eq!(
+            projected.diagram_header_facts,
+            complete.diagram_header_facts
+        );
+        assert_eq!(
+            projected
+                .detector_facts
+                .iter()
+                .map(|fact| fact.id)
+                .collect::<Vec<_>>(),
+            complete
+                .detector_facts
+                .iter()
+                .map(|fact| fact.id)
+                .collect::<Vec<_>>()
+        );
+        let expected = complete
+            .diagram_family_capabilities
+            .iter()
+            .map(|fact| DiagramFamilyCapability {
+                has_semantic_parser: false,
+                has_editor_parser: false,
+                has_combined_parser: false,
+                has_render_parser: false,
+                ..*fact
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(projected.diagram_family_capabilities, expected);
+    }
+
+    #[test]
+    fn parser_and_typed_model_enumerations_follow_their_own_callbacks() {
+        let (family, variant) = find_variant("flowchart-v2").unwrap();
+        let semantic_only = FamilyVariantDefinition {
+            identity: variant.identity,
+            implementation: FamilyImplementation {
+                semantic: variant.implementation.semantic,
+                ..FamilyImplementation::default()
+            },
+        };
+        let projected = FamilyCatalogProjection::build([(family, &semantic_only)]);
+        assert_eq!(projected.supported_diagram_metadata_ids, ["flowchart"]);
+        assert!(projected.built_in_typed_render_families.is_empty());
+        assert!(projected.diagram_family_capabilities[0].has_semantic_parser);
+        assert!(!projected.diagram_family_capabilities[0].has_editor_parser);
+        assert!(!projected.diagram_family_capabilities[0].has_render_parser);
+
+        let typed_only = FamilyVariantDefinition {
+            identity: variant.identity,
+            implementation: FamilyImplementation {
+                typed_render: variant.implementation.typed_render,
+                ..FamilyImplementation::default()
+            },
+        };
+        let projected = FamilyCatalogProjection::build([(family, &typed_only)]);
+        assert!(projected.supported_diagram_metadata_ids.is_empty());
+        assert_eq!(
+            projected.built_in_typed_render_families,
+            [BuiltInTypedRenderFamily {
+                diagram_type: "flowchart",
+                render_model_kind: "flowchart",
+            }]
+        );
+        assert!(!projected.diagram_family_capabilities[0].has_semantic_parser);
+        assert!(projected.diagram_family_capabilities[0].has_render_parser);
+    }
+
+    #[test]
+    fn shared_typed_models_do_not_admit_an_unavailable_logical_family() {
+        let projected_variants = variants()
+            .map(|(family, variant)| {
+                let mut variant = *variant;
+                if family.logical_kind != "swimlane" {
+                    variant.implementation = FamilyImplementation::default();
+                }
+                (family, variant)
+            })
+            .collect::<Vec<_>>();
+        let projected = FamilyCatalogProjection::build(
+            projected_variants
+                .iter()
+                .map(|(family, variant)| (*family, variant)),
+        );
+        assert_eq!(projected.supported_diagram_metadata_ids, ["swimlane"]);
+        assert_eq!(
+            projected.built_in_typed_render_families,
+            [BuiltInTypedRenderFamily {
+                diagram_type: "swimlane",
+                render_model_kind: "flowchart",
+            }]
+        );
+        assert!(
+            projected.diagram_family_capabilities.iter().all(|fact| {
+                fact.has_semantic_parser == (fact.logical_family_kind == "swimlane")
+            })
+        );
+    }
+
+    #[test]
     fn catalog_ids_orders_and_family_policy_are_internally_consistent() {
         let mut ids = BTreeSet::new();
         let mut catalog_orders = BTreeSet::new();
@@ -2068,50 +2225,59 @@ mod catalog_tests {
 
         for family in FAMILY_CATALOG {
             for variant in family.variants {
-                assert_ne!(variant.id, "---", "frontmatter guard is not a family");
+                assert_ne!(
+                    variant.identity.id, "---",
+                    "frontmatter guard is not a family"
+                );
                 assert!(
-                    ids.insert(variant.id),
+                    ids.insert(variant.identity.id),
                     "duplicate catalog id {}",
-                    variant.id
+                    variant.identity.id
                 );
                 assert!(
-                    catalog_orders.insert(variant.catalog_order),
+                    catalog_orders.insert(variant.identity.catalog_order),
                     "duplicate catalog order {}",
-                    variant.catalog_order
-                );
-                assert_eq!(
-                    variant.typed_render.is_some(),
-                    variant.render_model_kind.is_some(),
-                    "{} typed parser and render kind must be declared together",
-                    variant.id
+                    variant.identity.catalog_order
                 );
                 assert!(
-                    variant.metadata.is_none() || variant.typed_render.is_some(),
-                    "{} metadata requires a typed render parser",
-                    variant.id
+                    variant.implementation.typed_render.is_none()
+                        || variant.identity.render_model_kind.is_some(),
+                    "{} typed parser requires a known render kind",
+                    variant.identity.id
                 );
                 assert!(
-                    variant.combined.is_none() || variant.semantic.is_some(),
+                    variant.identity.metadata.is_none()
+                        || variant.identity.render_model_kind.is_some(),
+                    "{} metadata requires a known render kind",
+                    variant.identity.id
+                );
+                assert!(
+                    variant.implementation.combined.is_none()
+                        || variant.implementation.semantic.is_some(),
                     "{} combined parsing requires a semantic adapter",
-                    variant.id
+                    variant.identity.id
                 );
 
-                if let Some(fact) = variant.detector {
+                if let Some(fact) = variant.identity.detector {
                     assert!(detector_orders.insert(fact.order));
                 }
-                if let Some(fact) = variant.semantic {
+                if let Some(fact) = variant.implementation.semantic {
                     assert!(semantic_orders.insert(fact.order));
                 }
-                if let Some(fact) = variant.combined {
+                if let Some(fact) = variant.implementation.combined {
                     assert!(combined_orders.insert(fact.order));
                 }
-                if let Some(fact) = variant.typed_render {
+                if let Some(fact) = variant.implementation.typed_render {
                     assert!(render_orders.insert(fact.order));
                 }
-                if let Some(order) = variant.metadata.and_then(|metadata| metadata.order) {
+                if let Some(order) = variant
+                    .identity
+                    .metadata
+                    .and_then(|metadata| metadata.order)
+                {
                     assert!(metadata_orders.insert(order));
                 }
-                for fact in variant.headers {
+                for fact in variant.identity.headers {
                     assert!(header_orders.insert(fact.order));
                 }
             }
