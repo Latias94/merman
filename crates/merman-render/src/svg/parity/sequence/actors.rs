@@ -20,7 +20,7 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) actor_height: f64,
     pub(super) label_box_height: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) loop_text_style: &'a TextStyle,
+    pub(super) actor_text_style: &'a TextStyle,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -32,7 +32,7 @@ pub(super) fn render_sequence_bottom_actors(
         ctx.actor_wrap_width,
         ctx.diagram_id,
         ctx.measurer,
-        ctx.loop_text_style,
+        ctx.actor_text_style,
         ctx.sanitize_config,
         ctx.math_renderer,
         ctx.checkpoints,
@@ -117,7 +117,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         ctx.actor_wrap_width,
         ctx.diagram_id,
         ctx.measurer,
-        ctx.loop_text_style,
+        ctx.actor_text_style,
         ctx.sanitize_config,
         ctx.math_renderer,
         ctx.checkpoints,

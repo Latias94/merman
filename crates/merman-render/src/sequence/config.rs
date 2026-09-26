@@ -66,9 +66,19 @@ impl<'a> SequenceConfigView<'a> {
                 token.to_css_string()
             }
             cssparser::Token::Ident(value)
-                if ["normal", "bold"]
-                    .iter()
-                    .any(|keyword| value.eq_ignore_ascii_case(keyword)) =>
+                if [
+                    "normal",
+                    "bold",
+                    "bolder",
+                    "lighter",
+                    "inherit",
+                    "initial",
+                    "unset",
+                    "revert",
+                    "revert-layer",
+                ]
+                .iter()
+                .any(|keyword| value.eq_ignore_ascii_case(keyword)) =>
             {
                 value.to_ascii_lowercase()
             }
@@ -77,42 +87,18 @@ impl<'a> SequenceConfigView<'a> {
         parser.is_exhausted().then_some(css)
     }
 
-    pub(crate) fn configured_font_weight(&self, key: &str) -> Option<String> {
-        // sequenceRenderer.setConf gives a truthy global fontWeight precedence over the
-        // family-specific value. Invalid CSS is rejected by the same CSSOM-shaped parser.
-        let root = self.effective_config.get("fontWeight").filter(|value| {
-            matches!(value, Value::String(value) if !value.is_empty())
-                || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
-        });
-        root.and_then(Self::parse_font_weight).or_else(|| {
-            self.sequence_config
-                .get(key)
-                .and_then(Self::parse_font_weight)
-        })
-    }
-
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
-        let root = self.effective_config.get("fontWeight").filter(|value| {
-            matches!(value, Value::String(value) if !value.is_empty())
-                || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
-        });
-        if let Some(root) = root {
-            return Self::parse_font_weight(root);
-        }
-        match self.sequence_config.get(key) {
+        // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
+        // A rejected global value must not reveal the overridden family setting.
+        let selected = self
+            .effective_config
+            .get("fontWeight")
+            .filter(|value| crate::config::json_value_is_truthy(value))
+            .or_else(|| self.sequence_config.get(key));
+        match selected {
             Some(value) => Self::parse_font_weight(value),
             None => Some("400".to_string()),
         }
-    }
-
-    pub(crate) fn root_font_weight(&self) -> Option<String> {
-        self.effective_config
-            .get("fontWeight")
-            .filter(|value| {
-                matches!(value, Value::String(value) if !value.is_empty())
-                    || matches!(value, Value::Number(value) if value.as_f64().is_some_and(|value| value != 0.0))
-            })
-            .and_then(Self::parse_font_weight)
     }
 
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
@@ -131,7 +117,6 @@ impl<'a> SequenceConfigView<'a> {
         &self,
         root_font_family: &Option<String>,
         root_font_size: Option<f64>,
-        root_font_weight: &Option<String>,
         family_key: &str,
         size_key: &str,
         weight_key: &str,
@@ -142,9 +127,7 @@ impl<'a> SequenceConfigView<'a> {
         let font_size = root_font_size
             .or_else(|| crate::config::config_f64(self.sequence_config, &[size_key]))
             .unwrap_or(16.0);
-        let font_weight = root_font_weight
-            .clone()
-            .or_else(|| self.sequence_string(weight_key));
+        let font_weight = self.font_weight(weight_key);
 
         TextStyle {
             font_family,
@@ -202,33 +185,27 @@ impl SequenceLayoutSettings {
         // the global `fontFamily` / `fontSize` / `fontWeight` are present.
         let root_font_family = config.root_string("fontFamily");
         let root_font_size = config.root_compat_f64("fontSize");
-        let root_font_weight = config.root_font_weight();
         let actor_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
-            &root_font_weight,
             "actorFontFamily",
             "actorFontSize",
             "actorFontWeight",
         );
-        let mut note_text_style = config.layout_text_style(
+        let note_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
-            &root_font_weight,
             "noteFontFamily",
             "noteFontSize",
             "noteFontWeight",
         );
-        note_text_style.font_weight = config.font_weight("noteFontWeight");
-        let mut msg_text_style = config.layout_text_style(
+        let msg_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
-            &root_font_weight,
             "messageFontFamily",
             "messageFontSize",
             "messageFontWeight",
         );
-        msg_text_style.font_weight = config.font_weight("messageFontWeight");
 
         Self {
             diagram_margin_x,
@@ -292,8 +269,14 @@ mod tests {
                 json!({"sequence": {"noteFontWeight": "700 !important"}}),
                 None,
             ),
-            (json!({"sequence": {"noteFontWeight": "bolder"}}), None),
-            (json!({"sequence": {"noteFontWeight": "inherit"}}), None),
+            (
+                json!({"sequence": {"noteFontWeight": "bolder"}}),
+                Some("bolder"),
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": "inherit"}}),
+                Some("inherit"),
+            ),
             (
                 json!({"sequence": {"noteFontWeight": 700.5}}),
                 Some("700.5"),
@@ -305,6 +288,59 @@ mod tests {
                 settings.note_text_style.font_weight.as_deref(),
                 expected,
                 "{config}"
+            );
+        }
+    }
+
+    #[test]
+    fn actor_weight_uses_one_selected_value_for_layout_and_rendering() {
+        for (root, expected) in [
+            (json!("bogus"), None),
+            (json!(true), None),
+            (json!("700; font-style: italic"), None),
+            (json!("bolder"), Some("bolder")),
+            (json!("inherit"), Some("inherit")),
+            (json!(false), Some("700")),
+            (json!(0), Some("700")),
+            (json!(""), Some("700")),
+        ] {
+            let config = json!({
+                "fontWeight": root,
+                "sequence": {
+                    "actorFontWeight": 700,
+                    "noteFontWeight": 700,
+                    "messageFontWeight": 700
+                }
+            });
+            let view = SequenceConfigView::new(&config);
+            let settings = SequenceLayoutSettings::from_effective_config(&config);
+            for weight in [
+                view.font_weight("actorFontWeight"),
+                settings.actor_text_style.font_weight,
+                settings.note_text_style.font_weight,
+                settings.msg_text_style.font_weight,
+            ] {
+                assert_eq!(weight.as_deref(), expected, "{config}");
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_weights_preserve_static_css_keywords() {
+        for weight in [
+            "normal",
+            "bold",
+            "bolder",
+            "lighter",
+            "inherit",
+            "initial",
+            "unset",
+            "revert",
+            "revert-layer",
+        ] {
+            assert_eq!(
+                SequenceConfigView::parse_font_weight(&json!(weight.to_uppercase())).as_deref(),
+                Some(weight),
             );
         }
     }

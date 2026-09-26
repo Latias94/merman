@@ -75,7 +75,7 @@ impl SequenceRenderSettings {
                 .root_json_number("fontSize")
                 .or_else(|| config.sequence_json_number("actorFontSize"))
                 .unwrap_or(16.0),
-            font_weight: config.configured_font_weight("actorFontWeight"),
+            font_weight: config.font_weight("actorFontWeight"),
             font_style: None,
         };
         let note_text_style = TextStyle {

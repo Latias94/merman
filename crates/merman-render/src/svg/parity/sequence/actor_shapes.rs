@@ -470,6 +470,17 @@ fn write_actor_label_lines<'a>(
     ctx: &ActorLabelContext<'_>,
 ) -> Result<()> {
     let n = line_count.max(1) as f64;
+    // byTspan applies actor size, weight and family through CSSOM in this order.
+    let mut style = format!(
+        "text-anchor: middle; font-size: {}px;",
+        fmt(ctx.style.font_size)
+    );
+    if let Some(weight) = &ctx.style.font_weight {
+        let _ = write!(style, " font-weight: {weight};");
+    }
+    if let Some(family) = crate::sequence::sequence_inline_font_family(ctx.style) {
+        let _ = write!(style, " font-family: {family};");
+    }
     for (i, raw) in raw_lines.into_iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(i)?;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
@@ -480,10 +491,10 @@ fn write_actor_label_lines<'a>(
         };
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor {label_class}" style="text-anchor: middle; font-size: {fs}px; font-weight: 400;"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor {label_class}" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(cy),
-            fs = fmt(ctx.style.font_size),
+            style = escape_attr(&style),
             dy = fmt(dy),
             text = escape_xml_display(decoded.as_ref())
         );

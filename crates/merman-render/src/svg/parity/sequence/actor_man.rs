@@ -29,7 +29,7 @@ fn render_sequence_actor_man(
         ctx.actor_wrap_width,
         ctx.diagram_id,
         ctx.measurer,
-        ctx.loop_text_style,
+        ctx.actor_text_style,
         ctx.sanitize_config,
         ctx.math_renderer,
         ctx.checkpoints,

@@ -54,6 +54,7 @@ enum SequenceHostResponse {
     #[default]
     Missing,
     StatefulMetrics,
+    WeightSensitiveMetrics,
     Error,
 }
 
@@ -102,6 +103,18 @@ impl HostTextMeasurer for RecordingSequenceHost {
                 let response_index = self.response_index.fetch_add(1, Ordering::Relaxed);
                 Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
                     width: 320.0 + response_index as f64,
+                    height: 24.0,
+                    line_count: 1,
+                })))
+            }
+            SequenceHostResponse::WeightSensitiveMetrics if request.text.starts_with("probe-") => {
+                let advance = if request.style.font_weight.as_deref() == Some("700") {
+                    20.0
+                } else {
+                    8.0
+                };
+                Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: request.text.len() as f64 * advance,
                     height: 24.0,
                     line_count: 1,
                 })))
@@ -3347,4 +3360,112 @@ fn sequence_popup_inherits_actor_rect_height_position_width_and_corner_radius() 
             }
         }
     }
+}
+
+#[test]
+fn sequence_actor_labels_and_popups_share_resolved_weight() {
+    let source = "sequenceDiagram\nparticipant A\nlinks A: {\"Docs\": \"https://example.com\"}";
+    for (root, expected) in [
+        (serde_json::json!("bogus"), None),
+        (serde_json::json!(true), None),
+        (serde_json::json!("700; fill: red"), None),
+        (serde_json::json!("bolder"), Some("bolder")),
+        (serde_json::json!("inherit"), Some("inherit")),
+        (serde_json::json!(false), Some("700")),
+        (serde_json::json!(0), Some("700")),
+    ] {
+        let config = serde_json::json!({
+            "fontWeight": root,
+            "sequence": {"actorFontWeight": 700, "forceMenus": true}
+        });
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            source,
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+        let texts =
+            doc.descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && (node.attribute("class").is_some_and(|class| {
+                            class.split_whitespace().any(|part| part == "actor")
+                        }) || node
+                            .ancestors()
+                            .any(|ancestor| ancestor.attribute("class") == Some("actorPopupMenu")))
+                })
+                .collect::<Vec<_>>();
+        assert_eq!(texts.len(), 3, "two actor labels and one menu label");
+        for text in texts {
+            let style = text.attribute("style").expect("text style");
+            match expected {
+                Some(weight) => assert!(
+                    style.contains(&format!("font-weight: {weight};")),
+                    "{config}: {style}"
+                ),
+                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
+            }
+            assert!(!style.contains("fill: red"), "CSS must remain one value");
+        }
+    }
+}
+
+#[test]
+fn sequence_numeric_actor_weight_matches_string_in_popup_measurement_and_bounds() {
+    let mut outputs = Vec::new();
+    for weight in [serde_json::json!(700), serde_json::json!("700")] {
+        let config =
+            serde_json::json!({"sequence": {"actorFontWeight": weight, "forceMenus": true}});
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A\nlinks A: {{\"probe-long-popup-label\": \"https://example.com\"}}"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::WeightSensitiveMetrics,
+            "sequence-weight-probe",
+            RenderEnvironment::deterministic(),
+        );
+        let requests = observation
+            .requests
+            .iter()
+            .filter(|request| request.text == "probe-long-popup-label")
+            .collect::<Vec<_>>();
+        assert!(
+            requests.len() >= 2,
+            "root bounds and popup rendering must measure the menu"
+        );
+        for request in requests {
+            assert_eq!(request.font_weight.as_deref(), Some("700"), "{request:?}");
+        }
+        let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+        let popup = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("actorPopupMenu"))
+            .unwrap();
+        let panel = popup
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        let width: f64 = panel.attribute("width").unwrap().parse().unwrap();
+        assert!(
+            width >= 420.0,
+            "font-sensitive host width must reach popup geometry"
+        );
+        let viewbox = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        let x: f64 = panel.attribute("x").unwrap().parse().unwrap();
+        assert!(
+            viewbox[0] + viewbox[2] >= x + width,
+            "root bounds must contain the menu"
+        );
+        outputs.push(observation.render.svg);
+    }
+    assert_eq!(
+        outputs[0], outputs[1],
+        "numeric and string weights must have identical geometry and SVG"
+    );
 }
