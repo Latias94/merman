@@ -1,7 +1,7 @@
 //! Shared Mermaid `createText` SVG label emission.
 
 use super::*;
-use crate::svg::parity::util::escape_xml_raw_into;
+use crate::svg::parity::util::escape_xml_serialized_text_into;
 
 #[derive(Clone, Copy)]
 enum SvgTextEntityMode {
@@ -198,7 +198,7 @@ fn write_svg_text_word(out: &mut String, word: &str, entity_mode: SvgTextEntityM
         SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
         SvgTextEntityMode::CreateTextSource => {
             let visible = crate::entities::decode_svg_text_content_entities(word);
-            escape_xml_raw_into(out, visible.as_ref());
+            escape_xml_serialized_text_into(out, visible.as_ref());
         }
     }
 }
@@ -458,7 +458,7 @@ mod tests {
         let mut raw_svg = String::new();
         write_svg_text_source_word_lines(&mut raw_svg, &raw, false, true);
         assert!(
-            raw_svg.contains(">&lt;span class=&#39;foo bar&#39;></tspan>"),
+            raw_svg.contains(">&lt;span class=&#39;foo bar&#39;&gt;</tspan>"),
             "{raw_svg}"
         );
         assert_eq!(raw_svg.matches("text-inner-tspan").count(), 3, "{raw_svg}");
