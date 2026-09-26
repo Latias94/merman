@@ -9,6 +9,7 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
+#[cfg(any(feature = "diagram-mindmap", feature = "diagram-state"))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;
@@ -20,6 +21,13 @@ pub mod error;
 mod family;
 pub mod generated;
 pub mod geom;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-kanban",
+    feature = "diagram-sequence"
+))]
 mod inline_config;
 pub mod models;
 pub mod operation;

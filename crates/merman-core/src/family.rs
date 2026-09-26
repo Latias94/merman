@@ -33,6 +33,10 @@ pub(crate) struct WarningSemanticParse {
     warning_facts: Vec<DiagramWarningFact>,
 }
 
+#[allow(
+    dead_code,
+    reason = "Warning construction is used only by warning-producing diagram families."
+)]
 impl WarningSemanticParse {
     pub(crate) fn new(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
         Self {
@@ -62,12 +66,20 @@ pub(crate) struct CombinedSemanticParse {
 }
 
 /// Closed failure handoff produced after a family has retained its recovery journal.
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 pub(crate) struct CombinedSemanticFailure {
     error: Box<Error>,
     editor_facts: Box<EditorSemanticFacts>,
     recovery_parser: Option<&'static str>,
 }
 
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 impl CombinedSemanticFailure {
     pub(crate) fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
         Self {
@@ -150,6 +162,10 @@ mod combined_semantic_failure_tests {
 }
 
 impl CombinedSemanticParse {
+    #[allow(
+        dead_code,
+        reason = "Shared parser facilities have different consumers in each family selection."
+    )]
     pub(crate) fn from_construction<S, F>(
         construction: std::result::Result<S, F>,
         success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts),
@@ -175,6 +191,10 @@ impl CombinedSemanticParse {
         }
     }
 
+    #[allow(
+        dead_code,
+        reason = "Shared parser facilities have different consumers in each family selection."
+    )]
     pub(crate) fn from_construction_with_warning_facts<S, F>(
         construction: std::result::Result<S, F>,
         success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>),
@@ -208,6 +228,10 @@ impl CombinedSemanticParse {
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "Test helpers serve different optional family suites."
+)]
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
     use crate::{
@@ -646,6 +670,10 @@ macro_rules! render_parser {
     };
 }
 
+#[allow(
+    unused_macros,
+    reason = "No controlled family adapter is emitted in infrastructure-only builds."
+)]
 macro_rules! render_parser_controlled {
     ($fn_name:ident, $parser:path, $variant:path) => {
         fn $fn_name(
@@ -668,26 +696,31 @@ render_parser!(
     crate::diagrams::error_diagram::parse_error_model_for_render,
     RenderSemanticModel::Error
 );
+#[cfg(feature = "diagram-mindmap")]
 render_parser_controlled!(
     render_mindmap,
     crate::diagrams::mindmap::parse_mindmap_model_for_render_controlled,
     RenderSemanticModel::Mindmap
 );
+#[cfg(feature = "diagram-state")]
 render_parser_controlled!(
     render_state,
     crate::diagrams::state::parse_state_model_for_render_controlled,
     RenderSemanticModel::State
 );
+#[cfg(feature = "diagram-zenuml")]
 render_parser_controlled!(
     render_zenuml,
     crate::diagrams::zenuml::parse_zenuml_model_for_render_controlled,
     RenderSemanticModel::Zenuml
 );
+#[cfg(feature = "diagram-sequence")]
 render_parser_controlled!(
     render_sequence,
     crate::diagrams::sequence::parse_sequence_model_for_render_controlled,
     RenderSemanticModel::Sequence
 );
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn render_flowchart(
     code: &str,
     meta: &ParseMetadata,
@@ -699,146 +732,175 @@ fn render_flowchart(
     Ok(result
         .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
+#[cfg(feature = "diagram-class")]
 render_parser_controlled!(
     render_class,
     crate::diagrams::class::parse_class_typed_controlled,
     RenderSemanticModel::Class
 );
+#[cfg(feature = "diagram-c4")]
 render_parser_controlled!(
     render_c4,
     crate::diagrams::c4::parse_c4_model_for_render_controlled,
     RenderSemanticModel::C4
 );
+#[cfg(feature = "diagram-cynefin")]
 render_parser_controlled!(
     render_cynefin,
     crate::diagrams::cynefin::parse_cynefin_model_for_render_controlled,
     RenderSemanticModel::Cynefin
 );
+#[cfg(feature = "diagram-railroad")]
 render_parser_controlled!(
     render_railroad,
     crate::diagrams::railroad::parse_railroad_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
+#[cfg(feature = "diagram-railroad")]
 render_parser_controlled!(
     render_railroad_ebnf,
     crate::diagrams::railroad::parse_railroad_ebnf_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
+#[cfg(feature = "diagram-railroad")]
 render_parser_controlled!(
     render_railroad_abnf,
     crate::diagrams::railroad::parse_railroad_abnf_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
+#[cfg(feature = "diagram-railroad")]
 render_parser_controlled!(
     render_railroad_peg,
     crate::diagrams::railroad::parse_railroad_peg_model_for_render_controlled,
     RenderSemanticModel::Railroad
 );
+#[cfg(feature = "diagram-architecture")]
 render_parser_controlled!(
     render_architecture,
     crate::diagrams::architecture::parse_architecture_model_for_render_controlled,
     RenderSemanticModel::Architecture
 );
+#[cfg(feature = "diagram-kanban")]
 render_parser_controlled!(
     render_kanban,
     crate::diagrams::kanban::parse_kanban_model_for_render_controlled,
     RenderSemanticModel::Kanban
 );
+#[cfg(feature = "diagram-gantt")]
 render_parser_controlled!(
     render_gantt,
     crate::diagrams::gantt::parse_gantt_model_for_render_controlled,
     RenderSemanticModel::Gantt
 );
+#[cfg(feature = "diagram-pie")]
 render_parser_controlled!(
     render_pie,
     crate::diagrams::pie::parse_pie_model_for_render_controlled,
     RenderSemanticModel::Pie
 );
+#[cfg(feature = "diagram-packet")]
 render_parser_controlled!(
     render_packet,
     crate::diagrams::packet::parse_packet_model_for_render_controlled,
     RenderSemanticModel::Packet
 );
+#[cfg(feature = "diagram-timeline")]
 render_parser_controlled!(
     render_timeline,
     crate::diagrams::timeline::parse_timeline_model_for_render_controlled,
     RenderSemanticModel::Timeline
 );
+#[cfg(feature = "diagram-journey")]
 render_parser_controlled!(
     render_journey,
     crate::diagrams::journey::parse_journey_model_for_render_controlled,
     RenderSemanticModel::Journey
 );
+#[cfg(feature = "diagram-requirement")]
 render_parser_controlled!(
     render_requirement,
     crate::diagrams::requirement::parse_requirement_model_for_render_controlled,
     RenderSemanticModel::Requirement
 );
+#[cfg(feature = "diagram-sankey")]
 render_parser_controlled!(
     render_sankey,
     crate::diagrams::sankey::parse_sankey_model_for_render_controlled,
     RenderSemanticModel::Sankey
 );
+#[cfg(feature = "diagram-radar")]
 render_parser_controlled!(
     render_radar,
     crate::diagrams::radar::parse_radar_model_for_render_controlled,
     RenderSemanticModel::Radar
 );
+#[cfg(feature = "diagram-info")]
 render_parser_controlled!(
     render_info,
     crate::diagrams::info::parse_info_model_for_render_controlled,
     RenderSemanticModel::Info
 );
+#[cfg(feature = "diagram-treemap")]
 render_parser_controlled!(
     render_treemap,
     crate::diagrams::treemap::parse_treemap_model_for_render_controlled,
     RenderSemanticModel::Treemap
 );
+#[cfg(feature = "diagram-block")]
 render_parser_controlled!(
     render_block,
     crate::diagrams::block::parse_block_model_for_render_controlled,
     RenderSemanticModel::Block
 );
+#[cfg(feature = "diagram-er")]
 render_parser_controlled!(
     render_er,
     crate::diagrams::er::parse_er_model_for_render_controlled,
     RenderSemanticModel::Er
 );
+#[cfg(feature = "diagram-quadrant-chart")]
 render_parser_controlled!(
     render_quadrant_chart,
     crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render_controlled,
     RenderSemanticModel::QuadrantChart
 );
+#[cfg(feature = "diagram-xychart")]
 render_parser_controlled!(
     render_xychart,
     crate::diagrams::xychart::parse_xychart_model_for_render_controlled,
     RenderSemanticModel::XyChart
 );
+#[cfg(feature = "diagram-git-graph")]
 render_parser_controlled!(
     render_git_graph,
     crate::diagrams::git_graph::parse_git_graph_model_for_render_controlled,
     RenderSemanticModel::GitGraph
 );
+#[cfg(feature = "diagram-tree-view")]
 render_parser_controlled!(
     render_tree_view,
     crate::diagrams::tree_view::parse_tree_view_model_for_render_controlled,
     RenderSemanticModel::TreeView
 );
+#[cfg(feature = "diagram-ishikawa")]
 render_parser_controlled!(
     render_ishikawa,
     crate::diagrams::ishikawa::parse_ishikawa_model_for_render_controlled,
     RenderSemanticModel::Ishikawa
 );
+#[cfg(feature = "diagram-event-modeling")]
 render_parser_controlled!(
     render_eventmodeling,
     crate::diagrams::eventmodeling::parse_eventmodeling_model_for_render_controlled,
     RenderSemanticModel::EventModeling
 );
+#[cfg(feature = "diagram-venn")]
 render_parser_controlled!(
     render_venn,
     crate::diagrams::venn::parse_venn_model_for_render_controlled,
     RenderSemanticModel::Venn
 );
+#[cfg(feature = "diagram-wardley")]
 render_parser_controlled!(
     render_wardley,
     crate::diagrams::wardley::parse_wardley_model_for_render_controlled,
@@ -963,6 +1025,7 @@ const BLOCK_EDITOR_SEMANTICS: EditorFamilySemantics =
 
 macro_rules! variant {
     (
+        $(feature: $feature:literal,)?
         id: $id:literal,
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
@@ -989,11 +1052,25 @@ macro_rules! variant {
                 known_type_effect: $known_effect,
                 default_effect: $default_effect,
             },
-            implementation: FamilyImplementation {
-                semantic: $semantic,
-                warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
-                combined: $combined,
-                typed_render: $typed,
+            implementation: {
+                $(#[cfg(feature = $feature)])?
+                {
+                    FamilyImplementation {
+                        semantic: $semantic,
+                        warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
+                        combined: $combined,
+                        typed_render: $typed,
+                    }
+                }
+                $(#[cfg(not(feature = $feature))]
+                {
+                    FamilyImplementation {
+                        semantic: None,
+                        warning_semantic: None,
+                        combined: None,
+                        typed_render: None,
+                    }
+                })?
             },
         }
     };
@@ -1175,6 +1252,7 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
+        feature: "diagram-flowchart",
         id: "flowchart-elk",
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
@@ -1190,6 +1268,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-flowchart",
         id: "flowchart-v2",
         catalog_order: 17,
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
@@ -1205,6 +1284,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-flowchart",
         id: "flowchart",
         catalog_order: 18,
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
@@ -1222,6 +1302,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
 ];
 
 const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-swimlane",
     id: "swimlane",
     catalog_order: 16,
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
@@ -1238,6 +1319,7 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-mindmap",
     id: "mindmap",
     catalog_order: 3,
     detector: Some(ordered(3, crate::detect::detector_mindmap)),
@@ -1253,6 +1335,7 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-architecture",
     id: "architecture",
     catalog_order: 4,
     detector: Some(ordered(4, crate::detect::detector_architecture)),
@@ -1268,6 +1351,7 @@ const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-zenuml",
     id: "zenuml",
     catalog_order: 5,
     detector: Some(ordered(5, crate::detect::detector_zenuml)),
@@ -1283,6 +1367,7 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-sequence",
     id: "sequence",
     catalog_order: 15,
     detector: Some(ordered(15, crate::detect::detector_sequence)),
@@ -1298,6 +1383,7 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-c4",
     id: "c4",
     catalog_order: 6,
     detector: Some(ordered(6, crate::detect::detector_c4)),
@@ -1313,6 +1399,7 @@ const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-kanban",
     id: "kanban",
     catalog_order: 7,
     detector: Some(ordered(7, crate::detect::detector_kanban)),
@@ -1329,6 +1416,7 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
+        feature: "diagram-class",
         id: "classDiagram",
         catalog_order: 8,
         detector: Some(ordered(8, crate::detect::detector_class_v2)),
@@ -1343,6 +1431,7 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-class",
         id: "class",
         catalog_order: 9,
         detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
@@ -1360,6 +1449,7 @@ const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
 
 const ER_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
+        feature: "diagram-er",
         id: "er",
         catalog_order: 10,
         detector: Some(ordered(10, crate::detect::detector_er)),
@@ -1374,6 +1464,7 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-er",
         id: "erDiagram",
         catalog_order: 41,
         detector: None,
@@ -1390,6 +1481,7 @@ const ER_VARIANTS: &[FamilyVariantDefinition] = &[
 ];
 
 const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-gantt",
     id: "gantt",
     catalog_order: 11,
     detector: Some(ordered(11, crate::detect::detector_gantt)),
@@ -1405,6 +1497,7 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-info",
     id: "info",
     catalog_order: 12,
     detector: Some(ordered(12, crate::detect::detector_info)),
@@ -1420,6 +1513,7 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-pie",
     id: "pie",
     catalog_order: 13,
     detector: Some(ordered(13, crate::detect::detector_pie)),
@@ -1435,6 +1529,7 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-requirement",
     id: "requirement",
     catalog_order: 14,
     detector: Some(ordered(14, crate::detect::detector_requirement)),
@@ -1450,6 +1545,7 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-timeline",
     id: "timeline",
     catalog_order: 19,
     detector: Some(ordered(19, crate::detect::detector_timeline)),
@@ -1465,6 +1561,7 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-git-graph",
     id: "gitGraph",
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
@@ -1482,6 +1579,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
+        feature: "diagram-state",
         id: "stateDiagram",
         catalog_order: 21,
         detector: Some(ordered(21, crate::detect::detector_state_v2)),
@@ -1496,6 +1594,7 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-state",
         id: "state",
         catalog_order: 22,
         detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
@@ -1512,6 +1611,7 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
 ];
 
 const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-journey",
     id: "journey",
     catalog_order: 23,
     detector: Some(ordered(23, crate::detect::detector_journey)),
@@ -1527,6 +1627,7 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-quadrant-chart",
     id: "quadrantChart",
     catalog_order: 24,
     detector: Some(ordered(24, crate::detect::detector_quadrant)),
@@ -1542,6 +1643,7 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-sankey",
     id: "sankey",
     catalog_order: 25,
     detector: Some(ordered(25, crate::detect::detector_sankey)),
@@ -1557,6 +1659,7 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-packet",
     id: "packet",
     catalog_order: 26,
     detector: Some(ordered(26, crate::detect::detector_packet)),
@@ -1572,6 +1675,7 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-xychart",
     id: "xychart",
     catalog_order: 27,
     detector: Some(ordered(27, crate::detect::detector_xychart)),
@@ -1587,6 +1691,7 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-block",
     id: "block",
     catalog_order: 28,
     detector: Some(ordered(28, crate::detect::detector_block)),
@@ -1603,6 +1708,7 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-event-modeling",
     id: "eventmodeling",
     catalog_order: 29,
     detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
@@ -1618,6 +1724,7 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-tree-view",
     id: "treeView",
     catalog_order: 30,
     detector: Some(ordered(30, crate::detect::detector_tree_view)),
@@ -1633,6 +1740,7 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-radar",
     id: "radar",
     catalog_order: 31,
     detector: Some(ordered(31, crate::detect::detector_radar)),
@@ -1648,6 +1756,7 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-ishikawa",
     id: "ishikawa",
     catalog_order: 32,
     detector: Some(ordered(32, crate::detect::detector_ishikawa)),
@@ -1663,6 +1772,7 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-treemap",
     id: "treemap",
     catalog_order: 33,
     detector: Some(ordered(33, crate::detect::detector_treemap)),
@@ -1679,6 +1789,7 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 
 const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
     variant! {
+        feature: "diagram-railroad",
         id: "railroad",
         catalog_order: 34,
         detector: Some(ordered(34, crate::detect::detector_railroad)),
@@ -1693,6 +1804,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-railroad",
         id: "railroadEbnf",
         catalog_order: 35,
         detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
@@ -1707,6 +1819,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-railroad",
         id: "railroadAbnf",
         catalog_order: 36,
         detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
@@ -1721,6 +1834,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         default_effect: DefaultEffect::None,
     },
     variant! {
+        feature: "diagram-railroad",
         id: "railroadPeg",
         catalog_order: 37,
         detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
@@ -1737,6 +1851,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
 ];
 
 const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-venn",
     id: "venn",
     catalog_order: 38,
     detector: Some(ordered(38, crate::detect::detector_venn)),
@@ -1752,6 +1867,7 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-wardley",
     id: "wardley",
     catalog_order: 39,
     detector: Some(ordered(39, crate::detect::detector_wardley)),
@@ -1767,6 +1883,7 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 }];
 
 const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    feature: "diagram-cynefin",
     id: "cynefin",
     catalog_order: 40,
     detector: Some(ordered(40, crate::detect::detector_cynefin)),
@@ -2247,6 +2364,7 @@ mod catalog_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn parser_and_typed_model_enumerations_follow_their_own_callbacks() {
         let (family, variant) = find_variant("flowchart-v2").unwrap();
         let semantic_only = FamilyVariantDefinition {
@@ -2284,6 +2402,7 @@ mod catalog_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-swimlane")]
     fn shared_typed_models_do_not_admit_an_unavailable_logical_family() {
         let projected_variants = variants()
             .map(|(family, variant)| {

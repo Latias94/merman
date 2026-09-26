@@ -2378,6 +2378,7 @@ F -- "&nbsp;" --> G
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn flowchart_render_label_context_stays_out_of_the_public_model_contract() {
         let parsed = crate::Engine::new()
@@ -2404,6 +2405,7 @@ F -- "&nbsp;" --> G
         assert_eq!(roundtrip.edges[0].label, model.edges[0].label);
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn flowchart_render_label_context_applies_shape_sanitization_to_angle_text() {
         let parsed = crate::Engine::new()

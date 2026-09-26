@@ -53,13 +53,13 @@ all-diagrams = [
     "diagram-zenuml",
 ]
 diagram-architecture = []
-diagram-block = []
+diagram-block = ["dep:indexmap"]
 diagram-c4 = []
-diagram-class = []
+diagram-class = ["dep:lalrpop-util", "dep:indexmap"]
 diagram-cynefin = []
-diagram-er = []
+diagram-er = ["dep:lalrpop-util", "dep:indexmap"]
 diagram-event-modeling = []
-diagram-flowchart = []
+diagram-flowchart = ["dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
 diagram-gantt = []
 diagram-git-graph = []
 diagram-info = []
@@ -74,16 +74,16 @@ diagram-radar = []
 diagram-railroad = []
 diagram-requirement = []
 diagram-sankey = []
-diagram-sequence = []
-diagram-state = []
-diagram-swimlane = []
+diagram-sequence = ["dep:lalrpop-util", "dep:rustc-hash"]
+diagram-state = ["dep:lalrpop-util", "dep:indexmap"]
+diagram-swimlane = ["dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
 diagram-timeline = []
 diagram-tree-view = []
 diagram-treemap = []
 diagram-venn = []
-diagram-wardley = []
+diagram-wardley = ["dep:indexmap"]
 diagram-xychart = []
-diagram-zenuml = []
+diagram-zenuml = ["dep:unicode-general-category", "dep:indexmap"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.
 default = []
@@ -108,14 +108,14 @@ system-timing = ["dep:web-time"]
 cssparser.workspace = true
 euclid.workspace = true
 htmlize.workspace = true
-indexmap = { workspace = true, features = ["serde"] }
-lalrpop-util.workspace = true
+indexmap = { workspace = true, features = ["serde"], optional = true }
+lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true
-unicode-general-category.workspace = true
+unicode-general-category = { workspace = true, optional = true }
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
 lol_html.workspace = true
@@ -123,7 +123,7 @@ url.workspace = true
 jiff = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 ryu-js.workspace = true
-rustc-hash.workspace = true
+rustc-hash = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }
 

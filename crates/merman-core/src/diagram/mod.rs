@@ -49,6 +49,12 @@ impl DiagramWarningFact {
     }
 }
 
+#[cfg(any(
+    feature = "diagram-block",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-git-graph"
+))]
 pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<String> {
     facts.iter().map(|fact| fact.message.clone()).collect()
 }
@@ -160,7 +166,7 @@ impl DiagramRegistry {
         reg
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "all-diagrams"))]
     pub(crate) fn parser_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.builtins
             .keys()
@@ -420,40 +426,76 @@ impl CustomJsonRenderModel {
 ///
 /// Most public callers should use [`ParsedDiagram`] when they need JSON output. This enum is for
 /// render paths that benefit from typed data and avoiding a JSON round trip.
+///
+/// Family variants and their payload modules are compiled only when the owning `diagram-*`
+/// feature is enabled. `Flowchart` is shared by `diagram-flowchart` and `diagram-swimlane`;
+/// sharing that payload does not enable the other language. `Error` and `CustomJson` remain
+/// available in infrastructure-only builds.
 #[derive(Debug, Clone)]
 pub enum RenderSemanticModel {
     Error(crate::diagrams::error_diagram::ErrorDiagramRenderModel),
     CustomJson(CustomJsonRenderModel),
+    #[cfg(feature = "diagram-mindmap")]
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
+    #[cfg(feature = "diagram-state")]
     State(crate::diagrams::state::StateDiagramRenderModel),
+    #[cfg(feature = "diagram-sequence")]
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    #[cfg(feature = "diagram-zenuml")]
     Zenuml(crate::diagrams::zenuml::ZenumlDiagramRenderModel),
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
+    #[cfg(feature = "diagram-architecture")]
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
+    #[cfg(feature = "diagram-class")]
     Class(crate::models::class_diagram::ClassDiagram),
+    #[cfg(feature = "diagram-c4")]
     C4(crate::diagrams::c4::C4DiagramRenderModel),
+    #[cfg(feature = "diagram-cynefin")]
     Cynefin(crate::diagrams::cynefin::CynefinDiagramRenderModel),
+    #[cfg(feature = "diagram-railroad")]
     Railroad(crate::diagrams::railroad::RailroadDiagramRenderModel),
+    #[cfg(feature = "diagram-kanban")]
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
+    #[cfg(feature = "diagram-gantt")]
     Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
+    #[cfg(feature = "diagram-pie")]
     Pie(crate::diagrams::pie::PieDiagramRenderModel),
+    #[cfg(feature = "diagram-packet")]
     Packet(crate::diagrams::packet::PacketDiagramRenderModel),
+    #[cfg(feature = "diagram-timeline")]
     Timeline(crate::diagrams::timeline::TimelineDiagramRenderModel),
+    #[cfg(feature = "diagram-journey")]
     Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
+    #[cfg(feature = "diagram-requirement")]
     Requirement(crate::diagrams::requirement::RequirementDiagramRenderModel),
+    #[cfg(feature = "diagram-sankey")]
     Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
+    #[cfg(feature = "diagram-radar")]
     Radar(crate::diagrams::radar::RadarDiagramRenderModel),
+    #[cfg(feature = "diagram-info")]
     Info(crate::diagrams::info::InfoDiagramRenderModel),
+    #[cfg(feature = "diagram-treemap")]
     Treemap(crate::diagrams::treemap::TreemapDiagramRenderModel),
+    #[cfg(feature = "diagram-block")]
     Block(crate::diagrams::block::BlockDiagramRenderModel),
+    #[cfg(feature = "diagram-er")]
     Er(crate::diagrams::er::ErDiagramRenderModel),
+    #[cfg(feature = "diagram-quadrant-chart")]
     QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartRenderModel),
+    #[cfg(feature = "diagram-xychart")]
     XyChart(crate::diagrams::xychart::XyChartDiagramRenderModel),
+    #[cfg(feature = "diagram-git-graph")]
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
+    #[cfg(feature = "diagram-tree-view")]
     TreeView(crate::diagrams::tree_view::TreeViewDiagramRenderModel),
+    #[cfg(feature = "diagram-ishikawa")]
     Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramRenderModel),
+    #[cfg(feature = "diagram-event-modeling")]
     EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
+    #[cfg(feature = "diagram-venn")]
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
+    #[cfg(feature = "diagram-wardley")]
     Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
 }
 
@@ -464,10 +506,12 @@ pub enum RenderSemanticModel {
 #[doc(hidden)]
 #[derive(Debug, Clone, Default)]
 pub struct RenderSemanticContext {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     flowchart: Option<crate::diagrams::flowchart::FlowchartRenderContext>,
 }
 
 impl RenderSemanticContext {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     fn for_flowchart(context: crate::diagrams::flowchart::FlowchartRenderContext) -> Self {
         Self {
             flowchart: Some(context),
@@ -476,6 +520,7 @@ impl RenderSemanticContext {
 
     /// Consumes the context and returns Flowchart's parser-owned render facts.
     #[doc(hidden)]
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn into_flowchart_render_context(
         self,
     ) -> crate::diagrams::flowchart::FlowchartRenderContext {
@@ -484,6 +529,7 @@ impl RenderSemanticContext {
 
     /// Borrows Flowchart's complete parser-owned render context.
     #[doc(hidden)]
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn flowchart_render_context(
         &self,
     ) -> Option<&crate::diagrams::flowchart::FlowchartRenderContext> {
@@ -491,9 +537,16 @@ impl RenderSemanticContext {
     }
 
     pub(crate) fn retained_text_bytes(&self) -> usize {
-        self.flowchart
-            .as_ref()
-            .map_or(0, |context| context.retained_bytes())
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        {
+            self.flowchart
+                .as_ref()
+                .map_or(0, |context| context.retained_bytes())
+        }
+        #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+        {
+            0
+        }
     }
 }
 
@@ -511,6 +564,7 @@ impl RenderSemanticParseOutput {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn flowchart(
         model: crate::diagrams::flowchart::FlowchartModel,
         context: crate::diagrams::flowchart::FlowchartRenderContext,
@@ -569,6 +623,12 @@ macro_rules! impl_builtin_render_semantic {
     };
 }
 
+#[cfg(any(
+    feature = "diagram-mindmap",
+    feature = "diagram-architecture",
+    feature = "diagram-gantt",
+    feature = "diagram-wardley"
+))]
 macro_rules! impl_builtin_render_semantic_controlled {
     ($model:path, $project:path, $controlled_project:path) => {
         impl builtin_render_semantic_private::Sealed for $model {}
@@ -593,129 +653,160 @@ impl_builtin_render_semantic!(
     crate::diagrams::error_diagram::ErrorDiagramRenderModel,
     crate::diagrams::error_diagram::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-mindmap")]
 impl_builtin_render_semantic_controlled!(
     crate::diagrams::mindmap::MindmapDiagramRenderModel,
     crate::diagrams::mindmap::render_model_to_compat_json,
     crate::diagrams::mindmap::render_model_to_compat_json_controlled
 );
+#[cfg(feature = "diagram-state")]
 impl_builtin_render_semantic!(
     crate::diagrams::state::StateDiagramRenderModel,
     crate::diagrams::state::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-sequence")]
 impl_builtin_render_semantic!(
     crate::diagrams::sequence::SequenceDiagramRenderModel,
     crate::diagrams::sequence::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-zenuml")]
 impl_builtin_render_semantic!(
     crate::diagrams::zenuml::ZenumlDiagramRenderModel,
     crate::diagrams::zenuml::render_model_to_compat_json
 );
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl_builtin_render_semantic!(
     crate::diagrams::flowchart::FlowchartModel,
     crate::diagrams::flowchart::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-architecture")]
 impl_builtin_render_semantic_controlled!(
     crate::diagrams::architecture::ArchitectureDiagramRenderModel,
     crate::diagrams::architecture::render_model_to_compat_json,
     crate::diagrams::architecture::render_model_to_compat_json_controlled
 );
+#[cfg(feature = "diagram-class")]
 impl_builtin_render_semantic!(
     crate::models::class_diagram::ClassDiagram,
     crate::diagrams::class::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-c4")]
 impl_builtin_render_semantic!(
     crate::diagrams::c4::C4DiagramRenderModel,
     crate::diagrams::c4::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-cynefin")]
 impl_builtin_render_semantic!(
     crate::diagrams::cynefin::CynefinDiagramRenderModel,
     crate::diagrams::cynefin::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-railroad")]
 impl_builtin_render_semantic!(
     crate::diagrams::railroad::RailroadDiagramRenderModel,
     crate::diagrams::railroad::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-kanban")]
 impl_builtin_render_semantic!(
     crate::diagrams::kanban::KanbanDiagramRenderModel,
     crate::diagrams::kanban::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-gantt")]
 impl_builtin_render_semantic_controlled!(
     crate::diagrams::gantt::GanttDiagramRenderModel,
     crate::diagrams::gantt::render_model_to_compat_json,
     crate::diagrams::gantt::render_model_to_compat_json_controlled
 );
+#[cfg(feature = "diagram-pie")]
 impl_builtin_render_semantic!(
     crate::diagrams::pie::PieDiagramRenderModel,
     crate::diagrams::pie::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-packet")]
 impl_builtin_render_semantic!(
     crate::diagrams::packet::PacketDiagramRenderModel,
     crate::diagrams::packet::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-timeline")]
 impl_builtin_render_semantic!(
     crate::diagrams::timeline::TimelineDiagramRenderModel,
     crate::diagrams::timeline::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-journey")]
 impl_builtin_render_semantic!(
     crate::diagrams::journey::JourneyDiagramRenderModel,
     crate::diagrams::journey::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-requirement")]
 impl_builtin_render_semantic!(
     crate::diagrams::requirement::RequirementDiagramRenderModel,
     crate::diagrams::requirement::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-sankey")]
 impl_builtin_render_semantic!(
     crate::diagrams::sankey::SankeyDiagramRenderModel,
     crate::diagrams::sankey::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-radar")]
 impl_builtin_render_semantic!(
     crate::diagrams::radar::RadarDiagramRenderModel,
     crate::diagrams::radar::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-info")]
 impl_builtin_render_semantic!(
     crate::diagrams::info::InfoDiagramRenderModel,
     crate::diagrams::info::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-treemap")]
 impl_builtin_render_semantic!(
     crate::diagrams::treemap::TreemapDiagramRenderModel,
     crate::diagrams::treemap::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-block")]
 impl_builtin_render_semantic!(
     crate::diagrams::block::BlockDiagramRenderModel,
     crate::diagrams::block::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-er")]
 impl_builtin_render_semantic!(
     crate::diagrams::er::ErDiagramRenderModel,
     crate::diagrams::er::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-quadrant-chart")]
 impl_builtin_render_semantic!(
     crate::diagrams::quadrant_chart::QuadrantChartRenderModel,
     crate::diagrams::quadrant_chart::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-xychart")]
 impl_builtin_render_semantic!(
     crate::diagrams::xychart::XyChartDiagramRenderModel,
     crate::diagrams::xychart::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-git-graph")]
 impl_builtin_render_semantic!(
     crate::diagrams::git_graph::GitGraphRenderModel,
     crate::diagrams::git_graph::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-tree-view")]
 impl_builtin_render_semantic!(
     crate::diagrams::tree_view::TreeViewDiagramRenderModel,
     crate::diagrams::tree_view::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-ishikawa")]
 impl_builtin_render_semantic!(
     crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
     crate::diagrams::ishikawa::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-event-modeling")]
 impl_builtin_render_semantic!(
     crate::diagrams::eventmodeling::EventModelingDiagramRenderModel,
     crate::diagrams::eventmodeling::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-venn")]
 impl_builtin_render_semantic!(
     crate::diagrams::venn::VennDiagramRenderModel,
     crate::diagrams::venn::render_model_to_compat_json
 );
+#[cfg(feature = "diagram-wardley")]
 impl_builtin_render_semantic_controlled!(
     crate::diagrams::wardley::WardleyDiagramRenderModel,
     crate::diagrams::wardley::render_model_to_compat_json,
@@ -730,36 +821,67 @@ impl RenderSemanticModel {
             Self::CustomJson(v) => {
                 crate::common_db::apply_common_db_sanitization(&mut v.value, config);
             }
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => {}
+            #[cfg(feature = "diagram-state")]
             Self::State(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(v) => v.sanitize_common_db_fields(config),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-class")]
             Self::Class(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-c4")]
             Self::C4(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(_) => {}
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(_) => {}
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-info")]
             Self::Info(_) => {}
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-block")]
             Self::Block(_) => {}
+            #[cfg(feature = "diagram-er")]
             Self::Er(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(v) => v.sanitize_common_db_fields(config),
         }
     }
@@ -772,8 +894,11 @@ impl RenderSemanticModel {
             Self::CustomJson(v) => {
                 Self::remap_json_warning_fact_spans(&mut v.value, &mut remap);
             }
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+            #[cfg(feature = "diagram-block")]
             Self::Block(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             _ => {}
         }
@@ -810,36 +935,67 @@ impl RenderSemanticModel {
         match self {
             Self::Error(_) => "error",
             Self::CustomJson(_) => "custom-json",
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => "mindmap",
+            #[cfg(feature = "diagram-state")]
             Self::State(_) => "state",
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(_) => "sequence",
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(_) => "zenuml",
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(_) => "flowchart",
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(_) => "architecture",
+            #[cfg(feature = "diagram-class")]
             Self::Class(_) => "class",
+            #[cfg(feature = "diagram-c4")]
             Self::C4(_) => "c4",
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(_) => "cynefin",
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(_) => "railroad",
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(_) => "kanban",
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(_) => "gantt",
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(_) => "pie",
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => "packet",
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(_) => "timeline",
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(_) => "journey",
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(_) => "requirement",
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(_) => "sankey",
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(_) => "radar",
+            #[cfg(feature = "diagram-info")]
             Self::Info(_) => "info",
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(_) => "treemap",
+            #[cfg(feature = "diagram-block")]
             Self::Block(_) => "block",
+            #[cfg(feature = "diagram-er")]
             Self::Er(_) => "er",
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(_) => "quadrantChart",
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(_) => "xychart",
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(_) => "gitGraph",
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(_) => "treeView",
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(_) => "ishikawa",
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(_) => "eventmodeling",
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(_) => "venn",
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(_) => "wardley",
         }
     }
@@ -868,36 +1024,67 @@ impl RenderSemanticModel {
                 crate::config::clone_value_nonrecursive_with_control(model.value(), &control)
                     .map(Ok)
             }
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-state")]
             Self::State(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-class")]
             Self::Class(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-c4")]
             Self::C4(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-info")]
             Self::Info(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-block")]
             Self::Block(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-er")]
             Self::Er(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(model) => model.compatibility_json_controlled(meta, &control),
         }?;
         control.checkpoint()?;
@@ -966,7 +1153,7 @@ impl RenderDiagramRegistry {
             .map(ResolvedRenderParser::BuiltIn)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "diagram-flowchart"))]
     pub(crate) fn remove(&mut self, diagram_type: &str) -> bool {
         Arc::make_mut(&mut self.overlays)
             .remove(diagram_type)
@@ -986,7 +1173,7 @@ impl RenderDiagramRegistry {
         reg
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "all-diagrams"))]
     pub(crate) fn parser_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.builtins
             .keys()
@@ -1077,6 +1264,7 @@ impl ParsedDiagramRender {
 
     /// Borrows all parser-owned Flowchart render facts without exposing them in the typed model.
     #[doc(hidden)]
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn flowchart_render_context(
         &self,
     ) -> Option<&crate::diagrams::flowchart::FlowchartRenderContext> {

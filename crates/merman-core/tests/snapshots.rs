@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
