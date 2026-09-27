@@ -653,7 +653,7 @@ fn workflow_analysis() {
 
         let fix = run(&["fix", "-"], b"flowchart\nA-->B\n", None);
         assert_success(&fix, "fix stdin");
-        assert!(fix.stdout.starts_with(b"flowchart\n"));
+        assert!(fix.stdout.starts_with(b"flowchart TB\n"));
     }
     #[cfg(not(feature = "analysis"))]
     panic!("analysis matrix case was built without feature analysis");
