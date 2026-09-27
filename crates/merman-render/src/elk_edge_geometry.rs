@@ -172,6 +172,30 @@ fn distance(a: &P, b: &P) -> f64 {
     (a.x - b.x).hypot(a.y - b.y)
 }
 
+// Rust ELK and the pinned JS ELK provider can place one terminal port a few
+// ten-thousandths of a pixel apart. Mermaid's endpoint replacement then emits
+// one terminal point. Keep this normalization terminal-only so interior bends
+// retain the provider route.
+// Preserve sub-5e-6 ports already emitted by Mermaid; larger gaps are provider drift.
+const TERMINAL_POINT_NUMERIC_MIN_EPSILON: f64 = 5e-6;
+const TERMINAL_POINT_NUMERIC_MAX_EPSILON: f64 = 1e-4;
+
+fn is_terminal_numeric_duplicate(a: &P, b: &P) -> bool {
+    let distance = distance(a, b);
+    distance > TERMINAL_POINT_NUMERIC_MIN_EPSILON && distance <= TERMINAL_POINT_NUMERIC_MAX_EPSILON
+}
+
+fn collapse_terminal_numeric_duplicate(points: &mut Vec<P>) {
+    if points.len() > 1 && is_terminal_numeric_duplicate(&points[0], &points[1]) {
+        points.remove(1);
+    }
+    if points.len() > 1 {
+        let last = points.len() - 1;
+        if is_terminal_numeric_duplicate(&points[last], &points[last - 1]) {
+            points.remove(last - 1);
+        }
+    }
+}
 fn rect_segment_intersection(node: &LayoutNode, outside: &P, inside: &P) -> P {
     let w = node.width / 2.0;
     let h = node.height / 2.0;
@@ -377,7 +401,7 @@ pub(crate) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P>
         };
     }
     // Source compares with the original predecessor, not the previously retained point.
-    clipped
+    let mut deduplicated: Vec<_> = clipped
         .iter()
         .enumerate()
         .filter(|(index, point)| {
@@ -386,7 +410,9 @@ pub(crate) fn sanitize(points: &[P], start: Shape<'_>, end: Shape<'_>) -> Vec<P>
                 || (point.y - clipped[index - 1].y).abs() > 1e-6
         })
         .map(|(_, p)| p.clone())
-        .collect()
+        .collect();
+    collapse_terminal_numeric_duplicate(&mut deduplicated);
+    deduplicated
 }
 
 pub(crate) fn marker_segment(
@@ -581,6 +607,21 @@ mod tests {
         assert_eq!(coordinates(&neo_route), [(0.0, 90.0), (50.0, 100.0)]);
     }
 
+    #[test]
+    fn terminal_numeric_duplicate_is_collapsed_without_touching_interior_points() {
+        let mut route = points(&[
+            (0.0, 0.0),
+            (0.0, 0.000012),
+            (10.0, 5.0),
+            (20.0, 10.0),
+            (20.000012, 10.0),
+        ]);
+        collapse_terminal_numeric_duplicate(&mut route);
+        assert_eq!(
+            coordinates(&route),
+            [(0.0, 0.0), (10.0, 5.0), (20.000012, 10.0)]
+        );
+    }
     #[test]
     fn endpoint_replacement_keeps_the_exact_source_threshold() {
         let mut route = points(&[(0.0, 0.0), (10.0, 0.0)]);
