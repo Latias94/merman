@@ -73,8 +73,23 @@ impl Shape<'_> {
     }
 
     fn outside(self, point: &P) -> bool {
-        (point.x - self.node.x).abs() >= self.node.width / 2.0
-            || (point.y - self.node.y).abs() >= self.node.height / 2.0
+        // Layout and provider coordinates can be computed through different
+        // floating-point paths. Treat a point within a few ulps of the
+        // bounding box as on the boundary so endpoint selection does not
+        // depend on which path rounded up first.
+        let scale = self
+            .node
+            .x
+            .abs()
+            .max(self.node.y.abs())
+            .max(point.x.abs())
+            .max(point.y.abs())
+            .max(self.node.width.abs())
+            .max(self.node.height.abs())
+            .max(1.0);
+        let tolerance = 4.0 * f64::EPSILON * scale;
+        (point.x - self.node.x).abs() + tolerance >= self.node.width / 2.0
+            || (point.y - self.node.y).abs() + tolerance >= self.node.height / 2.0
     }
 
     fn border(self, point: &P, tolerance: f64) -> bool {
@@ -469,6 +484,33 @@ mod tests {
             );
             assert_eq!(coordinates(&route), [expected]);
         }
+    }
+
+    #[test]
+    fn boundary_rounding_within_machine_scale_is_classified_as_outside() {
+        let terminal = node(1000.0, -2000.0, 144.0, 80.0, false);
+        let shape = Shape {
+            intersection: None,
+            node: &terminal,
+            outline: Outline::Rect,
+        };
+        let scale = terminal
+            .x
+            .abs()
+            .max(terminal.y.abs())
+            .max(terminal.width)
+            .max(terminal.height);
+        let tolerance = 4.0 * f64::EPSILON * scale;
+        let on_boundary = P {
+            x: terminal.x + terminal.width / 2.0 - tolerance / 2.0,
+            y: terminal.y,
+        };
+        let inside = P {
+            x: terminal.x + terminal.width / 2.0 - tolerance * 2.0,
+            y: terminal.y,
+        };
+        assert!(shape.outside(&on_boundary));
+        assert!(!shape.outside(&inside));
     }
 
     #[test]
