@@ -1113,7 +1113,7 @@ fn normalized_metadata_features(spec: &TypstArtifactSpec) -> Result<BTreeSet<Str
         .and_then(|features| features.get("all-diagrams"))
         .and_then(toml::Value::as_array);
     let mut requested = spec.features.iter().cloned().collect::<BTreeSet<_>>();
-    if requested.remove("all-diagrams") {
+    if requested.contains("all-diagrams") {
         let Some(all_diagrams) = all_diagrams else {
             requested.insert("all-diagrams".to_string());
             return Ok(requested);

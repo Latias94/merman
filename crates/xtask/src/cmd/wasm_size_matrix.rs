@@ -871,7 +871,13 @@ mod tests {
         );
         assert_eq!(
             string_values(&selected[0].features),
-            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+            vec![
+                "all-diagrams",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "svg"
+            ]
         );
         assert!(!selected[0].default_features);
     }
@@ -899,7 +905,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(artifact.surface, Surface::Web);
-        assert_eq!(string_values(&artifact.features), vec!["editor"]);
+        assert_eq!(
+            string_values(&artifact.features),
+            vec!["all-diagrams", "editor"]
+        );
         assert_eq!(
             string_values(&artifact.capabilities),
             vec!["analysis", "editor"]
@@ -934,6 +943,7 @@ mod tests {
         assert_eq!(
             string_values(&full.features),
             vec![
+                "all-diagrams",
                 "analysis",
                 "ascii",
                 "editor",
@@ -943,24 +953,34 @@ mod tests {
                 "svg"
             ]
         );
-        assert_eq!(
-            string_values(&full.capabilities),
-            string_values(&full.features)
-        );
-        assert_eq!(
-            string_values(&full.runtime_ids),
-            string_values(&full.features)
-        );
+        let full_capabilities = vec![
+            "analysis",
+            "ascii",
+            "editor",
+            "layout-cytoscape",
+            "layout-elk",
+            "math",
+            "svg",
+        ];
+        assert_eq!(string_values(&full.capabilities), full_capabilities);
+        assert_eq!(string_values(&full.runtime_ids), full_capabilities);
         assert_eq!(string_values(&full.outputs), vec!["ascii", "svg"]);
 
         let render = web
             .iter()
             .find(|artifact| artifact.id == "web-render")
             .unwrap();
-        let complete_svg = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
-        assert_eq!(string_values(&render.features), complete_svg);
-        assert_eq!(string_values(&render.capabilities), complete_svg);
-        assert_eq!(string_values(&render.runtime_ids), complete_svg);
+        let render_features = vec![
+            "all-diagrams",
+            "layout-cytoscape",
+            "layout-elk",
+            "math",
+            "svg",
+        ];
+        let render_capabilities = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
+        assert_eq!(string_values(&render.features), render_features);
+        assert_eq!(string_values(&render.capabilities), render_capabilities);
+        assert_eq!(string_values(&render.runtime_ids), render_capabilities);
         assert_eq!(string_values(&render.outputs), vec!["svg"]);
     }
 
@@ -974,7 +994,13 @@ mod tests {
         assert_eq!(artifact.surface, Surface::Typst);
         assert_eq!(
             string_values(&artifact.features),
-            vec!["analysis", "layout-cytoscape", "layout-elk", "svg"]
+            vec![
+                "all-diagrams",
+                "analysis",
+                "layout-cytoscape",
+                "layout-elk",
+                "svg"
+            ]
         );
         assert!(
             !artifact
