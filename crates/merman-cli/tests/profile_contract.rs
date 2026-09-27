@@ -613,9 +613,26 @@ fn workflow_base() {
     assert_eq!(detect.stdout, b"flowchart-v2\n");
 
     let parse = run(&["parse", "-"], SIMPLE_SOURCE.as_bytes(), None);
-    assert_success(&parse, "parse stdin");
-    let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
-    assert!(payload.is_object());
+    #[cfg(feature = "all-diagrams")]
+    {
+        assert_success(&parse, "parse stdin");
+        let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
+        assert!(payload.is_object());
+    }
+    #[cfg(not(feature = "all-diagrams"))]
+    {
+        assert_eq!(
+            parse.status.code(),
+            Some(1),
+            "parse should reject an uncompiled diagram family"
+        );
+        assert!(
+            String::from_utf8_lossy(&parse.stderr)
+                .contains("Unsupported diagram type: flowchart-v2"),
+            "unexpected base parse error: {}",
+            String::from_utf8_lossy(&parse.stderr)
+        );
+    }
 }
 
 fn workflow_analysis() {

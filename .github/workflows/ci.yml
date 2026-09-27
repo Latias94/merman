@@ -480,7 +480,9 @@ jobs:
             -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
           cargo nextest run --locked -p xtask --cargo-quiet \
             -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
-          cargo nextest run --locked -p merman-ffi \
+          ffi_features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --features "$ffi_features" \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
           cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \

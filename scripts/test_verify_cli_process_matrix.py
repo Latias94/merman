@@ -99,10 +99,14 @@ class CliProcessMatrixTests(unittest.TestCase):
         )
         features = cargo_toml["features"]
         public_features = set(features) - {"default"}
+        diagram_selectors = {
+            feature for feature in public_features if feature.startswith("diagram-")
+        }
+        expected_defaults = public_features - {"layout-elk"} - diagram_selectors
         self.assertSetEqual(
             set(features["default"]),
-            public_features - {"layout-elk"},
-            "workspace defaults intentionally omit only the explicit EPL-2.0 ELK leaf",
+            expected_defaults,
+            "workspace defaults retain aggregate all-diagrams and omit explicit diagram selectors plus EPL-2.0 ELK",
         )
         self.assertNotIn("layout-elk", features["default"])
 
