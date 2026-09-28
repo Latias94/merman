@@ -54,11 +54,16 @@ describe("WASM input manifest", () => {
     };
     let sourceObserved;
     let probeObserved;
+    let treeObserved;
 
     const metadata = cargoMetadataForPreset({
       preset: preset({ features: ["editor", "analysis"] }),
       repoRoot: fixture.repoRoot,
       capture(command, args, cwd) {
+        if (args[0] === "tree") {
+          treeObserved = { command, args, cwd };
+          return "merman-wasm-freshness-probe v0.0.0\nmerman-wasm v0.8.0-alpha.4\n";
+        }
         if (!args.includes("--offline")) {
           sourceObserved = { command, args, cwd };
           return JSON.stringify(lockedRepositoryMetadata);
@@ -77,7 +82,10 @@ describe("WASM input manifest", () => {
       },
     });
 
-    assert.deepEqual(metadata, expected);
+    assert.deepEqual(metadata, {
+      ...expected,
+      wasm_input_package_ids: ["merman-wasm-freshness-probe", "merman-wasm"],
+    });
     assert.equal(sourceObserved.command, "cargo");
     assert.equal(sourceObserved.cwd, fixture.repoRoot);
     assert.deepEqual(sourceObserved.args, [
@@ -85,8 +93,6 @@ describe("WASM input manifest", () => {
       "--format-version",
       "1",
       "--locked",
-      "--filter-platform",
-      "wasm32-unknown-unknown",
       "--manifest-path",
       path.join(fixture.repoRoot, "Cargo.toml"),
     ]);
@@ -107,10 +113,26 @@ describe("WASM input manifest", () => {
       "--format-version",
       "1",
       "--offline",
-      "--filter-platform",
-      "wasm32-unknown-unknown",
       "--manifest-path",
       probeObserved.manifestPath,
+    ]);
+    assert.equal(treeObserved.command, "cargo");
+    assert.equal(treeObserved.cwd, fixture.repoRoot);
+    assert.deepEqual(treeObserved.args, [
+      "tree",
+      "--manifest-path",
+      probeObserved.manifestPath,
+      "--target",
+      "wasm32-unknown-unknown",
+      "--edges",
+      "normal,build",
+      "--prefix",
+      "none",
+      "--format",
+      "{p}",
+      "--color",
+      "never",
+      "--frozen",
     ]);
   });
 
@@ -139,13 +161,19 @@ describe("WASM input manifest", () => {
       repositoryMetadata,
       capture(_command, args) {
         calls += 1;
+        if (args[0] === "tree") {
+          return "merman-wasm-freshness-probe v0.0.0\nmerman-wasm v0.8.0-alpha.4\n";
+        }
         assert.equal(args.includes("--offline"), true);
         return JSON.stringify(expected);
       },
     });
 
-    assert.deepEqual(metadata, expected);
-    assert.equal(calls, 1);
+    assert.deepEqual(metadata, {
+      ...expected,
+      wasm_input_package_ids: ["merman-wasm-freshness-probe", "merman-wasm"],
+    });
+    assert.equal(calls, 2);
   });
 
   it("rejects an offline probe package absent from the locked repository graph", () => {
@@ -175,6 +203,52 @@ describe("WASM input manifest", () => {
         }),
       /resolution contains packages absent from the repository lock: unlocked@1\.2\.3/,
     );
+  });
+
+  it("uses Cargo tree to omit inactive optional edges retained by metadata", () => {
+    const fixture = createFixture();
+    fixture.metadata.resolve.nodes[0].deps.push({
+      pkg: "test-helper", dep_kinds: [{ kind: null, target: null }],
+    });
+    for (const packageInfo of fixture.metadata.packages) packageInfo.version = "1.0.0";
+    const metadata = cargoMetadataForPreset({
+      preset: preset(),
+      repoRoot: fixture.repoRoot,
+      repositoryMetadata: fixture.metadata,
+      capture(_command, args) {
+        return args[0] === "tree"
+          ? "merman-wasm v1.0.0\nmerman-core v1.0.0\nserde v1.0.0\nserde v1.0.0 (*)\n"
+          : JSON.stringify(fixture.metadata);
+      },
+    });
+    const entries = collectWasmInputEntries({ metadata, repoRoot: fixture.repoRoot });
+    assert.equal(entries.some((entry) => entry.path.includes("crates/test-helper/")), false);
+    assert.equal(entries.some((entry) => entry.path === "crates/merman-core/src/lib.rs"), true);
+    assert.deepEqual(metadata.wasm_input_package_ids, ["merman-wasm", "merman-core", "serde"]);
+  });
+
+  it("rejects missing, ambiguous, or mismatched Cargo tree identities", () => {
+    const fixture = createFixture();
+    for (const packageInfo of fixture.metadata.packages) packageInfo.version = "1.0.0";
+    for (const [tree, message] of [
+      ["", /invalid cargo tree package line/],
+      ["missing v1.0.0", /0 matching metadata identities/],
+      ["merman-core v1.0.0", /root differs/],
+      ["merman-wasm v1.0.0\nserde v1.0.0", /2 matching metadata identities/],
+    ]) {
+      const ambiguous = {
+        ...fixture.metadata,
+        packages: [...fixture.metadata.packages, { id: "other-serde", name: "serde", version: "1.0.0" }],
+      };
+      assert.throws(() => cargoMetadataForPreset({
+        preset: preset(),
+        repoRoot: fixture.repoRoot,
+        repositoryMetadata: ambiguous,
+        capture(_command, args) {
+          return args[0] === "tree" ? tree : JSON.stringify(ambiguous);
+        },
+      }), message);
+    }
   });
 
   it("invalidates canonical build inputs but ignores documentation", () => {
@@ -351,6 +425,7 @@ describe("WASM input manifest", () => {
     );
     const metadata = {
       target_directory: targetDirectory,
+      wasm_input_package_ids: ["merman-render"],
       packages: [
         {
           id: "merman-render",
@@ -450,6 +525,7 @@ function createFixture() {
   const packageRoot = path.join(repoRoot, "platforms", "web");
   const outputRoot = path.join(packageRoot, "pkg", "full");
   const metadata = {
+    wasm_input_package_ids: ["merman-wasm", "merman-core", "serde"],
     packages: [
       {
         id: "merman-wasm",

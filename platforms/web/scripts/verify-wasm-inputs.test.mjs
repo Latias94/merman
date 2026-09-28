@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -14,11 +15,11 @@ describe("WASM artifact freshness CLI", () => {
     assert.deepEqual(
       targets.map((target) => [target.descriptor.id, target.profile.name, target.outputDir.relative]),
       [
-        ["full", "web-full", "pkg/full"],
-        ["analysis", "web-analysis", "pkg/analysis"],
-        ["render", "web-render", "pkg/render"],
-        ["editor", "web-editor", "pkg/editor"],
-        ["ascii", "web-ascii", "pkg/ascii"],
+        ["full", "web-full", path.join("pkg", "full")],
+        ["analysis", "web-analysis", path.join("pkg", "analysis")],
+        ["render", "web-render", path.join("pkg", "render")],
+        ["editor", "web-editor", path.join("pkg", "editor")],
+        ["ascii", "web-ascii", path.join("pkg", "ascii")],
       ],
     );
   });

@@ -149,6 +149,7 @@ export function verifyWasmInputManifest({
   return { ok: reasons.length === 0, reasons };
 }
 
+// Keep host build dependencies in the identity inventory; Cargo tree selects the target closure.
 export function cargoRepositoryMetadata({ repoRoot, capture = runCapture }) {
   return parseCargoMetadata(
     capture(
@@ -158,8 +159,6 @@ export function cargoRepositoryMetadata({ repoRoot, capture = runCapture }) {
         "--format-version",
         "1",
         "--locked",
-        "--filter-platform",
-        "wasm32-unknown-unknown",
         "--manifest-path",
         path.join(repoRoot, "Cargo.toml"),
       ],
@@ -194,8 +193,6 @@ export function cargoMetadataForPreset({
           "--format-version",
           "1",
           "--offline",
-          "--filter-platform",
-          "wasm32-unknown-unknown",
           "--manifest-path",
           path.join(probeRoot, "Cargo.toml"),
         ],
@@ -203,7 +200,30 @@ export function cargoMetadataForPreset({
       ),
     );
     assertProbeResolutionUsesLockedPackages(probeMetadata, lockedRepositoryMetadata);
-    return probeMetadata;
+    const treeOutput = capture(
+      "cargo",
+      [
+        "tree",
+        "--manifest-path",
+        path.join(probeRoot, "Cargo.toml"),
+        "--target",
+        "wasm32-unknown-unknown",
+        "--edges",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p}",
+        "--color",
+        "never",
+        "--frozen",
+      ],
+      repoRoot,
+    );
+    return {
+      ...probeMetadata,
+      wasm_input_package_ids: selectedCargoTreePackages(probeMetadata, treeOutput),
+    };
   } finally {
     rmSync(probeRoot, { recursive: true, force: true });
   }
@@ -353,30 +373,13 @@ function workspaceDependencyPackages(metadata, repoRoot) {
     throw new Error("cargo metadata is missing packages or the resolve graph.");
   }
   const packagesById = new Map(metadata.packages.map((item) => [item.id, item]));
-  const nodesById = new Map(
-    (metadata.resolve.nodes ?? []).map((item) => [item.id, item]),
-  );
-  const rootId = metadata.resolve.root;
-  if (!rootId) throw new Error("cargo metadata does not identify the isolated probe root.");
-
-  const selected = new Set();
-  const pending = [rootId];
-  while (pending.length > 0) {
-    const id = pending.pop();
-    if (!id || selected.has(id)) continue;
-    selected.add(id);
-    const node = nodesById.get(id);
-    if (!node || !Array.isArray(node.deps)) {
-      throw new Error(`cargo metadata resolve node is missing dependency kinds: ${id}`);
-    }
-    for (const dependency of node.deps) {
-      if (
-        dependency.dep_kinds?.some(
-          (kind) => kind.kind === null || kind.kind === "build",
-        )
-      ) {
-        pending.push(dependency.pkg);
-      }
+  const selected = metadata.wasm_input_package_ids;
+  if (!Array.isArray(selected) || !selected.includes(metadata.resolve.root)) {
+    throw new Error("cargo metadata is missing the selected WASM input package tree.");
+  }
+  for (const id of selected) {
+    if (!packagesById.has(id)) {
+      throw new Error(`selected WASM input package is absent from cargo metadata: ${id}`);
     }
   }
 
@@ -388,6 +391,33 @@ function workspaceDependencyPackages(metadata, repoRoot) {
       const manifest = path.resolve(item.manifest_path);
       return isWithin(canonicalRepo, manifest);
     });
+}
+
+// Weak feature forwarding may leave inactive optional edges in metadata.resolve.
+// Cargo owns selection; metadata supplies the exact, lock-checked package identities.
+function selectedCargoTreePackages(metadata, treeOutput) {
+  const candidates = new Map();
+  for (const packageInfo of metadata.packages) {
+    const key = `${packageInfo.name}@${packageInfo.version}`;
+    const matches = candidates.get(key) ?? [];
+    matches.push(packageInfo.id);
+    candidates.set(key, matches);
+  }
+  const selected = new Set();
+  for (const line of treeOutput.trim().split(/\r?\n/)) {
+    const match = /^(\S+) v(\S+)(?: |$)/.exec(line);
+    if (!match) throw new Error(`invalid cargo tree package line: ${line}`);
+    const key = `${match[1]}@${match[2]}`;
+    const matches = candidates.get(key) ?? [];
+    if (matches.length !== 1) {
+      throw new Error(`cargo tree package ${key} has ${matches.length} matching metadata identities.`);
+    }
+    if (selected.size === 0 && matches[0] !== metadata.resolve.root) {
+      throw new Error("cargo tree root differs from the isolated metadata root.");
+    }
+    selected.add(matches[0]);
+  }
+  return [...selected];
 }
 
 function assertProductionTargetsAreOwned(packageInfo, packageRoot, sourceRoot, buildScript) {
