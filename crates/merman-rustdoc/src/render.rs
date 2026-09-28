@@ -161,7 +161,7 @@ pub(crate) fn stable_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-class")))]
 mod tests {
     use super::*;
 
@@ -170,6 +170,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn default_rustdoc_theme_renders_light_and_dark_svgs() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
         let rendered = render(source, 0, Options::default()).unwrap();
@@ -184,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn fixed_theme_renders_single_svg() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
         let rendered = render(
@@ -200,6 +202,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-class")]
     fn default_pipeline_keeps_one_browser_label_representation() {
         let source = r#"classDiagram
     EventConsumer <|.. OnClickConsumer
@@ -234,6 +237,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn readable_pipeline_remains_an_explicit_fallback_overlay_option() {
         let rendered = render(
             "flowchart TD\nA[Start] --> B[Done]",
@@ -256,6 +260,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn source_level_theme_overrides_rustdoc_theme() {
         let source = r#"%%{init: {"theme": "default"}}%%
 flowchart TD
@@ -289,6 +294,7 @@ A[Source theme] --> B[Rustdoc theme]
         );
     }
 
+    #[cfg(feature = "diagram-flowchart")]
     fn strip_theme_suffixes(svg: &str) -> String {
         svg.replace("-light", "").replace("-dark", "")
     }

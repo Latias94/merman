@@ -115,14 +115,25 @@ syn = { workspace = true, optional = true }
 
 [[test]]
 name = "attribute_macro"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart"]
 
 [[test]]
 name = "complete_svg_e2e"
-required-features = ["layout-cytoscape", "layout-elk", "math", "svg"]
+required-features = [
+    "diagram-architecture",
+    "diagram-flowchart",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "svg",
+]
 
 [[test]]
 name = "rustdoc_e2e"
+required-features = ["svg", "diagram-flowchart"]
+
+[[test]]
+name = "feature_selection"
 required-features = ["svg"]
 
 [dev-dependencies]

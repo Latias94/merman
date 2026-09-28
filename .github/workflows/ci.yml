@@ -498,9 +498,15 @@ jobs:
           cargo test -p merman-render --doc --features all-diagrams
           cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
-      - name: Test Rustdoc math opt-in and exact artifact recipe
+      - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
         if: matrix.parity
         run: |
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-gantt --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
