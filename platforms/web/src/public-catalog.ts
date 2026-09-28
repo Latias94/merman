@@ -74,6 +74,7 @@ export const SUPPORTED_ASCII_DIAGRAMS = [
   "packet",
   "sequence",
   "state",
+  "swimlane",
   "timeline",
   "treeView",
   "xychart",
@@ -87,6 +88,7 @@ export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
   "flowchart",
   "sequence",
   "state",
+  "swimlane",
   "xychart",
 ] as const satisfies readonly AsciiDiagramType[];
 
