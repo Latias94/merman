@@ -301,3 +301,32 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
   comparator normalization, synthetic geometry, or a strict-mode exception. The generated browser
   evidence is retained under `target/sequence-critical-measurement/sequence-remaining-browser-evidence.json`;
   the catalog remains the committed verification authority.
+
+
+## 2026-09-28 continuation: restore exact shared ELK boundary semantics
+
+- The serial workspace nextest run completed with 8,724 passes, two failures, and seven skips.
+  One failure used an xtask test binary built before the residual catalog grew from 97 to 122
+  entries; rebuilding and rerunning the exact catalog contract passes with the current source.
+  The other failure was a genuine State route regression caused by the four-ULP boundary
+  tolerance from `783504e8a`, superseding the earlier decision to retain that tolerance.
+- With browser-measured label bounds held fixed, edge 6 of
+  `upstream_stateDiagram_state_definition_with_quotes_spec` lost a departure segment and changed
+  from the pinned `MLQLQLQL` commands to `MLQLQL`. The inward-rounded source port must remain
+  inside under Mermaid's exact `outsideNode` predicate. Restoring the upstream `>=` comparisons
+  recovers the source route without a family-specific tolerance or a synthetic point.
+- The regression now covers the exact boundary and a point one ULP inward on all four rectangle
+  sides. Serial renderer library, Flowchart SVG, and State ELK tests pass 1,450/1,450 with
+  `layout-elk` enabled. The current catalog contract also passes independently. These targeted
+  reruns close both observed workspace failures; they do not claim a new full-workspace run.
+- Freshly rebuilt xtask passes State's complete structure/parity/parity-root comparison, including
+  22 existing exact browser-text residual comparisons. Flowchart renders 1,153 of 1,157 selected
+  fixtures (four established skips), validates 70 existing residual comparisons without signature
+  drift, and still reports 45 parity and 45 parity-root fixture mismatches plus one structure
+  mismatch. No receipt is refreshed or added by this correction. The restored tspan class order
+  is retained; signatures from the earlier experimental binary are not admission evidence.
+- Independent Standards and Spec reviews of this focused diff reported no code defects or scope
+  expansion. Spec review explicitly retains the family parity and integrated U15 closeout gates.
+  Logs: `target/mermaid12-exact-boundary-tests.log`,
+  `target/mermaid12-state-exact-boundary-compare.log`, and
+  `target/mermaid12-flowchart-exact-boundary-compare.log`.

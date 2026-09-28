@@ -73,23 +73,10 @@ impl Shape<'_> {
     }
 
     fn outside(self, point: &P) -> bool {
-        // Layout and provider coordinates can be computed through different
-        // floating-point paths. Treat a point within a few ulps of the
-        // bounding box as on the boundary so endpoint selection does not
-        // depend on which path rounded up first.
-        let scale = self
-            .node
-            .x
-            .abs()
-            .max(self.node.y.abs())
-            .max(point.x.abs())
-            .max(point.y.abs())
-            .max(self.node.width.abs())
-            .max(self.node.height.abs())
-            .max(1.0);
-        let tolerance = 4.0 * f64::EPSILON * scale;
-        (point.x - self.node.x).abs() + tolerance >= self.node.width / 2.0
-            || (point.y - self.node.y).abs() + tolerance >= self.node.height / 2.0
+        // Match Mermaid's outsideNode exactly: an inward-rounded port remains
+        // inside, which can select a different departure and preserve a corner.
+        (point.x - self.node.x).abs() >= self.node.width / 2.0
+            || (point.y - self.node.y).abs() >= self.node.height / 2.0
     }
 
     fn border(self, point: &P, tolerance: f64) -> bool {
@@ -487,30 +474,34 @@ mod tests {
     }
 
     #[test]
-    fn boundary_rounding_within_machine_scale_is_classified_as_outside() {
+    fn boundary_classification_preserves_the_source_comparison_at_one_ulp() {
         let terminal = node(1000.0, -2000.0, 144.0, 80.0, false);
         let shape = Shape {
             intersection: None,
             node: &terminal,
             outline: Outline::Rect,
         };
-        let scale = terminal
-            .x
-            .abs()
-            .max(terminal.y.abs())
-            .max(terminal.width)
-            .max(terminal.height);
-        let tolerance = 4.0 * f64::EPSILON * scale;
-        let on_boundary = P {
-            x: terminal.x + terminal.width / 2.0 - tolerance / 2.0,
-            y: terminal.y,
-        };
-        let inside = P {
-            x: terminal.x + terminal.width / 2.0 - tolerance * 2.0,
-            y: terminal.y,
-        };
-        assert!(shape.outside(&on_boundary));
-        assert!(!shape.outside(&inside));
+        for (x, y) in [
+            (terminal.x + terminal.width / 2.0, terminal.y),
+            (terminal.x - terminal.width / 2.0, terminal.y),
+            (terminal.x, terminal.y + terminal.height / 2.0),
+            (terminal.x, terminal.y - terminal.height / 2.0),
+        ] {
+            assert!(shape.outside(&P { x, y }));
+            let toward_center = |value: f64, center: f64| {
+                if value > center {
+                    value.next_down()
+                } else if value < center {
+                    value.next_up()
+                } else {
+                    value
+                }
+            };
+            assert!(!shape.outside(&P {
+                x: toward_center(x, terminal.x),
+                y: toward_center(y, terminal.y),
+            }));
+        }
     }
 
     #[test]
