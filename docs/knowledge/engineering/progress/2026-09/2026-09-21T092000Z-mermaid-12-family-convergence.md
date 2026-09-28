@@ -267,3 +267,22 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
 - The fixture-context contract and all 76 targeted tests (one pre-existing skip) pass under serial
   nextest. This receipt is diagnostic evidence for a browser measurement boundary, not a claim that
   deterministic text metrics equal browser metrics.
+
+## 2026-09-28 continuation: revalidate the existing Sequence wrapping receipt
+
+- Revalidated `upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048`
+  with the same instrumented pinned Mermaid 12 / Edge runner. The new browser SVG is byte-identical
+  to the admitted upstream SVG (SHA-256
+  `90fc3f35949fc9745edb327433733e564aa4617859eacb2f1d56d9bee1792ac9`); the fixture input remains
+  `f93593ed1f90823b3a2c7b0d8e1d9a48d07ca7e670528b40fbab1f26ed288a65`.
+- The previous local signature was admitted at `0daf31f3c`, before the source-backed wrapped-actor
+  correction in `c38856986`. Mermaid's `calculateActorMargins` measures the wrapped description
+  with `calculateTextDimensions` before applying `actorStackHeight`. The corrected local actor rows
+  are 92px instead of 90px; the fixture's layout-golden delta consists of that 2px row increase,
+  resulting vertical offsets, and a 4px total-height increase. Message label widths/heights and
+  horizontal geometry are unchanged. The existing host-measurement regression covers this path.
+- The browser and deterministic text providers still choose different line breaks for the long
+  messages. Browser output is 450x703 and current deterministic output is 454x535. This is the
+  existing measured wrapping residual, not geometric parity. Rebind this one existing receipt
+  to local signature `a3bf522f3f6e04aff89f087482d165517f36dccabb680b81f4d066c2388db69c`;
+  no input/upstream hash, permitted comparison mode, renderer, or comparator is changed.
