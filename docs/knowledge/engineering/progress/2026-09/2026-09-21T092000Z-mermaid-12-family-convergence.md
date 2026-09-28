@@ -286,3 +286,18 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
   existing measured wrapping residual, not geometric parity. Rebind this one existing receipt
   to local signature `a3bf522f3f6e04aff89f087482d165517f36dccabb680b81f4d066c2388db69c`;
   no input/upstream hash, permitted comparison mode, renderer, or comparator is changed.
+
+## 2026-09-28 continuation: Sequence wrapping matrix evidence
+
+- The remaining 24 Sequence parity-root rows were replayed with the pinned Mermaid 12 browser
+  runner under the recorded Edge 153.0.4234.48 environment. Every generated browser SVG was
+  byte-identical to its checked-in upstream SVG.
+- For every row, the local and upstream DOMs retained the same non-text element identities and
+  the same concatenated text content. The differences are bounded to browser-versus-deterministic
+  line breaking and the resulting text-row coordinates/heights: message, note, loop, and wrapped
+  actor labels. No missing model element, endpoint, marker, or route was observed.
+- The exact input/upstream-bound receipts now cover these 24 cases with their current local
+  canonical signatures. This extends the existing Sequence browser-text measurement policy without
+  comparator normalization, synthetic geometry, or a strict-mode exception. The generated browser
+  evidence is retained under `target/sequence-critical-measurement/sequence-remaining-browser-evidence.json`;
+  the catalog remains the committed verification authority.
