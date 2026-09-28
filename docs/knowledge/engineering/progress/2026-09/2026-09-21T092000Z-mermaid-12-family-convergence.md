@@ -193,15 +193,15 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
 
 ## 2026-09-27 continuation: ELK boundary rounding and rounded-path attribution
 
-- Recovered renderer state is authoritative. Commit `783504e8a` fixes one source-backed ELK
-  boundary classification defect: `outsideNode` uses a scale-aware four-ULP tolerance so a point
-  that is on the rectangle boundary through an alternate floating-point path is not mistaken for
-  an interior point. A regression covers both the near-boundary classification and a point farther
-  inside the same rectangle.
-- The focused pressure fixture `stress_flowchart_multi_direction_graph_011` now passes strict
-  `parity-root`; `stress_flowchart_shape_mix_009` remains an independent residual and still
-  preserves its intentional approximately `2e-6` provider endpoint separation. The full renderer
-  library passes 1,290/1,290 tests after the change.
+- Recovered renderer state is authoritative. Commit `783504e8a` adds a local scale-aware
+  four-ULP boundary tolerance. Mermaid 12's `outsideNode` itself uses exact `>=` comparisons;
+  the tolerance compensates for local floating-point boundary drift rather than reproducing
+  the upstream predicate literally. A regression covers near-boundary classification and a
+  point farther inside the same rectangle.
+- The focused pressure fixture `stress_flowchart_multi_direction_graph_011` passes strict
+  `parity-root` with that change. `stress_flowchart_shape_mix_009` remains an independent
+  residual: upstream retains an approximately `2e-6` initial segment on `L_circle_hex_0`,
+  while local output has two points. The full renderer library passes 1,290/1,290 tests.
 - A source-backed experiment temporarily disabled and then forced `compact_edge_corners` through
   the actual Flowchart render-config entry. The default comparison path already leaves this product
   presentation branch disabled; forcing it on increases path-command differences, while forcing it
@@ -228,3 +228,42 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
 - A serial rerun with `CARGO_BUILD_JOBS=1` and `NEXTEST_TEST_THREADS=1` passed `cargo nextest run -p merman-render --lib`: 1290 passed, 0 skipped.
 - The Flowchart parity-root comparison remains at 53 strict DOM mismatches. The remaining classes are source-backed browser-font/wrapping drift and provider route coordinates that move with measured node/edge label sizes; no comparator normalization or synthetic path-point postprocessing was admitted.
 - The committed ULP boundary correction remains the only production change from this continuation (`783504e8a`).
+
+## 2026-09-27 continuation: boundary experiment correction
+
+- Removing only the four-ULP predicate and its regression did not recover the missing
+  `L_circle_hex_0` segment. The exact-predicate build still emitted two local points at
+  y=599.8236430254817 and 639.8236430254817; the pinned upstream emitted three at
+  y=599.8236409707487, 599.8236389160156, and 639.8236389160156. This rules out the
+  ULP predicate as the sole cause; it does not establish the complete provider/measurement
+  cause of the difference.
+- The same exact-predicate experiment introduced source-end segments on `L_q1_q2_0` and
+  `L_q2_done_0` in `stress_flowchart_multi_direction_graph_011`. Their lengths were about
+  0.0000118 and 0.0000522 respectively; the pinned upstream has neither. The experiment's
+  ten geometry unit tests passed, but both focused strict comparisons failed.
+- The experimental removal was discarded by reapplying the committed predicate and test.
+  No production change, synthetic route point, comparator normalization, or residual admission
+  is justified by this experiment. The earlier statement that local shape-mix output preserved
+  the upstream short segment was incorrect and has been corrected above.
+
+
+## 2026-09-28 continuation: Sequence critical browser evidence
+
+- The pinned Mermaid 12 browser runner was instrumented at the DOM measurement boundary while
+  preserving the renderer and SVG serializer. Using the admitted Edge 153.0.4234.48 executable,
+  Puppeteer 25.6.0, Mermaid 12.0.0 package SHA-256 `df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333`,
+  CLI package SHA-256 `6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078`, and the
+  recorded font probe `df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800`,
+  the critical label measured and rendered as three rows: `[Establish a`, `connection to the`,
+  and `DB]`. The resulting SVG SHA-256 exactly matched the pinned upstream SVG
+  `f6fb0ddeb0bc87cfb036e870a252db26de6fba6da0d1ca3634ff9ea09dbd35dd`.
+- The existing Sequence family receipt policy now admits only this source as an exact,
+  input-bound browser-text residual. The residual catalog binds the fixture input and
+  upstream bytes and records local deterministic signature
+  `cfd08ae0f3cd7c21e927c905706d04b2048ca4be4f4da7ed2e087c7b61ddd53d`.
+  `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagram sequence
+  --filter upstream_critical_without_options_spec --diagnostic-browser-text-layout` reports one
+  accepted exact receipt; no production renderer or comparator normalization changed.
+- The fixture-context contract and all 76 targeted tests (one pre-existing skip) pass under serial
+  nextest. This receipt is diagnostic evidence for a browser measurement boundary, not a claim that
+  deterministic text metrics equal browser metrics.
