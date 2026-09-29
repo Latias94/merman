@@ -200,7 +200,7 @@ scheduled, or manual lanes. When that lane is explicitly in scope, use the compl
 capability set:
 
 ```text
-python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
+python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,layout-cytoscape,layout-elk,math
 ```
 
 A high-cost check earns a standing PR slot only when it detects a unique merge-blocking failure.

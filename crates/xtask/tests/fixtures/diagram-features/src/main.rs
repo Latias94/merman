@@ -37,17 +37,64 @@ fn main() {
             #[cfg(feature = "renderer")]
             {
                 let enabled = expected("MERMAN_EXPECTED_RENDER_FAMILIES");
-                let session = merman_render::environment::RenderEnvironment::default()
-                    .begin_session()
-                    .unwrap();
-                let plan = merman_render::family::plan_render(&parsed, &session);
+                let environment = merman_render::environment::RenderEnvironment::deterministic();
                 if enabled.contains(family) {
-                    assert!(plan.is_ok(), "{family}: {plan:?}");
-                } else {
-                    assert!(
-                        matches!(plan, Err(merman_render::Error::UnsupportedDiagram { .. })),
-                        "{family}: {plan:?}"
+                    let session = environment.begin_session().unwrap();
+                    let plan = merman_render::family::plan_render(&parsed, &session).unwrap();
+                    assert!(plan.is_ready(), "{family}: {plan:?}");
+                    let prepared = merman_render::family::prepare(
+                        parsed.clone(),
+                        &merman_render::LayoutOptions::default(),
+                        session,
+                    )
+                    .unwrap();
+                    let svg = prepared
+                        .render_svg(
+                            &merman_render::svg::SvgRenderOptions::default(),
+                            &merman_render::svg::SvgDebugOptions::default(),
+                        )
+                        .unwrap();
+                    assert!(svg.svg().contains("<svg"), "{family}");
+                }
+                if !enabled.contains(family) || family == "flowchart" {
+                    // A widened core must not move resource checks ahead of local availability.
+                    // Selected Flowchart is the positive control: two nodes exceed this limit.
+                    let policy = merman_render::RenderResourcePolicy::default()
+                        .with_limit(merman_render::ResourceLimitId::MaxModelItems, 1)
+                        .unwrap();
+                    let environment = environment.with_resource_policy(policy);
+                    let plan = merman_render::family::plan_render(
+                        &parsed,
+                        &environment.begin_session().unwrap(),
                     );
+                    let prepared = merman_render::family::prepare(
+                        parsed.clone(),
+                        &merman_render::LayoutOptions::default(),
+                        environment.begin_session().unwrap(),
+                    );
+                    if enabled.contains(family) {
+                        assert!(matches!(
+                            plan,
+                            Err(merman_render::Error::ResourceLimitExceeded(_))
+                        ));
+                        assert!(matches!(
+                            prepared,
+                            Err(merman_render::Error::ResourceLimitExceeded(_))
+                        ));
+                    } else {
+                        assert!(
+                            matches!(plan, Err(merman_render::Error::UnsupportedDiagram { .. })),
+                            "{family}: {plan:?}"
+                        );
+                        assert!(
+                            matches!(
+                                prepared,
+                                Err(merman_render::Error::UnsupportedDiagram { .. })
+                            ),
+                            "{family}: {:?}",
+                            prepared.as_ref().err()
+                        );
+                    }
                 }
             }
             #[cfg(feature = "ascii")]

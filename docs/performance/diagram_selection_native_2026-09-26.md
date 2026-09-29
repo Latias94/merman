@@ -15,20 +15,31 @@ build), Cargo jobs 2, the `x86_64-pc-windows-msvc` target, and the same Windows 
 Rust toolchain.
 
 The pre-change baseline is revision `72c024776`. The reviewed implementation is commit
-`eb1d5aca1`. The baseline uses the historical `svg` feature, the candidate full build uses
+`278ae4f52`. The baseline uses the historical `svg` feature, the candidate full build uses
 `all-diagrams,svg`, and the candidate subset uses `diagram-flowchart,diagram-gantt,svg`.
+
+## Reproduction
+
+Use the current [probe recipe](../../tools/bench/fixtures/diagram-selection/README.md) for a new
+comparison. Pin `--fixture-revision` to the same committed probe in all three lanes, independently
+of the measured `--revision`; the historical baseline predates the probe. Pin `--toolchain` as well.
+The driver now records both selections and uses that toolchain for every Rust command, including
+when the evidence directory is outside the repository. The table below records the current controlled rerun for `278ae4f52`; do not combine receipts from
+different probe revisions or toolchains.
 
 ## Results
 
 | Build | Diagram parser set | Executable bytes | Delta vs baseline |
 | --- | --- | ---: | ---: |
-| Pre-change baseline | historical `svg` | 9,723,392 | — |
-| Candidate full | all 32 families | 9,727,488 | +4,096 (+0.042%) |
-| Candidate subset | Flowchart, Gantt | 5,410,304 | -4,313,088 (-44.358%) |
+| Pre-change baseline | historical `svg` | 9,717,248 | — |
+| Candidate full (`278ae4f52`) | all 32 families | 9,725,440 | +8,192 (+0.084%) |
+| Candidate subset (`278ae4f52`) | Flowchart, Gantt | 5,411,328 | -4,305,920 (-44.310%) |
 
-The subset is 4,317,184 bytes (44.381%) smaller than the candidate full build. The small
+The subset is 4,314,112 bytes (44.359%) smaller than the candidate full build. The small
 full-build increase is within the expected change from the selectable-family implementation
-and is not presented as a size reduction.
+and is not presented as a size reduction. The baseline and candidate lockfiles differ because
+the candidate revision adds the selectable-family package graph; each lane still uses its archived
+revision's lockfile, the same Rust 1.95.0 toolchain, release profile, target, probe, and corpus.
 
 ## Semantic controls
 
@@ -41,12 +52,13 @@ parser families and rejected that same Sequence input with exit code 2 and stder
 
 Receipts:
 
-- `target/bench/diagram-selection/pre-change-full/receipt.json`
-- `target/bench/diagram-selection/candidate-full-eb1d5aca1/receipt.json`
-- `target/bench/diagram-selection/candidate-subset-eb1d5aca1/receipt.json`
+- `target/bench/diagram-selection/pre-change-full-278ae4f52-review/receipt.json`
+- `target/bench/diagram-selection/candidate-full-278ae4f52-review/receipt.json`
+- `target/bench/diagram-selection/candidate-subset-278ae4f52-review/receipt.json`
 
 The ignored experiment ledger is
-`target/bench/experiments/selectable-diagram-families/experiment.yaml`.
+`target/bench/experiments/selectable-diagram-families/experiment.yaml`. The current rerun receipts
+are retained under `target/bench/diagram-selection/` and are intentionally not committed.
 
 ## Scope and limits
 

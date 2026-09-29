@@ -102,7 +102,11 @@ benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the s
 the referenced preflight contract, and every selected fixture must be byte-identical. If the
 historical product revision predates that harness, create a clean benchmark-only backport commit
 whose parent is the product revision; do not copy only the corpus into an otherwise different
-checkout. Then keep the ASCII feature closure and each checkout's corpus path explicit:
+checkout. The recipe below assumes both revisions support `all-diagrams`. For a historical
+base that predates diagram selectors, use `--base-features ascii` instead; retain
+`--head-features all-diagrams,ascii` for the current implementation. Select features according
+to each revision's manifest, while keeping the exercised diagram families identical.
+Keep the ASCII feature closure and each checkout's corpus path explicit:
 
 ```bash
 python3 tools/bench/compare_self.py \
@@ -114,8 +118,8 @@ python3 tools/bench/compare_self.py \
   --head-package merman \
   --base-bench ascii_pipeline \
   --head-bench ascii_pipeline \
-  --base-features ascii \
-  --head-features ascii \
+  --base-features all-diagrams,ascii \
+  --head-features all-diagrams,ascii \
   --no-base-default-features \
   --no-head-default-features \
   --base-corpus tools/bench/ascii_corpus.json \
