@@ -23,6 +23,13 @@ pub(in crate::svg::parity) fn push_base_edge_markers(
             }
         }
     }
+    if diagram_type == "agentflow" {
+        // Agentflow registers hierarchy markers after the ordinary edge marker set.  These are
+        // emitted even when a fixture has no hierarchy edge because Mermaid's marker registry is
+        // populated eagerly by the family renderer.
+        push_edge_marker(out, diagram_id, diagram_type, "hierarchyEnd", false, None);
+        push_edge_marker(out, diagram_id, diagram_type, "hierarchyStart", false, None);
+    }
 }
 
 /// `color` carries the raw-token ID suffix and the sanitized SVG color value separately.
@@ -95,6 +102,16 @@ pub(in crate::svg::parity) fn push_edge_marker(
             "path",
             r#"d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;""#,
         ),
+        ("hierarchyEnd", false) => (
+            r#"viewBox="0 0 12 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto""#,
+            "path",
+            r#"d="M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;""#,
+        ),
+        ("hierarchyStart", false) => (
+            r#"viewBox="0 0 12 10" refX="2" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto""#,
+            "path",
+            r#"d="M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;""#,
+        ),
         _ => return,
     };
     let _ = write!(
@@ -113,6 +130,8 @@ pub(in crate::svg::parity) fn push_edge_marker(
         r#"" class="marker {}{}" {}><{} {}"#,
         if base.starts_with("cross") {
             "cross "
+        } else if base.starts_with("hierarchy") {
+            "hierarchy "
         } else {
             ""
         },

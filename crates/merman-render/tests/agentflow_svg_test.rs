@@ -200,3 +200,93 @@ click a href "https://example.com" "Open task" _blank
             .contains("edge-animation-fast")
     );
 }
+
+#[test]
+fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
+    for (source, expected) in [
+        (
+            "agentflow-beta\nA\nA\nB --> C --> D\n",
+            &[
+                "agentflow-A-0",
+                "agentflow-B-2",
+                "agentflow-C-3",
+                "agentflow-D-4",
+            ][..],
+        ),
+        (
+            "agentflow-beta\nA[Old]@{shape: task}\nstyle A fill:red\nconnector A[API]\nconnector A[Again]\nA@{instruction: call}\nB\n",
+            &["agentflow-A-3", "agentflow-B-5"][..],
+        ),
+    ] {
+        for backend in ["elk", "dagre"] {
+            let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+                json!({"layout": backend}),
+            ));
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for id in expected {
+                let id = format!("merman-{id}");
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("id") == Some(id.as_str())),
+                    "{backend}: missing {id}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
+    for backend in ["elk", "dagre"] {
+        let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+            json!({"layout": backend, "look": "handDrawn", "themeVariables": {"flowContainerStroke": "#123456"}}),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                "agentflow-beta\nflow F[Flow]\n A --> B\nend\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let container = document
+            .descendants()
+            .find(|node| {
+                node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|class| class == "flow-cluster")
+                })
+            })
+            .unwrap();
+        let shape = container.children().find(|node| node.is_element()).unwrap();
+        let paths: Vec<_> = shape
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect();
+        assert_eq!(
+            paths.len(),
+            1,
+            "{backend}: transparent container must only paint its border"
+        );
+        let border = paths[0];
+        assert_eq!(border.attribute("fill"), Some("none"));
+        assert_eq!(border.attribute("stroke"), Some("#123456"));
+        assert_eq!(border.attribute("stroke-width"), Some("0.75"));
+    }
+}

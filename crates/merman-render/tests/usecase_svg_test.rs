@@ -73,7 +73,10 @@ fn usecase_dagre_preserves_shapes_source_ids_and_accessibility() {
                     && node.attribute("data-usecase-kind") == Some(kind)
             })
             .unwrap_or_else(|| panic!("missing {kind} {id}"));
-        assert_eq!(node.attribute("id"), Some(format!("usecase-{id}").as_str()));
+        assert_eq!(
+            node.attribute("id"),
+            Some(format!("usecase-test-usecase-{id}").as_str())
+        );
         assert_eq!(node.attribute("role"), Some("img"));
         assert!(
             node.attribute("aria-label")
@@ -413,9 +416,7 @@ fn usecase_dagre_keeps_self_loop_segments_and_helper_labels() {
         assert!(paths.iter().all(|path| path.attribute("data-id").is_some()));
         let labels: Vec<_> = document
             .descendants()
-            .filter(|node| {
-                node.has_tag_name("g") && node.attribute("class") == Some("label edgeLabel")
-            })
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
             .collect();
         assert_eq!(
             labels

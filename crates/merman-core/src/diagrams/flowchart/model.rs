@@ -196,6 +196,7 @@ pub struct FlowchartRenderContext {
     collapsed_subgraphs: FxHashSet<String>,
     collapsed_replacements: FxHashMap<String, String>,
     subgraph_color_ordinals: FxHashMap<String, usize>,
+    node_dom_indices: FxHashMap<String, usize>,
 }
 
 impl FlowchartRenderContext {
@@ -212,7 +213,21 @@ impl FlowchartRenderContext {
             collapsed_subgraphs,
             collapsed_replacements,
             subgraph_color_ordinals: build_subgraph_color_ordinals(subgraphs),
+            node_dom_indices: FxHashMap::default(),
         }
+    }
+
+    pub(crate) fn set_node_dom_indices(
+        &mut self,
+        indices: impl IntoIterator<Item = (String, usize)>,
+    ) {
+        self.node_dom_indices = indices.into_iter().collect();
+    }
+
+    /// Returns a parser-assigned DOM ordinal when the family owns node registration.
+    #[doc(hidden)]
+    pub fn node_dom_index(&self, id: &str) -> Option<usize> {
+        self.node_dom_indices.get(id).copied()
     }
 
     pub(crate) fn set_collapsed_replacements(
@@ -304,6 +319,7 @@ impl FlowchartRenderContext {
             .saturating_add(
                 self.subgraph_color_ordinals
                     .keys()
+                    .chain(self.node_dom_indices.keys())
                     .fold(0usize, |total, id| {
                         total
                             .saturating_add(id.len())

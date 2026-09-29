@@ -138,6 +138,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         out,
         helpers::NodeWrapperAttrs {
             diagram_id: ctx.diagram_id,
+            diagram_type: ctx.diagram_type,
             node_id,
             dom_idx,
             class_attr_base,

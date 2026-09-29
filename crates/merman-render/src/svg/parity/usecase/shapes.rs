@@ -82,17 +82,42 @@ pub(super) fn write_node(
         .source
         .filter(|node| node.kind == UsecaseNodeKind::Actor)
     {
-        rect(
+        let _ = write!(
             out,
-            "usecase-actor-outline",
-            -node.width / 2.0,
-            -node.height / 2.0,
-            node.width,
-            node.height,
-            "opacity:0;",
+            r#"<rect class="usecase-actor-outline" x="{}" y="{}" width="{}" height="{}" opacity="0" aria-hidden="true"/>"#,
+            fmt(-node.width / 2.0),
+            fmt(-node.height / 2.0),
+            fmt(node.width),
+            fmt(node.height)
         );
         let content_height = node.height - 20.0;
         let glyph_y = -content_height / 2.0 + 36.0;
+        let mut y = -content_height / 2.0 + 80.0;
+        if let Some(stereotype) = &plan.stereotype {
+            write_label(
+                out,
+                stereotype,
+                UsecaseLabelKind::Node("label usecase-stereotype"),
+                0.0,
+                y + stereotype.metrics.height / 2.0,
+                UsecaseLabelRenderContext {
+                    config: context.config,
+                    measurer: context.measurer,
+                },
+            );
+            y += stereotype.metrics.height + 2.0;
+        }
+        write_label(
+            out,
+            &plan.label,
+            UsecaseLabelKind::Node("label actor-label usecase-actor-label"),
+            0.0,
+            y + plan.label.metrics.height / 2.0,
+            UsecaseLabelRenderContext {
+                config: context.config,
+                measurer: context.measurer,
+            },
+        );
         let variant = match actor.actor_type {
             UsecaseActorType::Normal => "shape usecase-actor-normal",
             UsecaseActorType::Hollow => "hollow",
@@ -152,28 +177,6 @@ pub(super) fn write_node(
             );
         }
         out.push_str("</g>");
-        let mut y = -content_height / 2.0 + 80.0;
-        if let Some(stereotype) = &plan.stereotype {
-            write_label(
-                out,
-                stereotype,
-                "usecase-stereotype",
-                0.0,
-                y + stereotype.metrics.height / 2.0,
-                context.config,
-                context.measurer,
-            );
-            y += stereotype.metrics.height + 2.0;
-        }
-        write_label(
-            out,
-            &plan.label,
-            "actor-label usecase-actor-label",
-            0.0,
-            y + plan.label.metrics.height / 2.0,
-            context.config,
-            context.measurer,
-        );
     } else if let Some(table) = &plan.table {
         rect(
             out,
@@ -200,11 +203,13 @@ pub(super) fn write_node(
         write_label(
             out,
             &plan.label,
-            "usecase-json-title",
+            UsecaseLabelKind::Node("label usecase-json-title"),
             0.0,
             top + table.title_height / 2.0,
-            context.config,
-            context.measurer,
+            UsecaseLabelRenderContext {
+                config: context.config,
+                measurer: context.measurer,
+            },
         );
         let mut row_top = top + table.title_height;
         for (index, row) in table.rows.iter().enumerate() {
@@ -235,20 +240,24 @@ pub(super) fn write_node(
             write_label(
                 out,
                 &row.key,
-                "usecase-json-key",
+                UsecaseLabelKind::Node("label usecase-json-key"),
                 left + table.key_width / 2.0,
                 row.height / 2.0,
-                context.config,
-                context.measurer,
+                UsecaseLabelRenderContext {
+                    config: context.config,
+                    measurer: context.measurer,
+                },
             );
             write_label(
                 out,
                 &row.value,
-                "usecase-json-value",
+                UsecaseLabelKind::Node("label usecase-json-value"),
                 left + table.key_width + table.value_width / 2.0,
                 row.height / 2.0,
-                context.config,
-                context.measurer,
+                UsecaseLabelRenderContext {
+                    config: context.config,
+                    measurer: context.measurer,
+                },
             );
             out.push_str("</g>");
             row_top += row.height;
@@ -296,15 +305,25 @@ pub(super) fn write_node(
                 config_f64(context.config.as_value(), &["handDrawnSeed"]).unwrap_or(0.0),
                 "usecase-note",
             );
+            let note_fill = config_string(
+                context.config.as_value(),
+                &["themeVariables", "noteBkgColor"],
+            )
+            .unwrap_or_else(|| "#fff5ad".to_owned());
+            let note_stroke = config_string(
+                context.config.as_value(),
+                &["themeVariables", "noteBorderColor"],
+            )
+            .unwrap_or_else(|| "#aaaa33".to_owned());
             let (fill, stroke) =
                 roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
                     x: -node.width / 2.0,
                     y: -node.height / 2.0,
                     w: node.width,
                     h: node.height,
-                    fill: "#000000",
-                    stroke: "#000000",
-                    stroke_width: 1.0,
+                    fill: &note_fill,
+                    stroke: &note_stroke,
+                    stroke_width: 1.3,
                     randomness: &randomness,
                 })
                 .ok_or_else(|| Error::InvalidModel {
@@ -312,8 +331,10 @@ pub(super) fn write_node(
                 })?;
             let _ = write!(
                 out,
-                r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" style="{}"/><path d="{stroke}" fill="none" style="{}"/></g>"#,
+                r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
+                escape_attr(&note_fill),
                 escape_attr(context.style),
+                escape_attr(&note_stroke),
                 escape_attr(context.style)
             );
         } else {
@@ -341,11 +362,13 @@ pub(super) fn write_node(
             write_label(
                 out,
                 stereotype,
-                "usecase-stereotype",
+                UsecaseLabelKind::Node("label usecase-stereotype"),
                 0.0,
                 -height / 2.0 + stereo_height / 2.0,
-                context.config,
-                context.measurer,
+                UsecaseLabelRenderContext {
+                    config: context.config,
+                    measurer: context.measurer,
+                },
             );
         }
         let label_start = out.len();
@@ -353,14 +376,21 @@ pub(super) fn write_node(
             out,
             &plan.label,
             if context.note {
-                "noteLabel"
+                UsecaseLabelKind::Node("label noteLabel")
+            } else if context
+                .source
+                .is_some_and(|node| node.business && plan.ellipse)
+            {
+                UsecaseLabelKind::Node("label usecase-label")
             } else {
-                "usecase-label"
+                UsecaseLabelKind::Node("label")
             },
             0.0,
             height / 2.0 - plan.label.metrics.height / 2.0,
-            context.config,
-            context.measurer,
+            UsecaseLabelRenderContext {
+                config: context.config,
+                measurer: context.measurer,
+            },
         );
         if plan.folded_stereotype {
             annotate_folded_stereotype(out, label_start)?;

@@ -303,6 +303,12 @@ impl AgentflowDiagramRenderModel {
             collapsed,
             &model.subgraphs,
         );
+        context.set_node_dom_indices(
+            self.presentation
+                .nodes
+                .iter()
+                .filter_map(|(id, node)| node.dom_index.map(|index| (id.clone(), index))),
+        );
         context.set_collapsed_replacements(
             containment
                 .collapsed_replacements
@@ -606,6 +612,7 @@ struct Parser<'a> {
     facts: EditorSemanticFacts,
     declared_entities: HashSet<String>,
     presentation: AgentflowPresentation,
+    vertex_counter: usize,
     diagnostic_spans: HashMap<String, SourceSpan>,
     direction: String,
     nodes: Vec<AgentflowNode>,
@@ -635,6 +642,7 @@ impl<'a> Parser<'a> {
             facts,
             declared_entities: HashSet::new(),
             presentation: AgentflowPresentation::default(),
+            vertex_counter: 0,
             diagnostic_spans: HashMap::new(),
             direction: "TB".to_string(),
             nodes: Vec::new(),
@@ -831,6 +839,7 @@ impl<'a> Parser<'a> {
                     self.presentation
                         .nodes
                         .insert(id.clone(), Default::default());
+                    self.record_vertex_call(&id);
                 }
                 let title = declaration.label.filter(|title| !title.is_empty());
                 let metadata = declaration.metadata;
@@ -943,20 +952,8 @@ impl<'a> Parser<'a> {
         line: &str,
     ) -> std::result::Result<(), ParseFailure> {
         let start = line_start + line.find(statement).unwrap_or(0);
-        let mut ids = Vec::new();
-        for (offset, node) in split_top_level(statement, b"&") {
-            if ids.len() % 128 == 0 {
-                self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
-            }
-            ids.push(self.parse_node(node, start + offset, node, false)?);
-        }
+        let ids = self.parse_node_group(statement, start, false)?;
         self.record_members(ids);
-        if statement.trim_end().ends_with('&') {
-            return Err(self.failure(
-                "expected node after &",
-                SourceSpan::new(start, start + statement.len()),
-            ));
-        }
         Ok(())
     }
 
@@ -966,7 +963,7 @@ impl<'a> Parser<'a> {
         line_start: usize,
         line: &str,
         reference: bool,
-    ) -> std::result::Result<String, ParseFailure> {
+    ) -> std::result::Result<(String, bool), ParseFailure> {
         let declaration = parse_declaration(statement, line_start, line, self.control)?;
         let id = declaration.id.clone();
         let id_span = declaration.id_span;
@@ -979,6 +976,20 @@ impl<'a> Parser<'a> {
         self.diagnostic_spans
             .entry(id.clone())
             .or_insert_with(|| span_of(line_start, line, mapped_element.trim()));
+        // The enclosing node group reduces metadata after parsing the next styled vertex.
+        // AgentflowDB skips metadata counter increments for existing containers/connectors.
+        let vertex_call = id != "connectors"
+            && !self
+                .edges
+                .iter()
+                .any(|edge| edge.id.as_deref() == Some(&id));
+        let metadata_call = vertex_call
+            && declaration.metadata_span.is_some()
+            && !self.sub_graph_index.contains_key(&id)
+            && !self.connector_index.contains_key(&id);
+        if vertex_call {
+            self.record_vertex_call(&id);
+        }
         if declaration.metadata_span.is_some()
             && (self.sub_graph_index.contains_key(&id) || self.connector_index.contains_key(&id))
             && !self
@@ -1025,7 +1036,7 @@ impl<'a> Parser<'a> {
         if let Some(class) = class {
             self.assign_class(&id, &class);
         }
-        Ok(id)
+        Ok((id, metadata_call))
     }
 
     fn parse_edge_statement(
@@ -1039,7 +1050,7 @@ impl<'a> Parser<'a> {
         };
         let statement_start = line_start + line.find(statement).unwrap_or(0);
         let (source, mut edge_id) = split_edge_id(&statement[..operator.start]);
-        let mut sources = self.parse_endpoint_group(source, statement_start)?;
+        let mut sources = self.parse_node_group(source, statement_start, true)?;
         let mut members = vec![sources.clone()];
         loop {
             let next = find_operator(statement, operator.end);
@@ -1052,7 +1063,7 @@ impl<'a> Parser<'a> {
             } else {
                 (raw_targets, None)
             };
-            let targets = self.parse_endpoint_group(target, statement_start + operator.end)?;
+            let targets = self.parse_node_group(target, statement_start + operator.end, true)?;
             members.push(targets.clone());
             // Mermaid emits one link for every source/target pair, then uses the target group
             // as the source of the next link in a chain.
@@ -1085,22 +1096,36 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_endpoint_group(
+    fn parse_node_group(
         &mut self,
         group: &str,
         source_start: usize,
+        reference: bool,
     ) -> std::result::Result<Vec<String>, ParseFailure> {
         let mut ids = Vec::new();
+        let mut pending_metadata: Option<String> = None;
         for (offset, endpoint) in split_top_level(group, b"&") {
             if ids.len() % 128 == 0 {
                 self.control.checkpoint().map_err(ParseFailure::Cancelled)?;
             }
             let start = source_start + offset;
-            ids.push(self.parse_node(endpoint, start, endpoint, true)?);
+            let (id, metadata_call) = self.parse_node(endpoint, start, endpoint, reference)?;
+            if let Some(previous) = pending_metadata.take() {
+                self.record_vertex_call(&previous);
+            }
+            pending_metadata = metadata_call.then(|| id.clone());
+            ids.push(id);
         }
-        if ids.is_empty() || group.trim_end().ends_with('&') {
+        if let Some(last) = pending_metadata {
+            self.record_vertex_call(&last);
+        }
+        if (reference && ids.is_empty()) || group.trim_end().ends_with('&') {
             return Err(self.failure(
-                "expected edge endpoint",
+                if reference {
+                    "expected edge endpoint"
+                } else {
+                    "expected node after &"
+                },
                 SourceSpan::new(source_start, source_start + group.len()),
             ));
         }
@@ -1150,6 +1175,16 @@ impl<'a> Parser<'a> {
             .add_edge(edge.id.as_deref().expect("edge id is assigned above"));
         self.edges.push(edge);
         Ok(())
+    }
+
+    fn record_vertex_call(&mut self, id: &str) {
+        self.presentation
+            .nodes
+            .entry(id.to_string())
+            .or_default()
+            .dom_index
+            .get_or_insert(self.vertex_counter);
+        self.vertex_counter += 1;
     }
 
     fn upsert_node(&mut self, declaration: Declaration) -> usize {
@@ -2488,6 +2523,49 @@ a --> b
         );
         assert_eq!(node.metadata["lines"], "keep, commas,\n");
         assert_eq!(model.edges.len(), 1);
+    }
+
+    #[test]
+    fn parser_retains_upstream_vertex_registration_ordinals() {
+        // Replayed with the pinned Mermaid 12 AgentflowDB, including Jison's delayed metadata
+        // reductions and connector replacement. Final edges cannot reconstruct these ordinals.
+        let cases: &[(&str, &[(&str, usize)])] = &[
+            (
+                "agentflow-beta\nA\nA\nB --> C --> D\n",
+                &[("A", 0), ("B", 2), ("C", 3), ("D", 4)],
+            ),
+            (
+                "agentflow-beta\nA@{shape: task} & B@{shape: tool} --> C & D\nE\n",
+                &[("A", 0), ("B", 1), ("C", 4), ("D", 5), ("E", 6)],
+            ),
+            (
+                "agentflow-beta\nA[Old]@{shape: task}\nstyle A fill:red\nconnector A[API]\nconnector A[Again]\nA@{instruction: call}\nB\n",
+                &[("A", 3), ("B", 5)],
+            ),
+            (
+                "agentflow-beta\nflow F\n A --> B\nend\nF@{view: collapsed}\nA e@--> B\ne@{animate: true}\nC\n",
+                &[("A", 0), ("B", 1), ("F", 2), ("C", 5)],
+            ),
+            (
+                "agentflow-beta\nconnector api@{instruction: call}\nstyle X fill:red\napi --> Y\nZ\n",
+                &[("api", 0), ("X", 1), ("Y", 3), ("Z", 4)],
+            ),
+        ];
+        for (source, expected) in cases {
+            let model = parse_agentflow_model_for_render_controlled(
+                source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            let serialized = serde_json::to_value(&model).unwrap();
+            let model: AgentflowDiagramRenderModel = serde_json::from_value(serialized).unwrap();
+            let (_, context) = model.to_flowchart_model();
+            for &(id, index) in *expected {
+                assert_eq!(context.node_dom_index(id), Some(index), "{source}: {id}");
+            }
+        }
     }
 
     #[test]

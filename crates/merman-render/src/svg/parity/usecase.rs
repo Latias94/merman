@@ -64,15 +64,26 @@ fn styles(model: &UsecaseDiagramRenderModel, classes: &[String], inline: &[Strin
         .collect()
 }
 
+struct UsecaseLabelRenderContext<'a> {
+    config: &'a merman_core::MermaidConfig,
+    measurer: &'a dyn TextMeasurer,
+}
+
+enum UsecaseLabelKind<'a> {
+    Node(&'a str),
+    Boundary,
+    Edge(&'a str),
+}
+
 fn write_label(
     out: &mut String,
     plan: &UsecaseLabelPlan,
-    class: &str,
+    kind: UsecaseLabelKind<'_>,
     center_x: f64,
     center_y: f64,
-    config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
+    context: UsecaseLabelRenderContext<'_>,
 ) {
+    let UsecaseLabelRenderContext { config, measurer } = context;
     let html = config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
     let font_family = plan.style.font_family.as_deref().unwrap_or("sans-serif");
     let font_weight = plan.style.font_weight.as_deref().unwrap_or("normal");
@@ -91,32 +102,65 @@ fn write_label(
             )
         })
         .collect();
-    let _ = write!(
-        out,
-        r#"<g class="label {}" transform="translate({},{})" style="font-family:{};font-size:{}px;font-weight:{}">"#,
-        escape_attr(class),
-        fmt(center_x - plan.metrics.width / 2.0),
-        fmt(center_y - plan.metrics.height / 2.0),
-        escape_attr(font_family),
-        fmt(plan.style.font_size),
-        escape_attr(font_weight)
-    );
+    let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
+    let is_boundary = matches!(kind, UsecaseLabelKind::Boundary);
+    let class_attr = match kind {
+        UsecaseLabelKind::Node(class) => class,
+        UsecaseLabelKind::Boundary => "cluster-label system-boundary-title",
+        UsecaseLabelKind::Edge(_) => "label",
+    };
+    if let UsecaseLabelKind::Edge(data_id) = kind {
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({}, {})">"#,
+            fmt(center_x),
+            fmt(center_y),
+            escape_attr(data_id),
+            fmt(-plan.metrics.width / 2.0),
+            fmt(-plan.metrics.height / 2.0),
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({},{})" style="font-family:{};font-size:{}px;font-weight:{}">"#,
+            escape_attr(class_attr),
+            fmt(center_x - plan.metrics.width / 2.0),
+            fmt(center_y - plan.metrics.height / 2.0),
+            escape_attr(font_family),
+            fmt(plan.style.font_size),
+            escape_attr(font_weight)
+        );
+    }
     if html {
         let content = match plan.label_type {
-            UsecaseLabelType::Text => escape_xml(&plan.text).replace('\n', "<br/>"),
+            // Mermaid's plain-text HTML label path emits one paragraph around the escaped text.
+            UsecaseLabelType::Text => {
+                format!("<p>{}</p>", escape_xml(&plan.text).replace('\n', "<br/>"))
+            }
+            // The Markdown helper already returns the complete XHTML fragment, including its
+            // paragraph wrapper when the source is an inline paragraph. Wrapping it again breaks
+            // folded stereotype annotation and changes the DOM nesting.
             UsecaseLabelType::Markdown => crate::text::mermaid_markdown_to_xhtml_label_fragment(
                 &plan.text,
                 config_bool(config.as_value(), &["markdownAutoWrap"]).unwrap_or(true),
             ),
         };
+        if !is_edge_label && !is_boundary {
+            out.push_str("<rect/>");
+        }
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display:inline-block;white-space:normal;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml"{} style="{}display:inline-block;white-space:normal;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
             fmt(plan.metrics.width),
             fmt(plan.metrics.height),
+            if is_edge_label {
+                r#" class="labelBkg""#
+            } else {
+                ""
+            },
             escape_attr(&css),
             fmt(plan.metrics.width),
-            if class == "edgeLabel" {
+            if is_edge_label {
                 "edgeLabel"
             } else {
                 "nodeLabel"
@@ -143,6 +187,9 @@ fn write_label(
         }
     }
     out.push_str("</g>");
+    if is_edge_label {
+        out.push_str("</g>");
+    }
 }
 
 pub(crate) fn render_usecase_diagram_svg_model(
@@ -237,8 +284,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
             padding,
         ),
         config_bool(cfg, &["usecase", "useMaxWidth"]).unwrap_or(true),
-    )
-    .without_background();
+    );
     let acc_title_id = model
         .acc_title
         .as_ref()
@@ -247,7 +293,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
         .acc_description
         .as_ref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    let mut chrome = root_svg::RootChrome::new(diagram_id, "usecaseDiagram");
+    let mut chrome = root_svg::RootChrome::new(diagram_id, "usecase");
+    chrome.class = Some("usecaseDiagram");
     chrome.aria_labelledby = acc_title_id.as_deref();
     chrome.aria_describedby = acc_descr_id.as_deref();
     let actor_font = crate::usecase::text_style(cfg, Some(true));
@@ -297,13 +344,30 @@ pub(crate) fn render_usecase_diagram_svg_model(
         );
     }
     theme::write_css(&mut out, diagram_id, cfg);
-    out.push_str("<defs>");
+    // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
+    out.push_str("<g>");
     markers::push_base_edge_markers(&mut out, diagram_id, "usecase");
+    out.push_str("<defs>");
+    let _ = write!(
+        out,
+        r#"<marker id="{diagram_id}_usecase-extensionStart" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse"><path d="M 1,7 L18,13 V 1 Z"/></marker>"#
+    );
+    out.push_str("</defs><defs>");
     let _ = write!(
         out,
         r#"<marker id="{diagram_id}_usecase-extensionEnd" class="marker extension usecase" refX="1" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="M 1,1 V 13 L18,7 Z"/></marker>"#
     );
-    out.push_str("</defs><g class=\"root\"><g class=\"clusters\">");
+    out.push_str("</defs>");
+    let _ = write!(
+        out,
+        r#"<marker id="{diagram_id}_usecase-extensionStart-margin" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,7 18,13 18,1" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+    );
+    out.push_str("<defs>");
+    let _ = write!(
+        out,
+        r#"<marker id="{diagram_id}_usecase-extensionEnd-margin" class="marker extension usecase" refX="9" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,1 10,13 18,7" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+    );
+    out.push_str(r#"</defs><g class="root"><g class="clusters">"#);
     for (color_index, plan) in prepared
         .nodes
         .iter()
@@ -318,7 +382,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let appearance = theme::appearance_attributes(cfg, Some(color_index));
         let _ = write!(
             out,
-            r#"<g id="usecase-{}" class="cluster usecase-system-boundary usecase-system-boundary-{kind} default system-boundary system-boundary-{kind} {}" data-boundary-type="{kind}"{appearance} data-usecase-id="{}" data-usecase-kind="boundary" role="img" aria-label="{}">"#,
+            r#"<g id="{}-usecase-{}" class="cluster usecase-system-boundary usecase-system-boundary-{kind} default system-boundary system-boundary-{kind} {}" data-boundary-type="{kind}"{appearance} data-usecase-id="{}" data-usecase-kind="boundary" role="img" aria-label="{}">"#,
+            dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&boundary.classes.join(" ")),
             escape_attr(&plan.id),
@@ -358,7 +423,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         write_label(
             &mut out,
             &plan.label,
-            "cluster-label system-boundary-title",
+            UsecaseLabelKind::Boundary,
             if plan.package {
                 left + tab_width / 2.0
             } else {
@@ -370,16 +435,19 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 plan.label.metrics.height / 2.0
                     + config_f64(cfg, &["flowchart", "subGraphTitleMargin", "top"]).unwrap_or(0.0)
             },
-            config,
-            measurer,
+            UsecaseLabelRenderContext { config, measurer },
         );
         out.push_str("</g>");
     }
-    out.push_str("</g><g class=\"edgePaths\">");
+    out.push_str("</g><g class=\"edgePaths edges\">");
     for plan in &prepared.edges {
         options.checkpoint_emit()?;
         let edge = edge_geometry[plan.id.as_str()];
-        let mut points = prepared.edge_points(edge);
+        let points = prepared.edge_points(edge);
+        let data_points = base64::engine::general_purpose::STANDARD
+            .encode(crate::svg::parity::util::json_stringify_points(&points));
+        let data_look = config_string(cfg, &["look"]).unwrap_or_else(|| "neo".to_owned());
+        let mut points = points;
         let elk = crate::layout_backend::resolve_graph_layout(cfg).backend
             == crate::layout_backend::GraphLayoutBackend::Elk;
         let curve = if elk {
@@ -436,11 +504,13 @@ pub(crate) fn render_usecase_diagram_svg_model(
         }
         let _ = write!(
             out,
-            r#"<path id="{}{}-{}" data-id="{}" data-et="edge" class="{}" d="{}" fill="none""#,
+            r#"<path id="{}{}-{}" data-id="{}" data-et="edge" data-edge="true" data-look="{}" data-points="{}" class="{}" d="{}""#,
             if plan.dagre_recursive { "" } else { "usecase-" },
             dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&plan.id),
+            escape_attr(&data_look),
+            escape_attr(&data_points),
             escape_attr(&classes),
             path
         );
@@ -486,7 +556,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 let suffix = if end == "start" { "Start" } else { "End" };
                 let _ = write!(
                     out,
-                    r#" marker-{end}="url(#{diagram_id}_usecase-{name}{suffix})""#
+                    r#" marker-{end}="url(#{diagram_id}_usecase-{name}{suffix}-margin)""#
                 );
             }
         }
@@ -500,11 +570,10 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 write_label(
                     &mut out,
                     label,
-                    "edgeLabel",
+                    UsecaseLabelKind::Edge(&plan.id),
                     position.x,
                     position.y,
-                    config,
-                    measurer,
+                    UsecaseLabelRenderContext { config, measurer },
                 );
             }
         } else if plan.original_id.is_some() {
@@ -630,7 +699,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
         };
         let _ = write!(
             out,
-            r#"<g id="usecase-{}"{appearance} class="node default {role_classes} {}" data-usecase-id="{}" data-usecase-kind="{kind}" role="img" aria-label="{}" transform="translate({},{})">"#,
+            r#"<g id="{}-usecase-{}"{appearance} class="node default {role_classes} {}" data-usecase-id="{}" data-usecase-kind="{kind}" role="img" aria-label="{}" transform="translate({},{})">"#,
+            dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&classes.join(" ")),
             escape_attr(&plan.id),
@@ -655,7 +725,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
         )?;
         out.push_str("</g>");
     }
-    out.push_str("</g></g>");
+    out.push_str("</g></g></g>");
+    super::look_defs::push_look_shadow_defs(&mut out, diagram_id, cfg);
     if let Some(title) = title {
         let _ = write!(
             out,

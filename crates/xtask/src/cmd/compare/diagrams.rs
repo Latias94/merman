@@ -47,6 +47,36 @@ macro_rules! verification_fact {
 
 pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
     verification_fact!(
+        "agentflow",
+        "compare-agentflow-svgs",
+        "Agentflow",
+        "parity",
+        "agentflow-beta\nA[Task]\n",
+        Default,
+        HandDrawnSeed,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
+        "usecase",
+        "compare-usecase-svgs",
+        "Usecase",
+        "parity",
+        "usecase-beta\nactor A\nA --> B\n",
+        Default,
+        HandDrawnSeed,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
         "er",
         "compare-er-svgs",
         "ER",

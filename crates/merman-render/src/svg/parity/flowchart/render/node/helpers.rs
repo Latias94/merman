@@ -98,6 +98,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
 
 pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) diagram_id: crate::svg::parity::SvgDiagramId<'a>,
+    pub(super) diagram_type: &'a str,
     pub(super) node_id: &'a str,
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'a str,
@@ -116,6 +117,7 @@ pub(super) struct NodeWrapperAttrs<'a> {
 pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     let NodeWrapperAttrs {
         diagram_id,
+        diagram_type,
         node_id,
         dom_idx,
         class_attr_base,
@@ -130,6 +132,13 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         look,
         color_slot,
     } = attrs;
+    // Mermaid uses the stable `flowchart` DOM namespace for ordinary flowcharts,
+    // even when the internal parser type is `flowchart-v2` or another variant.
+    let dom_diagram_type = if diagram_type == "agentflow" {
+        "agentflow"
+    } else {
+        "flowchart"
+    };
 
     if wrapped_in_a {
         if let Some(href) = href {
@@ -162,7 +171,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             let _ = write!(out, "{diagram_id}");
-            out.push_str(r#"-flowchart-"#);
+            out.push('-');
+            escape_xml_into(out, dom_diagram_type);
+            out.push('-');
             escape_xml_into(out, node_id);
             let _ = write!(out, "-{dom_idx}\"");
         } else {
@@ -178,7 +189,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             let _ = write!(out, "{diagram_id}");
-            out.push_str(r#"-flowchart-"#);
+            out.push('-');
+            escape_xml_into(out, dom_diagram_type);
+            out.push('-');
             escape_xml_into(out, node_id);
             let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);

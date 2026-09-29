@@ -237,7 +237,12 @@ pub(super) fn render_flowchart_svg_model(
     let tx = 0.0;
     let ty = 0.0;
 
-    let node_dom_index = flowchart_node_dom_indices(model);
+    let mut node_dom_index = flowchart_node_dom_indices(model);
+    for node in &model.nodes {
+        if let Some(index) = render_context.node_dom_index(&node.id) {
+            node_dom_index.insert(node.id.as_str(), index);
+        }
+    }
 
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let icon_registry = options.icon_registry();

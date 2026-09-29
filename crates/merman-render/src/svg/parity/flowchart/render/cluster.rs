@@ -81,6 +81,50 @@ fn write_flowchart_cluster_shape(
     rect_w: f64,
     rect_h: f64,
 ) {
+    if ctx.diagram_type == "agentflow" {
+        let stroke = crate::svg::parity::util::theme_token(
+            ctx.config.as_value(),
+            "flowContainerStroke",
+            &crate::svg::parity::util::theme_token(
+                ctx.config.as_value(),
+                "secondaryBorderColor",
+                &PresentationTheme::new(ctx.config.as_value())
+                    .node_diagram()
+                    .cluster_border,
+            ),
+        );
+        if flowchart_config_look(ctx.config) == "handDrawn" {
+            let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
+            if let Some(stroke_d) =
+                super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &path,
+                    FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+                    &ctx.hand_drawn_seed,
+                )
+            {
+                let stroke_dasharray = compiled_styles.stroke_dasharray.as_deref().unwrap_or("0 0");
+                let _ = write!(
+                    out,
+                    r#"<g><path d="{}" stroke="{}" stroke-width="0.75" fill="none" stroke-dasharray="{}"/></g>"#,
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(&stroke),
+                    escape_xml_display(stroke_dasharray),
+                );
+                return;
+            }
+        }
+        let _ = write!(
+            out,
+            r#"<rect rx="10" ry="10" x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="0.75px"/>"#,
+            fmt_display(left),
+            fmt_display(top),
+            fmt_display(rect_w),
+            fmt_display(rect_h),
+            escape_xml_display(&stroke),
+        );
+        return;
+    }
+
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let theme = PresentationTheme::new(ctx.config.as_value()).node_diagram();
         let fill = theme.cluster_bkg.as_str();

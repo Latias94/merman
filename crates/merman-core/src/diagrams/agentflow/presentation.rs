@@ -29,6 +29,8 @@ pub struct AgentflowPresentation {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) struct NodePresentation {
+    #[serde(default)]
+    pub(super) dom_index: Option<usize>,
     classes: Vec<String>,
     styles: Vec<String>,
     link: Option<String>,
@@ -174,6 +176,9 @@ impl Parser<'_> {
                     .iter()
                     .any(|edge| edge.id.as_deref() == Some(&style.target))
                 {
+                    if style.target != "connectors" {
+                        self.record_vertex_call(&style.target);
+                    }
                     self.upsert_node(Declaration {
                         id: style.target.clone(),
                         id_span,

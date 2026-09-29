@@ -72,20 +72,51 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
         .max(common.layout_node.height.max(0.0));
     let left = -width / 2.0;
     let top = -height / 2.0;
-    let cluster_bkg =
-        crate::svg::parity::util::theme_token(ctx.config.as_value(), "clusterBkg", "#ffffde");
-    let cluster_border =
-        crate::svg::parity::util::theme_token(ctx.config.as_value(), "clusterBorder", "#aaaa33");
+    let is_agentflow_flow = ctx.diagram_type == "agentflow";
+    let (radius, fill, border, stroke_width, class) = if is_agentflow_flow {
+        (
+            10.0,
+            "none".to_owned(),
+            crate::svg::parity::util::theme_token(
+                ctx.config.as_value(),
+                "flowContainerStroke",
+                &crate::svg::parity::util::theme_token(
+                    ctx.config.as_value(),
+                    "secondaryBorderColor",
+                    "#aaaa33",
+                ),
+            ),
+            0.75,
+            "flow-collapsed",
+        )
+    } else {
+        (
+            RADIUS,
+            crate::svg::parity::util::theme_token(ctx.config.as_value(), "clusterBkg", "#ffffde"),
+            crate::svg::parity::util::theme_token(
+                ctx.config.as_value(),
+                "clusterBorder",
+                "#aaaa33",
+            ),
+            common.stroke_width as f64,
+            "collapsed-group",
+        )
+    };
 
     if common.look_is_hand_drawn() {
-        let path = rounded_rect_path_d(left, top, width, height, RADIUS);
+        let path = rounded_rect_path_d(left, top, width, height, radius);
+        let effective_stroke_width = if is_agentflow_flow {
+            stroke_width as f32
+        } else {
+            common.stroke_width
+        };
         if let Some((fill_d, stroke_d)) =
             helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_svg_path_single_set(
                     &path,
-                    &cluster_bkg,
-                    &cluster_border,
-                    common.stroke_width,
+                    &fill,
+                    &border,
+                    effective_stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,
                 )
@@ -93,20 +124,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
         {
             let _ = write!(
                 out,
-                r#"<g class="basic label-container collapsed-group"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
+                r#"<g class="basic label-container {class}"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
                 escape_attr(&fill_d),
-                escape_attr(&cluster_bkg),
+                escape_attr(&fill),
                 escape_attr(common.style),
                 escape_attr(&stroke_d),
-                escape_attr(&cluster_border),
-                fmt_display(common.stroke_width as f64),
+                escape_attr(&border),
+                fmt_display(effective_stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
         } else {
             let _ = write!(
                 out,
-                r#"<path class="basic label-container collapsed-group" d="{}" style="{}"/>"#,
+                r#"<path class="basic label-container {class}" d="{}" style="{}"/>"#,
                 escape_attr(&path),
                 escape_attr(common.style),
             );
@@ -114,14 +145,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
     } else {
         let _ = write!(
             out,
-            r#"<rect class="basic label-container collapsed-group" style="{}" rx="8" ry="8" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
+            r#"<rect class="basic label-container {class}" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"{} />"#,
             escape_attr(common.style),
+            fmt(radius),
+            fmt(radius),
             fmt(left),
             fmt(top),
             fmt(width),
             fmt(height),
-            escape_attr(&cluster_bkg),
-            escape_attr(&cluster_border),
+            escape_attr(&fill),
+            escape_attr(&border),
+            if is_agentflow_flow {
+                format!(r#" stroke-width="{}px""#, fmt(stroke_width))
+            } else {
+                String::new()
+            },
         );
     }
 
@@ -132,7 +170,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
         left,
         width,
         separator_y,
-        border: cluster_border,
+        border,
     }
 }
 
