@@ -349,3 +349,13 @@ Measure affected WASM/package sizes against existing budgets and a small represe
 - EPL boundaries, notices, source attribution and feature recipes are correct for the actual distributions, and explicit no-ELK consumers have a verified dependency closure.
 - Required integrated checks pass, size/performance changes and browser residuals are explained, and obsolete duplicated selection/adapter paths are removed.
 - The completion report states what changed, which evidence passed and any bounded residuals. A release, PR publication or merge remains a separate action.
+
+## Completion — September 29, 2026
+
+U1–U15 are implemented and R1–R12 acceptance evidence is reconciled in the
+[completion record](../knowledge/engineering/verification/2026-09/2026-09-29T081350Z-mermaid-12-alignment-completion-and-final-artifact-admission-92096f07dfdd4d1e85fd715cadd0f343.md).
+The final 37-family admitted DOM gate, freshly rebuilt Web/Playground consumers, all
+six existing WASM size budgets, and bounded default-ELK runtime controls pass.
+Earlier pending parity/size entries in historical checkpoints are superseded by that
+record. No budget, comparator tolerance or accepted residual receipt was relaxed for
+this final admission. Publication and merge remain separate maintainer actions.
