@@ -3917,3 +3917,129 @@ fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
     // A nonempty string remains truthy in drawRect and uses its path branch.
     assert_ne!(render_paths(serde_json::json!("0"), source), square);
 }
+
+#[test]
+fn flowchart_fork_join_bars_are_perpendicular_to_flow_across_backends() {
+    use kurbo::Shape as _;
+
+    for backend in [
+        "dagre",
+        #[cfg(feature = "layout-elk")]
+        "elk",
+    ] {
+        for direction in ["TB", "BT", "LR", "RL"] {
+            let engine =
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "layout": backend,
+                    "look": "classic",
+                    "state": { "padding": 8 }
+                })));
+            let source = format!(
+                "flowchart {direction}\nA --> F@{{shape: fork}} --> J@{{shape: join}} --> B\n"
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let layout: FlowchartLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+            )
+            .unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+
+            // Mermaid forkJoin.ts draws a 10 x 70 bar for horizontal flow and adds
+            // state.padding / 2 only to the layout dimensions, not the painted path.
+            let (width, height) = match direction {
+                "LR" | "RL" => (10.0, 70.0),
+                _ => (70.0, 10.0),
+            };
+            for id in ["F", "J"] {
+                let context = format!("{backend}/{direction}/{id}");
+                let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+                assert_eq!(node.width, width + 4.0, "{context}: layout width");
+                assert_eq!(node.height, height + 4.0, "{context}: layout height");
+
+                let id_fragment = format!("-flowchart-{id}-");
+                let group = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node
+                                .attribute("id")
+                                .is_some_and(|value| value.contains(&id_fragment))
+                    })
+                    .unwrap();
+                let path = group
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("path") && node.attribute("stroke") == Some("none")
+                    })
+                    .unwrap();
+                let bounds = kurbo::BezPath::from_svg(path.attribute("d").unwrap())
+                    .unwrap()
+                    .bounding_box();
+                assert!(
+                    (bounds.width() - width).abs() < 1e-6,
+                    "{context}: painted width {} instead of {width}",
+                    bounds.width()
+                );
+                assert!(
+                    (bounds.height() - height).abs() < 1e-6,
+                    "{context}: painted height {} instead of {height}",
+                    bounds.height()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_image_labels_wrap_only_at_the_configured_width() {
+    for backend in ["dagre", "elk"] {
+        for (label, wraps) in [("Hi", false), ("My example image label", true)] {
+            let source = format!(
+                r#"---
+config:
+  layout: {backend}
+  htmlLabels: true
+  flowchart:
+    wrappingWidth: 120
+---
+flowchart TD
+A@{{ img: "https://mermaid.js.org/favicon.svg", label: "{label}", pos: "t", h: 60, constraint: "on" }}
+"#
+            );
+            let svg = render_flowchart_svg_from_text(&source);
+            let (_, _, _, div_style) = foreign_object_contract_for_text(&svg, label);
+            if wraps {
+                assert!(
+                    div_style.contains("display: table;"),
+                    "{backend}: {div_style}"
+                );
+                assert!(
+                    div_style.contains("white-space: break-spaces;"),
+                    "{backend}: {div_style}"
+                );
+                assert!(
+                    div_style.contains("; width: 120px;"),
+                    "{backend}: {div_style}"
+                );
+            } else {
+                assert!(
+                    div_style.contains("display: table-cell;"),
+                    "{backend}: {div_style}"
+                );
+                assert!(
+                    div_style.contains("white-space: nowrap;"),
+                    "{backend}: {div_style}"
+                );
+                assert!(!div_style.contains("; width:"), "{backend}: {div_style}");
+            }
+        }
+    }
+}

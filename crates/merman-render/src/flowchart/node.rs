@@ -1467,11 +1467,13 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
 
     // Mermaid `forkJoin.ts` inflates the Dagre node dimensions by `state.padding / 2` after
     // `updateNodeBounds(...)`, but does not re-render the rectangle with the inflated size.
-    // It also switches the bar orientation only when the current rendered graph has `dir === "LR"`.
+    // Horizontal flow (LR or RL) uses a vertical bar, perpendicular to the flow.
     // Keep our layout spacing consistent with upstream by applying both rules here.
     if matches!(shape, "fork" | "join") {
         let extra = (state_padding / 2.0).max(0.0);
-        let (render_w, render_h) = if layout_direction.eq_ignore_ascii_case("LR") {
+        let (render_w, render_h) = if layout_direction.eq_ignore_ascii_case("LR")
+            || layout_direction.eq_ignore_ascii_case("RL")
+        {
             (10.0, 70.0)
         } else {
             (70.0, 10.0)
