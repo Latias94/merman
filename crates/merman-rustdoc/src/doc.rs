@@ -145,6 +145,7 @@ mod tests {
         );
     }
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn tolerant_mode_keeps_a_failed_block_and_renders_the_next() {
         let source =
             "include_mmd!(\"missing-test.mmd\")\n\n```mermaid\nflowchart TD\nA-->B\n```\n**After**";

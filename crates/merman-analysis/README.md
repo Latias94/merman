@@ -6,6 +6,15 @@ Parser-backed Mermaid diagnostics, lint metadata, and document source mapping wi
 
 Use `merman-analysis` directly when a Rust application needs to validate Mermaid, inspect diagnostics, analyze Markdown/MDX fences, or build editor tooling. Use [`merman`](https://crates.io/crates/merman) for rendering, [`merman-cli`](https://crates.io/crates/merman-cli) for command-line linting, or [`merman-lsp`](https://crates.io/crates/merman-lsp) for an editor protocol.
 
+## Source Feature Selection
+
+In the current checkout, defaults are empty. Select `all-diagrams` or the `diagram-*` families
+whose input the host accepts; for example, a direct dependency can use
+`default-features = false, features = ["diagram-flowchart"]`. The published alpha.6 example below
+predates selectors. Parser availability and richness of analysis/editor facts remain distinct;
+a known disabled family retains its original unsupported parse diagnostic.
+See the [migration guide](../../docs/FEATURES.md#select-diagram-families).
+
 ## Quick Start
 
 ```sh

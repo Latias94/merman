@@ -75,6 +75,10 @@ impl ShapedTextWidth {
     }
 }
 
+#[allow(
+    clippy::type_complexity,
+    reason = "The tuple mirrors the font provider contract."
+)]
 fn installed_monospace_font() -> Result<(String, String, Arc<[u8]>, u32), Box<dyn std::error::Error>>
 {
     let mut fonts = usvg::fontdb::Database::new();

@@ -6,12 +6,47 @@
       {
         "id": "apple-uniffi-native",
         "semantic_target": "native",
+        "diagram_families": [
+          "architecture",
+          "block",
+          "c4",
+          "class",
+          "cynefin",
+          "er",
+          "eventmodeling",
+          "flowchart",
+          "gantt",
+          "gitGraph",
+          "info",
+          "ishikawa",
+          "journey",
+          "kanban",
+          "mindmap",
+          "packet",
+          "pie",
+          "quadrantChart",
+          "radar",
+          "railroad",
+          "requirement",
+          "sankey",
+          "sequence",
+          "state",
+          "swimlane",
+          "timeline",
+          "treeView",
+          "treemap",
+          "venn",
+          "wardley",
+          "xychart",
+          "zenuml"
+        ],
         "cargo": {
           "package": "merman-uniffi",
           "manifest": "crates/merman-uniffi/Cargo.toml",
           "profile": "native-sdk",
           "default_features": false,
           "features": [
+            "all-diagrams",
             "analysis",
             "ascii",
             "layout-cytoscape",
@@ -75,7 +110,7 @@
     "offline": true,
     "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "37bb31fbf2db27d56c5a2a18b2d484143fc96bab7c9689efe6ebd95bde59b28c"
+    "artifact_bundle_sha256": "9bbb739acd688000634b3e0edf36e43800a380d0cafbea117b1b73ad3d68dd1a"
   },
   "target_dependency_closures": [
     {

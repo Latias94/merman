@@ -21,27 +21,27 @@ import verify_cli_process_matrix as matrix
 
 EXPECTED_SELECTIONS = (
     ("base", (), "exact"),
-    ("analysis", ("analysis",), "exact"),
-    ("svg", ("svg",), "exact"),
-    ("ascii", ("ascii",), "exact"),
-    ("local-icons", ("icons",), "exact"),
-    ("markdown", ("markdown",), "exact"),
-    ("parallel-markdown", ("parallel-markdown",), "exact"),
-    ("network-icons", ("network-icons",), "exact"),
-    ("png", ("png",), "exact"),
-    ("jpeg", ("jpeg",), "exact"),
-    ("pdf", ("pdf",), "exact"),
-    ("parallel-pdf", ("parallel-markdown", "pdf"), "exact"),
-    ("cytoscape-layout", ("layout-cytoscape",), "exact"),
-    ("elk-layout", ("layout-elk",), "exact"),
-    ("math", ("math",), "exact"),
-    ("rustdoc", ("rustdoc",), "exact"),
+    ("analysis", ("all-diagrams", "analysis"), "exact"),
+    ("svg", ("all-diagrams", "svg"), "exact"),
+    ("ascii", ("all-diagrams", "ascii"), "exact"),
+    ("local-icons", ("all-diagrams", "icons"), "exact"),
+    ("markdown", ("all-diagrams", "markdown"), "exact"),
+    ("parallel-markdown", ("all-diagrams", "parallel-markdown"), "exact"),
+    ("network-icons", ("all-diagrams", "network-icons"), "exact"),
+    ("png", ("all-diagrams", "png"), "exact"),
+    ("jpeg", ("all-diagrams", "jpeg"), "exact"),
+    ("pdf", ("all-diagrams", "pdf"), "exact"),
+    ("parallel-pdf", ("all-diagrams", "parallel-markdown", "pdf"), "exact"),
+    ("cytoscape-layout", ("all-diagrams", "layout-cytoscape"), "exact"),
+    ("elk-layout", ("all-diagrams", "layout-elk"), "exact"),
+    ("math", ("all-diagrams", "math"), "exact"),
+    ("rustdoc", ("all-diagrams", "rustdoc"), "exact"),
     ("completions", ("shell-completions",), "exact"),
     ("svg-completions", ("shell-completions", "svg"), "exact"),
-    ("system-clock", ("system-clock",), "exact"),
-    ("system-timezone", ("system-timezone",), "exact"),
-    ("system-random", ("system-random",), "exact"),
-    ("system-timing", ("system-timing",), "exact"),
+    ("system-clock", ("all-diagrams", "system-clock"), "exact"),
+    ("system-timezone", ("all-diagrams", "system-timezone"), "exact"),
+    ("system-random", ("all-diagrams", "system-random"), "exact"),
+    ("system-timing", ("all-diagrams", "system-timing"), "exact"),
     ("default", (), "default"),
     ("release", (), "all"),
 )
@@ -99,10 +99,14 @@ class CliProcessMatrixTests(unittest.TestCase):
         )
         features = cargo_toml["features"]
         public_features = set(features) - {"default"}
+        diagram_selectors = {
+            feature for feature in public_features if feature.startswith("diagram-")
+        }
+        expected_defaults = public_features - {"layout-elk"} - diagram_selectors
         self.assertSetEqual(
             set(features["default"]),
-            public_features - {"layout-elk"},
-            "workspace defaults intentionally omit only the explicit EPL-2.0 ELK leaf",
+            expected_defaults,
+            "workspace defaults retain aggregate all-diagrams and omit explicit diagram selectors plus EPL-2.0 ELK",
         )
         self.assertNotIn("layout-elk", features["default"])
 

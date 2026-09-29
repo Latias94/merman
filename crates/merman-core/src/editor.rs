@@ -2,11 +2,36 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
+use crate::error::Error;
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
-use crate::{
-    OperationControl, OperationControlResult,
-    error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan},
-};
+use crate::{OperationControl, OperationControlResult};
+
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
+use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
+
+/// Public shape names supported by the compiled Flowchart grammar.
+///
+/// Editor consumers use the core feature union, including when another dependency enables the
+/// shared Flowchart/Swimlane grammar independently of the editor's local feature selection.
+/// Returns an empty iterator when that grammar is not compiled.
+pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    {
+        crate::diagrams::flowchart::flowchart_public_shape_names()
+    }
+    #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+    {
+        std::iter::empty()
+    }
+}
 
 /// Byte span attached to an editor-visible semantic fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,12 +47,20 @@ pub(crate) fn line_content_end(source: &str, end: usize) -> usize {
         .unwrap_or(end)
 }
 
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 pub(crate) fn has_ascii_separator(source: &str, start: usize, end: usize) -> bool {
     source.get(start..end).is_some_and(|slice| {
         !slice.is_empty() && slice.as_bytes().iter().all(u8::is_ascii_whitespace)
     })
 }
 
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 pub(crate) fn trailing_ascii_whitespace_slot(
     source: &str,
     start: usize,
@@ -39,6 +72,10 @@ pub(crate) fn trailing_ascii_whitespace_slot(
         .then_some(SourceSpan::new(end, end))
 }
 
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 pub(crate) fn source_value_span(source: &str, span: SourceSpan, value: &str) -> Option<SourceSpan> {
     let slice = source.get(span.start..span.end)?;
     let relative_start = slice.find(value)?;
@@ -138,22 +175,43 @@ impl EditorRenamePolicy {
                 (1..=3).contains(&candidate.len())
                     && candidate.bytes().all(|byte| byte.is_ascii_digit())
             }
+            #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+            Self::FlowchartNodeId => false,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::FlowchartNodeId => crate::diagrams::flowchart::is_valid_editor_node_id(candidate),
+            #[cfg(not(feature = "diagram-git-graph"))]
+            Self::GitGraphReference => false,
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraphReference => {
                 crate::diagrams::git_graph::is_valid_editor_reference(candidate)
             }
+            #[cfg(not(feature = "diagram-architecture"))]
+            Self::ArchitectureIdentifier => false,
+            #[cfg(feature = "diagram-architecture")]
             Self::ArchitectureIdentifier => {
                 crate::diagrams::architecture::is_valid_editor_identifier(candidate)
             }
+            #[cfg(not(feature = "diagram-railroad"))]
+            Self::RailroadIrRule => false,
+            #[cfg(feature = "diagram-railroad")]
             Self::RailroadIrRule => {
                 crate::diagrams::railroad::is_valid_editor_ir_rule_identifier(candidate)
             }
+            #[cfg(not(feature = "diagram-railroad"))]
+            Self::RailroadEbnfRule => false,
+            #[cfg(feature = "diagram-railroad")]
             Self::RailroadEbnfRule => {
                 crate::diagrams::railroad::is_valid_editor_ebnf_rule_identifier(candidate)
             }
+            #[cfg(not(feature = "diagram-railroad"))]
+            Self::RailroadPegRule => false,
+            #[cfg(feature = "diagram-railroad")]
             Self::RailroadPegRule => {
                 crate::diagrams::railroad::is_valid_editor_peg_rule_identifier(candidate)
             }
+            #[cfg(not(feature = "diagram-railroad"))]
+            Self::RailroadAbnfRule => false,
+            #[cfg(feature = "diagram-railroad")]
             Self::RailroadAbnfRule => {
                 crate::diagrams::railroad::is_valid_editor_abnf_rule_identifier(candidate)
             }
@@ -473,6 +531,10 @@ impl EditorSemanticFacts {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "Shared parser facilities have different consumers in each family selection."
+)]
 pub(crate) fn editor_keyword_value_span(
     source: &str,
     statement_start: usize,
@@ -508,6 +570,7 @@ pub(crate) fn editor_keyword_value_span(
     Some(SourceSpan::new(value_start, value_start + value_len))
 }
 
+#[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
 pub(crate) fn editor_recovery_fallback_span(source: &str) -> SourceSpan {
     let mut line_start = 0;
     for segment in source.split_inclusive('\n') {
@@ -523,6 +586,7 @@ pub(crate) fn editor_recovery_fallback_span(source: &str) -> SourceSpan {
     SourceSpan::new(source.len(), source.len())
 }
 
+#[cfg(any(feature = "diagram-packet", feature = "diagram-radar"))]
 pub(crate) fn ensure_editor_recovery_from_error(
     mut facts: EditorSemanticFacts,
     error: &Error,
@@ -549,6 +613,14 @@ pub(crate) fn ensure_editor_recovery_from_error(
     facts
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 pub(crate) fn lalrpop_recovery_span<T, E>(
     error: &lalrpop_util::ParseError<usize, T, E>,
     fallback_offset: usize,
@@ -566,6 +638,14 @@ pub(crate) fn lalrpop_recovery_span<T, E>(
     }
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 pub(crate) fn lalrpop_parse_diagnostic<T, E>(
     error: &lalrpop_util::ParseError<usize, T, E>,
     fallback_offset: usize,
@@ -602,6 +682,14 @@ where
     }
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 pub(crate) fn format_lalrpop_parse_error<T, E>(
     error: &lalrpop_util::ParseError<usize, T, E>,
 ) -> String
@@ -635,6 +723,14 @@ where
     }
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 fn format_expected_tokens(expected: &[String]) -> String {
     expected
         .iter()
@@ -643,6 +739,14 @@ fn format_expected_tokens(expected: &[String]) -> String {
         .join(", ")
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 fn humanize_expected_token(token: &str) -> String {
     match token {
         "Id" => "node identifier".to_string(),
@@ -655,6 +759,14 @@ fn humanize_expected_token(token: &str) -> String {
     }
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 fn format_found_token<T>(token: &T) -> String
 where
     T: std::fmt::Debug,
@@ -684,6 +796,14 @@ where
     }
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 fn humanize_token_name(token: &str) -> String {
     let token = token.strip_prefix("Kw").unwrap_or(token);
     let mut out = String::new();
@@ -715,13 +835,33 @@ fn humanize_token_name(token: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
-        lalrpop_parse_diagnostic,
-    };
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
+    use super::lalrpop_parse_diagnostic;
+    use super::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
     use crate::ParseDiagnosticSpanKind;
 
     #[test]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        feature = "diagram-git-graph",
+        feature = "diagram-architecture",
+        feature = "diagram-railroad"
+    ))]
     fn rename_policies_follow_family_identifier_grammars() {
         assert!(EditorRenamePolicy::FlowchartNodeId.accepts("foo.bar"));
         assert!(EditorRenamePolicy::FlowchartNodeId.accepts("foo-bar"));
@@ -817,6 +957,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
     fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {
         let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedToken {
             token: (3, "bad", 6),
@@ -833,6 +981,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
     fn lalrpop_parse_diagnostic_preserves_eof_insertion_point() {
         let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedEof {
             location: 12,
@@ -852,6 +1008,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
     fn lalrpop_parse_diagnostic_marks_user_errors_as_fallback() {
         let error = lalrpop_util::ParseError::<usize, &str, String>::User {
             error: "custom parse failure".to_string(),

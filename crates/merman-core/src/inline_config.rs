@@ -16,6 +16,11 @@ pub(crate) fn parse_mermaid_inline_object_controlled(
     )
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 pub(crate) fn value_to_string(v: &Value) -> Option<String> {
     match v {
         Value::String(s) => Some(s.clone()),
@@ -25,6 +30,7 @@ pub(crate) fn value_to_string(v: &Value) -> Option<String> {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn value_to_bool(v: &Value) -> Option<bool> {
     match v {
         Value::Bool(b) => Some(*b),
@@ -37,6 +43,7 @@ pub(crate) fn value_to_bool(v: &Value) -> Option<bool> {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn value_to_f64(v: &Value) -> Option<f64> {
     match v {
         Value::Number(n) => n.as_f64(),

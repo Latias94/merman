@@ -401,6 +401,31 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             ):
                 run_native_memory.load_owner_contract(path, lane=self.lane())
 
+    def test_legacy_memory_recipe_preserves_each_checkouts_diagram_features(self) -> None:
+        payload = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            corpus_path = root / run_native_memory.DEFAULT_CORPUS
+            corpus_path.parent.mkdir(parents=True)
+            for features in (["svg"], ["all-diagrams", "svg"]):
+                with self.subTest(features=features):
+                    for lane in payload["lanes"]:
+                        if lane["id"] == run_native_memory.DEFAULT_LANE:
+                            lane["required_features"] = features
+                    corpus_path.write_text(json.dumps(payload), encoding="utf-8")
+                    recipe = run_native_memory.memory_recipe(
+                        root,
+                        target_dir=root / "target",
+                        toolchain=None,
+                    )
+                    self.assertEqual(recipe.features, tuple(features))
+                    self.assertFalse(recipe.default_features)
+                    command = run_native_memory.cargo_prebuild_command(recipe)
+                    self.assertEqual(
+                        command[command.index("--features") + 1], ",".join(features)
+                    )
+
     def test_binding_owner_contract_selects_its_own_probe_recipe(self) -> None:
         lane = self.binding_lane()
         contract = run_native_memory.load_owner_contract(
@@ -419,7 +444,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(contract["scale"]["dimension"], "operation_calls")
         self.assertEqual(recipe.package, "merman-bindings-core")
         self.assertEqual(recipe.bench, "request_overlay_memory")
-        self.assertEqual(recipe.features, ("analysis", "ascii", "svg"))
+        self.assertEqual(recipe.features, ("all-diagrams", "analysis", "ascii", "svg"))
         self.assertEqual(recipe.corpus, BINDING_CORPUS_PATH)
 
     def test_elk_hierarchy_contract_registers_linear_depth_memory_probe(self) -> None:
@@ -447,7 +472,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
         self.assertEqual(recipe.package, "merman")
         self.assertEqual(recipe.bench, "elk_hierarchy_memory")
-        self.assertEqual(recipe.features, ("layout-elk",))
+        self.assertEqual(recipe.features, ("all-diagrams", "layout-elk"))
         projection = json.dumps(
             contract["semantic_response"]["operation"],
             separators=(",", ":"),
@@ -489,7 +514,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
         self.assertEqual(recipe.package, "merman")
         self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
-        self.assertEqual(recipe.features, ("svg",))
+        self.assertEqual(recipe.features, ("all-diagrams", "svg"))
         self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
         self.assertEqual(
             [entry["path"] for entry in contract["probe"]["inputs"]],
@@ -610,7 +635,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["recipe"]["bench"], "elk_hierarchy_memory")
-        self.assertEqual(report["recipe"]["features"], ["layout-elk"])
+        self.assertEqual(report["recipe"]["features"], ["all-diagrams", "layout-elk"])
         self.assertEqual(len(report["inputs"]["probe_inputs"]), 2)
 
         damaged = json.loads(ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -950,6 +975,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
                 root,
                 target_dir=target_dir,
                 toolchain=None,
+                corpus=CORPUS_PATH,
             )
             reset_command = run_native_memory.cargo_clean_bench_profile_command(recipe)
             build_command = run_native_memory.cargo_prebuild_command(recipe)
@@ -1051,6 +1077,16 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(len({call["invocation_id"] for call in calls}), 60)
         self.assertIn("commit", report["source"])
         self.assertEqual(report["inputs"]["cargo_lock"]["path"], "Cargo.lock")
+        report_paths = [
+            report["output"],
+            report["recipe"]["target_dir"],
+            report["executable"]["path"],
+            *(record["path"] for record in report["inputs"].values()),
+        ]
+        for path in report_paths:
+            with self.subTest(path=path):
+                self.assertNotIn("\\", path)
+        self.assertEqual(report["executable"]["path"], executable.as_posix())
         self.assertEqual(report["recipe"]["build_environment"]["CARGO_BUILD_JOBS"], "1")
         self.assertIs(report["candidate_admission"], False)
 

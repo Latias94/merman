@@ -29,7 +29,7 @@ else:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
+PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v2.json")
 CLI_RELEASE_PROFILE = "cli-release"
 CLI_CONTRACT_VERSION = 5
 CAPABILITIES_SCHEMA_VERSION = 2
@@ -103,6 +103,8 @@ def read_release_contract(root: Path) -> tuple[dict, dict]:
         raise CliInstallationError(
             f"cannot read CLI artifact profile {path}: {error}"
         ) from error
+    if descriptor.get("schema_version") != 2:
+        raise CliInstallationError("artifact profiles schema_version must be 2")
     matches = [
         profile
         for profile in profiles
@@ -294,6 +296,8 @@ def _verify_capabilities(
         expected_capabilities = _string_set(
             profile["expected"]["capabilities"], "cli-release capabilities"
         )
+        expected_diagram_families = profile["expected"]["diagram_families"]
+        _string_set(expected_diagram_families, "cli-release diagram families")
         expected_outputs = _string_set(
             profile["expected"]["outputs"], "cli-release outputs"
         )
@@ -307,6 +311,8 @@ def _verify_capabilities(
         raise CliInstallationError(
             "installed capability set differs from cli-release"
         )
+    if document.get("diagram_families") != expected_diagram_families:
+        raise CliInstallationError("installed diagram family set differs from cli-release")
     if _id_set(document.get("outputs"), "installed outputs") != expected_outputs:
         raise CliInstallationError("installed output set differs from cli-release")
     if "ascii" in expected_capabilities:

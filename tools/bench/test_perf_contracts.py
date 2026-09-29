@@ -5,6 +5,7 @@ import sys
 import unittest
 
 TEST_MODULES = (
+    "test_diagram_selection",
     "test_perf_corpus_contracts",
     "test_perf_runner_contracts",
     "test_perf_recipe_contracts",

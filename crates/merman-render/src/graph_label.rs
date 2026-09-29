@@ -1,6 +1,13 @@
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-mindmap"
+    )
+))]
 use crate::text::TextMetrics;
 use crate::text::{
     TextMeasurer, TextStyle, WrapMode, is_ecmascript_whitespace,
@@ -129,6 +136,7 @@ pub(crate) enum FlowchartSvgWidthMode {
     ComputedLength,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn flowchart_node_svg_width_mode(
     raw_label: &str,
     label_type: &str,
@@ -139,7 +147,7 @@ pub(crate) fn flowchart_node_svg_width_mode(
         && label_type != "markdown"
         && !raw_label.contains('<')
         && !raw_label.contains('>')
-        && super::is_flowchart_process_shape(layout_shape)
+        && crate::flowchart::is_flowchart_process_shape(layout_shape)
     {
         FlowchartSvgWidthMode::ComputedLength
     } else {
@@ -1204,14 +1212,14 @@ fn compute_bounds_impl<E>(
 }
 
 #[cfg(feature = "layout-elk")]
-pub(super) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
+pub(crate) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     match compute_bounds_impl(nodes, edges, |_| Ok::<(), std::convert::Infallible>(())) {
         Ok(bounds) => bounds,
         Err(never) => match never {},
     }
 }
 
-pub(super) fn compute_bounds_controlled(
+pub(crate) fn compute_bounds_controlled(
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],
     charge: impl FnMut(usize) -> crate::Result<()>,
@@ -1219,7 +1227,14 @@ pub(super) fn compute_bounds_controlled(
     compute_bounds_impl(nodes, edges, charge)
 }
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-mindmap"
+    )
+))]
 mod tests {
     use super::*;
     use crate::math::MathRenderer;

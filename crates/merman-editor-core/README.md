@@ -8,11 +8,13 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-The alpha.6 workspace candidate is not a registry release yet. Check out the exact commit accepted by release preflight and use the local facade for reproducible candidate integrations:
+The current-source family selectors are not present in published alpha.6 packages. Check out a
+commit containing this migration and use the local facade for reproducible source integrations.
+Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
 
 ```toml
 [dependencies]
-merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["analysis", "editor"] }
+merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["all-diagrams", "analysis", "editor"] }
 ```
 
 ```rust
@@ -47,7 +49,7 @@ Use `analyze_document_context_with_shared_text` when the initial analysis payloa
 - Keep exact original-source spans when preprocessing can represent them; omit unrepresentable facts and emit recovery diagnostics.
 - Keep all editor results protocol-neutral so adapters can map them to LSP, browser, or native UI types.
 
-`Unavailable` means no body semantics are projected. Header and template suggestions can still come from the static family catalog, but the crate does not invent body symbols, references, or rename targets without complete or recovered parser facts.
+`Unavailable` means no body semantics are projected. Header and template suggestions use the static family catalog only for compiled parsers. The crate does not invent body symbols, references, or rename targets without complete or recovered parser facts. Defaults are empty, and parser availability can be widened by Cargo feature union; see the [migration guide](../../docs/FEATURES.md#select-diagram-families).
 
 ## Data Contract
 

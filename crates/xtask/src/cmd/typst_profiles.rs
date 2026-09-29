@@ -32,7 +32,7 @@ struct RawTypstProfileCatalog {
 /// The single public package profile backed by the canonical Typst artifact recipe.
 ///
 /// Its Cargo feature selection and runtime surface deliberately live in
-/// `capabilities/artifact-profiles-v1.json`, not in the Typst descriptor.
+/// `capabilities/artifact-profiles-v2.json`, not in the Typst descriptor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypstPackageProfile {
     name: String,

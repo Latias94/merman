@@ -407,6 +407,7 @@ where
 }
 
 #[cfg(feature = "layout-cytoscape")]
+#[cfg(feature = "diagram-architecture")]
 pub(super) struct ArchitectureCssParts {
     pub(super) css: String,
     pub(super) font_family: String,
@@ -414,6 +415,7 @@ pub(super) struct ArchitectureCssParts {
 }
 
 #[cfg(feature = "layout-cytoscape")]
+#[cfg(feature = "diagram-architecture")]
 pub(super) fn architecture_css_parts_with_config<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
@@ -509,6 +511,7 @@ where
 
 #[cfg(feature = "layout-cytoscape")]
 #[cfg_attr(not(test), allow(dead_code))]
+#[cfg(feature = "diagram-architecture")]
 pub(super) fn architecture_css_with_config<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
@@ -519,6 +522,7 @@ where
     architecture_css_parts_with_config(diagram_id, effective_config).css
 }
 
+#[cfg(feature = "diagram-requirement")]
 pub(super) fn requirement_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
 where
     I: Copy + std::fmt::Display,
@@ -616,6 +620,7 @@ where
     out
 }
 
+#[cfg(feature = "diagram-er")]
 pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
 where
     I: Copy + std::fmt::Display,
@@ -744,6 +749,7 @@ where
     Ok(out)
 }
 
+#[cfg(feature = "diagram-pie")]
 fn pie_theme_option(
     effective_config: &serde_json::Value,
     key: &str,
@@ -752,6 +758,7 @@ fn pie_theme_option(
     SvgTheme::new(effective_config).css_value(key, default_value)
 }
 
+#[cfg(feature = "diagram-pie")]
 pub(super) struct PieCss {
     info: InfoCssValues,
     pie_stroke_color: String,
@@ -767,6 +774,7 @@ pub(super) struct PieCss {
     pie_legend_text_color: String,
 }
 
+#[cfg(feature = "diagram-pie")]
 impl PieCss {
     pub(super) fn new(effective_config: &serde_json::Value) -> Self {
         let info = InfoCssValues::new(effective_config, InfoCssFontSizeSource::ThemeThenTopLevel);
@@ -842,6 +850,7 @@ impl PieCss {
     }
 }
 
+#[cfg(feature = "diagram-sankey")]
 pub(super) fn sankey_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
 where
     I: Copy + std::fmt::Display,
@@ -872,6 +881,7 @@ where
     out
 }
 
+#[cfg(feature = "diagram-treemap")]
 pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
 where
     I: Copy + std::fmt::Display,
@@ -908,6 +918,7 @@ where
     Ok(out)
 }
 
+#[cfg(feature = "diagram-xychart")]
 pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)
 where
     I: Copy + std::fmt::Display,
@@ -918,6 +929,7 @@ where
     info_css_into(out, diagram_id);
 }
 
+#[cfg(feature = "diagram-gantt")]
 pub(super) fn gantt_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
 where
     I: Copy + std::fmt::Display,
@@ -1117,5 +1129,5 @@ where
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

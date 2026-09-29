@@ -170,6 +170,8 @@ pub struct RuntimeEmbeddedImageLimits {
 #[non_exhaustive]
 pub struct RuntimeRegistryContract {
     pub diagram_family_count: usize,
+    /// Sorted logical families with a semantic parser in this consumer.
+    pub diagram_families: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -347,6 +349,15 @@ impl ValidatedArtifactContract {
             output_contracts: runtime_output_contracts_for(&capabilities),
             registry: RuntimeRegistryContract {
                 diagram_family_count: diagram_family_capabilities().len(),
+                diagram_families: diagram_family_capabilities()
+                    .iter()
+                    .filter(|family| {
+                        family.has_semantic_parser && family.logical_family_kind != "error"
+                    })
+                    .map(|family| family.logical_family_kind)
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
             },
             resources: runtime_resource_contract_for(self, &capabilities),
             capabilities,
@@ -1190,6 +1201,16 @@ mod tests {
             diagram_family_capabilities().len()
         );
 
+        let expected_families = diagram_family_capabilities()
+            .into_iter()
+            .filter(|family| family.has_semantic_parser && family.logical_family_kind != "error")
+            .map(|family| family.logical_family_kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            catalog.registry.diagram_families,
+            expected_families.into_iter().collect::<Vec<_>>()
+        );
+
         let resources = &catalog.resources;
         let expected_limit_count = crate::binding_resource_contract().limits.len();
         assert_eq!(resources.profiles.len(), 4);
@@ -1715,6 +1736,7 @@ mod tests {
                     "packet",
                     "sequence",
                     "state",
+                    "swimlane",
                     "timeline",
                     "treeView",
                     "xychart",
@@ -1811,7 +1833,7 @@ mod tests {
                     == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 32);
         let zenuml = ascii_capability(&capabilities, "zenuml");
         assert_eq!(zenuml.semantic_coverage, None);
         assert_eq!(zenuml.primary_projection, "none");

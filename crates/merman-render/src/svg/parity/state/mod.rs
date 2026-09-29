@@ -10,8 +10,7 @@ mod viewport;
 
 pub(super) use super::roughjs_common::roughjs_paths_for_rect;
 pub(super) use super::roughjs_common::{
-    RoughRectSpec as StateRoughRectSpec, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
-    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_circle_path_d,
+    RoughRectSpec as StateRoughRectSpec, roughjs_circle_path_d,
 };
 
 use roughjs::{

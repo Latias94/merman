@@ -3,7 +3,7 @@
 Merman has two repository-wide machine authorities in this directory:
 
 - `feature-surface-v1.json` owns public capability and output IDs, operations, implications, and target legality. It is not a product-preset or release-profile catalog.
-- `artifact-profiles-v1.json` owns exact Cargo build recipes for capability-bearing artifacts. A recipe names the package, target, profile, `default-features` choice, explicit features, build target, and expected capability/output set.
+- `artifact-profiles-v2.json` owns exact Cargo build recipes for capability-bearing artifacts. A recipe names the package, target, profile, `default-features` choice, explicit features, build target, and expected capability/output set plus exact compiled logical parser families.
 
 Cargo manifests remain hand-written compilation declarations. C ABI, UniFFI, LSP, Web exports, and the Typst transport retain their own interface authorities. This directory does not copy those wire contracts or package release metadata into a generic transport catalog.
 
@@ -28,11 +28,20 @@ cargo run -p xtask -- verify-artifact-profiles --descriptor path/to/fixture.json
 
 The semantic SHA-256 digest covers the complete capability descriptor. Project plans, migration units, release status, and documentation paths deliberately do not live in either machine contract.
 
-Schema version 1 is still a pre-stable contract. Its object shape may evolve incompatibly during
+The capability descriptor schema version 1 is still a pre-stable contract. Its object shape may evolve incompatibly during
 the 0.x release line, including new required fields, only when the semantic digest and every strict
 projection or verifier change in lockstep. Consumers must use the digest—not the schema number
 alone—as the exact compatibility identity. A schema-version bump is reserved for a representation
 whose meaning is no longer the same v1 model.
+
+Artifact profile schema 2 requires `expected.diagram_families`: a sorted, duplicate-free list of
+compiled logical parser family IDs, excluding Error infrastructure. Language-bearing product
+recipes explicitly select `all-diagrams`; export-only recipes have an empty parser set. Consumers
+must migrate the descriptor path and required field together. Exact parser availability is probed
+in the built target through its family catalog, not inferred from the verifier's own feature set.
+This field does not imply local renderer, ASCII, or editor support. `feature-surface-v1.json` and
+its runtime capability namespace are unchanged. See
+[ADR-0089](../docs/adr/0089-selectable-diagram-families.md).
 
 ## Contract Boundaries
 
@@ -46,11 +55,11 @@ Artifact profiles describe compiled components, not every package that redistrib
 
 ## Default Native Prebuilt SKU
 
-The Android, Apple, Python, and Flutter artifact profiles select one shared default native
-capability set:
+The Android, Apple, Python, and Flutter artifact profiles select all families and one shared
+default native capability set through these Cargo features:
 
 ```text
-analysis,ascii,layout-cytoscape,layout-elk,svg
+all-diagrams,analysis,ascii,layout-cytoscape,layout-elk,svg
 ```
 
 Those prebuilt packages omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their generated
@@ -76,4 +85,6 @@ A public leaf uses a positive kebab-case name for an observable API, output, sel
 - at least one applicable leaf build or exact artifact profile that exercises it and one valid build/profile that omits it;
 - an executable API, artifact, dependency, or target probe owned by the affected surface.
 
-Diagram-specific, negative, and incidental dependency-named public features are rejected. Layout and math names describe selectable Mermaid behavior rather than their current implementation crates. Runtime environment selection and resource policy remain separate contracts: compiling an adapter does not select native or deterministic behavior for an operation.
+Negative and incidental dependency-named public features are rejected. Positive `diagram-*`
+selectors and their `all-diagrams` union occupy a separate Cargo selector namespace owned by
+`merman_core::diagram_family_selectors()`. They are not runtime capability IDs. Layout and math names describe selectable Mermaid behavior rather than their current implementation crates. Runtime environment selection and resource policy remain separate contracts: compiling an adapter does not select native or deterministic behavior for an operation.

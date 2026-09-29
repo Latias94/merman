@@ -75,8 +75,8 @@ macro_rules! combined_family_accepting_malformed_source {
     };
 }
 
-// This is deliberately one matrix. A Mermaid baseline is a single language catalog, so every
-// family gets the same parser/editor/typed-render admission contract regardless of Cargo features.
+// This matrix characterizes the full implementation set for the pinned Mermaid baseline.
+// Known identities are independent of the callbacks available in an individual build.
 const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
     FamilyCharacterization {
         variant_id: "error",
@@ -1139,4 +1139,107 @@ fn failed_editor_snapshot_runs_one_preprocess_and_one_family_construction() {
         crate::diagrams::mindmap::mindmap_syntax_construction_count(),
         1
     );
+}
+
+#[test]
+fn known_identities_without_registered_parsers_remain_unsupported_instead_of_unknown() {
+    let mut engine = Engine::new();
+    *engine.diagram_registry_mut() = DiagramRegistry::new();
+    *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
+    let source = "flowchart-elk TD\nA-->B\n";
+    let metadata = engine.parse_metadata_sync(source).unwrap();
+    assert_eq!(metadata.diagram_type, "flowchart-elk");
+    assert_eq!(metadata.effective_config.get_str("layout"), Some("elk"));
+    assert!(matches!(
+        engine.parse_diagram_sync(source, crate::ParseOptions::strict()),
+        Err(crate::Error::UnsupportedDiagram { diagram_type }) if diagram_type == "flowchart-elk"
+    ));
+    assert!(matches!(
+        engine.parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict()),
+        Err(crate::Error::UnsupportedDiagram { diagram_type }) if diagram_type == "flowchart-elk"
+    ));
+    assert!(matches!(
+        engine.parse_diagram_sync(MALFORMED_SOURCE, crate::ParseOptions::strict()),
+        Err(crate::Error::DetectType(_))
+    ));
+    let suppressed = engine
+        .parse_diagram_sync(source, crate::ParseOptions::lenient())
+        .unwrap()
+        .unwrap();
+    assert_eq!(suppressed.meta.diagram_type, "error");
+    assert!(
+        engine
+            .parse_diagram_sync(MALFORMED_SOURCE, crate::ParseOptions::lenient())
+            .unwrap()
+            .is_none()
+    );
+
+    let control = crate::OperationControl::new();
+    control.cancel();
+    let cancelled = engine
+        .parse_diagram_for_render_model_controlled_sync(
+            source,
+            crate::ParseOptions::strict(),
+            &control,
+        )
+        .unwrap_err();
+    assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+}
+
+#[test]
+fn custom_overlays_on_known_ids_work_without_builtin_parsers() {
+    let mut engine = Engine::new();
+    *engine.diagram_registry_mut() = DiagramRegistry::new();
+    *engine.render_diagram_registry_mut() = RenderDiagramRegistry::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", |_, meta, control| {
+            control.checkpoint()?;
+            Ok(Ok(
+                serde_json::json!({ "owner": "semantic", "diagramType": meta.diagram_type }),
+            ))
+        });
+    let source = "flowchart TD\nA-->B\n";
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let crate::RenderSemanticModel::CustomJson(model) = parsed.model() else {
+        panic!("custom semantic overlay must retain its custom JSON boundary");
+    };
+    assert_eq!(model.value()["owner"], "semantic");
+    assert_eq!(
+        model.provenance(),
+        crate::CustomJsonProvenance::SemanticRegistryOverlay
+    );
+    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
+    assert!(
+        engine
+            .parse_editor_semantic_facts_with_type_sync("flowchart-v2", source)
+            .unwrap()
+            .is_none()
+    );
+
+    engine
+        .render_diagram_registry_mut()
+        .insert("flowchart-v2", |_, _, control| {
+            control.checkpoint()?;
+            Ok(Ok(crate::CustomJsonRenderModel::new(
+                "flowchart-v2",
+                serde_json::json!({ "owner": "render" }),
+            )))
+        });
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let crate::RenderSemanticModel::CustomJson(model) = parsed.model() else {
+        panic!("explicit custom render overlay must take precedence");
+    };
+    assert_eq!(model.value()["owner"], "render");
+    assert_eq!(
+        model.provenance(),
+        crate::CustomJsonProvenance::RenderRegistryOverlay
+    );
+    assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
 }

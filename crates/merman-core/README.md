@@ -6,6 +6,23 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
+## Source Feature Migration
+
+The current checkout keeps empty default features and adds positive `diagram-*` selectors.
+Select `all-diagrams` to retain every built-in parser, or select only the families your host accepts:
+
+```toml
+merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-gantt"] }
+```
+
+This source recipe requires the selector change; the published alpha.6 command below retains its
+original behavior. Family-exclusive typed models and enum variants are conditional. The complete
+identity catalog still recognizes disabled families, whose strict parse returns
+`UnsupportedDiagram`. `supported_diagrams()` enumerates compiled parsers;
+`diagram_family_capabilities()` retains complete identities with actual implementation flags.
+See the [feature guide](../../docs/FEATURES.md#select-diagram-families) for custom registries,
+suppression, and Cargo feature-unification rules.
+
 ## Quick Start
 
 Add the exact alpha.6 prerelease:
@@ -44,7 +61,10 @@ fn main() -> Result<(), merman_core::Error> {
 - Project-owned civil and offset time types that preserve Mermaid's wide year domain.
 - Runtime-agnostic async APIs plus synchronous helpers.
 
-`merman-core` has no default Cargo features. Mermaid parsing, configuration, sanitization, detection, and family facts are unconditional; optional `system-*` features only make explicit host runtime adapters available.
+`merman-core` has no default Cargo features. Select `all-diagrams` or the required `diagram-*`
+families to compile built-in parsers and typed models. Configuration, sanitization, detection, and
+complete identity facts remain available without a family; optional `system-*` features make
+explicit host runtime adapters available.
 
 Relative operation deadlines use the native monotonic clock on supported targets. Browser-facing
 `wasm32-unknown-unknown` artifacts must enable `operation-deadlines` to expose the deadline methods

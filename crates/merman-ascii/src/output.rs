@@ -7,8 +7,26 @@ use crate::{AsciiError, Result};
 use merman_core::{OperationPhase, ParseMetadata};
 use serde::Serialize;
 use serde_json::Value;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 use serde_json::value::RawValue;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 use std::collections::BTreeMap;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -793,6 +811,12 @@ pub(crate) fn build_semantic_fallback(
         semantic_fallback_projection(model, metadata, &control, execution).map_err(|error| {
             match error {
                 SemanticFallbackError::Cancelled(cancelled) => AsciiError::Cancelled(cancelled),
+                #[cfg(any(
+                    test,
+                    feature = "diagram-flowchart",
+                    feature = "diagram-swimlane",
+                    feature = "diagram-sequence"
+                ))]
                 SemanticFallbackError::Resource(error) => error,
                 SemanticFallbackError::Unavailable => AsciiError::FallbackUnavailable {
                     diagram_type: model.kind().to_string(),
@@ -804,6 +828,11 @@ pub(crate) fn build_semantic_fallback(
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
     fallback.push(format!("family: {}", model.kind()))?;
     match projection {
+        #[cfg(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-sequence"
+        ))]
         SemanticFallbackProjection::Serialized(bytes) => {
             flatten_serialized_json("model", &bytes, &mut fallback)?;
         }
@@ -834,11 +863,14 @@ fn preflight_semantic_model(
     let resources = execution.new_resource_context(OperationPhase::Semantic);
     resources.check_nesting_depth(complexity.nesting_depth)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, complexity.text_bytes)?;
-    if !matches!(
-        model,
-        merman_core::diagram::RenderSemanticModel::Flowchart(_)
-            | merman_core::diagram::RenderSemanticModel::Sequence(_)
-    ) {
+    let streams_projection = match model {
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        merman_core::diagram::RenderSemanticModel::Flowchart(_) => true,
+        #[cfg(feature = "diagram-sequence")]
+        merman_core::diagram::RenderSemanticModel::Sequence(_) => true,
+        _ => false,
+    };
+    if !streams_projection {
         check_semantic_projection_budget(complexity, &resources)?;
     }
     resources.charge_layout_work(complexity.items)?;
@@ -878,6 +910,12 @@ fn check_semantic_projection_budget(
 
 enum SemanticFallbackError {
     Cancelled(merman_core::OperationCancelled),
+    #[cfg(any(
+        test,
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence"
+    ))]
     Resource(AsciiError),
     Unavailable,
 }
@@ -890,10 +928,16 @@ enum SemanticFallbackError {
 /// Other families continue to use their existing family-owned compatibility projection until
 /// their field-level fallback coverage is admitted explicitly.
 enum SemanticFallbackProjection {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence"
+    ))]
     Serialized(Vec<u8>),
     Value(Value),
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[derive(Serialize)]
 struct SemanticFallbackEnvelope<'a, T> {
     #[serde(flatten)]
@@ -906,23 +950,25 @@ fn semantic_fallback_projection(
     model: &merman_core::diagram::RenderSemanticModel,
     metadata: &ParseMetadata,
     control: &merman_core::OperationControl,
-    execution: AsciiExecution<'_>,
+    _execution: AsciiExecution<'_>,
 ) -> std::result::Result<SemanticFallbackProjection, SemanticFallbackError> {
     let control = control.for_phase(OperationPhase::Semantic);
     control
         .checkpoint()
         .map_err(SemanticFallbackError::Cancelled)?;
     let projection = match model {
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         merman_core::diagram::RenderSemanticModel::Flowchart(flowchart) => {
             let envelope = SemanticFallbackEnvelope {
                 model: flowchart,
                 diagram_type: &metadata.diagram_type,
             };
-            SemanticFallbackProjection::Serialized(serialize_bounded_json(&envelope, execution)?)
+            SemanticFallbackProjection::Serialized(serialize_bounded_json(&envelope, _execution)?)
         }
+        #[cfg(feature = "diagram-sequence")]
         merman_core::diagram::RenderSemanticModel::Sequence(sequence) => {
             let projection = sequence.compatibility_projection(&metadata.diagram_type);
-            SemanticFallbackProjection::Serialized(serialize_bounded_json(&projection, execution)?)
+            SemanticFallbackProjection::Serialized(serialize_bounded_json(&projection, _execution)?)
         }
         _ => {
             let mut value = model
@@ -949,6 +995,12 @@ fn semantic_fallback_projection(
 /// the detached candidate ledger can reject oversized intermediates before they reach the
 /// flattening writer. The detached ledger is admitted again by [`SemanticFallbackWriter`] when
 /// the terminal representation is constructed.
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 fn serialize_bounded_json<T: Serialize>(
     value: &T,
     execution: AsciiExecution<'_>,
@@ -968,6 +1020,12 @@ fn serialize_bounded_json<T: Serialize>(
     Ok(writer.output)
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 struct BoundedJsonWriter<'a> {
     output: Vec<u8>,
     resources: ResourceContext,
@@ -975,6 +1033,12 @@ struct BoundedJsonWriter<'a> {
     error: Option<AsciiError>,
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 impl BoundedJsonWriter<'_> {
     fn fail(&mut self, error: AsciiError) -> io::Result<usize> {
         self.error = Some(error);
@@ -984,6 +1048,12 @@ impl BoundedJsonWriter<'_> {
     }
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 impl IoWrite for BoundedJsonWriter<'_> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.execution
@@ -1021,6 +1091,12 @@ impl IoWrite for BoundedJsonWriter<'_> {
     }
 }
 
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 fn map_semantic_fallback_error(error: AsciiError) -> SemanticFallbackError {
     match error {
         AsciiError::Cancelled(cancelled) => SemanticFallbackError::Cancelled(cancelled),
@@ -1265,6 +1341,12 @@ fn flatten_json_value(
 /// Flattens a bounded serialized projection while borrowing every nested value from the one
 /// policy-limited byte buffer. Objects use a sorted map of raw slices, so deterministic field
 /// ordering is retained without constructing a recursive `serde_json::Value` tree.
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 fn flatten_serialized_json(
     path: &str,
     bytes: &[u8],
@@ -1530,7 +1612,8 @@ fn strip_html(text: &str) -> String {
     output
 }
 
-pub(crate) fn capability_for(
+#[cfg(all(test, feature = "diagram-timeline", feature = "diagram-git-graph"))]
+fn capability_for(
     model: &merman_core::diagram::RenderSemanticModel,
 ) -> Option<crate::AsciiCapability> {
     let diagram_type = merman_core::diagram_type_metadata_id(model.kind())?;
@@ -1553,6 +1636,7 @@ pub(crate) fn projection_for(capability: Option<crate::AsciiCapability>) -> Asci
 mod tests {
     use super::*;
 
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_model_with_property(value: Value) -> merman_core::diagram::RenderSemanticModel {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -1702,6 +1786,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "diagram-timeline", feature = "diagram-git-graph"))]
     fn projection_resolution_is_capability_owned() {
         let timeline = merman_core::diagram::RenderSemanticModel::Timeline(Default::default());
         assert_eq!(
@@ -1849,6 +1934,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn flowchart_semantic_fallback_observes_cancellation_before_projection() {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -1885,6 +1971,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn flowchart_semantic_fallback_honors_exact_output_budget() {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -1969,6 +2056,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_fallback_honors_exact_output_budget() {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -2122,6 +2210,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_preflight_enforces_json_nesting_before_serialization() {
         let mut nested = Value::Null;
         for _ in 0..300 {
@@ -2162,6 +2251,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_preflight_charges_json_items_as_layout_work() {
         let model = sequence_model_with_property(Value::Array(vec![Value::Null; 4_096]));
         let complexity = merman_core::resources::ModelComplexity::from_render_model(&model);
@@ -2196,6 +2286,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_projection_bounds_nested_properties_while_streaming() {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(
@@ -2235,6 +2326,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-sequence")]
     fn sequence_semantic_projection_observes_cancellation_during_streaming_properties() {
         let parsed = merman_core::Engine::new()
             .parse_diagram_for_render_model_sync(

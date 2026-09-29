@@ -6,12 +6,47 @@
       {
         "id": "android-native",
         "semantic_target": "native",
+        "diagram_families": [
+          "architecture",
+          "block",
+          "c4",
+          "class",
+          "cynefin",
+          "er",
+          "eventmodeling",
+          "flowchart",
+          "gantt",
+          "gitGraph",
+          "info",
+          "ishikawa",
+          "journey",
+          "kanban",
+          "mindmap",
+          "packet",
+          "pie",
+          "quadrantChart",
+          "radar",
+          "railroad",
+          "requirement",
+          "sankey",
+          "sequence",
+          "state",
+          "swimlane",
+          "timeline",
+          "treeView",
+          "treemap",
+          "venn",
+          "wardley",
+          "xychart",
+          "zenuml"
+        ],
         "cargo": {
           "package": "merman-android-jni",
           "manifest": "crates/merman-android-jni/Cargo.toml",
           "profile": "native-distribution",
           "default_features": false,
           "features": [
+            "all-diagrams",
             "analysis",
             "ascii",
             "layout-cytoscape",
@@ -56,7 +91,7 @@
     "offline": true,
     "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "43d4943b94b5966eef594b0374c626b39163a2e72026f4b3f178255870d77c02"
+    "artifact_bundle_sha256": "6e2d10fd483dd0485ece41c19362d5633bd27cb1d959c3779fdb7950f8e52614"
   },
   "target_dependency_closures": [
     {

@@ -8,12 +8,20 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod icon_registry;
 mod parity;
 mod pipeline;
 pub(crate) mod scanner;
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;

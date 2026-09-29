@@ -303,7 +303,7 @@ fn sorted_objects_by_id(values: impl Iterator<Item = Value>) -> Vec<Value> {
 fn assert_capability_document(case: &str, payload: &Value) {
     let root = repo_root();
     let surface = read_json(root.join("capabilities/feature-surface-v1.json"));
-    let profiles = read_json(root.join("capabilities/artifact-profiles-v1.json"));
+    let profiles = read_json(root.join("capabilities/artifact-profiles-v2.json"));
     let expected_ids = expected_capabilities(case);
     let expected_id_set = expected_ids.iter().copied().collect::<BTreeSet<_>>();
     let expected_commands = expected_commands(&expected_ids);
@@ -434,6 +434,10 @@ fn assert_capability_document(case: &str, payload: &Value) {
             release["expected"]["capabilities"],
             json!(expected_ids),
             "the release feature matrix must follow cli-release"
+        );
+        assert_eq!(
+            release["expected"]["diagram_families"],
+            payload["diagram_families"]
         );
         assert_eq!(
             release["expected"]["outputs"],
@@ -609,9 +613,26 @@ fn workflow_base() {
     assert_eq!(detect.stdout, b"flowchart-v2\n");
 
     let parse = run(&["parse", "-"], SIMPLE_SOURCE.as_bytes(), None);
-    assert_success(&parse, "parse stdin");
-    let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
-    assert!(payload.is_object());
+    #[cfg(feature = "all-diagrams")]
+    {
+        assert_success(&parse, "parse stdin");
+        let payload: Value = serde_json::from_slice(&parse.stdout).expect("parse JSON");
+        assert!(payload.is_object());
+    }
+    #[cfg(not(feature = "all-diagrams"))]
+    {
+        assert_eq!(
+            parse.status.code(),
+            Some(1),
+            "parse should reject an uncompiled diagram family"
+        );
+        assert!(
+            String::from_utf8_lossy(&parse.stderr)
+                .contains("Unsupported diagram type: flowchart-v2"),
+            "unexpected base parse error: {}",
+            String::from_utf8_lossy(&parse.stderr)
+        );
+    }
 }
 
 fn workflow_analysis() {

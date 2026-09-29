@@ -367,7 +367,7 @@ class RepositoryContractTests(unittest.TestCase):
             )
         )
         artifact_profiles = json.loads(
-            (REPOSITORY_ROOT / "capabilities/artifact-profiles-v1.json").read_text(
+            (REPOSITORY_ROOT / "capabilities/artifact-profiles-v2.json").read_text(
                 encoding="utf-8"
             )
         )

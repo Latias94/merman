@@ -40,6 +40,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "flowchart",
     "sequence",
     "state",
+    "swimlane",
     "xychart",
 }
 ASCII_SUMMARY_FAMILIES = {
@@ -52,7 +53,7 @@ ASCII_SUMMARY_FAMILIES = {
     "timeline",
     "treeView",
 }
-ASCII_COMPACT_FAMILIES = {"flowchart", "sequence"}
+ASCII_COMPACT_FAMILIES = {"flowchart", "sequence", "swimlane"}
 ASCII_FAMILIES = (
     "architecture",
     "block",
@@ -78,6 +79,7 @@ ASCII_FAMILIES = (
     "sankey",
     "sequence",
     "state",
+    "swimlane",
     "timeline",
     "treeView",
     "treemap",

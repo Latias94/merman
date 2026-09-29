@@ -1,4 +1,5 @@
 use super::util::SvgTheme;
+#[cfg(feature = "diagram-xychart")]
 use crate::chart_palette::resolve_xychart_plot_palette;
 use merman_core::theme_color::{darken, lighten};
 use serde_json::Value;
@@ -31,6 +32,11 @@ impl CommonCssTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-block"
+))]
 pub(super) struct NodeDiagramTheme {
     pub(super) common: CommonCssTheme,
     pub(super) node_text_color: String,
@@ -48,6 +54,7 @@ pub(super) struct NodeDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-class")]
 pub(super) struct ClassDiagramTheme {
     pub(super) common: CommonCssTheme,
     pub(super) class_text: String,
@@ -63,6 +70,7 @@ pub(super) struct ClassDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-sequence")]
 pub(super) struct SequenceDiagramTheme {
     pub(super) common: CommonCssTheme,
     pub(super) actor_border: String,
@@ -89,6 +97,7 @@ pub(super) struct SequenceDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-state")]
 pub(super) struct StateDiagramTheme {
     pub(super) common: CommonCssTheme,
     pub(super) transition_color: String,
@@ -119,6 +128,7 @@ pub(super) struct StateDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-xychart")]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
     pub(crate) title_color: String,
@@ -135,6 +145,7 @@ pub(crate) struct XyChartTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-quadrant-chart")]
 pub(crate) struct QuadrantChartTheme {
     pub(crate) quadrant1_fill: String,
     pub(crate) quadrant2_fill: String,
@@ -154,6 +165,7 @@ pub(crate) struct QuadrantChartTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-tree-view")]
 pub(crate) struct TreeViewTheme {
     pub(crate) label_font_size: f64,
     pub(crate) label_font_size_css: String,
@@ -166,6 +178,7 @@ pub(crate) struct TreeViewTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-treemap")]
 pub(crate) struct TreemapTheme {
     pub(crate) title_color: String,
     pub(crate) label_color: String,
@@ -186,6 +199,7 @@ pub(crate) struct TreemapTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-gantt")]
 pub(crate) struct GanttTheme {
     pub(crate) font_family: String,
     pub(crate) text_color: String,
@@ -213,6 +227,7 @@ pub(crate) struct GanttTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-kanban")]
 pub(crate) struct KanbanSectionTheme {
     pub(crate) section_fill: String,
     pub(crate) c_scale: String,
@@ -221,6 +236,7 @@ pub(crate) struct KanbanSectionTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-kanban")]
 pub(crate) struct KanbanTheme {
     pub(crate) text_color: String,
     pub(crate) background: String,
@@ -230,6 +246,7 @@ pub(crate) struct KanbanTheme {
     pub(crate) sections: Vec<KanbanSectionTheme>,
 }
 
+#[cfg(feature = "diagram-treemap")]
 impl TreemapTheme {
     pub(crate) fn readable_leaf_label_fill(
         &self,
@@ -249,6 +266,7 @@ impl TreemapTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-event-modeling")]
 pub(crate) struct EventModelingTheme {
     pub(crate) font_family_css: String,
     pub(crate) text_color: String,
@@ -269,6 +287,7 @@ pub(crate) struct EventModelingTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-ishikawa")]
 pub(crate) struct IshikawaTheme {
     pub(crate) line_color: String,
     pub(crate) main_bkg: String,
@@ -277,6 +296,7 @@ pub(crate) struct IshikawaTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-venn")]
 pub(crate) struct VennTheme {
     pub(crate) font_family_css: String,
     pub(crate) title_color: String,
@@ -286,6 +306,7 @@ pub(crate) struct VennTheme {
     pub(crate) is_dark_theme: bool,
 }
 
+#[cfg(feature = "diagram-venn")]
 impl VennTheme {
     pub(crate) fn circle_text_color(&self, base_color: &str) -> crate::Result<String> {
         if self.is_dark_theme {
@@ -297,6 +318,7 @@ impl VennTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-journey")]
 pub(crate) struct JourneyTheme {
     pub(crate) font_family_css: String,
     pub(crate) text_color: String,
@@ -314,6 +336,7 @@ pub(crate) struct JourneyTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-radar")]
 pub(crate) struct RadarTheme {
     pub(crate) font_family_css: String,
     pub(crate) base_font_size_css: String,
@@ -336,6 +359,7 @@ pub(crate) struct RadarTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-timeline")]
 pub(crate) struct TimelineSectionTheme {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
@@ -343,6 +367,7 @@ pub(crate) struct TimelineSectionTheme {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "diagram-timeline")]
 pub(crate) struct TimelineTheme {
     pub(crate) is_redux_theme: bool,
     pub(crate) is_dark_theme: bool,
@@ -382,5 +407,5 @@ impl<'a> PresentationTheme<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

@@ -945,6 +945,70 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     ]
   },
   {
+    "diagram_type": "swimlane",
+    "display_name": "Swimlane",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical",
+      "compact",
+      "auto"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "root directions",
+      "boxed nodes and common shapes",
+      "terminal-cell wrapped node labels",
+      "edge labels",
+      "open dotted and thick edges",
+      "subgraphs and nested groups",
+      "boundary-aware routes",
+      "terminal color roles"
+    ],
+    "limits": [
+      "icons and images are omitted",
+      "callbacks and links are not terminal output",
+      "some uncommon route shapes are approximate"
+    ],
+    "evidence": [
+      {
+        "kind": "mermaid_ascii_oracle",
+        "source": "crates/merman-ascii/tests/testdata/mermaid-ascii/",
+        "note": "copied graph fixtures preserve an exact subset plus named renderable semantic differences"
+      },
+      {
+        "kind": "beautiful_mermaid_prior_art",
+        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "note": "graph ASCII shape and disconnected-layout tests are capability prior art"
+      },
+      {
+        "kind": "local_advantage",
+        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+        "note": "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability"
+      },
+      {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/testdata/local-semantic/flowchart/issue_53_long_node_labels.mmd",
+        "note": "Issue #53 verifies terminal-cell wrapping before node sizing while preserving labels and topology"
+      }
+    ]
+  },
+  {
     "diagram_type": "timeline",
     "display_name": "Timeline",
     "semantic_coverage": "partial",

@@ -999,7 +999,12 @@ function validateTextMeasurement(value, { requiresSvgPipeline }) {
 function validateRegistry(value) {
   if (
     !safeInteger(value.diagram_family_count) ||
-    value.diagram_family_count < 0
+    value.diagram_family_count < 0 ||
+    !Array.isArray(value.diagram_families) ||
+    value.diagram_families.some((family, index) =>
+      typeof family !== "string" || !/^[a-z][A-Za-z0-9]*$/.test(family) ||
+      family === "error" || (index > 0 && value.diagram_families[index - 1] >= family)
+    )
   ) {
     throw new MermanInvalidTransportError(
       "Merman runtime catalog has invalid registry metadata.",

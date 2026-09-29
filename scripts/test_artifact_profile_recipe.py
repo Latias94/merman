@@ -154,7 +154,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         self.assertEqual(
             baseline["cargo"]["features"],
-            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+            ["all-diagrams", "analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         )
         self.assertEqual(
             baseline["expected"]["capabilities"],
@@ -176,6 +176,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(
             recipe.features,
             (
+                "all-diagrams",
                 "analysis",
                 "ascii",
                 "jpeg",
@@ -320,7 +321,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         with (repo_root / "Cargo.toml").open("rb") as handle:
             workspace = tomllib.load(handle)
         descriptor = json.loads(
-            (repo_root / "capabilities/artifact-profiles-v1.json").read_text(
+            (repo_root / "capabilities/artifact-profiles-v2.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -691,13 +692,33 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     "binding-generation", load_artifact_profile(profile_id).features
                 )
 
+    def test_diagram_families_are_required_sorted_and_preserved_in_reports(self) -> None:
+        document = json.loads(artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
+        profile = document["profiles"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            descriptor = Path(directory) / "profiles.json"
+            for families in (None, ["gantt", "flowchart"], ["flowchart", "flowchart"], ["error"]):
+                with self.subTest(families=families):
+                    profile["expected"]["diagram_families"] = families
+                    descriptor.write_text(json.dumps(document), encoding="utf-8")
+                    with self.assertRaisesRegex(RuntimeError, "diagram_families"):
+                        artifact_profile_recipe.load_artifact_profiles(descriptor)
+            profile["expected"]["diagram_families"] = ["flowchart", "gitGraph"]
+            descriptor.write_text(json.dumps(document), encoding="utf-8")
+            parsed = artifact_profile_recipe.load_artifact_profiles(descriptor)[0]
+            self.assertEqual(parsed.report_projection()["diagram_families"], ["flowchart", "gitGraph"])
+            document["schema_version"] = 1
+            descriptor.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "schema_version must be 2"):
+                artifact_profile_recipe.load_artifact_profiles(descriptor)
+
     def test_rejects_duplicate_or_unsorted_features(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             descriptor = Path(temp_dir) / "profiles.json"
             descriptor.write_text(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "profiles": [
                             {
                                 "id": "native",
@@ -731,7 +752,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             descriptor.write_text(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "profiles": [
                             {
                                 "id": "native",

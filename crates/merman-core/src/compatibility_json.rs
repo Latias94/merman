@@ -14,6 +14,7 @@ pub(crate) fn number_value(value: f64) -> Value {
     }
 }
 
+#[cfg(feature = "diagram-state")]
 pub(crate) fn string_array_value(values: &[String]) -> Value {
     Value::Array(values.iter().cloned().map(Value::String).collect())
 }

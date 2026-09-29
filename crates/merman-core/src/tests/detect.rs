@@ -218,6 +218,7 @@ fn empty_detector_registry_rejects_builtin_leading_keywords() {
 }
 
 #[test]
+#[cfg(feature = "diagram-kanban")]
 fn kanban_detector_and_known_type_parser_preserve_distinct_upstream_case_rules() {
     let engine = Engine::new();
 
@@ -281,6 +282,7 @@ fn detector_registry_strips_mermaid_comment_lines_without_regex() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
     let source = "\u{feff}flowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -313,6 +315,7 @@ fn leading_utf8_bom_is_handled_consistently_across_public_entrypoints() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn malformed_directive_json_is_removed_without_rejecting_the_diagram() {
     let source = "%%{init: {\"theme\": }}%%\nflowchart TD\nA-->B\n";
     let registry = DetectorRegistry::pinned_mermaid_baseline();
@@ -348,6 +351,7 @@ fn strict_unterminated_directive_marker_truncates_like_mermaid() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn lenient_unterminated_directive_marker_recovers_the_following_diagram() {
     let source = concat!(
         "%%{init: {\"config\": {\"curve\": \"linear\"}}}%%\n",

@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 use merman_core::time::CivilDate;
 use merman_core::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,

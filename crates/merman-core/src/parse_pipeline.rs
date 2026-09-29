@@ -1625,6 +1625,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..4_096 {
@@ -1645,6 +1646,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
         let engine = Engine::new();

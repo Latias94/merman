@@ -208,7 +208,7 @@ jobs:
       - name: Verify compiled pipeline benchmark list
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
-        run: python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
+        run: python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,layout-cytoscape,layout-elk,math
 
       - name: Verify compiled ASCII benchmark list
         working-directory: head
@@ -216,7 +216,7 @@ jobs:
           python3 tools/bench/verify_pipeline_bench_list.py \
             --bench ascii_pipeline \
             --corpus tools/bench/ascii_corpus.json \
-            --features ascii
+            --features all-diagrams,ascii
 
       - name: Build native memory probe contract
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
@@ -299,6 +299,22 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
+      - name: Read the base revision's performance recipe
+        id: base-recipe
+        env:
+          LANE_ID: ${{ matrix.id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          descriptor = json.loads(Path("base/tools/bench/performance_lanes.json").read_text())
+          lane = next(row for row in descriptor["lanes"] if row["id"] == os.environ["LANE_ID"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"features={lane['features']}\n")
+              output.write(f"default_features={str(lane['default_features']).lower()}\n")
+          PY
+
       - name: Measure descriptor and write receipt
         id: comparison
         working-directory: head
@@ -310,6 +326,8 @@ jobs:
           BENCH: ${{ matrix.bench }}
           CORPUS: ${{ matrix.corpus }}
           FEATURES: ${{ matrix.features }}
+          BASE_FEATURES: ${{ steps.base-recipe.outputs.features }}
+          BASE_DEFAULT_FEATURES: ${{ steps.base-recipe.outputs.default_features }}
           DEFAULT_FEATURES: ${{ matrix.default_features }}
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
@@ -329,7 +347,7 @@ jobs:
             --head-bench "$BENCH"
             --base-corpus "$CORPUS"
             --head-corpus "$CORPUS"
-            --base-features "$FEATURES"
+            --base-features "$BASE_FEATURES"
             --head-features "$FEATURES"
             --base-label "$BASE_LABEL"
             --head-label "$HEAD_LABEL"
@@ -343,9 +361,17 @@ jobs:
           )
           case "$DEFAULT_FEATURES" in
             true) ;;
-            false) args+=(--no-base-default-features --no-head-default-features) ;;
+            false) args+=(--no-head-default-features) ;;
             *)
               echo "unsupported default-feature policy: $DEFAULT_FEATURES" >&2
+              exit 1
+              ;;
+          esac
+          case "$BASE_DEFAULT_FEATURES" in
+            true) ;;
+            false) args+=(--no-base-default-features) ;;
+            *)
+              echo "unsupported base default-feature policy: $BASE_DEFAULT_FEATURES" >&2
               exit 1
               ;;
           esac

@@ -34,7 +34,7 @@ except ModuleNotFoundError:
 CONTRACT_PATH = Path("docs/release/THIRD_PARTY_COMPONENTS.json")
 NOTICE_PATH = Path("THIRD_PARTY_NOTICES.md")
 LICENSE_ROOT = Path("THIRD_PARTY_LICENSES")
-ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v1.json")
+ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v2.json")
 WEB_REPORT_ROOT = Path("platforms/web/legal/rust-cargo-dependencies")
 WEB_REPORT_PROJECTION = Path("THIRD_PARTY_LICENSES/rust-cargo-dependencies.json")
 SCHEMA_VERSION = 3

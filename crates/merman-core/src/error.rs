@@ -22,10 +22,26 @@ pub struct ParseDiagnostic {
     code: Option<String>,
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 pub(crate) trait ParseErrorSourceSpan {
     fn source_span(&self) -> Option<SourceSpan>;
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-state"
+))]
 impl ParseErrorSourceSpan for String {
     fn source_span(&self) -> Option<SourceSpan> {
         None
@@ -174,6 +190,11 @@ pub enum Error {
 }
 
 impl Error {
+    #[cfg(any(
+        feature = "diagram-git-graph",
+        feature = "diagram-radar",
+        feature = "diagram-mindmap"
+    ))]
     pub(crate) fn with_exact_span_if_missing(self, span: SourceSpan) -> Self {
         match self {
             Self::DiagramParse {

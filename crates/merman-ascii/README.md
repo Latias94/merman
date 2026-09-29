@@ -20,7 +20,10 @@ single-cell ASCII structure even when `AsciiCharset::Unicode` was requested. Aut
 is preserved. This deterministic fallback prevents borders and routes from occupying two grid
 cells per structural token.
 
-`merman-ascii` has no optional Cargo features. Mermaid language semantics are unconditional in `merman-core`; system clock, time-zone, random, and timing adapters do not change which typed models this crate can render.
+`merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
+required families, or `all-diagrams` for the complete parser and terminal-adapter surface.
+Each selector forwards to `merman-core`; it does not enable system clock, time-zone, random,
+or timing adapters. Parser availability alone does not promise a terminal projection.
 
 > **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.
 
@@ -36,7 +39,7 @@ Most applications should use the `merman` facade so parsing and text rendering s
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
 ```
 
 Depend on `merman-ascii` directly only when the application already owns a typed `merman-core::RenderSemanticModel`.
@@ -47,17 +50,26 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
-Every concrete built-in typed family has one capability record. `semantic_coverage`,
+Every compiled logical built-in family with a typed parser has one capability record, including
+unsupported terminal projections. These records describe this crate's local adapters, even when
+another dependency enables additional parsers in `merman-core`. Flowchart and Swimlane have
+separate rows and share their terminal implementation. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
 derived from them. The same record exposes `layout_profiles`, `width_profiles`, `encodings`, and
 `fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact and Auto
-layout selection are currently admitted only for Flowchart and Sequence; every other supported family reports
+layout selection are currently admitted only for Flowchart, Swimlane, and Sequence; every other supported family reports
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+
+Detached model entrypoints identify a family by the model kind. Because Swimlane reuses the
+Flowchart model, a Swimlane-only consumer must pass the parser-owned value through `render_parsed`
+or `render_parsed_report`; this retains its logical language identity during admission. Enabling
+one graph language does not enable the other. Report `family` retains the existing model-kind
+identity; query `ascii_capabilities()` for logical language availability.
 
 The canonical report API is `AsciiRenderer::render_model_report` or
 `AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
