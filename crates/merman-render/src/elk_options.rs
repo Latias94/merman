@@ -96,11 +96,22 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
         Some("INTERACTIVE") => elk::LayeringStrategy::Interactive,
         _ => elk::LayeringStrategy::NetworkSimplex,
     };
-    let layering_layer_bound = effective_config
-        .pointer("/elk/layeringLayerBound")
-        .and_then(serde_json::Value::as_i64)
-        .and_then(|value| i32::try_from(value).ok())
-        .unwrap_or(4);
+    // elkjs 0.9.3's JsonImporter serializes numbers with JavaScript String(), then
+    // LayoutOptionData.parseValue validates an INT without truncation. Invalid values
+    // leave ELK's own layer-bound default (i32::MAX), not Mermaid's default (4).
+    let layering_layer_bound = match effective_config.pointer("/elk/layeringLayerBound") {
+        None | Some(serde_json::Value::Null) => 4,
+        Some(serde_json::Value::String(value)) => value.parse::<i32>().unwrap_or(i32::MAX),
+        Some(value) => value
+            .as_f64()
+            .filter(|value| {
+                value.fract() == 0.0
+                    && *value >= f64::from(i32::MIN)
+                    && *value <= f64::from(i32::MAX)
+            })
+            .map(|value| value as i32)
+            .unwrap_or(i32::MAX),
+    };
 
     elk::LayoutOptions {
         algorithm: crate::layout_backend::ElkRootAlgorithm::from_name(
@@ -146,6 +157,72 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn layering_bound_preserves_equivalent_json_number_representations() {
+        for literal in ["2", "2.0", "2e0"] {
+            let config: serde_json::Value = serde_json::from_str(&format!(
+                r#"{{"elk":{{"layeringStrategy":"COFFMAN_GRAHAM","layeringLayerBound":{literal}}}}}"#
+            ))
+            .unwrap();
+            let options = layout_options(&config);
+            assert_eq!(
+                options.layered.layering,
+                elk::LayeringStrategy::CoffmanGraham
+            );
+            assert_eq!(options.layered.layering_layer_bound, 2, "{literal}");
+        }
+    }
+
+    #[test]
+    fn layering_bound_uses_elk_integer_parsing_and_invalid_value_default() {
+        // Pinned elkjs 0.9.3 LayoutOptionData.parseValue / __parseAndValidateInt:
+        // invalid INT options are omitted, so ELK uses its unbounded layer default.
+        for (value, expected) in [
+            (json!(0), 0),
+            (json!(-2), -2),
+            (json!(i32::MIN), i32::MIN),
+            (json!(f64::from(i32::MIN)), i32::MIN),
+            (json!(i32::MAX), i32::MAX),
+            (json!(f64::from(i32::MAX)), i32::MAX),
+            (json!(2147483648_i64), i32::MAX),
+            (json!(2147483648.0), i32::MAX),
+            (json!(-2147483649_i64), i32::MAX),
+            (json!(-2147483649.0), i32::MAX),
+            (json!(2.5), i32::MAX),
+            (json!(-2.5), i32::MAX),
+            (json!("2"), 2),
+            (json!("+2"), 2),
+            (json!("-2"), -2),
+            (json!("2.0"), i32::MAX),
+            (json!("2e0"), i32::MAX),
+            (json!(" 2"), i32::MAX),
+            (json!("2147483648"), i32::MAX),
+            (json!(true), i32::MAX),
+        ] {
+            assert_eq!(
+                layout_options(&json!({"elk": {"layeringLayerBound": value}}))
+                    .layered
+                    .layering_layer_bound,
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn layering_bound_keeps_mermaid_default_for_absent_or_null_config() {
+        // Null retains the adapter's existing absent-value policy; the raw ELK JSON
+        // importer rejects null, which this infallible projection cannot represent.
+        for config in [
+            serde_json::Value::Null,
+            json!({"elk": {}}),
+            json!({"elk": {"layeringLayerBound": null}}),
+            json!({"elk": {"layeringLayerBound": 4}}),
+        ] {
+            assert_eq!(layout_options(&config).layered.layering_layer_bound, 4);
+        }
+    }
 
     #[test]
     fn elk_layout_options_use_mermaid_node_self_loop_default() {

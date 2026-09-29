@@ -132,7 +132,7 @@ fn label(
         measure_wrapped_markdown_with_inline_styles(context.measurer, text, style, max_width, mode)
     } else {
         // Plain Usecase labels are escaped before createText; markup is literal content.
-        let escaped = text
+        let escaped = normalize_plain_label_line_breaks(text)
             .replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;");

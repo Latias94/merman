@@ -92,6 +92,9 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
     let note_text = token(&["noteTextColor"], &text);
     let edge_background = token(&["edgeLabelBackground"], &main);
     let mut css = String::new();
+    // HTML label metrics exclude the browser's default paragraph margins, as does
+    // Mermaid's shared styles.ts reset. Apply it before the family-specific styles.
+    let _ = super::super::css::write_mermaid_paragraph_css_to(&mut css, id);
     let font = font_style(cfg);
     let _ = write!(
         css,

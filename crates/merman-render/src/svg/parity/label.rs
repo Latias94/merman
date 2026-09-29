@@ -389,7 +389,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
+pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source_with_style(
     out: &mut String,
     text: &str,
     css: &str,
@@ -400,7 +400,7 @@ pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
         Some(css),
         true,
         true,
-        SvgTextEntityMode::DecodedModel,
+        SvgTextEntityMode::CreateTextSource,
     );
 }
 

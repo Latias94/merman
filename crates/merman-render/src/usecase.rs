@@ -17,6 +17,16 @@ mod measure;
 pub(crate) use measure::styles as compiled_styles;
 pub(crate) use measure::text_style;
 
+/// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
+/// Keep the source label intact for accessibility while sharing its rendered text with measurement.
+pub(crate) fn normalize_plain_label_line_breaks(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains("\\n") {
+        std::borrow::Cow::Owned(text.replace("\\n", "\n"))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsecaseDiagramLayout {
     pub nodes: Vec<LayoutNode>,

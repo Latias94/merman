@@ -21,6 +21,18 @@ fn proc_macro_accepts_only_selected_diagram_families() {
 
     for (family, selected, source, diagram_type) in [
         (
+            "agentflow",
+            cfg!(feature = "diagram-agentflow"),
+            "agentflow-beta\nA[Selected family] --> B[Rendered]\n",
+            "agentflow",
+        ),
+        (
+            "usecase",
+            cfg!(feature = "diagram-usecase"),
+            "usecase-beta\nactor User\nUser --> Login(Sign in)\n",
+            "usecase",
+        ),
+        (
             "flowchart",
             cfg!(feature = "diagram-flowchart"),
             "flowchart TD\nA[Selected family] --> B[Rendered]\n",

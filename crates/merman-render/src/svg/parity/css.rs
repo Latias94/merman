@@ -60,10 +60,17 @@ where
     )?;
     write!(
         out,
-        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        id, css.font_family, css.font_size_css, id
+        r#"#{} svg{{font-family:{};font-size:{};}}"#,
+        id, css.font_family, css.font_size_css
     )?;
-    Ok(())
+    write_mermaid_paragraph_css_to(out, id)
+}
+
+pub(super) fn write_mermaid_paragraph_css_to(
+    out: &mut dyn std::fmt::Write,
+    id: impl std::fmt::Display,
+) -> std::fmt::Result {
+    write!(out, "#{id} p{{margin:0;}}")
 }
 
 fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {

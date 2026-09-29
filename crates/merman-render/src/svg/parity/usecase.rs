@@ -135,7 +135,8 @@ fn write_label(
         let content = match plan.label_type {
             // Mermaid's plain-text HTML label path emits one paragraph around the escaped text.
             UsecaseLabelType::Text => {
-                format!("<p>{}</p>", escape_xml(&plan.text).replace('\n', "<br/>"))
+                let text = crate::usecase::normalize_plain_label_line_breaks(&plan.text);
+                format!("<p>{}</p>", escape_xml(&text).replace('\n', "<br/>"))
             }
             // The Markdown helper already returns the complete XHTML fragment, including its
             // paragraph wrapper when the source is an inline paragraph. Wrapping it again breaks
@@ -150,7 +151,7 @@ fn write_label(
         }
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml"{} style="{}display:inline-block;white-space:normal;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml"{} style="{}display:inline-block;white-space:normal;line-height:1.5;text-align:center;width:{}px"><span class="{}" style="{}">{}</span></div></foreignObject>"#,
             fmt(plan.metrics.width),
             fmt(plan.metrics.height),
             if is_edge_label {
@@ -172,7 +173,16 @@ fn write_label(
         // Usecase plain labels are literal text, including strings that resemble HTML.
         match plan.label_type {
             UsecaseLabelType::Text => {
-                label::write_svg_text_centered_with_style(out, &plan.text, &css)
+                // prepareUsecaseLayoutData escapes plain labels before createText splits
+                // lines and words. Decode those entities only when writing text content,
+                // so a literal <br/> remains visible instead of becoming a line break.
+                let source = crate::usecase::normalize_plain_label_line_breaks(&plan.text)
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;");
+                label::write_svg_text_centered_from_create_text_source_with_style(
+                    out, &source, &css,
+                )
             }
             UsecaseLabelType::Markdown => {
                 label::write_svg_text_markdown_wrapped_centered_with_style(

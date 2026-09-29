@@ -11,6 +11,8 @@ pub fn proc_macro_artifact() -> (PathBuf, PathBuf) {
 fn build_proc_macro() -> (PathBuf, PathBuf) {
     let features = [
         ("all-diagrams", cfg!(feature = "all-diagrams")),
+        ("diagram-agentflow", cfg!(feature = "diagram-agentflow")),
+        ("diagram-usecase", cfg!(feature = "diagram-usecase")),
         (
             "diagram-architecture",
             cfg!(feature = "diagram-architecture"),

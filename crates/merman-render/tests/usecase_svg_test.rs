@@ -440,3 +440,133 @@ fn usecase_dagre_keeps_self_loop_segments_and_helper_labels() {
         );
     }
 }
+
+#[test]
+fn usecase_plain_labels_preserve_literal_break_tags_and_entities_in_both_label_modes() {
+    let source = r#"usecase-beta
+actor A("a<br/>b")
+B("c<BR />d &lt; e &amp; f")
+A edge@-- "g<br/>h" --> B
+"#;
+    for html in [false, true] {
+        let (_, svg) = render_config(
+            source,
+            json!({"layout":"dagre", "htmlLabels":html, "securityLevel":"loose"}),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+        let text_content = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(|child| child.is_text())
+                .filter_map(|child| child.text())
+                .collect::<String>()
+        };
+        for (id, expected) in [("A", "a<br/>b"), ("B", "c<BR />d &lt; e &amp; f")] {
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some(id))
+                .unwrap();
+            let label = node
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "span" } else { "text" }))
+                .unwrap();
+            assert_eq!(text_content(label), expected, "{id}, htmlLabels={html}");
+            if !html {
+                assert_eq!(label.children().filter(|node| node.is_element()).count(), 1);
+            }
+        }
+        let edge_label = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("edge") && node.has_tag_name("g"))
+            .unwrap();
+        assert_eq!(text_content(edge_label), "g<br/>h", "htmlLabels={html}");
+    }
+}
+
+#[test]
+fn usecase_html_labels_reset_paragraph_margins_and_match_the_measured_line_height() {
+    let (_, svg) = render_config(
+        "usecase-beta\nactor A(Reader)\nA --> B(Hello)",
+        json!({"layout":"dagre", "htmlLabels":true}),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css: String = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect();
+    assert!(css.contains("#usecase-test p{margin:0;}"), "{css}");
+    let labels: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("foreignObject"))
+        .collect();
+    assert!(!labels.is_empty());
+    for label in labels {
+        let div = label
+            .children()
+            .find(|node| node.has_tag_name("div"))
+            .unwrap();
+        assert!(div.attribute("style").unwrap().contains("line-height:1.5"));
+    }
+}
+
+#[test]
+fn usecase_plain_backslash_newlines_reach_measurement_and_both_label_modes() {
+    for html in [false, true] {
+        let config = json!({"layout":"dagre", "htmlLabels":html});
+        let (single_line, _) = render_config("usecase-beta\nA(first second)", config.clone());
+        let (multiline, svg) = render_config(
+            r#"usecase-beta
+A("first\nsecond")"#,
+            config,
+        );
+        let height = |projection: &serde_json::Value| {
+            projection["layout"]["UsecaseDiagram"]["nodes"][0]["height"]
+                .as_f64()
+                .unwrap()
+        };
+        assert!(
+            height(&multiline) > height(&single_line),
+            "htmlLabels={html}"
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("data-usecase-id") == Some("A"))
+            .unwrap();
+        // The accessible name is computed before display-only line-break normalization upstream.
+        assert_eq!(
+            node.attribute("aria-label"),
+            Some(r"use case first\nsecond")
+        );
+        let label = node
+            .descendants()
+            .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+            .unwrap();
+        let rows: Vec<_> = if html {
+            assert_eq!(
+                label
+                    .children()
+                    .filter(|node| node.has_tag_name("br"))
+                    .count(),
+                1
+            );
+            label
+                .children()
+                .filter_map(|node| node.text())
+                .map(str::to_owned)
+                .collect()
+        } else {
+            label
+                .children()
+                .filter(|node| node.has_tag_name("tspan"))
+                .map(|row| {
+                    row.descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                })
+                .collect()
+        };
+        assert_eq!(rows, ["first", "second"], "htmlLabels={html}");
+    }
+}
