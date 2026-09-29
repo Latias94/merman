@@ -3786,3 +3786,83 @@ fn sequence_empty_box_is_measured_but_not_drawn() {
         .unwrap();
     assert_eq!(actor.attribute("y"), Some("34"));
 }
+
+#[test]
+fn sequence_family_fonts_match_measurement_and_svg_with_falsy_or_string_global_size() {
+    for (global_size, override_size) in [
+        (serde_json::json!(""), None),
+        (serde_json::json!(0), None),
+        (serde_json::json!("22"), Some(22.0)),
+        (serde_json::json!("22px"), Some(22.0)),
+    ] {
+        let config = serde_json::json!({
+            "fontFamily": "",
+            "fontSize": global_size,
+            "sequence": {
+                "actorFontFamily": "serif",
+                "actorFontSize": "19px",
+                "noteFontFamily": "monospace",
+                "noteFontSize": "32",
+                "messageFontFamily": "sans-serif",
+                "messageFontSize": "12px"
+            }
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A as probe-actor\nA->>A: probe-message\nNote right of A: probe-note<br/>probe-note-second"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::Missing,
+            "sequence-family-fonts",
+            RenderEnvironment::deterministic(),
+        );
+        let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+        for (probe, class, family, size, expected_count) in [
+            ("probe-actor", "actor", "serif", 19.0, 2),
+            ("probe-note", "noteText", "monospace", 32.0, 2),
+            ("probe-message", "messageText", "sans-serif", 12.0, 1),
+        ] {
+            let size: f64 = override_size.unwrap_or(size);
+            let requests = observation
+                .requests
+                .iter()
+                .filter(|request| request.text.contains(probe))
+                .collect::<Vec<_>>();
+            assert!(!requests.is_empty(), "{config}: {probe} must be measured");
+            for request in &requests {
+                assert_eq!(
+                    request.font_size_bits,
+                    size.to_bits(),
+                    "{config}: {probe} must use the same size in every measurement phase: {request:?}"
+                );
+            }
+            assert!(
+                requests
+                    .iter()
+                    .any(|request| request.font_family.as_deref() == Some(family)),
+                "{config}: {probe} must reach its own configured font family"
+            );
+            let texts = doc
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node
+                            .attribute("class")
+                            .is_some_and(|value| value.split_whitespace().any(|part| part == class))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(texts.len(), expected_count, "{config}: {class}");
+            for text in texts {
+                let style = text.attribute("style").expect("inline font style");
+                assert!(
+                    style.contains(&format!("font-size: {size}px;")),
+                    "{config}: {class} has the wrong size: {style}"
+                );
+                assert!(
+                    style.contains(&format!("font-family: {family};")),
+                    "{config}: {class} has the wrong family: {style}"
+                );
+            }
+        }
+    }
+}

@@ -34,16 +34,8 @@ impl<'a> SequenceConfigView<'a> {
         self.sequence_json_number_or(key, default).max(min)
     }
 
-    pub(crate) fn root_json_number(&self, key: &str) -> Option<f64> {
-        self.effective_config.get(key).and_then(Value::as_f64)
-    }
-
     pub(crate) fn root_bool(&self, key: &str) -> Option<bool> {
         self.effective_config.get(key).and_then(Value::as_bool)
-    }
-
-    pub(crate) fn root_string(&self, key: &str) -> Option<String> {
-        crate::config::config_string(self.effective_config, &[key])
     }
 
     pub(crate) fn sequence_string(&self, key: &str) -> Option<String> {
@@ -90,11 +82,7 @@ impl<'a> SequenceConfigView<'a> {
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
         // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
         // A rejected global value must not reveal the overridden family setting.
-        let selected = self
-            .effective_config
-            .get("fontWeight")
-            .filter(|value| crate::config::json_value_is_truthy(value))
-            .or_else(|| self.sequence_config.get(key));
+        let selected = self.font_value("fontWeight", key);
         match selected {
             Some(value) => Self::parse_font_weight(value),
             None => Some("400".to_string()),
@@ -109,23 +97,29 @@ impl<'a> SequenceConfigView<'a> {
         self.sequence_compat_f64(key, default).max(min)
     }
 
-    fn root_compat_f64(&self, key: &str) -> Option<f64> {
-        crate::config::config_f64(self.effective_config, &[key])
+    fn font_value(&self, root_key: &str, sequence_key: &str) -> Option<&Value> {
+        // sequenceRenderer.setConf overrides each family only for a truthy global value.
+        self.effective_config
+            .get(root_key)
+            .filter(|value| crate::config::json_value_is_truthy(value))
+            .or_else(|| self.sequence_config.get(sequence_key))
     }
 
-    fn layout_text_style(
+    pub(crate) fn text_style(
         &self,
-        root_font_family: &Option<String>,
-        root_font_size: Option<f64>,
         family_key: &str,
         size_key: &str,
         weight_key: &str,
     ) -> TextStyle {
-        let font_family = root_font_family
-            .clone()
-            .or_else(|| self.sequence_string(family_key));
-        let font_size = root_font_size
-            .or_else(|| crate::config::config_f64(self.sequence_config, &[size_key]))
+        let font_family = self
+            .font_value("fontFamily", family_key)
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        // svgDraw.parseFontSize accepts numeric strings and explicit px lengths as well
+        // as numbers. Resolve these identically for layout and SVG emission.
+        let font_size = self
+            .font_value("fontSize", size_key)
+            .and_then(crate::config::json_f64_css_px)
             .unwrap_or(16.0);
         let font_weight = self.font_weight(weight_key);
 
@@ -181,31 +175,11 @@ impl SequenceLayoutSettings {
         let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
         let activation_width = config.sequence_compat_f64_min("activationWidth", 10.0, 1.0);
 
-        // Mermaid's `sequenceRenderer.setConf(...)` overrides per-sequence font settings whenever
-        // the global `fontFamily` / `fontSize` / `fontWeight` are present.
-        let root_font_family = config.root_string("fontFamily");
-        let root_font_size = config.root_compat_f64("fontSize");
-        let actor_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            "actorFontFamily",
-            "actorFontSize",
-            "actorFontWeight",
-        );
-        let note_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            "noteFontFamily",
-            "noteFontSize",
-            "noteFontWeight",
-        );
-        let msg_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            "messageFontFamily",
-            "messageFontSize",
-            "messageFontWeight",
-        );
+        let actor_text_style =
+            config.text_style("actorFontFamily", "actorFontSize", "actorFontWeight");
+        let note_text_style = config.text_style("noteFontFamily", "noteFontSize", "noteFontWeight");
+        let msg_text_style =
+            config.text_style("messageFontFamily", "messageFontSize", "messageFontWeight");
 
         Self {
             diagram_margin_x,

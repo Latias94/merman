@@ -50,39 +50,11 @@ impl SequenceRenderSettings {
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
         let activation_width = config.sequence_json_number_min("activationWidth", 10.0, 1.0);
 
-        // Upstream Mermaid's Sequence renderer treats the global `fontSize` as authoritative.
-        // Per-sequence overrides like `sequence.messageFontSize` apply only when the global value
-        // is absent.
-        let message_font_size = config
-            .root_json_number("fontSize")
-            .or_else(|| config.sequence_json_number("messageFontSize"))
-            .unwrap_or(16.0)
-            .max(1.0);
-        let loop_text_style = TextStyle {
-            font_family: config
-                .root_string("fontFamily")
-                .or_else(|| config.sequence_string("messageFontFamily")),
-            font_size: message_font_size,
-            font_weight: config.font_weight("messageFontWeight"),
-            font_style: None,
-        };
-        let actor_text_style = TextStyle {
-            font_family: config
-                .root_string("fontFamily")
-                .or_else(|| config.sequence_string("actorFontFamily")),
-            font_size: config
-                .root_json_number("fontSize")
-                .or_else(|| config.sequence_json_number("actorFontSize"))
-                .unwrap_or(16.0),
-            font_weight: config.font_weight("actorFontWeight"),
-            font_style: None,
-        };
-        let note_text_style = TextStyle {
-            font_family: loop_text_style.font_family.clone(),
-            font_size: message_font_size,
-            font_weight: config.font_weight("noteFontWeight"),
-            font_style: None,
-        };
+        let loop_text_style =
+            config.text_style("messageFontFamily", "messageFontSize", "messageFontWeight");
+        let actor_text_style =
+            config.text_style("actorFontFamily", "actorFontSize", "actorFontWeight");
+        let note_text_style = config.text_style("noteFontFamily", "noteFontSize", "noteFontWeight");
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
         let rect_default_fill =
             crate::config::config_string(effective_config, &["themeVariables", "rectBkgColor"])
@@ -162,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_render_settings_keep_svg_numeric_type_semantics() {
+    fn sequence_render_settings_parse_fonts_without_changing_geometry_numeric_types() {
         let cfg = json!({
             "fontSize": "22",
             "sequence": {
@@ -178,7 +150,7 @@ mod tests {
         assert_eq!(settings.sequence_width, 150.0);
         assert_eq!(settings.wrap_padding, 10.0);
         assert_eq!(settings.activation_width, 10.0);
-        assert_eq!(settings.loop_text_style.font_size, 16.0);
+        assert_eq!(settings.loop_text_style.font_size, 22.0);
         assert_eq!(settings.actor_wrap_width, 130.0);
     }
 
