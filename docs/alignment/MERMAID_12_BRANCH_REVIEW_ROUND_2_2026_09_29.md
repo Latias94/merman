@@ -8,6 +8,10 @@ SVG rendering, public consumers, repository standards, and the originating speci
 The specification remains the September 20 Mermaid 12 alignment plan and ADRs 0089–0091.
 The previous review is `MERMAID_12_BRANCH_REVIEW_2026_09_29.md` in this directory.
 
+Follow-up repairs, the explicit-null correction, and actual host-title measurement evidence are
+recorded in [round 3](MERMAID_12_BRANCH_REVIEW_ROUND_3_2026_09_29.md). Results below remain the
+round-2 snapshot.
+
 Native counterexamples used a newly built CLI from that head with
 `all-diagrams,svg,layout-elk,layout-cytoscape,analysis`. Expectations came from the pinned Mermaid
 12 source, generated parsers/databases, and the selected standard Mermaid browser bundle.
