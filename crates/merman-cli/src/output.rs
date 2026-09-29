@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 #[cfg(all(
     any(feature = "analysis", feature = "svg", feature = "ascii"),
-    any(unix, windows)
+    any(unix, all(windows, feature = "markdown"))
 ))]
 use std::fs::File;
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
