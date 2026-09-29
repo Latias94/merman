@@ -791,6 +791,7 @@ impl<'a> Parser<'a> {
             node: UsecaseJsonNode {
                 id,
                 value: parsed_json.value,
+                string_encoding: parsed_json.string_encoding,
                 property_order: parsed_json.property_order,
                 non_finite_numbers: parsed_json.non_finite_numbers,
                 classes,

@@ -174,9 +174,13 @@ pub(crate) fn requires_math(
     let mut pending: Vec<_> = model
         .json_nodes
         .iter()
-        .map(|node| (&node.value, String::new()))
+        .map(|node| (node, &node.value, String::new()))
         .collect();
-    while let Some((value, path)) = pending.pop() {
+    while let Some((node, value, path)) = pending.pop() {
+        let display_has_math = |text: &str| {
+            node.display_string(text)
+                .is_ok_and(|text| has_math((&text, UsecaseLabelType::Text)))
+        };
         match value {
             Value::Array(values)
                 if !values.is_empty()
@@ -188,7 +192,7 @@ pub(crate) fn requires_math(
                     || values
                         .iter()
                         .filter_map(Value::as_str)
-                        .any(|text| has_math((text, UsecaseLabelType::Text)))
+                        .any(display_has_math)
                 {
                     return true;
                 }
@@ -198,24 +202,23 @@ pub(crate) fn requires_math(
                     values
                         .iter()
                         .enumerate()
-                        .map(|(index, value)| (value, format!("{path}[{index}]"))),
+                        .map(|(index, value)| (node, value, format!("{path}[{index}]"))),
                 );
             }
             Value::Object(values) if !values.is_empty() => {
-                pending.extend(values.iter().map(|(key, value)| {
+                pending.extend(values.iter().filter_map(|(key, value)| {
+                    let key = node.display_string(key).ok()?;
                     let path = if path.is_empty() {
-                        key.clone()
+                        key.into_owned()
                     } else {
                         format!("{path}.{key}")
                     };
-                    (value, path)
+                    Some((node, value, path))
                 }));
             }
             _ => {
                 if has_math((&path, UsecaseLabelType::Text))
-                    || value
-                        .as_str()
-                        .is_some_and(|text| has_math((text, UsecaseLabelType::Text)))
+                    || value.as_str().is_some_and(display_has_math)
                 {
                     return true;
                 }

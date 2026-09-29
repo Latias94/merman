@@ -754,3 +754,77 @@ json Data@{"positive":1e309,"negative":-1e309,"actualNull":null,"nested":[1e400,
         }
     }
 }
+
+#[test]
+fn usecase_utf16_json_preserves_distinct_keys_until_utf8_svg_output() {
+    let source = r#"usecase-beta
+json Data@{"\ud800":"high","\udc00":"low","�":"replacement","\\ud800":"literal","nested":{"value":"a\ud800b\udc00c"},"pair":"\ud83d\ude00","overflow":1e309}
+"#;
+    for backend in ["dagre", "elk"] {
+        for html_labels in [false, true] {
+            let (_, svg) = render_config(
+                source,
+                json!({"layout": backend, "htmlLabels": html_labels, "look": "classic"}),
+            );
+            let doc = roxmltree::Document::parse(&svg).expect("valid UTF-8 SVG");
+            let texts = doc
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<Vec<_>>();
+            for expected in [
+                "high",
+                "low",
+                "replacement",
+                "literal",
+                "nested.value",
+                "a�b�c",
+                "😀",
+                "Infinity",
+            ] {
+                assert!(
+                    texts.contains(&expected),
+                    "{backend}/{html_labels}: {expected}: {texts:?}"
+                );
+            }
+            assert_eq!(texts.iter().filter(|text| **text == "�").count(), 3);
+            assert!(
+                texts.contains(&r"\ud800"),
+                "authored escape text is not a surrogate"
+            );
+        }
+    }
+}
+
+#[test]
+fn usecase_utf16_json_math_admission_uses_decoded_strings_and_paths() {
+    for source in [
+        r#"usecase-beta
+json Data@{"surrogate":"\ud800","formula":"$$x^2$$"}
+"#,
+        r#"usecase-beta
+json Data@{"surrogate":"\ud800","$$x":{"y$$":1}}
+"#,
+        r#"usecase-beta
+json Data@{"surrogate":"\ud800","values":["$$x^2$$"]}
+"#,
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert!(
+            plan.missing_capability_ids().any(|id| id == "math"),
+            "{source}"
+        );
+        assert!(matches!(
+            family::prepare(parsed, &LayoutOptions::default(), session),
+            Err(merman_render::Error::MissingCapability { .. })
+        ));
+    }
+}

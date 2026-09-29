@@ -214,3 +214,40 @@ fn usecase_recovery_disables_rename_for_conflicting_declaration_kinds() {
             .all(|symbol| symbol.rename_policy == EditorRenamePolicy::None)
     );
 }
+
+#[test]
+fn usecase_utf16_json_keeps_semantic_typed_and_editor_routes_available() {
+    let source = r#"usecase-beta
+json Data@{"\ud800":"\udc00","normal":"value"}
+Data --> Consumer
+"#;
+    let engine = Engine::new();
+    let semantic = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        typed.model().compatibility_json(typed.metadata()).unwrap(),
+        semantic.model
+    );
+    assert_eq!(
+        semantic.model["jsonNodes"][0]["stringEncoding"],
+        "json-utf16"
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("usecase", source)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.diagnostics.is_empty(), "{:?}", facts.diagnostics);
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Data" && symbol.kind == EditorSemanticKind::Object)
+    );
+}

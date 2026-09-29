@@ -1,4 +1,4 @@
-use super::{ParseIssue, UsecaseJsonInfinity};
+use super::{ParseIssue, UsecaseJsonInfinity, UsecaseJsonStringEncoding, json_string};
 use crate::SourceSpan;
 use serde::de::IgnoredAny;
 use serde_json::Value;
@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug)]
 pub(super) struct ParsedJson {
     pub value: Value,
+    pub string_encoding: Option<UsecaseJsonStringEncoding>,
     pub property_order: BTreeMap<String, Vec<String>>,
     pub non_finite_numbers: BTreeMap<String, UsecaseJsonInfinity>,
 }
@@ -20,13 +21,17 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
         serde_json::from_str::<IgnoredAny>(source)
             .map_err(|error| json_error(source, offset, error))?;
     }
+    let encoded = decoded.is_err()
+        && json_string::contains_unpaired(source)
+            .map_err(|error| json_error(source, offset, error))?;
     let mut collector = Collector {
         source,
         offset: 0,
         depth: 0,
         property_order: BTreeMap::new(),
         non_finite_numbers: BTreeMap::new(),
-        non_finite_ranges: Vec::new(),
+        replacements: Vec::new(),
+        encoded,
     };
     collector.collect_value("").map_err(|local| {
         ParseIssue::new(
@@ -37,20 +42,18 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
             },
         )
     })?;
-    let mut value = match decoded {
-        Ok(value) => value,
-        Err(error) if collector.non_finite_ranges.is_empty() => {
-            return Err(json_error(source, offset, error));
+    let mut value = if collector.replacements.is_empty() {
+        decoded.map_err(|error| json_error(source, offset, error))?
+    } else {
+        let mut normalized = String::new();
+        let mut previous = 0;
+        for (range, replacement) in &collector.replacements {
+            normalized.push_str(&source[previous..range.start]);
+            normalized.push_str(replacement);
+            previous = range.end;
         }
-        Err(_) => {
-            let mut normalized = source.to_owned();
-            for range in &collector.non_finite_ranges {
-                // Equal-length replacement preserves subsequent diagnostic offsets.
-                let replacement = format!("null{}", " ".repeat(range.len() - 4));
-                normalized.replace_range(range.clone(), &replacement);
-            }
-            serde_json::from_str(&normalized).map_err(|error| json_error(source, offset, error))?
-        }
+        normalized.push_str(&source[previous..]);
+        serde_json::from_str(&normalized).map_err(|error| json_error(source, offset, error))?
     };
     if !value.is_object() {
         return Err(ParseIssue::new(
@@ -65,6 +68,7 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
     normalize_json_numbers(&mut value);
     Ok(ParsedJson {
         value,
+        string_encoding: encoded.then_some(UsecaseJsonStringEncoding::JsonUtf16),
         property_order: collector.property_order,
         non_finite_numbers: collector.non_finite_numbers,
     })
@@ -113,7 +117,8 @@ struct Collector<'a> {
     offset: usize,
     depth: usize,
     non_finite_numbers: BTreeMap<String, UsecaseJsonInfinity>,
-    non_finite_ranges: Vec<std::ops::Range<usize>>,
+    replacements: Vec<(std::ops::Range<usize>, String)>,
+    encoded: bool,
     property_order: BTreeMap<String, Vec<String>>,
 }
 
@@ -175,7 +180,7 @@ impl Collector<'_> {
                         UsecaseJsonInfinity::Positive
                     };
                     self.non_finite_numbers.insert(pointer.to_owned(), infinity);
-                    self.non_finite_ranges.push(start..self.offset);
+                    self.replacements.push((start..self.offset, "null".into()));
                 }
                 Ok(())
             }
@@ -191,8 +196,14 @@ impl Collector<'_> {
         if self.source.as_bytes().get(self.offset) != Some(&b'}') {
             loop {
                 let property_start = self.offset;
-                let property: String =
-                    serde_json::from_str(self.read_string()?).map_err(|_| property_start)?;
+                let encoded = self.encoded;
+                let literal = self.read_string()?;
+                let property = if encoded {
+                    json_string::canonical(literal)
+                } else {
+                    serde_json::from_str(literal)
+                }
+                .map_err(|_| property_start)?;
                 let property_pointer = format!(
                     "{pointer}/{}",
                     property.replace('~', "~0").replace('/', "~1")
@@ -239,17 +250,14 @@ impl Collector<'_> {
     fn read_string(&mut self) -> Result<&str, usize> {
         let start = self.offset;
         self.consume(b'"')?;
-        while let Some(byte) = self.source.as_bytes().get(self.offset) {
-            match byte {
-                b'"' => {
-                    self.offset += 1;
-                    return Ok(&self.source[start..self.offset]);
-                }
-                b'\\' => self.offset += 2,
-                _ => self.offset += 1,
-            }
+        self.offset = json_string::token_end(self.source, start);
+        let literal = &self.source[start..self.offset];
+        if self.encoded {
+            let canonical = json_string::canonical(literal).map_err(|_| start)?;
+            let replacement = serde_json::to_string(&canonical).map_err(|_| start)?;
+            self.replacements.push((start..self.offset, replacement));
         }
-        Err(self.offset.min(self.source.len()))
+        Ok(literal)
     }
 
     fn delete_subtree(&mut self, pointer: &str) {
@@ -433,7 +441,6 @@ mod tests {
             r#"{"x":Infinity}"#,
             r#"{"x":-Infinity}"#,
             r#"{"x":1e309,"bad":01}"#,
-            r#"{"x":1e309,"bad":"\uD800"}"#,
         ] {
             assert!(parse(source, 0).is_err(), "{source}");
         }
@@ -448,6 +455,136 @@ mod tests {
                 parse(&infinite, 0).is_ok(),
                 "depth {depth}"
             );
+        }
+    }
+    fn parsed_node(source: &str) -> super::super::UsecaseJsonNode {
+        let parsed = parse(source, 0).unwrap();
+        super::super::UsecaseJsonNode {
+            id: "Data".into(),
+            value: parsed.value,
+            string_encoding: parsed.string_encoding,
+            property_order: parsed.property_order,
+            non_finite_numbers: parsed.non_finite_numbers,
+            classes: Vec::new(),
+            styles: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn unpaired_utf16_strings_are_lossless_until_the_display_boundary() {
+        let node = parsed_node(
+            r#"{"high":"\uD800","low":"\udc00","pair":"\ud83d\ude00","plain":"hello","replacement":"�","adjacent":"\ud800\ud801\udc00","escaped":"\ud800\n"}"#,
+        );
+        assert_eq!(
+            node.string_encoding,
+            Some(UsecaseJsonStringEncoding::JsonUtf16)
+        );
+        for (name, expected) in [
+            ("high", vec![0xd800]),
+            ("low", vec![0xdc00]),
+            ("pair", vec![0xd83d, 0xde00]),
+            ("replacement", vec![0xfffd]),
+            ("adjacent", vec![0xd800, 0xd801, 0xdc00]),
+            ("escaped", vec![0xd800, 0x000a]),
+        ] {
+            let key = json_string::canonical(&serde_json::to_string(name).unwrap()).unwrap();
+            let value = node.value[&key].as_str().unwrap();
+            assert_eq!(node.string_code_units(value).unwrap(), expected);
+            assert_eq!(
+                node.display_string(value).unwrap(),
+                String::from_utf16_lossy(&expected)
+            );
+        }
+        let encoded = serde_json::to_string(&node).unwrap();
+        assert!(encoded.contains("\"stringEncoding\":\"json-utf16\""));
+        let decoded: super::super::UsecaseJsonNode = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, node);
+        let exported = node.to_javascript_json().unwrap();
+        let reparsed = parsed_node(&exported);
+        assert_eq!(reparsed.value, node.value);
+        assert_eq!(reparsed.property_order, node.property_order);
+    }
+
+    #[test]
+    fn utf16_keys_do_not_collide_with_literal_escapes_or_replacement_characters() {
+        let node = parsed_node(
+            r#"{"\ud800":1,"\ud801":2,"�":3,"\\ud800":4,"\uD800":5,"😀":6,"\ud83d\ude00":7}"#,
+        );
+        assert_eq!(node.value.as_object().unwrap().len(), 5);
+        let order = &node.property_order[""];
+        let units: Vec<_> = order
+            .iter()
+            .map(|key| node.string_code_units(key).unwrap())
+            .collect();
+        assert_eq!(
+            units,
+            [
+                vec![0xd800],
+                vec![0xd801],
+                vec![0xfffd],
+                "\\ud800".encode_utf16().collect(),
+                vec![0xd83d, 0xde00]
+            ]
+        );
+        assert_eq!(node.value[&order[0]], json!(5));
+        assert_eq!(node.value[&order[4]], json!(7));
+    }
+
+    #[test]
+    fn utf16_duplicate_subtrees_clear_order_and_infinity_metadata() {
+        let node = parsed_node(
+            r#"{"\ud800":{"old":1e309},"tail":1,"\uD800":{"final":-1e309},"text":"\udc00"}"#,
+        );
+        let root_order = &node.property_order[""];
+        let pointer = format!("/{}", root_order[0]);
+        let final_key = json_string::canonical(r#""final""#).unwrap();
+        assert_eq!(
+            node.property_order[&pointer].as_slice(),
+            std::slice::from_ref(&final_key)
+        );
+        assert_eq!(
+            node.non_finite_numbers,
+            BTreeMap::from([(
+                format!("{pointer}/{final_key}"),
+                UsecaseJsonInfinity::Negative
+            )])
+        );
+        let exported = node.to_javascript_json().unwrap();
+        assert!(exported.contains("null"));
+        let reparsed = parsed_node(&exported);
+        assert_eq!(reparsed.value, node.value);
+        assert!(reparsed.non_finite_numbers.is_empty());
+    }
+
+    #[test]
+    fn ordinary_unicode_and_old_typed_json_keep_the_original_shape() {
+        let node = parsed_node(r#"{"emoji":"\ud83d\ude00","text":"hello"}"#);
+        assert_eq!(node.string_encoding, None);
+        assert_eq!(node.value["emoji"], json!("😀"));
+        assert!(matches!(
+            node.display_string("hello").unwrap(),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        let serialized = serde_json::to_string(&node).unwrap();
+        assert!(!serialized.contains("stringEncoding"));
+        let legacy = r#"{"id":"Data","value":{"text":"hello"},"propertyOrder":{"": ["text"]},"classes":[],"styles":[]}"#;
+        let legacy: super::super::UsecaseJsonNode = serde_json::from_str(legacy).unwrap();
+        assert_eq!(legacy.string_encoding, None);
+        assert_eq!(legacy.to_javascript_json().unwrap(), r#"{"text":"hello"}"#);
+    }
+
+    #[test]
+    fn utf16_support_keeps_json_syntax_and_original_error_offsets() {
+        for source in [
+            r#"{"key":"\ud800",}"#,
+            r#"{"key":"\ud80x"}"#,
+            r#"{"key":"\ud800","bad":01}"#,
+            r#"{"key":"\ud800","bad":NaN}"#,
+        ] {
+            let expected = serde_json::from_str::<IgnoredAny>(source).unwrap_err();
+            let expected = json_error(source, 31, expected);
+            let actual = parse(source, 31).unwrap_err();
+            assert_eq!(actual.span, expected.span, "{source}");
         }
     }
 }

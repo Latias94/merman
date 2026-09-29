@@ -186,22 +186,34 @@ fn label(
     }
 }
 
-fn json_scalar_display(value: &Value, infinity: Option<&UsecaseJsonInfinity>) -> String {
+fn json_display_string(node: &UsecaseJsonNode, value: &str) -> Result<String> {
+    node.display_string(value)
+        .map(|text| text.into_owned())
+        .map_err(|error| Error::InvalidModel {
+            message: format!("Invalid Usecase JSON string encoding: {error}"),
+        })
+}
+
+fn json_scalar_display(
+    node: &UsecaseJsonNode,
+    value: &Value,
+    infinity: Option<&UsecaseJsonInfinity>,
+) -> Result<String> {
     if value.is_null() {
         match infinity {
-            Some(UsecaseJsonInfinity::Positive) => return "Infinity".into(),
-            Some(UsecaseJsonInfinity::Negative) => return "-Infinity".into(),
+            Some(UsecaseJsonInfinity::Positive) => return Ok("Infinity".into()),
+            Some(UsecaseJsonInfinity::Negative) => return Ok("-Infinity".into()),
             None => {}
         }
     }
-    match value {
-        Value::String(value) => value.clone(),
+    Ok(match value {
+        Value::String(value) => return json_display_string(node, value),
         Value::Number(number) => number.as_f64().map_or_else(
             || number.to_string(),
             |value| ryu_js::Buffer::new().format(value).to_string(),
         ),
         _ => value.to_string(),
-    }
+    })
 }
 
 fn flatten_json(
@@ -228,9 +240,10 @@ fn flatten_json(
                         String::new()
                     };
                     let value = json_scalar_display(
+                        node,
                         value,
                         node.non_finite_numbers.get(&format!("{pointer}/{index}")),
-                    );
+                    )?;
                     rows.push((display, path.clone(), value));
                 }
             }
@@ -251,21 +264,23 @@ fn flatten_json(
                     .unwrap_or_else(|| values.keys().cloned().collect());
                 for key in keys.into_iter().rev() {
                     if let Some(child) = values.get(&key) {
+                        // Keep encoded identity for lookup and pointers; only the
+                        // final UTF-8 SVG presentation replaces isolated surrogates.
+                        let display_key = json_display_string(node, &key)?;
                         let child_path = if path.is_empty() {
-                            key.clone()
+                            display_key
                         } else {
-                            format!("{path}.{key}")
+                            format!("{path}.{display_key}")
                         };
                         let escaped = key.replace('~', "~0").replace('/', "~1");
                         pending.push((child, child_path, format!("{pointer}/{escaped}")));
                     }
                 }
             }
-            Value::String(value) => rows.push((path.clone(), path, value.clone())),
             _ => rows.push((
                 path.clone(),
                 path,
-                json_scalar_display(value, node.non_finite_numbers.get(&pointer)),
+                json_scalar_display(node, value, node.non_finite_numbers.get(&pointer))?,
             )),
         }
     }
@@ -710,6 +725,7 @@ mod tests {
             id: "data".into(),
             value: json!({"values": [9007199254740993_u64, 1e20, 1e21, -0.0, 1e-7, 1e-6]}),
             property_order: BTreeMap::new(),
+            string_encoding: None,
             non_finite_numbers: BTreeMap::new(),
             classes: Vec::new(),
             styles: Vec::new(),
@@ -775,6 +791,7 @@ mod tests {
                 (String::new(), vec!["z".into(), "a".into()]),
                 ("/z".into(), vec!["second".into(), "first".into()]),
             ]),
+            string_encoding: None,
             non_finite_numbers: BTreeMap::new(),
             classes: Vec::new(),
             styles: Vec::new(),
@@ -806,6 +823,7 @@ mod tests {
             id: "data".into(),
             value: json!({"roles": ["admin", "viewer"]}),
             property_order: BTreeMap::new(),
+            string_encoding: None,
             non_finite_numbers: BTreeMap::new(),
             classes: Vec::new(),
             styles: Vec::new(),
@@ -824,6 +842,7 @@ mod tests {
             id: "data".into(),
             value: json!({"a/b": [null, null, null, "1e309"], "nested": [{"~key": null}], "null": null}),
             property_order: BTreeMap::new(),
+            string_encoding: None,
             non_finite_numbers: BTreeMap::from([
                 ("/a~1b/0".into(), UsecaseJsonInfinity::Positive),
                 ("/a~1b/1".into(), UsecaseJsonInfinity::Negative),
