@@ -753,7 +753,25 @@ impl<'a> Parser<'a> {
                 self.acc_descr = Some(description.trim().to_string());
                 continue;
             }
-            if let Some(direction) = statement_direction(trimmed) {
+            if keyword_with_whitespace(trimmed, "click")
+                && click_contains_unshielded_direction(trimmed)
+            {
+                return Ok(Err(self.failure(
+                    "unexpected direction in agentflow click statement",
+                    span_of(line_start, line, trimmed),
+                )));
+            }
+            // CLICK enters an exclusive lexer state, so its href/callback strings
+            // must reach the presentation parser instead of the direction rule.
+            if !keyword_with_whitespace(trimmed, "click")
+                && let Some(direction) = statement_direction(trimmed)
+            {
+                if direction_has_prior_token(trimmed) {
+                    return Ok(Err(self.failure(
+                        "unexpected direction after agentflow statement token",
+                        span_of(line_start, line, trimmed),
+                    )));
+                }
                 if let Some(context) = self.contexts.last_mut() {
                     context.direction = Some(direction.to_string());
                 }
@@ -1656,6 +1674,12 @@ fn split_top_level<'a>(
         }
         if separators == b";\n" {
             let tail = &source[start..];
+            let trimmed = tail.trim_start_matches([' ', '\t']);
+            if keyword_suffix(trimmed, "end").is_some() {
+                // Each END closes its own scope before any following direction.
+                cursor = start + tail.len() - trimmed.len() + "end".len();
+                return Some((start, &source[start..cursor]));
+            }
             if start >= physical_line_end {
                 physical_line_end = start + tail.find('\n').unwrap_or(tail.len());
             }
@@ -1670,10 +1694,8 @@ fn split_top_level<'a>(
             });
             // Whole-line Jison rules run before the semicolon token. Keep the
             // header and earlier keyword rules in their existing token stream.
-            let direction_line = !starts_reserved_identifier(trimmed)
-                && !trimmed.starts_with('"')
-                && start >= direction_scan_end
-                && {
+            let direction_line =
+                !direction_has_prior_token(trimmed) && start >= direction_scan_end && {
                     let matched = statement_direction(line).is_some();
                     if !matched {
                         direction_scan_end = physical_line_end;
@@ -2133,14 +2155,65 @@ fn starts_reserved_identifier(value: &str) -> bool {
         "_top",
     ]
     .into_iter()
-    .any(|keyword| {
-        value.strip_prefix(keyword).is_some_and(|suffix| {
-            suffix
-                .as_bytes()
-                .first()
-                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
-        })
+    .any(|keyword| keyword_suffix(value, keyword).is_some())
+}
+
+fn keyword_suffix<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {
+    value.strip_prefix(keyword).filter(|suffix| {
+        suffix
+            .as_bytes()
+            .first()
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
     })
+}
+
+fn keyword_with_whitespace(value: &str, keyword: &str) -> bool {
+    value.strip_prefix(keyword).is_some_and(|suffix| {
+        suffix
+            .chars()
+            .next()
+            .is_some_and(super::scan::is_ecmascript_whitespace)
+    })
+}
+
+// Preserve the INITIAL cursor after each protected CLICK/HREF/string/callback rule.
+fn click_contains_unshielded_direction(statement: &str) -> bool {
+    let rest = statement["click".len()..].trim_start_matches(super::scan::is_ecmascript_whitespace);
+    let Some(id_end) = rest.find(super::scan::is_ecmascript_whitespace) else {
+        return false;
+    };
+    let mut rest = &rest[id_end..];
+    rest = &rest[rest.chars().next().map_or(0, char::len_utf8)..];
+    loop {
+        if let Some(body) = rest.strip_prefix('"') {
+            let Some(end) = body.find('"') else {
+                return false;
+            };
+            rest = &body[end + 1..];
+        } else if keyword_with_whitespace(rest, "href") {
+            rest = &rest["href".len()..];
+            rest = &rest[rest.chars().next().map_or(0, char::len_utf8)..];
+        } else if keyword_with_whitespace(rest, "call") {
+            let Some(open) = rest.find('(') else {
+                return false;
+            };
+            let Some(close) = rest[open + 1..].find(')') else {
+                return false;
+            };
+            rest = &rest[open + 1 + close + 1..];
+        } else {
+            return statement_direction(rest).is_some();
+        }
+    }
+}
+
+fn direction_has_prior_token(value: &str) -> bool {
+    starts_reserved_identifier(value)
+        || value.starts_with('"')
+        || keyword_suffix(value, "default").is_some()
+        || ["click", "call", "href"]
+            .into_iter()
+            .any(|keyword| keyword_with_whitespace(value, keyword))
 }
 
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
@@ -2650,6 +2723,85 @@ Group@{labelType: text}
                 "{statement}"
             );
         }
+    }
+
+    #[test]
+    fn direction_does_not_hide_higher_priority_agentflow_statements() {
+        for statement in [
+            r#"connector C["direction LR"]"#,
+            "classDef c fill:direction LR",
+            "style A fill:direction LR",
+            "global direction LR",
+            r#"click A href "https://example.test" "direction LR""#,
+            r#"default["direction LR"]"#,
+            r#""direction LR""#,
+        ] {
+            let source = format!("agentflow-beta TB\n{statement}\n");
+            assert!(parse_agentflow(&source, &meta()).is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn direction_after_end_applies_to_the_remaining_context() {
+        let source = "agentflow-beta TB\nflow Outer\nflow Inner\nA\nend direction LR\nend\n";
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            model
+                .sub_graphs
+                .iter()
+                .find(|graph| graph.id == "Outer")
+                .unwrap()
+                .direction
+                .as_deref(),
+            Some("LR")
+        );
+        assert_eq!(
+            model
+                .sub_graphs
+                .iter()
+                .find(|graph| graph.id == "Inner")
+                .unwrap()
+                .direction
+                .as_deref(),
+            None
+        );
+    }
+
+    #[test]
+    fn consecutive_end_tokens_close_each_container_before_direction() {
+        let source = "agentflow-beta TB\nflow Outer\nflow Inner\nA\nend end direction LR\n";
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(model.sub_graphs.len(), 2);
+        assert_eq!(
+            model
+                .sub_graphs
+                .iter()
+                .find(|graph| graph.id == "Inner")
+                .unwrap()
+                .direction,
+            None
+        );
+        assert!(parse_agentflow(&format!("{source}end\n"), &meta()).is_err());
+    }
+
+    #[test]
+    fn click_direction_text_preserves_the_link_instead_of_becoming_a_direction() {
+        let source = "agentflow-beta TB\nA\nclick A href \"https://example.test/direction LR\"\n";
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        assert_eq!(
+            flow.nodes[0].link.as_deref(),
+            Some("https://example.test/direction%20LR")
+        );
     }
 
     #[test]
