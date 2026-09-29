@@ -2273,6 +2273,7 @@ fn node_placement_to_source(
 ) -> source_port::NodePlacementStrategy {
     match node_placement {
         NodePlacementStrategy::Simple => source_port::NodePlacementStrategy::Simple,
+        NodePlacementStrategy::Interactive => source_port::NodePlacementStrategy::Interactive,
         NodePlacementStrategy::NetworkSimplex => source_port::NodePlacementStrategy::NetworkSimplex,
         NodePlacementStrategy::LinearSegments => source_port::NodePlacementStrategy::LinearSegments,
         NodePlacementStrategy::BrandesKoepf => source_port::NodePlacementStrategy::BrandesKoepf,

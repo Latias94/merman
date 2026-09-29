@@ -202,6 +202,7 @@ pub enum LayeringStrategy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NodePlacementStrategy {
     Simple,
+    Interactive,
     NetworkSimplex,
     LinearSegments,
     #[default]
