@@ -8,12 +8,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- Added positive `diagram-*` Cargo selectors and `all-diagrams` so source consumers can compile only the built-in families they use, including Flowchart + Gantt without other family implementations. Output, layout, and math selections remain independent (#148).
+
 - Added `DeterministicTextMeasurer::with_width_callback(...)` so Rust applications can supply whole-string CSS-pixel widths while Merman handles wrapping and line layout.
 - Added `merman-rustdoc` options `background` for the SVG canvas color, `id_prefix` for generated items with overlapping source locations, and `inherit` to control parent tree rendering defaults. See the [macro guide](crates/merman-rustdoc/README.md#configure-rendering) for configuration and scope rules.
 - Added `merman-doc`, a shared Markdown diagram discovery and HTML wrapping library used by the CLI rustdoc generator and attribute macro; it does not depend on a renderer or perform file access.
 - Documented stable Cargo integration for `.mmd` changes through a consumer `build.rs` watching the diagram directory, with no extra build dependency. Directory tracking covers file edits, additions, deletions, and restoration of missing includes; macro file reads alone do not register those dependencies.
 
 ### Changed
+
+- Low-level crates and `default-features = false` consumers now require explicit family selection: add `all-diagrams` to retain the previous parser surface, or select individual families. Family-exclusive public model types and enum variants are conditional. Default facade, CLI, and Rustdoc builds retain all families; `complete-svg` selects only output/engine capabilities. See the [migration guide](docs/FEATURES.md#select-diagram-families).
+- Migrated current artifact recipes to `artifact-profiles-v2.json` (schema 2), with required exact logical parser IDs in `expected.diagram_families`. Update custom recipe readers together; runtime capability IDs and `feature-surface-v1.json` are unchanged.
 
 - Diagram-local colors and typography now pass through a shared CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled by default, and host `secure` policies can still lock presentation fields.
 
@@ -25,7 +30,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Mermaid compatibility work now targets the pinned `12.0.0` behavior graph, with ordinary ELK-backed rendering, source-backed layered defaults, and explicit lean feature selections retaining their documented fallback and EPL-2.0 closure.
 - Flowchart and State ELK rendering now preserve Mermaid post-layout edge behavior, including directional implicit ports, rounded route paint, terminal alignment, and configured line hops.
 - Agentflow and Usecase parser, semantic, layout, SVG, editor, and capability surfaces continue through the shared family pipeline so their native contracts can be admitted without a JavaScript runtime.
-- `merman-rustdoc` now defaults to SVG and Cytoscape without math. Consumers rendering mathematical labels must add `features = ["math"]` or `features = ["complete-svg"]` to the macro dependency. The `merman` facade now defaults to `complete-svg-elk`; explicit `complete-svg` and `complete-svg-elk` selections remain available, while published `0.8.0-alpha.6` still includes math by default.
+- `merman-rustdoc` now defaults to all diagram families, SVG, Cytoscape, and ELK without math. Consumers rendering mathematical labels must add `features = ["math"]` or `features = ["complete-svg"]` to the macro dependency. The `merman` facade now defaults to `all-diagrams + complete-svg-elk`. The explicit SVG aggregates retain their output/backend membership; consumers disabling defaults must also choose diagram families as described above. Published `0.8.0-alpha.6` still includes math by default.
 - Rustdoc macro diagrams now use transparent backgrounds by default. Set `background = "white"` to retain an opaque white canvas. Generated SVG IDs now include occurrence and theme identity; regenerate output snapshots instead of relying on historical IDs.
 - Duplicate macro options now report errors. Strict SVG embedding rejects unsafe embedded resources while preserving safe browser HTML labels and navigation links; remove disallowed resources from affected diagrams.
 - Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.

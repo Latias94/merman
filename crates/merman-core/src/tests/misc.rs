@@ -1,3 +1,4 @@
+#[cfg(feature = "all-diagrams")]
 use crate::diagrams::xychart::{XyChartAxisRenderModel, XyChartPlotType};
 use crate::*;
 use futures::executor::block_on;
@@ -317,6 +318,7 @@ gantt
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_diagram_with_type_sync_matches_auto_detect_for_flowchart_v2() {
     let engine = Engine::new();
     let input = "flowchart TD; A[Start]-->B[End];";
@@ -785,6 +787,7 @@ flowchart TD
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
     let site_config = MermaidConfig::from_value(deep_config_value(
@@ -850,6 +853,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
     let site_config = MermaidConfig::from_value(deep_config_value(
@@ -1117,6 +1121,7 @@ fn parse_metadata_with_type_rejects_errors_without_a_suppression_mode() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_lenient_unknown_diagram_returns_none_only_for_model_entrypoints() {
     let engine = Engine::new();
     let input = "this is not a mermaid diagram definition";
@@ -1136,6 +1141,7 @@ fn parse_lenient_unknown_diagram_returns_none_only_for_model_entrypoints() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     let engine = Engine::new();
     let input = "flowchart TD\nA -->";
@@ -1164,6 +1170,7 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
     let operation = OperationControl::new();
     operation.cancel();
@@ -1181,6 +1188,7 @@ fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn controlled_render_model_parse_stops_inside_family_parser() {
     let mut source = String::from("flowchart TD\n");
     for index in 0..4_096 {
@@ -1201,6 +1209,7 @@ fn controlled_render_model_parse_stops_inside_family_parser() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn controlled_known_type_render_model_parse_skips_detection_but_observes_control() {
     let operation = OperationControl::new();
     operation.cancel();
@@ -1219,6 +1228,7 @@ fn controlled_known_type_render_model_parse_skips_detection_but_observes_control
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync("error", ParseOptions::strict())
@@ -1230,11 +1240,13 @@ fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
     assert!(!parsed.model().supports_diagram_type("flowchart-v2"));
 }
 
+#[cfg(feature = "all-diagrams")]
 fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
     assert_eq!(parsed.meta.diagram_type, "error");
     assert_eq!(parsed.model["type"], json!("error"));
 }
 
+#[cfg(feature = "all-diagrams")]
 fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
     assert_eq!(parsed.metadata().diagram_type, "error");
     match parsed.model() {
@@ -1250,6 +1262,7 @@ fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn render_semantic_model_kind_reports_canonical_names() {
     let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
     assert_eq!(sequence.kind(), "sequence");
@@ -1268,6 +1281,7 @@ fn render_semantic_model_kind_reports_canonical_names() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn render_semantic_model_supports_diagram_type_aliases() {
     let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
     assert!(sequence.supports_diagram_type("sequence"));
@@ -1304,6 +1318,7 @@ fn render_semantic_model_supports_diagram_type_aliases() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn render_parser_registry_drives_typed_alias_parse() {
     let engine = Engine::new();
     assert!(engine.render_diagram_registry().contains("flowchart-elk"));
@@ -1425,6 +1440,7 @@ fn combined_custom_warning_adapter_keeps_malformed_arrays_all_or_nothing() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn combined_builtin_warning_facts_stay_typed_and_sync_compatibility_json() {
     let cases = [
         (
@@ -1613,6 +1629,7 @@ fn combined_parse_retains_metadata_when_a_custom_parser_panics() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn combined_parse_records_recovered_incomplete_directives() {
     let snapshot = Engine::new()
         .parse_diagram_snapshot_sync(concat!(
@@ -1629,7 +1646,8 @@ fn combined_parse_records_recovered_incomplete_directives() {
 }
 
 #[test]
-fn combined_parse_uses_wardley_semantics_and_retains_missing_custom_parser_failure() {
+#[cfg(feature = "diagram-wardley")]
+fn combined_parse_uses_wardley_semantics() {
     let wardley = Engine::new()
         .parse_diagram_snapshot_sync("wardley-beta\ntitle Example")
         .unwrap()
@@ -1653,7 +1671,10 @@ fn combined_parse_uses_wardley_semantics_and_retains_missing_custom_parser_failu
         wardley.editor_facts(),
         crate::ParsedEditorFacts::Available(_)
     ));
+}
 
+#[test]
+fn combined_parse_retains_missing_custom_parser_failure() {
     let mut custom = Engine::new();
     custom
         .registry_mut()
@@ -1718,6 +1739,7 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
 fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
     let mut engine = Engine::new();
     assert!(engine.render_diagram_registry_mut().remove("flowchart-v2"));
@@ -1827,6 +1849,7 @@ fn detect_generic_custom(text: &str, _config: &mut MermaidConfig) -> bool {
     text.trim_start().starts_with("generic-custom")
 }
 
+#[cfg(feature = "all-diagrams")]
 fn render_model_for(input: &str) -> RenderSemanticModel {
     Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -1896,6 +1919,7 @@ fn deep_frontmatter_config_source(root_key: &str, depth: usize, leaf: &str) -> S
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_flowchart_json_and_typed_render_model_share_semantic_source() {
     let engine = Engine::new();
     let input = r#"%%{init: {"securityLevel":"strict","flowchart":{"inheritDir":true}}}%%
@@ -2013,6 +2037,7 @@ click A href "https://example.test" "tip <b>safe</b>" _blank
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"sequenceDiagram
@@ -2064,6 +2089,7 @@ Dana-->>Bob: Done
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = "kanban\n  Todo\n    item1\n  Doing\n    item2";
@@ -2095,6 +2121,7 @@ fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_gantt_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2134,6 +2161,7 @@ Task 1: id1, 2024-01-01, 2d
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_pie_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2171,6 +2199,7 @@ pie showData title Typed Pie
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_xychart_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2257,6 +2286,7 @@ line "Series 2" [2 "early", 3 "late"]
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_xychart_render_model_includes_display_policy_from_effective_config() {
     let engine = Engine::new();
     let input = r#"%%{init: {"xyChart": {"showTitle": false, "showDataLabel": true, "showDataLabelOutsideBar": true, "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}, "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}}}}%%
@@ -2317,6 +2347,7 @@ bar [1]"#,
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_xychart_editor_facts_expose_parser_backed_spans() {
     let engine = Engine::new();
     let text = r#"
@@ -2370,6 +2401,7 @@ line "Series 2" [2, 3]
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_quadrant_chart_editor_facts_expose_parser_backed_spans() {
     let engine = Engine::new();
     let text = r#"
@@ -2427,6 +2459,7 @@ Point A:::class1: [0.9, 0.0]
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
     let engine = Engine::new();
     let text = concat!(
@@ -2477,6 +2510,7 @@ class A"#,
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_expose_parser_backed_spans() {
     let engine = Engine::new();
     let text = r#"
@@ -2515,6 +2549,7 @@ a - contains -> b
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_emit_multi_id_style_class_and_classdef_symbols() {
     let engine = Engine::new();
     let text = r#"
@@ -2608,6 +2643,7 @@ style req,elem fill:#ffa,stroke:#000
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_requirement_editor_facts_class_refs_use_class_list_spans_for_short_names() {
     let engine = Engine::new();
     let text = r#"
@@ -2642,6 +2678,7 @@ class req,elem a,aa
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2690,6 +2727,7 @@ accDescr: Packet accDescription
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_timeline_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2740,6 +2778,7 @@ Task 1: event 1: event 2
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_journey_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2793,6 +2832,7 @@ Drive: bad-score: Dad, Mum
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_requirement_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r##"
@@ -2899,6 +2939,7 @@ req_login - verifies -> api
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_sankey_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -2976,6 +3017,7 @@ A,B,1"##,
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_radar_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -3049,6 +3091,7 @@ graticule polygon
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_info_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -3078,6 +3121,7 @@ showInfo
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_er_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -3128,6 +3172,7 @@ CUSTOMER {
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
@@ -3146,6 +3191,7 @@ Alice->Bob:Hello"#;
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_render_model_sanitizes_common_db_fields_for_typed_families() {
     let engine = Engine::new();
     let flowchart = r#"flowchart TD
@@ -3214,6 +3260,7 @@ accDescr: <script>alert(1)</script><b>d</b>
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_architecture_applies_upstream_category_population_order() {
     let source = r#"architecture-beta
 api:R -- L:join
@@ -3253,6 +3300,7 @@ group child(cloud)[Child] in root
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_architecture_converts_quoted_titles_like_langium() {
     let source = r#"architecture-beta
 service api(server)["API \"Gateway\""]
@@ -3270,6 +3318,7 @@ service api(server)["API \"Gateway\""]
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_strings_and_titles() {
     for source in [
         "architecture-beta\nservice api \"icon\\\ntext\"\n",
@@ -3282,6 +3331,7 @@ fn parse_architecture_rejects_backslash_followed_by_a_physical_newline_in_string
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload() {
     let source = "architecture-beta\naccDescr {\n  Draft description\n";
     let engine = Engine::new();
@@ -3322,6 +3372,7 @@ fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload
 }
 
 #[test]
+#[cfg(feature = "all-diagrams")]
 fn parse_architecture_validates_junction_ids_and_parents_with_exact_spans() {
     let cases = [
         (

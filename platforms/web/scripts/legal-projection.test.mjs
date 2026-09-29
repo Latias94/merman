@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { sep } from "node:path";
 
 import {
   legalProjectionForArtifactProfile,
@@ -21,7 +22,7 @@ test("every browser artifact profile has an exact scoped legal projection", () =
     );
     assert.equal(rustReports.length, 1);
     assert.match(
-      rustReports[0].source.replaceAll("\\", "/"),
+      rustReports[0].source.split(sep).join("/"),
       new RegExp(`platforms/web/legal/rust-cargo-dependencies/${profileId}\\.json$`),
     );
     assert.deepEqual(

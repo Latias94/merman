@@ -288,14 +288,18 @@ fn is_negative_feature_name(id: &str) -> bool {
 }
 
 fn is_diagram_specific_feature_name(id: &str) -> bool {
-    merman_core::diagram_family_capabilities()
-        .iter()
-        .any(|fact| {
-            fact.diagram_type == id
-                || fact.logical_family_kind == id
-                || fact.metadata_id == Some(id)
-                || fact.render_model_kind == Some(id)
-        })
+    id == "all-diagrams"
+        || merman_core::diagram_family_selectors()
+            .iter()
+            .any(|selector| selector.feature == id)
+        || merman_core::diagram_family_capabilities()
+            .iter()
+            .any(|fact| {
+                fact.diagram_type == id
+                    || fact.logical_family_kind == id
+                    || fact.metadata_id == Some(id)
+                    || fact.render_model_kind == Some(id)
+            })
 }
 
 fn validate_targets(
@@ -374,7 +378,7 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         }
         if is_diagram_specific_feature_name(&capability.id) {
             return Err(format!(
-                "{base}.id: diagram-specific public feature `{}` is forbidden",
+                "{base}.id: diagram selector or family ID in runtime capability vocabulary `{}` is forbidden",
                 capability.id
             ));
         }
@@ -2179,7 +2183,18 @@ mod tests {
     fn fixture_rejects_negative_diagram_and_dependency_named_leaves() {
         for (invalid, expected) in [
             ("svg-no-elk", "negative public feature"),
-            ("flowchart", "diagram-specific public feature"),
+            (
+                "flowchart",
+                "diagram selector or family ID in runtime capability vocabulary",
+            ),
+            (
+                "diagram-flowchart",
+                "diagram selector or family ID in runtime capability vocabulary",
+            ),
+            (
+                "all-diagrams",
+                "diagram selector or family ID in runtime capability vocabulary",
+            ),
             ("ratex", "incidental dependency-named public feature"),
         ] {
             let mut descriptor = committed_value();

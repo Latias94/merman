@@ -116,6 +116,7 @@ export interface RuntimePayloadSchema {
 export interface RuntimeRegistryContract {
   [key: string]: unknown;
   diagram_family_count: number;
+  diagram_families: string[];
 }
 
 export interface RuntimeConstructorServiceContract {

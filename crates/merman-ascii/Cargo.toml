@@ -18,18 +18,157 @@ artifact-profile-required = true
 fixed-capabilities = ["ascii"]
 
 [features]
+# Diagram selection is independent of output formats and optional layout engines.
+all-diagrams = [
+    "diagram-agentflow",
+    "diagram-architecture",
+    "diagram-block",
+    "diagram-c4",
+    "diagram-class",
+    "diagram-cynefin",
+    "diagram-er",
+    "diagram-event-modeling",
+    "diagram-flowchart",
+    "diagram-gantt",
+    "diagram-git-graph",
+    "diagram-info",
+    "diagram-ishikawa",
+    "diagram-journey",
+    "diagram-kanban",
+    "diagram-mindmap",
+    "diagram-packet",
+    "diagram-pie",
+    "diagram-quadrant-chart",
+    "diagram-radar",
+    "diagram-railroad",
+    "diagram-requirement",
+    "diagram-sankey",
+    "diagram-sequence",
+    "diagram-state",
+    "diagram-swimlane",
+    "diagram-timeline",
+    "diagram-tree-view",
+    "diagram-treemap",
+    "diagram-usecase",
+    "diagram-venn",
+    "diagram-wardley",
+    "diagram-xychart",
+    "diagram-zenuml",
+]
+diagram-architecture = ["merman-core/diagram-architecture"]
+diagram-block = ["merman-core/diagram-block"]
+diagram-c4 = ["merman-core/diagram-c4"]
+diagram-class = ["merman-core/diagram-class"]
+diagram-cynefin = ["merman-core/diagram-cynefin"]
+diagram-er = ["merman-core/diagram-er"]
+diagram-event-modeling = ["merman-core/diagram-event-modeling"]
+diagram-agentflow = ["merman-core/diagram-agentflow"]
+diagram-usecase = ["merman-core/diagram-usecase"]
+diagram-flowchart = ["merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash"]
+diagram-gantt = ["merman-core/diagram-gantt"]
+diagram-git-graph = ["merman-core/diagram-git-graph"]
+diagram-info = ["merman-core/diagram-info"]
+diagram-ishikawa = ["merman-core/diagram-ishikawa"]
+diagram-journey = ["merman-core/diagram-journey"]
+diagram-kanban = ["merman-core/diagram-kanban"]
+diagram-mindmap = ["merman-core/diagram-mindmap"]
+diagram-packet = ["merman-core/diagram-packet"]
+diagram-pie = ["merman-core/diagram-pie"]
+diagram-quadrant-chart = ["merman-core/diagram-quadrant-chart"]
+diagram-radar = ["merman-core/diagram-radar"]
+diagram-railroad = ["merman-core/diagram-railroad"]
+diagram-requirement = ["merman-core/diagram-requirement"]
+diagram-sankey = ["merman-core/diagram-sankey"]
+diagram-sequence = ["merman-core/diagram-sequence"]
+diagram-state = ["merman-core/diagram-state", "dep:dugong", "dep:rustc-hash"]
+diagram-swimlane = ["merman-core/diagram-swimlane", "dep:dugong", "dep:rustc-hash"]
+diagram-timeline = ["merman-core/diagram-timeline"]
+diagram-tree-view = ["merman-core/diagram-tree-view"]
+diagram-treemap = ["merman-core/diagram-treemap"]
+diagram-venn = ["merman-core/diagram-venn"]
+diagram-wardley = ["merman-core/diagram-wardley"]
+diagram-xychart = ["merman-core/diagram-xychart"]
+diagram-zenuml = ["merman-core/diagram-zenuml"]
 default = []
 
 [dependencies]
-dugong.workspace = true
+dugong = { workspace = true, optional = true }
 merman-core.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true
 unicode-segmentation.workspace = true
 unicode-width = { workspace = true, features = ["cjk"] }
-rustc-hash.workspace = true
+rustc-hash = { workspace = true, optional = true }
 
 [dev-dependencies]
 merman-core = { workspace = true, features = ["test-support"] }
 sha2.workspace = true
+
+[[test]]
+name = "class_model"
+required-features = ["diagram-class"]
+
+[[test]]
+name = "er_model"
+required-features = ["diagram-er"]
+
+[[test]]
+name = "flowchart_model"
+required-features = ["diagram-flowchart"]
+
+[[test]]
+name = "flowchart_subgraph_endpoints"
+required-features = ["diagram-flowchart"]
+
+[[test]]
+name = "graph_fixture"
+required-features = ["diagram-flowchart"]
+
+[[test]]
+name = "sequence_model"
+required-features = ["diagram-sequence"]
+
+[[test]]
+name = "state_model"
+required-features = ["diagram-state"]
+
+[[test]]
+name = "xychart_model"
+required-features = ["diagram-xychart"]
+
+[[test]]
+name = "sectioned_structured_text"
+required-features = ["diagram-journey", "diagram-timeline"]
+
+[[test]]
+name = "auto_layout"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "candidate_admission"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "fixture_inventory"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "new_family_models"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "operation_cancellation"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "output_report"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "terminal_text_safety"
+required-features = ["all-diagrams"]
+
+[[test]]
+name = "viewport_characterization"
+required-features = ["all-diagrams"]

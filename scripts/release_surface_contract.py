@@ -19,7 +19,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = Path(".github/workflows")
 PREFLIGHT_WORKFLOW = WORKFLOW_ROOT / "release-preflight.yml"
-ARTIFACT_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
+ARTIFACT_DESCRIPTOR = Path("capabilities/artifact-profiles-v2.json")
 ANDROID_JNI_MANIFEST = Path("crates/merman-android-jni/Cargo.toml")
 
 if str(ROOT) not in sys.path:
@@ -148,6 +148,8 @@ def _load_json(root: Path, path: Path) -> dict:
 
 def _profile_map(root: Path) -> dict[str, dict]:
     descriptor = _load_json(root, ARTIFACT_DESCRIPTOR)
+    if descriptor.get("schema_version") != 2:
+        raise SurfaceContractError("artifact profiles schema_version must be 2")
     raw_profiles = descriptor.get("profiles")
     if not isinstance(raw_profiles, list):
         raise SurfaceContractError(f"{ARTIFACT_DESCRIPTOR}.profiles must be an array")

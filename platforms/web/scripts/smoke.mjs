@@ -475,8 +475,19 @@ if (hasCapability("svg")) {
   assert.equal(capabilities.text_measurement, null);
 }
 
+assert.deepEqual(
+  runtimeCatalog.registry.diagram_families,
+  packageDescriptor.artifact_profile.expected.diagram_families,
+);
 const familyCapabilities = api.diagramFamilyCapabilities();
 assert.equal(Array.isArray(familyCapabilities), true);
+assert.deepEqual(
+  [...new Set(familyCapabilities
+    .filter((family) => family.has_semantic_parser && family.logical_family_kind !== "error")
+    .map((family) => family.logical_family_kind))].sort(),
+  packageDescriptor.artifact_profile.expected.diagram_families,
+  "compiled parser families must match the artifact recipe exactly",
+);
 assert.equal(
   familyCapabilities.some(
     (capability) =>

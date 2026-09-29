@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -18,11 +19,11 @@ describe("WASM artifact freshness CLI", () => {
         target.outputDir.relative.replaceAll("\\", "/"),
       ]),
       [
-        ["full", "web-full", "pkg/full"],
-        ["analysis", "web-analysis", "pkg/analysis"],
-        ["render", "web-render", "pkg/render"],
-        ["editor", "web-editor", "pkg/editor"],
-        ["ascii", "web-ascii", "pkg/ascii"],
+        ["full", "web-full", path.posix.join("pkg", "full")],
+        ["analysis", "web-analysis", path.posix.join("pkg", "analysis")],
+        ["render", "web-render", path.posix.join("pkg", "render")],
+        ["editor", "web-editor", path.posix.join("pkg", "editor")],
+        ["ascii", "web-ascii", path.posix.join("pkg", "ascii")],
       ],
     );
   });

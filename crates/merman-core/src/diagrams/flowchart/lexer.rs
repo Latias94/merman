@@ -5,6 +5,7 @@ use super::{
     destruct_end_link, destruct_labeled_end_link, destruct_start_link, is_ecmascript_trim_char,
     lex, parse_label_text,
 };
+use crate::diagrams::jison_unicode::is_mermaid_unicode_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
 };
@@ -170,6 +171,14 @@ fn find_pipe_label_end(input: &str, mut pos: usize) -> Option<usize> {
     None
 }
 
+fn non_ascii_id_char_len(input: &str, pos: usize) -> Option<usize> {
+    if !input.is_char_boundary(pos) {
+        return None;
+    }
+    let ch = input[pos..].chars().next()?;
+    (!ch.is_ascii() && is_mermaid_unicode_text(ch)).then(|| ch.len_utf8())
+}
+
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
@@ -193,6 +202,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(super) fn recovering(input: &'input str) -> Self {
         Self {
             recover_partial_node_labels: true,
@@ -237,12 +247,11 @@ impl<'input> Lexer<'input> {
     }
 
     pub(super) fn skip_ws(&mut self) {
-        while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_trim_char(ch) || ch == '\n' {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -252,11 +261,11 @@ impl<'input> Lexer<'input> {
             b'\n' => {
                 let bytes = self.input.as_bytes();
                 let mut look = self.pos + 1;
-                while look < bytes.len() {
-                    match bytes[look] {
-                        b' ' | b'\t' | b'\r' => look += 1,
-                        _ => break,
+                while let Some(ch) = self.input[look..].chars().next() {
+                    if ch == '\n' || !is_ecmascript_trim_char(ch) {
+                        break;
                     }
+                    look += ch.len_utf8();
                 }
                 if look < bytes.len() {
                     let is_linkish = match bytes[look] {
@@ -370,11 +379,11 @@ impl<'input> Lexer<'input> {
         self.skip_ws();
 
         let direction_start = self.pos;
-        while let Some(b) = self.peek() {
-            if b.is_ascii_whitespace() || b == b';' {
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if is_ecmascript_trim_char(ch) || ch == ';' {
                 break;
             }
-            self.pos += 1;
+            self.pos += ch.len_utf8();
         }
         let direction_end = self.pos;
         while let Some(b) = self.peek() {
@@ -924,10 +933,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let first = bytes[start];
-        if !first.is_ascii_alphanumeric() && first != b'_' {
+        if first.is_ascii_alphanumeric() || first == b'_' {
+            self.pos += 1;
+        } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
+            self.pos += len;
+        } else {
             return None;
         }
-        self.pos += 1;
 
         while self.pos < bytes.len() {
             if self.pos + 1 < bytes.len()
@@ -939,6 +951,10 @@ impl<'input> Lexer<'input> {
             let b = bytes[self.pos];
             if b.is_ascii_alphanumeric() || b == b'_' {
                 self.pos += 1;
+                continue;
+            }
+            if let Some(len) = non_ascii_id_char_len(self.input, self.pos) {
+                self.pos += len;
                 continue;
             }
             if b == b'-' {

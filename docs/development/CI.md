@@ -162,6 +162,11 @@ Pull requests build every harness and replay every committed seed, corpus entry,
 regression without mutation. Only scheduled and manually dispatched fuzz runs perform randomized
 discovery.
 
+Performance contract jobs use the pull request's merge revision so the checked-out Cargo features
+match the workflow's build recipes even when the contributor branch predates a feature change.
+Measurement jobs retain the actual base and head revisions, with lane descriptors loaded from the
+head checkout. Manual contract runs honor the explicit head repository and revision inputs.
+
 The performance workflow selects regression and frontmatter descriptors into one measurement
 matrix. `tools/bench/performance_lanes.json` owns the lane recipes, labels, scheduled set, and manual
 selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the

@@ -1,4 +1,4 @@
-#![cfg(feature = "svg")]
+#![cfg(all(feature = "svg", feature = "diagram-flowchart"))]
 
 use std::collections::HashSet;
 use std::fs;

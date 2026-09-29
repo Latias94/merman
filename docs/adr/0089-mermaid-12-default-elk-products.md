@@ -4,7 +4,9 @@
 
 Accepted for `0.8.0-alpha.7`. Supersedes the product-default selections in ADR-0085 and
 ADR-0088. Their explicit feature aggregates, artifact-specific license boundaries, and Rustdoc
-math opt-in decision remain in force.
+math opt-in decision remain in force. [ADR-0091](0091-selectable-diagram-families.md) adds
+`all-diagrams` to these product defaults and migrates artifact recipes to schema 2. The original
+feature selections and schema-1 reference below record this earlier decision.
 
 ## Date
 

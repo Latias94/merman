@@ -1449,7 +1449,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-gantt"))]
 mod tests {
     use super::{
         ElapsedTickState, ceil_elapsed_tick_start_with, ceil_tick_start, format_axis_tick_label,

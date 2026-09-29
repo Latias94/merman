@@ -503,17 +503,20 @@ fn assert_capability_catalog(
         catalog
             .get("registry")
             .expect("validated Typst capability catalog"),
-        &["diagram_family_count"],
+        &["diagram_family_count", "diagram_families"],
         "Typst registry catalog",
     )?;
-    if registry
-        .get("diagram_family_count")
-        .and_then(JsonValue::as_u64)
-        .is_none_or(|count| count == 0)
-    {
-        return Err(smoke_error(
-            "Typst registry catalog must report a positive diagram family count",
-        ));
+    let diagram_families = string_array(
+        registry
+            .get("diagram_families")
+            .expect("validated registry catalog"),
+        "Typst compiled diagram families",
+    )?;
+    if diagram_families != artifact.diagram_families {
+        return Err(smoke_error(format!(
+            "Typst parser families do not match artifact `{}`: expected {:?}, found {diagram_families:?}",
+            artifact.id, artifact.diagram_families
+        )));
     }
 
     let resources = required_object(
@@ -1332,6 +1335,7 @@ mod tests {
             "output_contracts": output_contracts,
             "registry": {
                 "diagram_family_count": 35,
+                "diagram_families": artifact.diagram_families,
                 "future_registry_metadata": true,
             },
             "resources": {

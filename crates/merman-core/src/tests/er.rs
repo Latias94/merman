@@ -505,6 +505,102 @@ fn parse_diagram_er_relationship_word_aliases_match_upstream_spec_minimally() {
 }
 
 #[test]
+fn parse_diagram_er_entity_names_may_start_with_cardinality_words() {
+    // Mermaid's lexer matches `many`, `one`, `to` (and the multi-word aliases) only at a word
+    // boundary (`/^(?:to\b)/i`), so `tokens` or `oneshot` are plain entity names and labels.
+    let engine = Engine::new();
+    for name in [
+        "tokens",
+        "topic",
+        "total",
+        "toy",
+        "oneshot",
+        "manyToMany",
+        "many_items",
+        "TOTAL",
+    ] {
+        let text = format!("erDiagram\nA ||--o{{ {name} : has\n{name} ||--|| B : {name}\n");
+        let res = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+            .unwrap();
+        let entities = res.model["entities"].as_object().unwrap();
+        assert_eq!(entities.len(), 3, "{name}");
+        assert!(entities.get(name).is_some(), "{name}");
+        let rels = res.model["relationships"].as_array().unwrap();
+        assert_eq!(rels.len(), 2, "{name}");
+        assert_eq!(rels[1]["roleA"], json!(name), "{name}");
+    }
+
+    // A word alias followed by a name that starts with a cardinality word.
+    let text = "erDiagram\nA one to many tokens : has\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    assert!(res.model["entities"].get("tokens").is_some());
+    let rels = res.model["relationships"].as_array().unwrap();
+    assert_eq!(rels[0]["relSpec"]["cardA"], json!("ZERO_OR_MORE"));
+    assert_eq!(rels[0]["relSpec"]["cardB"], json!("ONLY_ONE"));
+}
+
+#[test]
+fn parse_diagram_er_cardinality_suffixes_require_a_word_boundary() {
+    let engine = Engine::new();
+    for (cardinality, expected) in [
+        ("|o", "ZERO_OR_ONE"),
+        ("}o", "ZERO_OR_MORE"),
+        ("one or zero", "ZERO_OR_ONE"),
+        ("zero or one", "ZERO_OR_ONE"),
+        ("one or more", "ONE_OR_MORE"),
+        ("one or many", "ONE_OR_MORE"),
+        ("zero or more", "ZERO_OR_MORE"),
+        ("zero or many", "ZERO_OR_MORE"),
+        ("only one", "ONLY_ONE"),
+    ] {
+        let text = format!("erDiagram\nA ||--{cardinality} B : has\n");
+        let res = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+            .unwrap_or_else(|e| panic!("{cardinality}: {e}"))
+            .unwrap();
+        assert_eq!(
+            res.model["relationships"][0]["relSpec"]["cardA"],
+            json!(expected),
+            "{cardinality}"
+        );
+        assert!(res.model["entities"].get("B").is_some(), "{cardinality}");
+
+        // Without a boundary, consuming the cardinality would silently create entity B.
+        let text = format!("erDiagram\nA ||--{cardinality}B : has\n");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::strict())).is_err(),
+            "{cardinality}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_er_cardinality_word_boundary_is_ascii() {
+    // `\b` in Mermaid's (non-Unicode) regexes treats `-`, `.` and non-ASCII characters as word
+    // boundaries, so these stay cardinality words and the lines are rejected, as in Mermaid.
+    let engine = Engine::new();
+    for line in [
+        "A ||--o{ to : has",
+        "A ||--o{ one : has",
+        "A ||--o{ many : has",
+        "A ||--o{ to注文 : has",
+        "A ||--o{ B : one-to-one",
+        // Used to be accepted with the entity silently renamed to `rous` / `self`.
+        "A one to onerous : x",
+        "A only one to oneself : has",
+        "A one optionally toone B : has",
+    ] {
+        let text = format!("erDiagram\n{line}\n");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::strict())).is_err(),
+            "{line}"
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_er_keeps_multi_digit_entity_after_numeric_cardinality() {
     let engine = Engine::new();
     let text = "erDiagram\na many to 1 12: label\n";

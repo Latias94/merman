@@ -6,12 +6,49 @@
       {
         "id": "python-uniffi-native",
         "semantic_target": "native",
+        "diagram_families": [
+          "agentflow",
+          "architecture",
+          "block",
+          "c4",
+          "class",
+          "cynefin",
+          "er",
+          "eventmodeling",
+          "flowchart",
+          "gantt",
+          "gitGraph",
+          "info",
+          "ishikawa",
+          "journey",
+          "kanban",
+          "mindmap",
+          "packet",
+          "pie",
+          "quadrantChart",
+          "radar",
+          "railroad",
+          "requirement",
+          "sankey",
+          "sequence",
+          "state",
+          "swimlane",
+          "timeline",
+          "treeView",
+          "treemap",
+          "usecase",
+          "venn",
+          "wardley",
+          "xychart",
+          "zenuml"
+        ],
         "cargo": {
           "package": "merman-uniffi",
           "manifest": "crates/merman-uniffi/Cargo.toml",
           "profile": "native-distribution",
           "default_features": false,
           "features": [
+            "all-diagrams",
             "analysis",
             "ascii",
             "layout-cytoscape",
@@ -65,7 +102,7 @@
     "offline": true,
     "cargo_lock_sha256": "463fc173ca572c039759744224b9425adbf9ae4e16e11da2229015d5224d9eab",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "faa968e9eb96acadd4dcf8492f59ac264fd975be3685cc5ae236c98306c2754b"
+    "artifact_bundle_sha256": "ffaa752f5f8893a9bfe30ff4a90481ca6ef6da58b411f0a4c1bb94aa2fd78aba"
   },
   "target_dependency_closures": [
     {

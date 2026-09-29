@@ -9,7 +9,7 @@ owners rather than being duplicated across Markdown files.
 | Task | Start here |
 | --- | --- |
 | Evaluate Merman or run a first example | [Project overview](../README.md) |
-| Choose Rust features, outputs, or artifact profiles | [Capability guide](FEATURES.md) |
+| Choose Rust families, features, outputs, or artifact profiles | [Capability guide](FEATURES.md) and [family selection ADR](adr/0091-selectable-diagram-families.md) |
 | Choose a registry package or delivery channel | [Package surface guide](release/PACKAGE_SURFACES.md) |
 | Integrate a browser, Node.js, editor, linter, or Rust host | [Integration guide](integrations/README.md) |
 | Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |
@@ -26,7 +26,7 @@ owners rather than being duplicated across Markdown files.
 | --- | --- | --- |
 | Current authority | Defines current architecture, policy, or supported behavior. | [`adr/`](adr/), [`alignment/STATUS.md`](alignment/STATUS.md), [`workstreams/PARITY_BOUNDARY.md`](workstreams/PARITY_BOUNDARY.md) |
 | Operator guide | Gives a maintained procedure for contributors or release operators. | [`release/RELEASING.md`](release/RELEASING.md), [`release/MERMAID_UPGRADE_PLAYBOOK.md`](release/MERMAID_UPGRADE_PLAYBOOK.md), [`rendering/UPSTREAM_SVG_BASELINES.md`](rendering/UPSTREAM_SVG_BASELINES.md) |
-| Machine input | Is consumed as structured data by code or automation at an owner path. | [`../capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json), [`../capabilities/artifact-profiles-v1.json`](../capabilities/artifact-profiles-v1.json), [`../tools/upstreams/REPOS.lock.json`](../tools/upstreams/REPOS.lock.json) |
+| Machine input | Is consumed as structured data by code or automation at an owner path. | [`../capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json), [`../capabilities/artifact-profiles-v2.json`](../capabilities/artifact-profiles-v2.json), [`../tools/upstreams/REPOS.lock.json`](../tools/upstreams/REPOS.lock.json) |
 | Implementation plan or workstream | Records a scoped design or active implementation effort. Check its explicit status before treating it as current guidance. | [`plans/`](plans/), [`workstreams/`](workstreams/) |
 | Historical report | Preserves a dated measurement, release checkpoint, or investigation without claiming to be current guidance. | [`release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md`](release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md), [`performance/`](performance/), [`research/`](research/) |
 | Archived history | Preserves completed or superseded context for durable links; removed journals remain available in Git history. | [`ARCHIVE.md`](ARCHIVE.md) |

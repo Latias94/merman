@@ -991,7 +991,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         fmt(w),
                         fmt(h)
                     );
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
+                    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
                         &mut out, rel_text, true,
                     );
                     out.push_str("</g></g></g>");
@@ -1026,7 +1026,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         escape_xml_display(&edge_dom_id)
                     );
                     out.push_str(r#" transform="translate(0, 0)"><g><rect class="background" style="" x="0" y="-1" width="0" height="0"/>"#);
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
+                    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
                         &mut out, "", true,
                     );
                     out.push_str("</g></g></g>");

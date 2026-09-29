@@ -1,4 +1,4 @@
-use super::super::state::StateRoughRectSpec;
+use super::super::roughjs_common::RoughRectSpec;
 use super::super::*;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
@@ -863,7 +863,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             fmt(x),
             fmt(y + n.height)
         );
-        let stroke_path = roughjs_paths_for_rect(StateRoughRectSpec {
+        let stroke_path = roughjs_paths_for_rect(RoughRectSpec {
             x,
             y,
             w: n.width,
@@ -956,7 +956,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if look == "neo" {
                 // requirementBox.ts uses a closed polygon of height 0.001 so its
                 // gradient stroke has a nonzero bounding box, with a separate solid fill.
-                let (fill_d, stroke_d) = roughjs_paths_for_rect(StateRoughRectSpec {
+                let (fill_d, stroke_d) = roughjs_paths_for_rect(RoughRectSpec {
                     x,
                     y: divider_y,
                     w: n.width,

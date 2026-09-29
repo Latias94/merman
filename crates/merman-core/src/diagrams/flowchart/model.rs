@@ -34,6 +34,7 @@ pub struct FlowchartModel {
 }
 
 impl FlowchartModel {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -81,14 +82,17 @@ impl FlowchartRenderLabelSources {
             .unwrap_or(subgraph.title.as_str())
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_node(&mut self, id: String, source: String) {
         self.nodes.insert(id, source);
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_edge(&mut self, id: String, source: String) {
         self.edges.insert(id, source);
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_subgraph(
         &mut self,
         id: String,
@@ -104,6 +108,7 @@ impl FlowchartRenderLabelSources {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.nodes
             .iter()
@@ -156,6 +161,7 @@ impl FlowchartRenderStyleSources {
         self.subgraph_vertices.contains_key(id)
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert(
         &mut self,
         id: String,
@@ -171,6 +177,7 @@ impl FlowchartRenderStyleSources {
         );
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.subgraph_vertices
             .iter()
@@ -217,6 +224,7 @@ impl FlowchartRenderContext {
         }
     }
 
+    #[cfg(feature = "diagram-agentflow")]
     pub(crate) fn set_node_dom_indices(
         &mut self,
         indices: impl IntoIterator<Item = (String, usize)>,
@@ -230,6 +238,7 @@ impl FlowchartRenderContext {
         self.node_dom_indices.get(id).copied()
     }
 
+    #[cfg(feature = "diagram-agentflow")]
     pub(crate) fn set_collapsed_replacements(
         &mut self,
         replacements: impl IntoIterator<Item = (String, String)>,
@@ -237,6 +246,7 @@ impl FlowchartRenderContext {
         self.collapsed_replacements = replacements.into_iter().collect();
     }
 
+    #[cfg(feature = "diagram-agentflow")]
     pub(crate) fn set_subgraph_color_ordinals(
         &mut self,
         ordinals: impl IntoIterator<Item = (String, usize)>,
@@ -298,6 +308,7 @@ impl FlowchartRenderContext {
         self.collapsed_replacements.get(id).map(String::as_str)
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.labels
             .retained_bytes()
@@ -748,6 +759,7 @@ struct FlowSubgraphVertexStyleSource {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct Node {
     pub id: String,
     pub provenance: FlowNodeProvenance,
@@ -774,12 +786,14 @@ pub(crate) struct Node {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) enum FlowNodeSyntax {
     BareReference,
     ExplicitDefinition,
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct Edge {
     pub from: String,
     pub to: String,
@@ -798,6 +812,13 @@ pub(crate) struct Edge {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct LinkToken {
     pub end: String,
     pub start_marker: FlowEdgeMarker,
@@ -807,6 +828,7 @@ pub(crate) struct LinkToken {
     pub length: usize,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl LinkToken {
     pub(crate) const fn compatibility_edge_type(&self) -> &'static str {
         match (self.start_marker, self.end_marker) {
@@ -833,6 +855,7 @@ impl LinkToken {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct EdgeDefaults {
     pub style: Vec<String>,
     pub interpolate: Option<String>,

@@ -1,10 +1,13 @@
 mod bounds;
 mod config;
 mod direction;
+#[cfg(feature = "diagram-mindmap")]
 mod flat;
 mod geometry;
 
+#[cfg(feature = "diagram-mindmap")]
 pub(crate) use flat::layout_flat;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod prepare;
 mod routing;
 mod sugiyama;
@@ -12,14 +15,19 @@ mod work_budget;
 mod working;
 
 use crate::Result;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::flowchart::FlowchartConfigView;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::math::MathRenderer;
 use crate::model::{
     Bounds, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneLayout, SwimlaneNodeLayout,
 };
 use crate::resources::OperationWorkMeter;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::text::TextMeasurer;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::MermaidConfig;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -59,6 +67,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
     Bounds::from_points(points)
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,

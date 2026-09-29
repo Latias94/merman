@@ -375,18 +375,6 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
-pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
-    out: &mut String,
-    text: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
-        out,
-        text,
-        include_style,
-    );
-}
-
 pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
     out: &mut String,
     include_style: bool,

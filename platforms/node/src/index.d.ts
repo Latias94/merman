@@ -160,6 +160,7 @@ export interface MermanRuntimeCatalog {
   output_contracts: MermanRuntimeOutputContract[];
   registry: {
     diagram_family_count: number;
+    diagram_families: string[];
     [key: string]: unknown;
   };
   resources: {

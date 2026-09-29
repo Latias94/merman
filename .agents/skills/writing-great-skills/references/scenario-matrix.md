@@ -1,6 +1,6 @@
 # Workflow Recommendation Framework
 
-Use this as a report skeleton, not a catalog of current products. Fill every selection from the target revision's release facts: `capabilities/feature-surface-v1.json`, `capabilities/artifact-profiles-v1.json`, `platforms/web/web-surface-descriptor.json`, package manifests, release workflows, and the relevant runtime or admission evidence.
+Use this as a report skeleton, not a catalog of current products. Fill every selection from the target revision's release facts: `capabilities/feature-surface-v1.json`, `capabilities/artifact-profiles-v2.json`, `platforms/web/web-surface-descriptor.json`, package manifests, release workflows, and the relevant runtime or admission evidence.
 
 | User need | Selected surface | Exact target selection | Evidence | User-visible trade-off | Migration action |
 | --- | --- | --- | --- | --- | --- |

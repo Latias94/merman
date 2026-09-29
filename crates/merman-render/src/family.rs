@@ -1,18 +1,27 @@
-use crate::environment::{RenderSession, TextMeasurementPhase};
+use crate::environment::RenderSession;
+#[cfg(feature = "diagram-sequence")]
+use crate::environment::TextMeasurementPhase;
 use crate::model::*;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+use crate::presentation::FlowchartPresentationPolicy;
 use crate::presentation::{
-    FlowchartPresentationPolicy, PresentationAspectResolution, PresentationProfile,
-    PresentationRenderPolicy,
+    PresentationAspectResolution, PresentationProfile, PresentationRenderPolicy,
 };
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     FlowchartEdgeTraceCollector, ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline,
     SvgPostprocessExecution, SvgPostprocessMetadata, SvgRenderOptions,
 };
+#[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
 use merman_core::OperationPhase;
 use merman_core::diagrams;
+#[cfg(feature = "diagram-class")]
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
 use std::fmt;
@@ -210,6 +219,11 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     render_context: diagrams::flowchart::FlowchartRenderContext,
@@ -217,6 +231,11 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     policy: Option<FlowchartPresentationPolicy>,
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 impl<L> FlowchartFamilyArtifact<L> {
     pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
         &self.pair
@@ -237,13 +256,17 @@ impl<L> FlowchartFamilyArtifact<L> {
 
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
+    #[cfg(feature = "diagram-agentflow")]
     Agentflow {
         semantic: Box<diagrams::agentflow::AgentflowDiagramRenderModel>,
         flow: Box<FlowchartFamilyArtifact<FlowchartLayout>>,
     },
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
+    #[cfg(feature = "diagram-mindmap")]
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
+    #[cfg(feature = "diagram-state")]
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
+    #[cfg(feature = "diagram-sequence")]
     Sequence(
         Box<
             FamilyPair<
@@ -252,6 +275,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-zenuml")]
     Zenuml(
         Box<
             FamilyPair<
@@ -260,9 +284,12 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
+    #[cfg(feature = "diagram-architecture")]
     Architecture(
         Box<
             FamilyPair<
@@ -271,13 +298,19 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-class")]
     Class(Box<FamilyPair<ClassDiagram, ClassDiagramLayout>>),
+    #[cfg(feature = "diagram-c4")]
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
+    #[cfg(feature = "diagram-cynefin")]
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
+    #[cfg(feature = "diagram-wardley")]
     Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
+    #[cfg(feature = "diagram-railroad")]
     Railroad(
         Box<FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>>,
     ),
+    #[cfg(feature = "diagram-kanban")]
     Kanban(
         Box<
             FamilyPair<
@@ -286,13 +319,19 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-gantt")]
     Gantt(Box<FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>>),
+    #[cfg(feature = "diagram-pie")]
     Pie(Box<FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>>),
+    #[cfg(feature = "diagram-packet")]
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
+    #[cfg(feature = "diagram-timeline")]
     Timeline(
         Box<FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>>,
     ),
+    #[cfg(feature = "diagram-journey")]
     Journey(Box<FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>>),
+    #[cfg(feature = "diagram-requirement")]
     Requirement(
         Box<
             FamilyPair<
@@ -301,12 +340,19 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-sankey")]
     Sankey(Box<FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>>),
+    #[cfg(feature = "diagram-radar")]
     Radar(Box<FamilyPair<diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout>>),
+    #[cfg(feature = "diagram-info")]
     Info(Box<FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>>),
+    #[cfg(feature = "diagram-treemap")]
     Treemap(Box<FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>>),
+    #[cfg(feature = "diagram-block")]
     Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
+    #[cfg(feature = "diagram-er")]
     Er(Box<FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>>),
+    #[cfg(feature = "diagram-quadrant-chart")]
     QuadrantChart(
         Box<
             FamilyPair<
@@ -315,14 +361,19 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-xychart")]
     XyChart(Box<FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>>),
+    #[cfg(feature = "diagram-git-graph")]
     GitGraph(Box<FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>>),
+    #[cfg(feature = "diagram-tree-view")]
     TreeView(
         Box<FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>>,
     ),
+    #[cfg(feature = "diagram-ishikawa")]
     Ishikawa(
         Box<FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>>,
     ),
+    #[cfg(feature = "diagram-event-modeling")]
     EventModeling(
         Box<
             FamilyPair<
@@ -331,7 +382,9 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
+    #[cfg(feature = "diagram-venn")]
     Venn(Box<FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>>),
+    #[cfg(feature = "diagram-usecase")]
     Usecase(
         Box<
             FamilyPair<
@@ -344,43 +397,77 @@ pub(crate) enum BuiltinFamilyArtifact {
 
 #[derive(serde::Serialize)]
 enum LayoutProjection<'a> {
+    #[cfg(feature = "diagram-agentflow")]
     AgentflowDiagram(&'a FlowchartLayout),
+    #[cfg(feature = "diagram-block")]
     BlockDiagram(&'a BlockDiagramLayout),
+    #[cfg(feature = "diagram-requirement")]
     RequirementDiagram(&'a RequirementDiagramLayout),
     #[cfg(feature = "layout-cytoscape")]
+    #[cfg(feature = "diagram-architecture")]
     ArchitectureDiagram(&'a ArchitectureDiagramLayout),
+    #[cfg(feature = "diagram-mindmap")]
     MindmapDiagram(&'a MindmapDiagramLayout),
+    #[cfg(feature = "diagram-sankey")]
     SankeyDiagram(&'a SankeyDiagramLayout),
+    #[cfg(feature = "diagram-radar")]
     RadarDiagram(&'a RadarDiagramLayout),
+    #[cfg(feature = "diagram-treemap")]
     TreemapDiagram(&'a TreemapDiagramLayout),
+    #[cfg(feature = "diagram-venn")]
     VennDiagram(&'a VennDiagramLayout),
+    #[cfg(feature = "diagram-usecase")]
     UsecaseDiagram(&'a crate::usecase::UsecaseDiagramLayout),
+    #[cfg(feature = "diagram-xychart")]
     XyChartDiagram(&'a XyChartDiagramLayout),
+    #[cfg(feature = "diagram-quadrant-chart")]
     QuadrantChartDiagram(&'a QuadrantChartDiagramLayout),
     #[serde(rename = "FlowchartV2")]
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Flowchart(&'a FlowchartLayout),
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     SwimlaneDiagram(&'a SwimlaneLayout),
     #[serde(rename = "StateDiagramV2")]
+    #[cfg(feature = "diagram-state")]
     StateDiagram(&'a StateDiagramLayout),
     #[serde(rename = "ClassDiagramV2")]
+    #[cfg(feature = "diagram-class")]
     ClassDiagram(&'a ClassDiagramLayout),
+    #[cfg(feature = "diagram-er")]
     ErDiagram(&'a ErDiagramLayout),
+    #[cfg(feature = "diagram-sequence")]
     SequenceDiagram(&'a SequenceDiagramLayout),
+    #[cfg(feature = "diagram-zenuml")]
     ZenumlDiagram(&'a crate::zenuml::ZenumlDiagramLayout),
+    #[cfg(feature = "diagram-info")]
     InfoDiagram(&'a InfoDiagramLayout),
+    #[cfg(feature = "diagram-packet")]
     PacketDiagram(&'a PacketDiagramLayout),
+    #[cfg(feature = "diagram-timeline")]
     TimelineDiagram(&'a TimelineDiagramLayout),
+    #[cfg(feature = "diagram-pie")]
     PieDiagram(&'a PieDiagramLayout),
+    #[cfg(feature = "diagram-journey")]
     JourneyDiagram(&'a JourneyDiagramLayout),
+    #[cfg(feature = "diagram-kanban")]
     KanbanDiagram(&'a KanbanDiagramLayout),
+    #[cfg(feature = "diagram-git-graph")]
     GitGraphDiagram(&'a GitGraphDiagramLayout),
+    #[cfg(feature = "diagram-tree-view")]
     TreeViewDiagram(&'a TreeViewDiagramLayout),
+    #[cfg(feature = "diagram-ishikawa")]
     IshikawaDiagram(&'a IshikawaDiagramLayout),
+    #[cfg(feature = "diagram-event-modeling")]
     EventModelingDiagram(&'a EventModelingDiagramLayout),
+    #[cfg(feature = "diagram-cynefin")]
     CynefinDiagram(&'a CynefinDiagramLayout),
+    #[cfg(feature = "diagram-wardley")]
     WardleyDiagram(&'a WardleyDiagramLayout),
+    #[cfg(feature = "diagram-railroad")]
     RailroadDiagram(&'a RailroadDiagramLayout),
+    #[cfg(feature = "diagram-gantt")]
     GanttDiagram(&'a GanttDiagramLayout),
+    #[cfg(feature = "diagram-c4")]
     C4Diagram(&'a C4DiagramLayout),
     ErrorDiagram(&'a ErrorDiagramLayout),
 }
@@ -444,41 +531,75 @@ fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value
 impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { .. } => RenderFamilyKind::Agentflow,
             Self::Error(_) => RenderFamilyKind::Error,
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
+            #[cfg(feature = "diagram-state")]
             Self::State(_) => RenderFamilyKind::State,
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(_) => RenderFamilyKind::Sequence,
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(_) => RenderFamilyKind::Zenuml,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(_) => RenderFamilyKind::Flowchart,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(_) => RenderFamilyKind::Swimlane,
             #[cfg(feature = "layout-cytoscape")]
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(_) => RenderFamilyKind::Architecture,
+            #[cfg(feature = "diagram-class")]
             Self::Class(_) => RenderFamilyKind::Class,
+            #[cfg(feature = "diagram-c4")]
             Self::C4(_) => RenderFamilyKind::C4,
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(_) => RenderFamilyKind::Cynefin,
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(_) => RenderFamilyKind::Wardley,
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(_) => RenderFamilyKind::Railroad,
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(_) => RenderFamilyKind::Kanban,
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(_) => RenderFamilyKind::Gantt,
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(_) => RenderFamilyKind::Pie,
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => RenderFamilyKind::Packet,
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(_) => RenderFamilyKind::Timeline,
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(_) => RenderFamilyKind::Journey,
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(_) => RenderFamilyKind::Requirement,
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(_) => RenderFamilyKind::Sankey,
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(_) => RenderFamilyKind::Radar,
+            #[cfg(feature = "diagram-info")]
             Self::Info(_) => RenderFamilyKind::Info,
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(_) => RenderFamilyKind::Treemap,
+            #[cfg(feature = "diagram-block")]
             Self::Block(_) => RenderFamilyKind::Block,
+            #[cfg(feature = "diagram-er")]
             Self::Er(_) => RenderFamilyKind::Er,
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(_) => RenderFamilyKind::QuadrantChart,
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(_) => RenderFamilyKind::XyChart,
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(_) => RenderFamilyKind::GitGraph,
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(_) => RenderFamilyKind::TreeView,
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(_) => RenderFamilyKind::Ishikawa,
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(_) => RenderFamilyKind::EventModeling,
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(_) => RenderFamilyKind::Venn,
+            #[cfg(feature = "diagram-usecase")]
             Self::Usecase(_) => RenderFamilyKind::Usecase,
         }
     }
@@ -488,82 +609,150 @@ impl BuiltinFamilyArtifact {
         metadata: &ParseMetadata,
     ) -> merman_core::Result<serde_json::Value> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { semantic, .. } => semantic.compatibility_json(metadata),
             Self::Error(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-state")]
             Self::State(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-class")]
             Self::Class(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-c4")]
             Self::C4(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-info")]
             Self::Info(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-block")]
             Self::Block(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-er")]
             Self::Er(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-usecase")]
             Self::Usecase(pair) => pair.compatibility_json(metadata),
         }
     }
 
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { flow, .. } => LayoutProjection::AgentflowDiagram(flow.pair.layout()),
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
+            #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
+            #[cfg(feature = "diagram-state")]
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
+            #[cfg(feature = "diagram-sequence")]
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
+            #[cfg(feature = "diagram-zenuml")]
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
+            #[cfg(feature = "diagram-architecture")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
+            #[cfg(feature = "diagram-class")]
             Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
+            #[cfg(feature = "diagram-c4")]
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
+            #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
+            #[cfg(feature = "diagram-wardley")]
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
+            #[cfg(feature = "diagram-railroad")]
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
+            #[cfg(feature = "diagram-kanban")]
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
+            #[cfg(feature = "diagram-gantt")]
             Self::Gantt(pair) => LayoutProjection::GanttDiagram(pair.layout()),
+            #[cfg(feature = "diagram-pie")]
             Self::Pie(pair) => LayoutProjection::PieDiagram(pair.layout()),
+            #[cfg(feature = "diagram-packet")]
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
+            #[cfg(feature = "diagram-timeline")]
             Self::Timeline(pair) => LayoutProjection::TimelineDiagram(pair.layout()),
+            #[cfg(feature = "diagram-journey")]
             Self::Journey(pair) => LayoutProjection::JourneyDiagram(pair.layout()),
+            #[cfg(feature = "diagram-requirement")]
             Self::Requirement(pair) => LayoutProjection::RequirementDiagram(pair.layout().layout()),
+            #[cfg(feature = "diagram-sankey")]
             Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
+            #[cfg(feature = "diagram-radar")]
             Self::Radar(pair) => LayoutProjection::RadarDiagram(pair.layout()),
+            #[cfg(feature = "diagram-info")]
             Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
+            #[cfg(feature = "diagram-treemap")]
             Self::Treemap(pair) => LayoutProjection::TreemapDiagram(pair.layout()),
+            #[cfg(feature = "diagram-block")]
             Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
+            #[cfg(feature = "diagram-er")]
             Self::Er(pair) => LayoutProjection::ErDiagram(pair.layout()),
+            #[cfg(feature = "diagram-quadrant-chart")]
             Self::QuadrantChart(pair) => LayoutProjection::QuadrantChartDiagram(pair.layout()),
+            #[cfg(feature = "diagram-xychart")]
             Self::XyChart(pair) => LayoutProjection::XyChartDiagram(pair.layout()),
+            #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(pair) => LayoutProjection::GitGraphDiagram(pair.layout()),
+            #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(pair) => LayoutProjection::TreeViewDiagram(pair.layout()),
+            #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
+            #[cfg(feature = "diagram-event-modeling")]
             Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
+            #[cfg(feature = "diagram-venn")]
             Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
+            #[cfg(feature = "diagram-usecase")]
             Self::Usecase(pair) => LayoutProjection::UsecaseDiagram(pair.layout().layout()),
         }
     }
@@ -591,6 +780,7 @@ pub struct GanttTimeAxisDiagnostics {
 }
 
 impl GanttTimeAxisDiagnostics {
+    #[cfg(feature = "diagram-gantt")]
     fn from_layout(layout: &GanttDiagramLayout) -> Option<Self> {
         let min_ms = layout.tasks.iter().map(|task| task.start_ms).min()?;
         let max_ms = layout.tasks.iter().map(|task| task.end_ms).max()?;
@@ -811,10 +1001,13 @@ impl FamilyRenderArtifact {
     }
 
     pub fn gantt_time_axis_diagnostics(&self) -> Option<GanttTimeAxisDiagnostics> {
-        let BuiltinFamilyArtifact::Gantt(pair) = &self.family else {
-            return None;
-        };
-        GanttTimeAxisDiagnostics::from_layout(pair.layout())
+        match &self.family {
+            #[cfg(feature = "diagram-gantt")]
+            BuiltinFamilyArtifact::Gantt(pair) => {
+                GanttTimeAxisDiagnostics::from_layout(pair.layout())
+            }
+            _ => None,
+        }
     }
 
     pub fn layout_json(&self) -> Result<serde_json::Value> {
@@ -932,6 +1125,7 @@ fn render_family_artifact_svg(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
+    #[cfg(feature = "diagram-agentflow")]
     // Agentflow is adapted to the Flowchart renderer, while Mermaid's config namespace remains
     // `agentflow`. Keep the public metadata untouched and project only the renderer input.
     let projected_metadata = if matches!(&artifact.family, BuiltinFamilyArtifact::Agentflow { .. })
@@ -942,8 +1136,11 @@ fn render_family_artifact_svg(
     } else {
         None
     };
+    #[cfg(feature = "diagram-agentflow")]
     let metadata = projected_metadata.as_ref().unwrap_or(&artifact.metadata);
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(not(feature = "diagram-agentflow"))]
+    let metadata = &artifact.metadata;
+    #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             pair,
@@ -975,6 +1172,11 @@ fn prepare_pair<S, L>(
 struct FlowchartSvgLabelPreparation(bool);
 
 impl FlowchartSvgLabelPreparation {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     const fn enabled(self) -> bool {
         self.0
     }
@@ -983,6 +1185,11 @@ impl FlowchartSvgLabelPreparation {
 const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
     FlowchartSvgLabelPreparation(true);
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     render_context: diagrams::flowchart::FlowchartRenderContext,
@@ -1009,6 +1216,7 @@ fn prepare_flowchart_artifact<L>(
     }))
 }
 
+#[cfg(feature = "diagram-agentflow")]
 fn project_agentflow_flowchart_config(
     config: &merman_core::MermaidConfig,
 ) -> merman_core::MermaidConfig {
@@ -1033,6 +1241,7 @@ fn project_agentflow_flowchart_config(
     projected
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
     model
         .nodes
@@ -1048,6 +1257,7 @@ fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel)
         .any(crate::math::contains_delimited_math)
 }
 
+#[cfg(feature = "diagram-sequence")]
 fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramRenderModel) -> bool {
     model
         .actors
@@ -1058,6 +1268,7 @@ fn sequence_requires_math(model: &diagrams::sequence::SequenceDiagramRenderModel
         .any(crate::math::contains_delimited_math)
 }
 
+#[cfg(feature = "diagram-mindmap")]
 fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -> bool {
     model
         .nodes
@@ -1068,6 +1279,7 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
+        #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => model
             .vertices
             .iter()
@@ -1086,7 +1298,9 @@ fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
                     .filter_map(|connector| connector.title.as_deref()),
             )
             .any(crate::math::contains_delimited_math),
+        #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
             || semantic_flowchart_requires_math(model),
             |render_context| {
@@ -1094,7 +1308,9 @@ fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
                     .requires_math()
             },
         ),
+        #[cfg(feature = "diagram-mindmap")]
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
+        #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
     }
@@ -1104,30 +1320,51 @@ fn capability_is_available(capability: RenderCapability, session: &RenderSession
     session.supports_capability(capability)
 }
 
+#[allow(
+    unused_variables,
+    reason = "Dispatch inputs depend on the selected diagram families."
+)]
 fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> {
     let mut required = Vec::with_capacity(2);
     let meta = parsed.metadata();
     let model = parsed.model();
     let effective_config = &meta.effective_config;
     match model {
+        #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             required.push(RenderCapability::LayoutCytoscape);
         }
+        #[cfg(feature = "diagram-mindmap")]
         RenderSemanticModel::Mindmap(_) => {
             if let Some(capability) = crate::mindmap::required_layout_capability(effective_config) {
                 required.push(capability);
             }
         }
-        RenderSemanticModel::Flowchart(_)
-        | RenderSemanticModel::Agentflow(_)
-        | RenderSemanticModel::Class(_)
-        | RenderSemanticModel::Usecase(_)
-        | RenderSemanticModel::State(_)
-        | RenderSemanticModel::Requirement(_)
-            if crate::uses_elk_layout(effective_config) =>
-        {
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(_) if crate::uses_elk_layout(effective_config) => {
             required.push(RenderCapability::LayoutElk);
         }
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(_) if crate::uses_elk_layout(effective_config) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        #[cfg(feature = "diagram-state")]
+        RenderSemanticModel::State(_) if crate::uses_elk_layout(effective_config) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        #[cfg(feature = "diagram-requirement")]
+        RenderSemanticModel::Requirement(_) if crate::uses_elk_layout(effective_config) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        RenderSemanticModel::Flowchart(_) if crate::uses_elk_layout(effective_config) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        #[cfg(feature = "diagram-class")]
+        RenderSemanticModel::Class(_) if crate::uses_elk_layout(effective_config) => {
+            required.push(RenderCapability::LayoutElk);
+        }
+        #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(_) if crate::er::uses_elk_layout(effective_config.as_value()) => {
             required.push(RenderCapability::LayoutElk);
         }
@@ -1138,6 +1375,53 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
         required.push(RenderCapability::Math);
     }
     required
+}
+
+/// Reports whether this renderer contains the logical family handler for a known diagram type.
+/// Optional layout and math capabilities are admitted separately during planning.
+#[allow(
+    clippy::match_like_matches_macro,
+    reason = "Each arm has a distinct feature condition that only coincides in all-family builds."
+)]
+pub fn supports_diagram_type(diagram_type: &str) -> bool {
+    match merman_core::diagram_type_family_kind(diagram_type) {
+        Some("error") => true,
+        Some("agentflow") => cfg!(feature = "diagram-agentflow"),
+        Some("usecase") => cfg!(feature = "diagram-usecase"),
+        Some("flowchart") => cfg!(feature = "diagram-flowchart"),
+        Some("swimlane") => cfg!(feature = "diagram-swimlane"),
+        Some("mindmap") => cfg!(feature = "diagram-mindmap"),
+        Some("architecture") => cfg!(feature = "diagram-architecture"),
+        Some("zenuml") => cfg!(feature = "diagram-zenuml"),
+        Some("sequence") => cfg!(feature = "diagram-sequence"),
+        Some("c4") => cfg!(feature = "diagram-c4"),
+        Some("kanban") => cfg!(feature = "diagram-kanban"),
+        Some("class") => cfg!(feature = "diagram-class"),
+        Some("er") => cfg!(feature = "diagram-er"),
+        Some("gantt") => cfg!(feature = "diagram-gantt"),
+        Some("info") => cfg!(feature = "diagram-info"),
+        Some("pie") => cfg!(feature = "diagram-pie"),
+        Some("requirement") => cfg!(feature = "diagram-requirement"),
+        Some("timeline") => cfg!(feature = "diagram-timeline"),
+        Some("gitGraph") => cfg!(feature = "diagram-git-graph"),
+        Some("state") => cfg!(feature = "diagram-state"),
+        Some("journey") => cfg!(feature = "diagram-journey"),
+        Some("quadrantChart") => cfg!(feature = "diagram-quadrant-chart"),
+        Some("sankey") => cfg!(feature = "diagram-sankey"),
+        Some("packet") => cfg!(feature = "diagram-packet"),
+        Some("xychart") => cfg!(feature = "diagram-xychart"),
+        Some("block") => cfg!(feature = "diagram-block"),
+        Some("eventmodeling") => cfg!(feature = "diagram-event-modeling"),
+        Some("treeView") => cfg!(feature = "diagram-tree-view"),
+        Some("radar") => cfg!(feature = "diagram-radar"),
+        Some("ishikawa") => cfg!(feature = "diagram-ishikawa"),
+        Some("treemap") => cfg!(feature = "diagram-treemap"),
+        Some("railroad") => cfg!(feature = "diagram-railroad"),
+        Some("venn") => cfg!(feature = "diagram-venn"),
+        Some("wardley") => cfg!(feature = "diagram-wardley"),
+        Some("cynefin") => cfg!(feature = "diagram-cynefin"),
+        _ => false,
+    }
 }
 
 fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
@@ -1162,6 +1446,11 @@ fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) 
         });
     }
 
+    if !supports_diagram_type(diagram_type) {
+        return Err(Error::UnsupportedDiagram {
+            diagram_type: diagram_type.to_owned(),
+        });
+    }
     session
         .work_meter()
         .preflight_parsed_render(parsed, OperationPhase::Layout)?;
@@ -1191,10 +1480,17 @@ pub fn plan_render_with_policy(
         .copied()
         .filter(|capability| !capability_is_available(*capability, session))
         .collect();
-    let flowchart_svg_applicable = matches!(
-        model,
-        RenderSemanticModel::Flowchart(_) | RenderSemanticModel::Agentflow(_)
-    ) && meta.effective_config.get_str("layout") != Some("swimlane");
+    let flowchart_svg_applicable = match model {
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        RenderSemanticModel::Flowchart(_) => {
+            meta.effective_config.get_str("layout") != Some("swimlane")
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(_) => {
+            meta.effective_config.get_str("layout") != Some("swimlane")
+        }
+        _ => false,
+    };
     let presentation_aspects = render_policy.resolve_aspects(
         flowchart_svg_applicable,
         crate::layout_backend::ElkRootAlgorithm::from_name(
@@ -1214,6 +1510,7 @@ pub fn plan_render_with_policy(
 }
 
 #[inline(never)]
+#[cfg(feature = "diagram-class")]
 fn prepare_class_family(
     model: ClassDiagram,
     meta: &ParseMetadata,
@@ -1226,6 +1523,7 @@ fn prepare_class_family(
 }
 
 #[inline(never)]
+#[cfg(feature = "diagram-class")]
 fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
@@ -1307,6 +1605,7 @@ fn prepare_with_render_policy_impl(
     let required_capabilities = capability_plan.required_capabilities().to_vec();
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
+    #[cfg(feature = "diagram-class")]
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         let artifact = prepare_class_render(parsed, options, required_capabilities, session)?;
         artifact.session.checkpoint(OperationPhase::Layout)?;
@@ -1325,6 +1624,10 @@ fn prepare_with_render_policy_impl(
 }
 
 #[inline(never)]
+#[allow(
+    unused_variables,
+    reason = "Dispatch inputs depend on the selected diagram families."
+)]
 fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
@@ -1334,6 +1637,7 @@ fn prepare_non_class_render(
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     let flowchart_label_sources = render_context.into_flowchart_render_context();
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
@@ -1349,6 +1653,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-mindmap")]
         RenderSemanticModel::Mindmap(model) => {
             BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
                 crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
@@ -1362,6 +1667,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-state")]
         RenderSemanticModel::State(model) => {
             BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
                 crate::state::layout_state_diagram_typed_with_work_meter(
@@ -1371,6 +1677,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => {
             let text_measurer = session
                 .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout);
@@ -1385,11 +1692,13 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-zenuml")]
         RenderSemanticModel::Zenuml(model) => {
             BuiltinFamilyArtifact::Zenuml(prepare_pair(model, |model| {
                 crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
             })?)
         }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         RenderSemanticModel::Flowchart(model)
             if meta.effective_config.get_str("layout") == Some("swimlane") =>
         {
@@ -1411,6 +1720,7 @@ fn prepare_non_class_render(
                 },
             )?)
         }
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         RenderSemanticModel::Flowchart(model) => {
             BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
                 model,
@@ -1429,6 +1739,7 @@ fn prepare_non_class_render(
             )?)
         }
         #[cfg(feature = "layout-cytoscape")]
+        #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
                 crate::architecture::layout_architecture_diagram_typed(
@@ -1441,15 +1752,18 @@ fn prepare_non_class_render(
             })?)
         }
         #[cfg(not(feature = "layout-cytoscape"))]
+        #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             return Err(Error::MissingCapability {
                 capability: RenderCapability::LayoutCytoscape,
                 diagram_type: diagram_type.to_string(),
             });
         }
+        #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(_) => {
             unreachable!("Class models use the stack-bounded family dispatch path")
         }
+        #[cfg(feature = "diagram-c4")]
         RenderSemanticModel::C4(model) => {
             BuiltinFamilyArtifact::C4(prepare_pair(model, |model| {
                 crate::c4::layout_c4_diagram_typed(
@@ -1462,6 +1776,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-cynefin")]
         RenderSemanticModel::Cynefin(model) => {
             BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
                 crate::cynefin::layout_cynefin_diagram_typed(
@@ -1471,6 +1786,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-wardley")]
         RenderSemanticModel::Wardley(model) => {
             BuiltinFamilyArtifact::Wardley(prepare_pair(model, |model| {
                 crate::wardley::layout_wardley_diagram_typed(
@@ -1481,6 +1797,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-railroad")]
         RenderSemanticModel::Railroad(model) => {
             BuiltinFamilyArtifact::Railroad(prepare_pair(model, |model| {
                 crate::railroad::layout_railroad_diagram_typed_for_type(
@@ -1491,6 +1808,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-kanban")]
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
                 crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
@@ -1501,6 +1819,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-gantt")]
         RenderSemanticModel::Gantt(model) => {
             BuiltinFamilyArtifact::Gantt(prepare_pair(model, |model| {
                 crate::gantt::layout_gantt_diagram_typed(
@@ -1513,6 +1832,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-pie")]
         RenderSemanticModel::Pie(model) => {
             BuiltinFamilyArtifact::Pie(prepare_pair(model, |model| {
                 crate::pie::layout_pie_diagram_typed(
@@ -1523,6 +1843,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-packet")]
         RenderSemanticModel::Packet(model) => {
             BuiltinFamilyArtifact::Packet(prepare_pair(model, |model| {
                 crate::packet::layout_packet_diagram_typed(
@@ -1533,6 +1854,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-timeline")]
         RenderSemanticModel::Timeline(model) => {
             BuiltinFamilyArtifact::Timeline(prepare_pair(model, |model| {
                 crate::timeline::layout_timeline_diagram_typed(
@@ -1542,6 +1864,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-journey")]
         RenderSemanticModel::Journey(model) => {
             BuiltinFamilyArtifact::Journey(prepare_pair(model, |model| {
                 crate::journey::layout_journey_diagram_typed(
@@ -1551,6 +1874,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-requirement")]
         RenderSemanticModel::Requirement(model) => {
             BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
                 crate::requirement::layout_requirement_diagram_typed_with_work_meter(
@@ -1563,6 +1887,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-sankey")]
         RenderSemanticModel::Sankey(model) => {
             BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
                 crate::sankey::layout_sankey_diagram_typed_with_work_meter(
@@ -1573,6 +1898,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-radar")]
         RenderSemanticModel::Radar(model) => {
             BuiltinFamilyArtifact::Radar(prepare_pair(model, |model| {
                 crate::radar::layout_radar_diagram_typed_with_work_meter(
@@ -1583,6 +1909,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-info")]
         RenderSemanticModel::Info(model) => {
             BuiltinFamilyArtifact::Info(prepare_pair(model, |model| {
                 crate::info::layout_info_diagram_typed(
@@ -1592,6 +1919,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-treemap")]
         RenderSemanticModel::Treemap(model) => {
             BuiltinFamilyArtifact::Treemap(prepare_pair(model, |model| {
                 crate::treemap::layout_treemap_diagram_typed(
@@ -1602,6 +1930,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => {
             BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {
                 crate::block::layout_block_diagram_typed(
@@ -1611,6 +1940,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(model) => {
             #[cfg(feature = "layout-elk")]
             {
@@ -1634,6 +1964,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-quadrant-chart")]
         RenderSemanticModel::QuadrantChart(model) => {
             BuiltinFamilyArtifact::QuadrantChart(prepare_pair(model, |model| {
                 crate::quadrantchart::layout_quadrantchart_diagram_typed(
@@ -1644,6 +1975,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-xychart")]
         RenderSemanticModel::XyChart(model) => {
             BuiltinFamilyArtifact::XyChart(prepare_pair(model, |model| {
                 crate::xychart::layout_xychart_diagram_typed(
@@ -1654,6 +1986,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-git-graph")]
         RenderSemanticModel::GitGraph(model) => {
             BuiltinFamilyArtifact::GitGraph(prepare_pair(model, |model| {
                 crate::gitgraph::layout_gitgraph_diagram_typed(
@@ -1663,6 +1996,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-tree-view")]
         RenderSemanticModel::TreeView(model) => {
             BuiltinFamilyArtifact::TreeView(prepare_pair(model, |model| {
                 crate::tree_view::layout_tree_view_diagram_typed(
@@ -1672,6 +2006,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-ishikawa")]
         RenderSemanticModel::Ishikawa(model) => {
             BuiltinFamilyArtifact::Ishikawa(prepare_pair(model, |model| {
                 crate::ishikawa::layout_ishikawa_diagram_typed(
@@ -1681,6 +2016,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-event-modeling")]
         RenderSemanticModel::EventModeling(model) => {
             BuiltinFamilyArtifact::EventModeling(prepare_pair(model, |model| {
                 crate::eventmodeling::layout_eventmodeling_diagram_typed(
@@ -1690,6 +2026,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-venn")]
         RenderSemanticModel::Venn(model) => {
             BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
                 crate::venn::layout_venn_diagram_typed_with_work_meter(
@@ -1700,6 +2037,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(model) => {
             BuiltinFamilyArtifact::Usecase(prepare_pair(model, |model| {
                 crate::usecase::prepare_usecase_diagram(
@@ -1712,6 +2050,7 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let (flowchart, render_context) = model.to_flowchart_model();
             let agentflow_config = project_agentflow_flowchart_config(&meta.effective_config);
@@ -1738,6 +2077,13 @@ fn prepare_non_class_render(
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }
+        // Another dependency can widen core without widening this renderer.
+        #[allow(unreachable_patterns)]
+        _ => {
+            return Err(Error::UnsupportedDiagram {
+                diagram_type: diagram_type.to_owned(),
+            });
+        }
     };
     Ok(FamilyRenderArtifact {
         metadata: meta,
@@ -1748,7 +2094,7 @@ fn prepare_non_class_render(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -2148,6 +2494,7 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
         )
         .expect("prepare flowchart artifact");
         let indexed_sidecar = match &artifact.family {
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             BuiltinFamilyArtifact::Flowchart(flowchart) => {
                 flowchart
                     .svg_label_sidecar()

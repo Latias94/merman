@@ -23,12 +23,12 @@ thread_local! {
     static PUBLIC_PARSE_PREPROCESS_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) fn reset_public_parse_preprocess_count() {
     PUBLIC_PARSE_PREPROCESS_COUNT.set(0);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 pub(crate) fn public_parse_preprocess_count() -> usize {
     PUBLIC_PARSE_PREPROCESS_COUNT.get()
 }

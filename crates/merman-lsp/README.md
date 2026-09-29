@@ -28,10 +28,12 @@ merman-lsp
 
 The server communicates over standard input and output. Logs go to standard error, so protocol messages remain isolated.
 
-For repository development:
+For repository development, select families explicitly; the published alpha.6 install above
+predates these selectors. Defaults remain empty. Replace `all-diagrams` with the required
+`diagram-*` selectors for a narrower source build:
 
 ```sh
-cargo run -p merman-lsp --features stdio
+cargo run -p merman-lsp --features all-diagrams,stdio
 ```
 
 ## Supported Documents
@@ -141,7 +143,7 @@ LSP analysis uses deterministic runtime state. Initialization and workspace sett
 
 The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `2`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
 
-When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
+When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates are offered only for compiled parsers. Direct source dependencies must select `all-diagrams` or their required families; published alpha.6 dependency snippets retain the old implicit parser surface.
 
 ## Related Documentation
 

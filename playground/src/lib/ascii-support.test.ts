@@ -10,7 +10,7 @@ import {
 
 test("fallback uses the complete generated binding capability projection", () => {
   assert.equal(FALLBACK_ASCII_CAPABILITIES, GENERATED_ASCII_CAPABILITIES);
-  assert.equal(FALLBACK_ASCII_CAPABILITIES.length, 33);
+  assert.equal(FALLBACK_ASCII_CAPABILITIES.length, 34);
   assert.equal(
     new Set(FALLBACK_ASCII_CAPABILITIES.map(({ diagram_type }) => diagram_type))
       .size,
@@ -45,6 +45,12 @@ test("fallback uses the complete generated binding capability projection", () =>
     assert.ok(capability, `${diagramType} is included in the total matrix`);
     assert.equal(asciiSupportLabelKey(capability), "asciiSupport.unsupported");
   }
+  const swimlane = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "swimlane"
+  );
+  assert.deepEqual(swimlane?.layout_profiles, ["canonical", "compact", "auto"]);
+  assert.equal(swimlane?.primary_projection, "diagrammatic");
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("swimlane"));
 
   const state = FALLBACK_ASCII_CAPABILITIES.find(
     ({ diagram_type }) => diagram_type === "state"
@@ -62,6 +68,10 @@ test("support labels follow the generated projection kind", () => {
 
   assert.equal(
     asciiSupportLabelKey(byType.get("flowchart") ?? null),
+    "asciiSupport.levels.partial"
+  );
+  assert.equal(
+    asciiSupportLabelKey(byType.get("swimlane") ?? null),
     "asciiSupport.levels.partial"
   );
   assert.equal(

@@ -66,6 +66,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 
 mod svg_emit;
 pub(super) use svg_emit::render_flowchart_svg_artifact;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) use swimlane::render_swimlane_svg_artifact;
 
 #[cfg(all(test, feature = "layout-elk"))]

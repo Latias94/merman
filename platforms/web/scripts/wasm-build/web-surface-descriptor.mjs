@@ -19,7 +19,7 @@ const descriptorSchemaPath = path.join(
 const artifactProfilesPath = path.join(
   repositoryRoot,
   "capabilities",
-  "artifact-profiles-v1.json",
+  "artifact-profiles-v2.json",
 );
 
 export function loadWebSurfaceDescriptorSchema(file = descriptorSchemaPath) {
@@ -55,6 +55,9 @@ export function loadWebSurfaceDescriptor(file = descriptorPath) {
 
 export function loadWebArtifactProfiles(file = artifactProfilesPath) {
   const descriptor = expectRecord(readJson(file, "Artifact profile descriptor"), "Artifact profile descriptor");
+  if (descriptor.schema_version !== 2) {
+    throw new Error("Artifact profile descriptor schema_version must be 2.");
+  }
   if (!Array.isArray(descriptor.profiles)) {
     throw new Error("Artifact profile descriptor profiles must be an array.");
   }
@@ -400,12 +403,23 @@ function parseWebArtifactProfile(value, index) {
     `Artifact profile ${id} capabilities`,
     true,
   );
+  const diagramFamilies = expectArray(
+    expected.diagram_families,
+    `Artifact profile ${id} diagram families`,
+    true,
+  );
+  if (diagramFamilies.some((family) =>
+    typeof family !== "string" || !/^[a-z][A-Za-z0-9]*$/.test(family) || family === "error"
+  )) {
+    throw new Error(`Artifact profile ${id} diagram families must contain logical IDs excluding error.`);
+  }
+  assertSortedUnique(diagramFamilies, `Artifact profile ${id} diagram families`);
   const runtimeIds = expectNameArray(expected.runtime_ids, `Artifact profile ${id} runtime IDs`);
   const outputs = expectNameArray(expected.outputs, `Artifact profile ${id} outputs`, true);
   return {
     id,
     cargo: { default_features: false, features },
-    expected: { capabilities, runtime_ids: runtimeIds, outputs },
+    expected: { capabilities, runtime_ids: runtimeIds, outputs, diagram_families: diagramFamilies },
   };
 }
 

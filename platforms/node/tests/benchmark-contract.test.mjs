@@ -171,8 +171,12 @@ function validateComparisonReport(report) {
     trustedCorpus: TRUSTED_TEST_CORPUS,
   });
 }
+const DIAGRAM_FAMILIES = JSON.parse(
+  readFileSync(path.join(nodeRoot, "candidate-builds.json"), "utf8"),
+).expected.diagram_families;
 const CAPABILITY_RECIPE = {
   default_features: false,
+  diagram_families: DIAGRAM_FAMILIES,
   capability_recipe: {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
@@ -209,7 +213,7 @@ const RUNTIME_CATALOG = {
     system_fonts: null,
     embedded_images: null,
   }],
-  registry: { diagram_family_count: 35 },
+  registry: { diagram_family_count: 35, diagram_families: [...DIAGRAM_FAMILIES] },
   resources: {
     general_binding_default_profile: "interactive",
     cli_default_profile: "trusted-native",
@@ -1088,7 +1092,9 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       glibc_floor: null,
       default_features: false,
       capability_recipe: CAPABILITY_RECIPE.capability_recipe,
+      diagram_families: DIAGRAM_FAMILIES,
       features: [
+        "all-diagrams",
         "layout-cytoscape",
         "layout-elk",
         "svg",
@@ -1233,7 +1239,24 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     "transport-napi",
   ];
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(profileAsFeature));
-  assert.throws(() => readReceipt(), /capability recipe capabilities plus its transport/i);
+  assert.throws(() => readReceipt(), /diagram selectors, capability recipe capabilities, and transport/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
+  const missingDiagramSelector = structuredClone(receipt);
+  missingDiagramSelector.config.features = missingDiagramSelector.config.features.filter((feature) => feature !== "all-diagrams");
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(missingDiagramSelector));
+  assert.throws(() => readReceipt(), /diagram selectors/i);
+
+  const wrongDiagramRecipe = structuredClone(receipt);
+  wrongDiagramRecipe.config.diagram_families = ["flowchart", "gantt"];
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(wrongDiagramRecipe));
+  assert.throws(() => readReceipt(), /diagram families.*canonical/i);
+
+  const missingRuntimeFamily = structuredClone(receipt);
+  missingRuntimeFamily.runtime.catalog.registry.diagram_families.pop();
+  missingRuntimeFamily.runtime.catalog_digest = digestJson(missingRuntimeFamily.runtime.catalog);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(missingRuntimeFamily));
+  assert.throws(() => readReceipt(), /capability recipe/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const missingRuntimeEvidence = structuredClone(receipt);

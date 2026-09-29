@@ -20,8 +20,9 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-Merman currently follows `mermaid@11.17.2`. Its parser, layout, configuration, theming,
-sanitization, and SVG structure are checked against pinned Mermaid source and fixtures.
+The published `0.8.0-alpha.6` follows `mermaid@11.17.2`. This source checkout for the planned
+`0.8.0-alpha.7` follows `mermaid@12.0.0`. Parser, layout, configuration, theming, sanitization,
+and SVG structure are checked against the selected pinned Mermaid source and fixtures.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -97,8 +98,8 @@ Choose one typed target for each request:
 
 | Need | Start with | Cargo feature |
 | --- | --- | --- |
-| Parse a typed Mermaid model | `Engine` and `ParseOptions` | Always available |
-| Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Always available |
+| Parse a typed Mermaid model | `Engine` and `ParseOptions` | Required `diagram-*` selectors, or `all-diagrams` |
+| Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Required `diagram-*` selectors, or `all-diagrams` |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
 | Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
@@ -112,21 +113,24 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
-labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
-dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters, and
-ELK remain opt-in.
+The current-source `merman` dependency defaults to `all-diagrams` and `complete-svg-elk`: all
+built-in families, SVG rendering, Cytoscape and ELK layouts, and math labels. Distributed artifacts
+include the ELK implementation's EPL-2.0 notices and source provenance. Analysis, editor APIs,
+terminal output, binary export, and ambient system adapters remain opt-in.
 
-Cargo features select capabilities and output backends, not Mermaid diagram families. Every
-parser-capable build retains the same language catalog.
+In the current source, positive `diagram-*` features select built-in families independently of
+outputs and engines. Low-level crates and facade consumers disabling defaults must select
+`all-diagrams` or their required families explicitly. Published alpha.6 packages predate this
+feature/API migration; see the [capability guide] for current-source recipes.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG | defaults, or `complete-svg` |
-| Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
-| Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
-| Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
-| Terminal output | `default-features = false, features = ["ascii"]` |
+| Complete deterministic SVG with ELK | defaults, or `default-features = false, features = ["all-diagrams", "complete-svg-elk"]` |
+| SVG, Cytoscape, and math without ELK | `default-features = false, features = ["all-diagrams", "complete-svg"]` |
+| Basic SVG without optional layout engines or math | `default-features = false, features = ["all-diagrams", "svg"]` |
+| Diagnostics and editor APIs | `default-features = false, features = ["all-diagrams", "analysis", "editor"]` |
+| Terminal output | `default-features = false, features = ["all-diagrams", "ascii"]` |
+| Flowchart + Gantt SVG only | `default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
 The [capability guide] documents feature forwarding, artifact profiles, system adapters, and
@@ -173,7 +177,8 @@ shared by analysis and rendering. Binary export starts from validated SVG, not a
 | <img width="280" alt="Architecture diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png"> | <img width="280" alt="Mindmap rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png"> | <img width="280" alt="Sankey diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png"> |
 
 These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
-rendering pipeline. The [Playground] covers all 35 built-in diagram families.
+rendering pipeline. The source-checkout Playground covers all 37 built-in diagram types, including
+Agentflow and Usecase. The hosted [Playground] reflects its deployed package version.
 
 ## Ecosystem
 

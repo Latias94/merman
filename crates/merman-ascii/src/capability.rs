@@ -798,23 +798,103 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
     },
 ];
 
+/// Reports local terminal adapters for every compiled logical parser family.
+///
+/// Shared model types do not merge language availability: Flowchart and Swimlane
+/// have separate rows even though they use the same terminal projection.
 pub fn ascii_capabilities() -> &'static [AsciiCapability] {
     static CAPABILITIES: OnceLock<Vec<AsciiCapability>> = OnceLock::new();
     CAPABILITIES
         .get_or_init(|| {
-            merman_core::built_in_typed_render_families()
-                .iter()
-                .map(|family| {
-                    ASCII_CAPABILITY_DEFINITIONS
+            let mut capabilities = Vec::new();
+            for family in merman_core::diagram_family_capabilities() {
+                let diagram_type = capability_diagram_type(
+                    merman_core::diagram_type_metadata_id(family.logical_family_kind)
+                        .unwrap_or(family.logical_family_kind),
+                );
+                if !family.has_render_parser
+                    || diagram_type == "error"
+                    || capabilities
                         .iter()
-                        .find(|definition| definition.diagram_type == family.diagram_type)
-                        .copied()
-                        .map(AsciiCapability::from_definition)
-                        .unwrap_or_else(|| AsciiCapability::unsupported(family.diagram_type))
-                })
-                .collect()
+                        .any(|entry: &AsciiCapability| entry.diagram_type == diagram_type)
+                {
+                    continue;
+                }
+                let capability = ASCII_CAPABILITY_DEFINITIONS
+                    .iter()
+                    .find(|definition| {
+                        family
+                            .render_model_kind
+                            .and_then(merman_core::diagram_type_metadata_id)
+                            .map(capability_diagram_type)
+                            == Some(definition.diagram_type)
+                    })
+                    .filter(|_| local_handler_available(family.logical_family_kind))
+                    .copied()
+                    .map(|definition| {
+                        let mut capability = AsciiCapability::from_definition(definition);
+                        capability.diagram_type = diagram_type;
+                        if diagram_type == "swimlane" {
+                            capability.display_name = "Swimlane";
+                        }
+                        capability
+                    })
+                    .unwrap_or_else(|| AsciiCapability::unsupported(diagram_type));
+                capabilities.push(capability);
+            }
+            capabilities.sort_by_key(|capability| capability.diagram_type);
+            capabilities
         })
         .as_slice()
+}
+
+pub(crate) fn capability_for_diagram_type(diagram_type: &str) -> Option<AsciiCapability> {
+    let metadata_id = merman_core::diagram_type_metadata_id(diagram_type).unwrap_or(diagram_type);
+    let metadata_id = if metadata_id == "gitGraph" {
+        "gitgraph"
+    } else {
+        metadata_id
+    };
+    ascii_capabilities()
+        .iter()
+        .find(|capability| capability.diagram_type == metadata_id)
+        .copied()
+}
+
+fn capability_diagram_type(logical_family: &'static str) -> &'static str {
+    match logical_family {
+        "gitGraph" | "GitGraph" | "gitgraph" => "gitgraph",
+        other => other,
+    }
+}
+
+#[allow(
+    clippy::match_like_matches_macro,
+    reason = "Each arm has a distinct feature condition that only coincides in all-family builds."
+)]
+pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
+    let family = match diagram_type {
+        "gitgraph" => "gitGraph",
+        other => merman_core::diagram_type_family_kind(other).unwrap_or(other),
+    };
+    match family {
+        "class" => cfg!(feature = "diagram-class"),
+        "er" => cfg!(feature = "diagram-er"),
+        "flowchart" => cfg!(feature = "diagram-flowchart"),
+        "gantt" => cfg!(feature = "diagram-gantt"),
+        "gitGraph" => cfg!(feature = "diagram-git-graph"),
+        "journey" => cfg!(feature = "diagram-journey"),
+        "kanban" => cfg!(feature = "diagram-kanban"),
+        "mindmap" => cfg!(feature = "diagram-mindmap"),
+        "packet" => cfg!(feature = "diagram-packet"),
+        "sequence" => cfg!(feature = "diagram-sequence"),
+        "state" => cfg!(feature = "diagram-state"),
+        "swimlane" => cfg!(feature = "diagram-swimlane"),
+        "timeline" => cfg!(feature = "diagram-timeline"),
+        "treeView" => cfg!(feature = "diagram-tree-view"),
+        "xychart" => cfg!(feature = "diagram-xychart"),
+        _ => false,
+    }
 }
 
 pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
@@ -848,7 +928,7 @@ pub fn ascii_diagrammatic_diagram_types() -> &'static [&'static str] {
         .as_slice()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "all-diagrams"))]
 mod tests {
     use super::*;
     use std::{collections::BTreeSet, fs, path::Path};
@@ -894,17 +974,20 @@ mod tests {
     #[test]
     fn capabilities_cover_each_concrete_built_in_typed_family_once() {
         let capabilities = ascii_capabilities();
-        let core_families = merman_core::built_in_typed_render_families();
+        let core_families = merman_core::diagram_family_capabilities();
         let capability_types = capabilities
             .iter()
             .map(|capability| capability.diagram_type)
             .collect::<BTreeSet<_>>();
         let core_types = core_families
             .iter()
-            .map(|family| family.diagram_type)
+            .filter(|family| family.has_render_parser && family.logical_family_kind != "error")
+            .map(|family| {
+                merman_core::diagram_type_metadata_id(family.logical_family_kind).unwrap()
+            })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(capabilities.len(), 33);
+        assert_eq!(capabilities.len(), 34);
         assert_eq!(capability_types.len(), capabilities.len());
         assert_eq!(capability_types, core_types);
         assert!(!capability_types.contains("error"));
@@ -927,6 +1010,7 @@ mod tests {
                 "packet",
                 "sequence",
                 "state",
+                "swimlane",
                 "timeline",
                 "treeView",
                 "xychart",
@@ -934,7 +1018,15 @@ mod tests {
         );
         assert_eq!(
             ascii_diagrammatic_diagram_types(),
-            &["class", "er", "flowchart", "sequence", "state", "xychart",]
+            &[
+                "class",
+                "er",
+                "flowchart",
+                "sequence",
+                "state",
+                "swimlane",
+                "xychart",
+            ]
         );
     }
 

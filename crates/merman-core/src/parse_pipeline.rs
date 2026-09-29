@@ -466,6 +466,7 @@ impl<'a> ParsePipeline<'a> {
         } else {
             false
         };
+        #[cfg(feature = "diagram-agentflow")]
         if matches!(owner, Some(RegistryOwner::BuiltIn)) {
             let (line_offset, column_offset) = code.parser_position_offset();
             crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
@@ -786,12 +787,15 @@ impl<'a> ParsePipeline<'a> {
     ) {
         match &mut parsed.warnings {
             CompatibilityWarnings::Typed(warning_facts) => {
-                let (line_offset, column_offset) = source_map.source.parser_position_offset();
-                crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
-                    &mut parsed.model,
-                    line_offset,
-                    column_offset,
-                );
+                #[cfg(feature = "diagram-agentflow")]
+                {
+                    let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                    crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
+                        &mut parsed.model,
+                        line_offset,
+                        column_offset,
+                    );
+                }
                 for fact in warning_facts.iter_mut() {
                     Self::remap_warning_fact_spans(fact, source_map);
                 }
@@ -1683,6 +1687,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn controlled_snapshot_stops_during_family_parser_work() {
         let mut source = String::from("flowchart TD\n");
         for index in 0..4_096 {
@@ -1703,6 +1708,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-flowchart")]
     fn active_control_preserves_the_snapshot_model() {
         let source = "flowchart TD\nA-->B\n";
         let engine = Engine::new();

@@ -12,6 +12,89 @@ name = "merman_node"
 crate-type = ["cdylib", "rlib"]
 
 [features]
+# Diagram selection is independent of output formats and optional layout engines.
+all-diagrams = [
+    "diagram-agentflow",
+    "diagram-architecture",
+    "diagram-block",
+    "diagram-c4",
+    "diagram-class",
+    "diagram-cynefin",
+    "diagram-er",
+    "diagram-event-modeling",
+    "diagram-flowchart",
+    "diagram-gantt",
+    "diagram-git-graph",
+    "diagram-info",
+    "diagram-ishikawa",
+    "diagram-journey",
+    "diagram-kanban",
+    "diagram-mindmap",
+    "diagram-packet",
+    "diagram-pie",
+    "diagram-quadrant-chart",
+    "diagram-radar",
+    "diagram-railroad",
+    "diagram-requirement",
+    "diagram-sankey",
+    "diagram-sequence",
+    "diagram-state",
+    "diagram-swimlane",
+    "diagram-timeline",
+    "diagram-tree-view",
+    "diagram-treemap",
+    "diagram-usecase",
+    "diagram-venn",
+    "diagram-wardley",
+    "diagram-xychart",
+    "diagram-zenuml",
+]
+diagram-architecture = [
+    "merman-bindings-core/diagram-architecture",
+    "merman-core/diagram-architecture",
+]
+diagram-block = ["merman-bindings-core/diagram-block", "merman-core/diagram-block"]
+diagram-c4 = ["merman-bindings-core/diagram-c4", "merman-core/diagram-c4"]
+diagram-class = ["merman-bindings-core/diagram-class", "merman-core/diagram-class"]
+diagram-cynefin = ["merman-bindings-core/diagram-cynefin", "merman-core/diagram-cynefin"]
+diagram-er = ["merman-bindings-core/diagram-er", "merman-core/diagram-er"]
+diagram-event-modeling = [
+    "merman-bindings-core/diagram-event-modeling",
+    "merman-core/diagram-event-modeling",
+]
+diagram-agentflow = ["merman-bindings-core/diagram-agentflow", "merman-core/diagram-agentflow"]
+diagram-usecase = ["merman-bindings-core/diagram-usecase", "merman-core/diagram-usecase"]
+diagram-flowchart = ["merman-bindings-core/diagram-flowchart", "merman-core/diagram-flowchart"]
+diagram-gantt = ["merman-bindings-core/diagram-gantt", "merman-core/diagram-gantt"]
+diagram-git-graph = ["merman-bindings-core/diagram-git-graph", "merman-core/diagram-git-graph"]
+diagram-info = ["merman-bindings-core/diagram-info", "merman-core/diagram-info"]
+diagram-ishikawa = ["merman-bindings-core/diagram-ishikawa", "merman-core/diagram-ishikawa"]
+diagram-journey = ["merman-bindings-core/diagram-journey", "merman-core/diagram-journey"]
+diagram-kanban = ["merman-bindings-core/diagram-kanban", "merman-core/diagram-kanban"]
+diagram-mindmap = ["merman-bindings-core/diagram-mindmap", "merman-core/diagram-mindmap"]
+diagram-packet = ["merman-bindings-core/diagram-packet", "merman-core/diagram-packet"]
+diagram-pie = ["merman-bindings-core/diagram-pie", "merman-core/diagram-pie"]
+diagram-quadrant-chart = [
+    "merman-bindings-core/diagram-quadrant-chart",
+    "merman-core/diagram-quadrant-chart",
+]
+diagram-radar = ["merman-bindings-core/diagram-radar", "merman-core/diagram-radar"]
+diagram-railroad = ["merman-bindings-core/diagram-railroad", "merman-core/diagram-railroad"]
+diagram-requirement = [
+    "merman-bindings-core/diagram-requirement",
+    "merman-core/diagram-requirement",
+]
+diagram-sankey = ["merman-bindings-core/diagram-sankey", "merman-core/diagram-sankey"]
+diagram-sequence = ["merman-bindings-core/diagram-sequence", "merman-core/diagram-sequence"]
+diagram-state = ["merman-bindings-core/diagram-state", "merman-core/diagram-state"]
+diagram-swimlane = ["merman-bindings-core/diagram-swimlane", "merman-core/diagram-swimlane"]
+diagram-timeline = ["merman-bindings-core/diagram-timeline", "merman-core/diagram-timeline"]
+diagram-tree-view = ["merman-bindings-core/diagram-tree-view", "merman-core/diagram-tree-view"]
+diagram-treemap = ["merman-bindings-core/diagram-treemap", "merman-core/diagram-treemap"]
+diagram-venn = ["merman-bindings-core/diagram-venn", "merman-core/diagram-venn"]
+diagram-wardley = ["merman-bindings-core/diagram-wardley", "merman-core/diagram-wardley"]
+diagram-xychart = ["merman-bindings-core/diagram-xychart", "merman-core/diagram-xychart"]
+diagram-zenuml = ["merman-bindings-core/diagram-zenuml", "merman-core/diagram-zenuml"]
 default = []
 svg = ["merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]

@@ -490,7 +490,9 @@ fn collapse_horizontal_runs(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "all-diagrams")]
     use crate::{EditorSemanticCompleteness, Error, MermaidConfig, ParseMetadata, Result};
+    #[cfg(feature = "all-diagrams")]
     use serde_json::Value;
 
     #[test]
@@ -726,7 +728,9 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "all-diagrams")]
     type JsonParser = fn(&str, &ParseMetadata) -> Result<Value>;
+    #[cfg(feature = "all-diagrams")]
     struct FamilyCase {
         id: &'static str,
         header: &'static str,
@@ -736,6 +740,7 @@ mod tests {
         retains_title: bool,
     }
 
+    #[cfg(feature = "all-diagrams")]
     fn family_cases() -> [FamilyCase; 7] {
         [
             FamilyCase {
@@ -797,6 +802,7 @@ mod tests {
         ]
     }
 
+    #[cfg(feature = "all-diagrams")]
     fn metadata(id: &str) -> ParseMetadata {
         ParseMetadata {
             diagram_type: id.to_string(),
@@ -806,6 +812,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "all-diagrams")]
     fn common_family_source(case: &FamilyCase) -> String {
         format!(
             "{}\r\n  title First\r\n  title Final   title %% hidden\r\n  accTitle:  Accessible   map\r\n  accDescr {{\r\n    First   line\r\n\r\n    \tSecond\t\tline  \r\n  }}\r\n{}",
@@ -814,6 +821,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "all-diagrams")]
     fn importing_families_share_common_values_spans_and_db_capabilities() {
         for case in family_cases() {
             let source = common_family_source(&case);
@@ -862,6 +870,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "all-diagrams")]
     fn importing_family_typed_models_receive_the_same_common_values() {
         let cases = family_cases();
         let source = |id: &str| {
@@ -933,6 +942,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "all-diagrams")]
     fn importing_families_reject_unterminated_blocks_and_recover_editor_payloads() {
         for case in family_cases() {
             let source = format!("{}\naccDescr {{\n  partial", case.header);

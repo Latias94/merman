@@ -1,11 +1,19 @@
-use super::model::{GraphEdgeStyle, GraphGroupStyle, GraphNodeStyle};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use super::model::GraphEdgeStyle;
+use super::model::{GraphGroupStyle, GraphNodeStyle};
 use crate::color::AsciiRgb;
-use crate::error::{AsciiError, Result};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::error::AsciiError;
+use crate::error::Result;
 use crate::operation::AsciiExecution;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::resource::AsciiResourceLimitPhase;
+use crate::resource::ResourceContext;
 use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::OperationPhase;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use rustc_hash::FxHashMap as HashMap;
 
 #[derive(Clone, Copy)]
@@ -16,26 +24,31 @@ struct StyleTargets {
 }
 
 impl StyleTargets {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     const ALL: Self = Self {
         node: true,
         edge: true,
         group: true,
     };
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     const NODE: Self = Self {
         node: true,
         edge: false,
         group: false,
     };
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     const EDGE: Self = Self {
         node: false,
         edge: true,
         group: false,
     };
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     const GROUP: Self = Self {
         node: false,
         edge: false,
         group: true,
     };
+    #[cfg(feature = "diagram-state")]
     const NODE_AND_GROUP: Self = Self {
         node: true,
         edge: false,
@@ -69,6 +82,7 @@ impl PreparedGraphStyle {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     fn apply_edge(self, style: &mut GraphEdgeStyle) {
         if let Some(value) = self.edge_line {
             style.line = value;
@@ -94,12 +108,14 @@ impl PreparedGraphStyle {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) struct FlowchartStylePlan {
     pub(super) nodes: Vec<GraphNodeStyle>,
     pub(super) edges: Vec<GraphEdgeStyle>,
     pub(super) groups: Vec<GraphGroupStyle>,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartStylePlan {
     pub(super) fn try_new(
         model: &FlowchartModel,
@@ -262,6 +278,7 @@ impl FlowchartStylePlan {
     }
 }
 
+#[cfg(feature = "diagram-state")]
 pub(crate) fn prepare_state_style<'a>(
     declarations: impl IntoIterator<Item = &'a str>,
     resources: &ResourceContext,
@@ -448,6 +465,7 @@ fn charge_style_value_parse(
     resources.charge_layout_work_product(value.len().max(1), parser_passes)
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn charge_style_index_access(resources: &ResourceContext, id: &str) -> Result<()> {
     let work = resources.checked_work_add(id.len(), 1)?;
     resources.charge_layout_work(work)
@@ -457,6 +475,7 @@ fn checkpoint_style(execution: AsciiExecution<'_>, iteration: usize) -> Result<(
     execution.checkpoint_loop(OperationPhase::Semantic, iteration)
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn style_allocation_failed() -> AsciiError {
     AsciiError::AllocationFailed {
         phase: AsciiResourceLimitPhase::LayoutWork.as_str(),

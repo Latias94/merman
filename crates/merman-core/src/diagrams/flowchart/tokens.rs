@@ -2,9 +2,18 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
     SubgraphHeader,
 };
-use crate::{SourceSpan, error::ParseErrorSourceSpan};
+use crate::SourceSpan;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::error::ParseErrorSourceSpan;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) enum Tok {
     KwGraph,
     KwFlowchart,
@@ -36,12 +45,26 @@ pub(crate) enum Tok {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct ArrowToken {
     pub link: LinkToken,
     pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
@@ -54,6 +77,13 @@ pub(crate) struct NodeLabelToken {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct DirectionStatementToken {
     pub direction: String,
     pub selection: SourceSpan,
@@ -106,6 +136,7 @@ impl LexError {
     }
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<SourceSpan> {
         self.span

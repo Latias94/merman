@@ -31,7 +31,7 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "THIRD_PARTY_LICENSES" / "rust-cargo-dependencies.json"
-ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v1.json")
+ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v2.json")
 WEB_REPORT_ROOT = Path("platforms/web/legal/rust-cargo-dependencies")
 WEB_TARGET = "wasm32-unknown-unknown"
 PYTHON_ARTIFACT_PROFILE_ID = "python-uniffi-native"

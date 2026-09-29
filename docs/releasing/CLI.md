@@ -7,7 +7,7 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 ## Canonical release profile
 
 The complete CLI release is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v1.json`. Its 19 direct features must match in two places:
+`capabilities/artifact-profiles-v2.json`. Its 20 direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
@@ -186,7 +186,7 @@ nix-build --no-out-link default.nix
 ```
 
 The derivation reads the `cli-release` Cargo profile directly from
-`capabilities/artifact-profiles-v1.json`; it does not copy the feature list into Nix. Its install
+`capabilities/artifact-profiles-v2.json`; it does not copy the feature list into Nix. Its install
 check executes the built binary and verifies the exact command, capability, output, completion,
 and man-page contracts. Bash, Zsh, and Fish completions use their conventional discovery paths.
 PowerShell and Elvish snapshots are installed under `share/pwsh` and `share/elvish`; users may need
@@ -279,7 +279,7 @@ Use this shape when preparing the upstream Formula change for `0.8.0`:
 ```ruby
 def install
   features = %w[
-    analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
+    all-diagrams analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
     network-icons parallel-markdown pdf png rustdoc shell-completions svg
     system-clock system-random system-timezone system-timing
   ]

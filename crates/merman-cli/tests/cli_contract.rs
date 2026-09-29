@@ -1201,16 +1201,25 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         "png",
         "shell-completions",
         "svg",
-        "system-clock",
-        "system-random",
-        "system-timezone",
-        "system-timing",
     ] {
         assert!(
             capabilities
                 .iter()
                 .any(|capability| capability["id"].as_str() == Some(id)),
             "missing compiled capability {id}: {payload}"
+        );
+    }
+
+    for (id, enabled) in [
+        ("system-clock", cfg!(feature = "system-clock")),
+        ("system-random", cfg!(feature = "system-random")),
+        ("system-timezone", cfg!(feature = "system-timezone")),
+        ("system-timing", cfg!(feature = "system-timing")),
+    ] {
+        assert_eq!(
+            capabilities.iter().any(|capability| capability["id"] == id),
+            enabled,
+            "system adapter {id} must match the selected Cargo features"
         );
     }
 
@@ -1240,7 +1249,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         family_ids.windows(2).all(|pair| pair[0] < pair[1]),
         "ASCII family ids must be sorted and unique: {family_ids:?}"
     );
-    for family_id in ["flowchart", "sequence"] {
+    for family_id in ["flowchart", "sequence", "swimlane"] {
         let family = families
             .iter()
             .find(|family| family["family"] == family_id)

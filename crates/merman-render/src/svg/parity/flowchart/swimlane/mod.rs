@@ -1,7 +1,7 @@
 use super::*;
-use crate::model::{
-    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
-};
+use crate::model::SwimlaneLayout;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
@@ -11,6 +11,7 @@ mod cluster;
 
 pub(super) use cluster::render_swimlane_cluster;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
@@ -35,6 +36,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     )
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn adapt_swimlane_layout(
     model: &crate::flowchart::FlowchartModel,
     layout: &SwimlaneLayout,

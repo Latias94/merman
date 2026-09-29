@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 use merman_core::{
     DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, Engine, ParsedEditorFacts,
 };

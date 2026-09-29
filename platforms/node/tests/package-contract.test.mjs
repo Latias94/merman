@@ -168,7 +168,7 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
     capabilities: ["layout-cytoscape", "layout-elk", "svg"],
   });
   assert.equal(recipes.cargo.default_features, false);
-  assert.equal("features" in recipes.cargo, false);
+  assert.deepEqual(recipes.cargo.features, ["all-diagrams"]);
   assert.deepEqual(recipes.candidates.napi.versions, {
     napi: "3.11.0",
     napi_derive: "3.6.0",

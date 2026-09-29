@@ -5,10 +5,15 @@
 //! - 1:1 parity with the repository's pinned upstream Mermaid baseline
 //! - deterministic, testable outputs (semantic snapshot goldens)
 //! - runtime-agnostic async APIs (no specific executor required)
+//!
+//! Default features are empty. Select `diagram-*` features for the required logical families or
+//! `all-diagrams` for the complete parser surface. Family-exclusive public model types and enum
+//! variants are conditional; recognition and custom registries remain available without a family.
 
 pub mod baseline;
 pub mod common;
 pub mod common_db;
+#[cfg(any(feature = "diagram-mindmap", feature = "diagram-state"))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;
@@ -20,6 +25,14 @@ pub mod error;
 mod family;
 pub mod generated;
 pub mod geom;
+#[cfg(any(
+    test,
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-kanban",
+    feature = "diagram-sequence"
+))]
 mod inline_config;
 pub mod models;
 pub mod operation;
@@ -56,8 +69,8 @@ pub use editor::{
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact,
-    diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
+    BuiltInTypedRenderFamily, DiagramFamilyCapability, DiagramFamilyId, DiagramFamilySelector,
+    DiagramHeaderFact, diagram_type_family_id, diagram_type_family_kind, diagram_type_metadata_id,
     diagram_type_render_model_kind,
 };
 pub use operation::{
@@ -77,22 +90,42 @@ pub fn supported_themes() -> &'static [&'static str] {
     theme::SUPPORTED_THEME_NAMES
 }
 
-/// Returns supported diagram metadata names for binding and host capability discovery.
+/// Returns metadata names backed by semantic parsers compiled into this build.
+///
+/// Aliases share their catalog-owned metadata name. This does not promise an output adapter;
+/// use the complete [`diagram_family_capabilities`] catalog to distinguish known identities
+/// from available implementations.
 pub fn supported_diagrams() -> &'static [&'static str] {
     family::supported_diagram_metadata_ids()
 }
 
-/// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
+/// Returns every known Mermaid diagram id in the pinned baseline, including unavailable ones.
+///
+/// Identity, detector, header, and configuration facts are retained independently of the parser,
+/// editor, and typed render-model callbacks compiled into this build.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities()
 }
 
-/// Returns each concrete built-in typed render family exactly once.
+/// Returns the complete catalog-owned mapping from logical families to Cargo selectors.
+///
+/// These declarations are independent of enabled features and exclude infrastructure models.
+/// Selecting a family does not enable an output format or optional layout engine.
+pub fn diagram_family_selectors() -> &'static [DiagramFamilySelector] {
+    family::diagram_family_selectors()
+}
+
+/// Returns each compiled concrete built-in typed render-model family exactly once.
+///
+/// This is independent of output adapters and deduplicates aliases sharing a typed model.
 pub fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
     family::built_in_typed_render_families()
 }
 
-/// Returns header completion facts for Mermaid diagram starters in the pinned baseline.
+/// Returns known header facts for Mermaid diagram starters in the pinned baseline.
+///
+/// A header identifies a known family; actionable suggestions must also check that its semantic
+/// parser is available in [`diagram_family_capabilities`].
 pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
     family::diagram_header_facts()
 }

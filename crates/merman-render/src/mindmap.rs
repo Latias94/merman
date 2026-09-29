@@ -1,5 +1,5 @@
 use crate::config::{config_f64_css_px, config_string};
-use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
@@ -268,7 +268,7 @@ fn mindmap_node_dimensions_from_label_bbox(
     (w, h, bbox_w, bbox_h)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-mindmap"))]
 fn mindmap_node_dimensions_px(
     node: &MindmapNodeModel,
     measurer: &dyn TextMeasurer,
@@ -561,7 +561,7 @@ fn layout_mindmap_diagram_model(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
     struct FixedMeasurer;
 

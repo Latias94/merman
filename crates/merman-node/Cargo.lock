@@ -576,10 +576,38 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "merman"
 version = "0.8.0-alpha.7"
 dependencies = [
+ "merman-analysis",
+ "merman-ascii",
  "merman-core",
+ "merman-editor-core",
  "merman-render",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "merman-analysis"
+version = "0.8.0-alpha.7"
+dependencies = [
+ "merman-core",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "merman-ascii"
+version = "0.8.0-alpha.7"
+dependencies = [
+ "dugong",
+ "merman-core",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -587,6 +615,7 @@ name = "merman-bindings-core"
 version = "0.8.0-alpha.7"
 dependencies = [
  "merman",
+ "merman-analysis",
  "serde",
  "serde_json",
 ]
@@ -613,6 +642,15 @@ dependencies = [
  "unicode-width",
  "url",
  "web-time",
+]
+
+[[package]]
+name = "merman-editor-core"
+version = "0.8.0-alpha.7"
+dependencies = [
+ "merman-analysis",
+ "merman-core",
+ "serde",
 ]
 
 [[package]]
@@ -998,6 +1036,19 @@ checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-saphyr"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bb49c0aa8a5bb88c00b833c11bae50d1611fb89e01336f53b05f7c643b1c883"
+dependencies = [
+ "base64",
+ "nohash-hasher",
+ "num-traits",
+ "serde_core",
+ "zmij",
 ]
 
 [[package]]

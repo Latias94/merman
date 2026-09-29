@@ -1005,8 +1005,10 @@ dependencies = [
 name = "merman"
 version = "0.8.0-alpha.7"
 dependencies = [
+ "merman-analysis",
  "merman-ascii",
  "merman-core",
+ "merman-editor-core",
  "merman-export",
  "merman-render",
  "serde_json",
@@ -1072,6 +1074,15 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "url",
+]
+
+[[package]]
+name = "merman-editor-core"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "merman-analysis",
+ "merman-core",
+ "serde",
 ]
 
 [[package]]

@@ -140,7 +140,7 @@ class CliInstallationContractTests(unittest.TestCase):
     def test_default_features_must_equal_release_features(self) -> None:
         with self.mutated_repository(
             "crates/merman-cli/Cargo.toml",
-            'default = [\n    "analysis",',
+            'default = [\n    "all-diagrams",\n    "analysis",',
             "default = [",
         ) as root:
             with self.assertRaisesRegex(
@@ -167,7 +167,7 @@ class CliInstallationContractTests(unittest.TestCase):
 
     def test_release_recipe_must_use_the_cargo_dist_profile(self) -> None:
         with self.mutated_repository(
-            "capabilities/artifact-profiles-v1.json",
+            "capabilities/artifact-profiles-v2.json",
             '"profile": "dist"',
             '"profile": "release"',
         ) as root:
@@ -223,7 +223,7 @@ class CliInstallationContractTests(unittest.TestCase):
                 "Cargo.toml",
                 "dist-workspace.toml",
                 "crates/merman-cli/Cargo.toml",
-                "capabilities/artifact-profiles-v1.json",
+                "capabilities/artifact-profiles-v2.json",
             ):
                 destination = root / source_relative
                 destination.parent.mkdir(parents=True, exist_ok=True)

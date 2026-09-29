@@ -1212,6 +1212,6 @@ pub(crate) fn layout_wardley_diagram_typed(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "diagram-wardley"))]
 #[path = "wardley_layout_tests.rs"]
 mod wardley_layout_tests;
