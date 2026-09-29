@@ -72,6 +72,16 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
         layout_shape,
         Some(
             "anchor"
+                | "sm-circ"
+                | "small-circle"
+                | "start"
+                | "fr-circ"
+                | "framed-circle"
+                | "stop"
+                | "choice"
+                | "f-circ"
+                | "junction"
+                | "filled-circle"
                 | "brace"
                 | "brace-l"
                 | "comment"
@@ -135,9 +145,6 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "bolt"
                 | "com-link"
                 | "lightning-bolt"
-                | "f-circ"
-                | "junction"
-                | "filled-circle"
                 | "win-pane"
                 | "internal-storage"
                 | "window-pane"
@@ -181,21 +188,18 @@ fn intersect_rect(
 
 fn intersect_circle(
     node: &BoundaryNode,
+    radius: f64,
     point: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    // Mermaid's circle shapes use the ellipse intersection with the measured node
-    // bounds; labels can make those bounds non-square.
-    let rx = node.width / 2.0;
-    let ry = node.height / 2.0;
+    // Mermaid's intersect.circle retains the radius captured while painting the shape.
+    // The browser's measured bounds can differ, especially for rounded or rough paths.
+    let rx = radius;
+    let ry = radius;
     let px = node.x - point.x;
     let py = node.y - point.y;
     let det = (rx * rx * py * py + ry * ry * px * px).sqrt();
-    if det <= 1e-12 {
-        return crate::model::LayoutPoint {
-            x: node.x,
-            y: node.y,
-        };
-    }
+    // Preserve the source's NaN at the centre: outlineAttachPoint uses that result
+    // to decline the departure-axis search and fall back to the centre ray.
     let mut dx = ((rx * ry * px) / det).abs();
     if point.x < node.x {
         dx = -dx;
@@ -1622,11 +1626,33 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 point,
             )
         }
-        Some("anchor" | "circle" | "circ" | "doublecircle" | "dbl-circ" | "double-circle") => {
-            intersect_circle(node, point)
+        Some(shape @ ("circle" | "circ" | "doublecircle" | "dbl-circ" | "double-circle")) => {
+            let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+                return intersect_circle(node, node.width / 2.0, point);
+            };
+            let (diameter, _) = crate::flowchart::flowchart_node_render_dimensions(
+                Some(shape),
+                metrics,
+                ctx.node_padding,
+                crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+            );
+            intersect_circle(node, diameter / 2.0, point)
         }
-        Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
-        Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
+        // These RoughJS shapes capture a fixed radius before measuring their painted bounds.
+        Some("anchor") => intersect_circle(node, 1.0, point),
+        Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, 7.0, point),
+        Some("cross-circ" | "summary" | "crossed-circle") => {
+            intersect_circle(node, crate::flowchart::CROSSED_CIRCLE_RADIUS, point)
+        }
+        Some("sm-circ" | "small-circle" | "start" | "fr-circ" | "framed-circle" | "stop") => {
+            intersect_circle(node, node.width / 2.0, point)
+        }
+        Some("choice") => {
+            let half = node.width.max(28.0) / 2.0;
+            let points = [(0.0, half), (half, 0.0), (0.0, -half), (-half, 0.0)]
+                .map(|(x, y)| crate::model::LayoutPoint { x, y });
+            intersect_polygon(node, &points, point)
+        }
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
         Some("lin-cyl" | "disk" | "lined-cylinder") => intersect_cylinder(node, point),
         Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, point),
@@ -1704,16 +1730,18 @@ mod tests {
     }
 
     #[test]
-    fn circle_intersection_uses_the_measured_ellipse_bounds() {
+    fn circle_intersection_preserves_the_source_radius_despite_measured_bounds() {
         let node = BoundaryNode {
             x: 0.0,
             y: 0.0,
             width: 40.0,
             height: 20.0,
         };
-        let actual = intersect_circle(&node, &point(100.0, 100.0));
-        assert!((actual.x - 8.94427190999916).abs() < 1e-12, "{actual:?}");
-        assert!((actual.y - 8.94427190999916).abs() < 1e-12, "{actual:?}");
+        let actual = intersect_circle(&node, 20.0, &point(100.0, 100.0));
+        assert!((actual.x - 14.142135623730951).abs() < 1e-12, "{actual:?}");
+        assert!((actual.y - 14.142135623730951).abs() < 1e-12, "{actual:?}");
+        let center = intersect_circle(&node, 20.0, &point(0.0, 0.0));
+        assert!(center.x.is_nan() && center.y.is_nan());
     }
 
     #[test]

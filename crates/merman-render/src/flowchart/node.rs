@@ -1,3 +1,7 @@
+// FlowDB supplies no pre-paint width for crossed-circle nodes.
+// Pinned crossedCircle.ts therefore captures this radius before updateNodeBounds.
+pub(crate) const CROSSED_CIRCLE_RADIUS: f64 = 30.0;
+
 pub(crate) fn flowchart_brace_content_dimensions(
     shape: &str,
     label_width: f64,
@@ -744,7 +748,9 @@ fn node_render_dimensions(
         "f-circ" | "junction" | "filled-circle" => (14.0, 14.0),
 
         // Flowchart v2 crossed circle (`crossedCircle.ts`) has a minimum 30px source radius.
-        "cross-circ" | "summary" | "crossed-circle" => (60.0, 60.0),
+        "cross-circ" | "summary" | "crossed-circle" => {
+            (2.0 * CROSSED_CIRCLE_RADIUS, 2.0 * CROSSED_CIRCLE_RADIUS)
+        }
 
         // Flowchart v2 delay / halfRoundedRectangle.
         "delay" | "half-rounded-rectangle" => {

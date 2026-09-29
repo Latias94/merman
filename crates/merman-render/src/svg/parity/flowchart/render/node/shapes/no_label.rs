@@ -253,9 +253,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
         "cross-circ" | "summary" | "crossed-circle" => {
-            // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
-            // practice `node.width` is usually unset here, so radius=30.
-            let radius = 30.0;
+            let radius = crate::flowchart::CROSSED_CIRCLE_RADIUS;
 
             let circle_d =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {

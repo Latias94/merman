@@ -330,3 +330,54 @@ from diagnostic collection; do not bulk re-sign measurement receipts.
   Logs: `target/mermaid12-exact-boundary-tests.log`,
   `target/mermaid12-state-exact-boundary-compare.log`, and
   `target/mermaid12-flowchart-exact-boundary-compare.log`.
+
+
+## 2026-09-29 continuation: Flowchart measured ELK and endpoint admission
+
+- The pinned Mermaid 12 / Edge 153.0.4234.48 runner replayed all 45 outstanding Flowchart
+  fixtures byte-for-byte against their admitted upstream SVGs. The committed matrix
+  `fixtures/_verification/flowchart-elk-browser-measurements.json` retains 395 measured
+  node records and 373 provider routes. A permanent xtask test checks each input and
+  upstream SHA-256 against the current repository. JSON `float_roundtrip` is enabled only
+  in the renderer's dev-dependencies so the captured IEEE-754 coordinates survive decoding.
+- Equal browser node/label dimensions reproduce all 373 routes through the real Flowchart
+  adapter and pure Rust ELK provider, with matching point counts and coordinate error at
+  most 1e-8. This isolates the deterministic-versus-browser measurement boundary rather
+  than substituting the reference algorithm or copying routes into production.
+- The controlled final renderer uses captured centers, bounds, label boxes and provider
+  routes. All 45 fixtures preserve DOM identities, edge kinds, looks, markers and path
+  command sequences. All 370 non-hand-drawn edges also match every final path coordinate
+  within the writer's three-decimal serialization precision (0.000501px). The three
+  hand-drawn edges retain command/marker checks and the separate numeric provider check;
+  their RoughJS control points remain a bounded browser/shape-path residual.
+- The earlier roughly 0.06px endpoint difference in `newshapesset6_lr_md_html_false_094`
+  was a test measurement gap: SVG Markdown requests its complete plain label after
+  wrapping, not the original Markdown string. The captured height is 62.20000076293945px;
+  the test's deterministic fallback had supplied 61.6px. Reusing the captured full-label
+  box at that request closes the endpoint difference without a production tolerance.
+  The fixture's wrapped SVG labels retain the same text and escaped markup content.
+- Source review exposed real endpoint defects before residual admission. Circle and
+  double-circle intersections now retain the radius captured by their shape renderer,
+  rather than treating browser bounds as an ellipse. Anchor, filled circle, crossed circle,
+  state start/stop aliases and choice follow their pinned shape intersections. Crossed
+  circle's source radius is shared by measurement, paint and intersection. Exact-center
+  circle intersection preserves upstream NaN semantics. Eight measured fixtures now pass
+  without any residual receipt.
+- The remaining 37 exact receipts bind the current fixture, upstream SVG and full local
+  signature. All admit only `parity` and `parity-root`, except 094's measured text wrapping
+  also requires `structure`. Together with the existing catalog this is 159 entries.
+  No comparator normalization, global tolerance, missing-element exception or synthetic
+  geometry was introduced. These receipts describe measured browser differences, not
+  pixel-perfect deterministic rendering.
+- Current-source verification: the 1,357-test renderer library run passed; the provider
+  and controlled-renderer regressions passed; all four catalog/source-binding tests
+  passed. The full primary-family `compare-all-svgs --check-dom --dom-modes
+  structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout` completed
+  successfully. Flowchart rendered 1,153 fixtures with four established skips, checked
+  3,459 mode comparisons, and admitted 145 exact residual comparisons. Independent Spec
+  review found no remaining code defect; Standards review requested this durable residual
+  explanation. This is not the complete U15 audit: new-family checks, fresh consumer
+  artifacts, affected size/performance gates and final release-surface verification remain.
+
+Evidence logs: `target/flowchart-browser-evidence/final-all-comparison.log`,
+`renderer-lib.log`, `endpoint-numeric-proof.log`, and `final-xtask-tests.log`.

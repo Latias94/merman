@@ -302,12 +302,63 @@ mod tests {
     #[test]
     fn committed_catalog_is_sorted_valid_and_source_backed() {
         let catalog = load_catalog().expect("browser text layout residual catalog");
-        assert_eq!(catalog.entries.len(), 122);
+        assert_eq!(catalog.entries.len(), 159);
         for diagram in DIAGRAMS {
             assert!(
                 catalog.entries.iter().any(|entry| entry.diagram == diagram),
                 "diagram={diagram}"
             );
+        }
+    }
+
+    #[test]
+    fn committed_flowchart_browser_measurements_bind_current_sources() {
+        let root = crate::cmd::fixtures_root();
+        let matrix: serde_json::Value = serde_json::from_slice(
+            &fs::read(root.join("_verification/flowchart-elk-browser-measurements.json")).unwrap(),
+        )
+        .unwrap();
+        let catalog = load_catalog().unwrap();
+        assert_eq!(matrix["schema_version"], 1);
+        assert_eq!(matrix["mermaid_version"], catalog.mermaid_version);
+        assert_eq!(
+            matrix["mermaid_source_commit"],
+            catalog.mermaid_source_commit
+        );
+        let entries = matrix["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 45);
+        for entry in entries {
+            let fixture = entry["fixture"].as_str().unwrap();
+            let source = fs::read(root.join("flowchart").join(format!("{fixture}.mmd"))).unwrap();
+            let upstream = fs::read(
+                root.join("upstream-svgs/flowchart")
+                    .join(format!("{fixture}.svg")),
+            )
+            .unwrap();
+            assert_eq!(
+                sha256_hex(&source),
+                entry["input_sha256"].as_str().unwrap(),
+                "{fixture}: input provenance"
+            );
+            assert_eq!(
+                sha256_hex(&upstream),
+                entry["upstream_svg_sha256"].as_str().unwrap(),
+                "{fixture}: upstream provenance"
+            );
+            if let Some(receipt) = catalog
+                .entries
+                .iter()
+                .find(|receipt| receipt.diagram == "flowchart" && receipt.fixture == fixture)
+            {
+                assert_eq!(
+                    receipt.input_sha256,
+                    entry["input_sha256"].as_str().unwrap()
+                );
+                assert_eq!(
+                    receipt.upstream_svg_sha256,
+                    entry["upstream_svg_sha256"].as_str().unwrap()
+                );
+            }
         }
     }
 

@@ -69,6 +69,8 @@ unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]
+# Browser geometry replays require the exact captured IEEE-754 values.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
