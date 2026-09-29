@@ -465,7 +465,7 @@
       ],
       "input_sha256": "12146de76d14c39cd522e601b546f5c2f8099d63a8ac6813898d8f2d04e8bfae",
       "upstream_svg_sha256": "eaa984b453d5f31c734f06280700d432cfeeadd6f071d7dbe4160275e44b4057",
-      "local_svg_signature_sha256": "73f9a97de53cb20c92272eebdef24f9edc72e8c98cb3379add60c648e15ba8c6"
+      "local_svg_signature_sha256": "491dc56b40a3db29d3e1d787414b3234c32e5f71dd69d350908395b75f837c7a"
     },
     {
       "diagram": "flowchart",

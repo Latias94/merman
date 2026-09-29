@@ -231,7 +231,7 @@ impl<'input> ParsedSvgDom<'input> {
                     key.descendants,
                     key.decimals,
                     key.normalize_browser_text_wrapping,
-                    document_may_have_mid_markers(document),
+                    document_may_have_start_or_mid_markers(document),
                 );
                 if key.normalize_browser_text_wrapping {
                     normalize_browser_text_wrapping(
@@ -363,11 +363,13 @@ fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
 
 // CSS escapes, comments, and at-rules are deliberately not interpreted here.
 // A comparator must preserve vertices whenever marker semantics are uncertain.
-fn document_may_have_mid_markers(document: &roxmltree::Document<'_>) -> bool {
+// Initial stubs also determine auto-oriented start markers, even below numeric precision.
+fn document_may_have_start_or_mid_markers(document: &roxmltree::Document<'_>) -> bool {
     fn uncertain_style(style: &str) -> bool {
         let compact: String = style.chars().filter(|c| !c.is_whitespace()).collect();
         let lower = compact.to_ascii_lowercase();
-        lower.contains("marker-mid")
+        lower.contains("marker-start")
+            || lower.contains("marker-mid")
             || lower.contains("marker:")
             || lower.contains('\\')
             || lower.contains("/*")
@@ -375,7 +377,7 @@ fn document_may_have_mid_markers(document: &roxmltree::Document<'_>) -> bool {
     }
     document.descendants().any(|node| {
         node.attributes().any(|attribute| {
-            matches!(attribute.name(), "marker-mid" | "marker")
+            matches!(attribute.name(), "marker-start" | "marker-mid" | "marker")
                 || (attribute.name() == "style" && uncertain_style(attribute.value()))
         }) || (node.has_tag_name("style")
             && (node.children().any(|child| !child.is_text())
@@ -2203,6 +2205,47 @@ mod tests {
             normalize_flowchart_initial_stub("M0,0L0.000009,0L1,0", 6),
             "M0,0L0.000009,0L1,0"
         );
+    }
+
+    #[test]
+    fn parity_preserves_initial_segments_with_start_markers() {
+        for (prefix, attributes) in [
+            ("", r#"marker-start="url(#arrow)""#),
+            (r#"<g marker-start="url(#arrow)">"#, ""),
+            ("", r#"style="marker-start:url(#arrow)""#),
+            (
+                "<style>.flowchart-link { marker-start:url(#arrow) }</style>",
+                "",
+            ),
+            (
+                "<style>.flowchart-link { MARKER-START : url(#arrow) }</style>",
+                "",
+            ),
+            (
+                r"<style>.flowchart-link { marker-\73 tart:url(#arrow) }</style>",
+                "",
+            ),
+        ] {
+            let svg = |path: &str| {
+                let suffix = if prefix.starts_with("<g ") {
+                    "</g>"
+                } else {
+                    ""
+                };
+                format!(
+                    r#"<svg class="flowchart"><defs><marker id="arrow" orient="auto"><path d="M0,0L10,5L0,10Z"/></marker></defs>{prefix}<g class="edges"><path class="flowchart-link" d="{path}" {attributes}/></g>{suffix}</svg>"#
+                )
+            };
+            for mode in [DomMode::Parity, DomMode::ParityRoot] {
+                // The tiny first segment points left, while its successor points right.
+                // Removing it reverses the start marker despite identical rounded coordinates.
+                assert_ne!(
+                    dom_signature(&svg("M0,0L-0.000001,0L40,0"), mode, 3).unwrap(),
+                    dom_signature(&svg("M0,0L40,0"), mode, 3).unwrap(),
+                    "must preserve start marker direction: {prefix} {attributes}"
+                );
+            }
+        }
     }
 
     #[test]
