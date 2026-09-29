@@ -350,3 +350,71 @@ C@{label: "`**literal**`", labelType: text}
         }
     }
 }
+
+#[test]
+fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
+    for backend in ["elk", "dagre"] {
+        for html_labels in [false, true] {
+            for flowchart in [json!({}), json!({"minNodeWidth": 10})] {
+                let engine =
+                    Engine::new().with_site_config(merman_core::MermaidConfig::from_value(json!({
+                        "layout": backend,
+                        "htmlLabels": html_labels,
+                        "agentflow": { "minNodeWidth": 300 },
+                        "flowchart": flowchart
+                    })));
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(
+                        "agentflow-beta\nA[Hi]\n",
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+                let projection = artifact.layout_json().unwrap();
+                let width = projection["layout"]["AgentflowDiagram"]["nodes"][0]["width"]
+                    .as_f64()
+                    .unwrap();
+                assert!(width >= 300.0, "{backend}, html={html_labels}: {width}");
+                artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            }
+        }
+
+        let mut dimensions = Vec::new();
+        for wrapping_width in [40, 200] {
+            let engine =
+                Engine::new().with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "layout": backend,
+                    "htmlLabels": false,
+                    "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping_width },
+                    "flowchart": { "minNodeWidth": 0, "wrappingWidth": 200 }
+                })));
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(
+                    "agentflow-beta\nA[one two three four five six seven eight nine ten]\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let node = &projection["layout"]["AgentflowDiagram"]["nodes"][0];
+            dimensions.push((
+                node["width"].as_f64().unwrap(),
+                node["height"].as_f64().unwrap(),
+            ));
+        }
+        assert!(
+            dimensions[0].0 < dimensions[1].0,
+            "{backend}: {dimensions:?}"
+        );
+        assert!(
+            dimensions[0].1 > dimensions[1].1,
+            "{backend}: {dimensions:?}"
+        );
+    }
+}

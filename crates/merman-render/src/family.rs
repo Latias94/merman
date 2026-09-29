@@ -1228,13 +1228,14 @@ fn project_agentflow_flowchart_config(
     else {
         return projected;
     };
+    // AgentflowDB assigns these values to each node before the shared shape helpers
+    // read them. Node-specific values precede Flowchart configuration; only a falsy
+    // wrappingWidth falls through via labelHelper's JavaScript `||` expression.
     for key in ["minNodeWidth", "wrappingWidth"] {
-        let flowchart_has_key = config
-            .as_value()
-            .get("flowchart")
-            .and_then(serde_json::Value::as_object)
-            .is_some_and(|section| section.contains_key(key));
-        if !flowchart_has_key && let Some(value) = agentflow.get(key) {
+        if let Some(value) = agentflow.get(key) {
+            if key == "wrappingWidth" && !crate::config::json_value_is_truthy(value) {
+                continue;
+            }
             projected.set_value(&format!("flowchart.{key}"), value.clone());
         }
     }
@@ -2142,7 +2143,7 @@ mod tests {
     }
 
     #[test]
-    fn agentflow_layout_config_projects_only_missing_flowchart_measurement_keys() {
+    fn agentflow_layout_config_prioritizes_family_measurement_keys() {
         let config = merman_core::MermaidConfig::from_value(json!({
             "agentflow": { "minNodeWidth": 180, "wrappingWidth": 240 },
             "flowchart": { "minNodeWidth": 90 }
@@ -2154,10 +2155,23 @@ mod tests {
                 .pointer(path)
                 .and_then(serde_json::Value::as_f64)
         };
-        assert_eq!(number(&projected, "/flowchart/minNodeWidth"), Some(90.0));
+        assert_eq!(number(&projected, "/flowchart/minNodeWidth"), Some(180.0));
         assert_eq!(number(&projected, "/flowchart/wrappingWidth"), Some(240.0));
         assert_eq!(number(&config, "/flowchart/wrappingWidth"), None);
         assert_eq!(number(&config, "/agentflow/minNodeWidth"), Some(180.0));
+    }
+
+    #[test]
+    fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
+        for wrapping in [json!(0), json!(null), json!(false), json!("")] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping },
+                "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
+            assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
+        }
     }
 
     #[test]
