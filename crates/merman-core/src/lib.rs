@@ -13,7 +13,11 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
-#[cfg(any(feature = "diagram-mindmap", feature = "diagram-state"))]
+#[cfg(any(
+    feature = "diagram-mindmap",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;

@@ -225,3 +225,39 @@ fn cancelled_parse_does_not_publish_partial_model() {
             .is_err()
     );
 }
+
+#[test]
+fn json_infinity_presentation_survives_typed_roundtrip_without_changing_compat_json() {
+    let parsed = model(
+        r#"usecase-beta
+json Data@{"positive":1e309,"negative":-1e309,"null":null}
+"#,
+    );
+    let encoded = serde_json::to_value(&parsed).unwrap();
+    assert_eq!(
+        encoded["json_nodes"][0]["nonFiniteNumbers"]["/positive"],
+        "positive"
+    );
+    assert_eq!(
+        encoded["json_nodes"][0]["nonFiniteNumbers"]["/negative"],
+        "negative"
+    );
+    assert_eq!(
+        serde_json::from_value::<UsecaseDiagramRenderModel>(encoded).unwrap(),
+        parsed
+    );
+    let compat = render_model_to_compat_json(&parsed, &meta()).unwrap();
+    assert_eq!(
+        compat["jsonNodes"][0]["value"],
+        serde_json::json!({"positive":null,"negative":null,"null":null})
+    );
+    assert!(compat["jsonNodes"][0].get("nonFiniteNumbers").is_none());
+    let old: UsecaseJsonNode = serde_json::from_value(compat["jsonNodes"][0].clone()).unwrap();
+    assert!(old.non_finite_numbers.is_empty());
+    assert!(
+        serde_json::to_value(old)
+            .unwrap()
+            .get("nonFiniteNumbers")
+            .is_none()
+    );
+}

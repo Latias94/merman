@@ -775,8 +775,7 @@ impl<'a> Parser<'a> {
         let offset = opening.span.start + raw.len() - rest.len();
         let span = SourceSpan::new(offset, offset + len);
         let literal = self.expect(K::JsonObjectLiteral)?;
-        let (value, property_order) =
-            super::ordered_json::parse(self.text(&literal), literal.span.start)?;
+        let parsed_json = super::ordered_json::parse(self.text(&literal), literal.span.start)?;
         let classes = self.class_suffix()?;
         self.facts.push_symbol(
             EditorSemanticSymbol::new(
@@ -791,8 +790,9 @@ impl<'a> Parser<'a> {
         self.draft.json.push(JsonDraft {
             node: UsecaseJsonNode {
                 id,
-                value,
-                property_order,
+                value: parsed_json.value,
+                property_order: parsed_json.property_order,
+                non_finite_numbers: parsed_json.non_finite_numbers,
                 classes,
                 styles: Vec::new(),
             },

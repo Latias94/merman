@@ -570,3 +570,187 @@ A("first\nsecond")"#,
         assert_eq!(rows, ["first", "second"], "htmlLabels={html}");
     }
 }
+
+const MATH_LABEL_SOURCES: &[&str] = &[
+    "usecase-beta\nU(\"$$x^2$$\")\n",
+    "usecase-beta\nactor U(\"$$x^2$$\")\n",
+    "usecase-beta\nactor U <<$$x^2$$>>\n",
+    "usecase-beta\nsystemBoundary S(\"$$x^2$$\")\nend\n",
+    "usecase-beta\nA -- \"$$x^2$$\" --> B\n",
+    "usecase-beta\nA\nnote for A \"$$x^2$$\"\n",
+    "usecase-beta\njson Data@{\"formula\":\"$$x^2$$\"}\n",
+    "usecase-beta\njson Data@{\"$$x^2$$\":1}\n",
+    "usecase-beta\njson Data@{\"$$x\":{\"y$$\":1}}\n",
+    "usecase-beta\njson Data@{\"$$x\":[{\"y$$\":1}]}\n",
+    "usecase-beta\njson Data@{\"items\":[\"plain\",\"$$x^2$$\"]}\n",
+];
+
+const MATH_LITERAL_BREAK_SOURCES: &[&str] = &[
+    "usecase-beta\nU(\"$$x<br/>y$$\")\n",
+    "usecase-beta\njson Data@{\"formula\":\"$$x<br/>y$$\"}\n",
+    "usecase-beta\njson Data@{\"$$x<br/>y$$\":1}\n",
+];
+
+#[test]
+fn usecase_math_capability_admission_matches_html_label_rendering() {
+    for source in MATH_LABEL_SOURCES.iter().chain(MATH_LITERAL_BREAK_SOURCES) {
+        for html_labels in [true, false] {
+            let parsed = Engine::new()
+                .with_site_config(MermaidConfig::from_value(json!({
+                    "layout": "dagre", "htmlLabels": html_labels,
+                })))
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .without_math_renderer()
+                .begin_session()
+                .unwrap();
+            let plan = family::plan_render(&parsed, &session).unwrap();
+            assert_eq!(plan.is_ready(), !html_labels, "{source}");
+            let missing: Vec<_> = plan.missing_capability_ids().collect();
+            assert_eq!(
+                missing,
+                if html_labels { vec!["math"] } else { vec![] },
+                "{source}"
+            );
+            let result = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session);
+            if html_labels {
+                assert!(
+                    matches!(result, Err(merman_render::Error::MissingCapability { .. })),
+                    "{source}"
+                );
+            } else {
+                assert!(result.is_ok(), "SVG-only labels remain literal: {source}");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn usecase_math_labels_render_real_math_for_every_label_owner() {
+    for source in MATH_LABEL_SOURCES {
+        let (_, svg) = render_config(source, json!({"layout":"dagre", "htmlLabels":true}));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("svg")
+                    && node
+                        .ancestors()
+                        .any(|ancestor| ancestor.has_tag_name("foreignObject"))
+            }),
+            "expected rendered math SVG in Usecase HTML label: {source}"
+        );
+    }
+}
+
+#[test]
+fn usecase_math_measurement_and_output_share_the_operation_backend() {
+    use merman_render::math::MathRenderer;
+    use merman_render::text::{TextMetrics, TextStyle, WrapMode};
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct FixedMath;
+    impl MathRenderer for FixedMath {
+        fn render_html_label(&self, text: &str, _: &MermaidConfig) -> Option<String> {
+            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            Some("<span>rendered formula</span>".to_owned())
+        }
+        fn measure_html_label(
+            &self,
+            text: &str,
+            _: &MermaidConfig,
+            _: &TextStyle,
+            _: Option<f64>,
+            _: WrapMode,
+        ) -> Option<TextMetrics> {
+            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            Some(TextMetrics {
+                width: 222.0,
+                height: 37.0,
+                line_count: 1,
+            })
+        }
+    }
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(
+            json!({"layout":"dagre", "htmlLabels":true}),
+        ))
+        .parse_diagram_for_render_model_sync(
+            "usecase-beta\nU(\"$$x<br/>y$$\")\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(Arc::new(FixedMath))
+        .begin_session()
+        .unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    let layout = artifact.layout_json().unwrap();
+    let node = &layout["layout"]["UsecaseDiagram"]["nodes"][0];
+    assert_eq!(node["width"], json!(262.0));
+    assert_eq!(node["height"], json!(77.0));
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    assert!(rendered.svg().contains("<span>rendered formula</span>"));
+
+    // Markdown <br/> splits math delimiters; unlike a plain label it must not
+    // acquire a math requirement or invoke the backend on a literal fragment.
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(
+            json!({"layout":"dagre", "htmlLabels":true}),
+        ))
+        .parse_diagram_for_render_model_sync(
+            "usecase-beta\nU(\"`$$x<br/>y$$`\")\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(Arc::new(FixedMath))
+        .begin_session()
+        .unwrap();
+    let plan = family::plan_render(&parsed, &session).unwrap();
+    assert!(!plan.required_capability_ids().any(|id| id == "math"));
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    assert!(!rendered.svg().contains("<span>rendered formula</span>"));
+}
+
+#[test]
+fn usecase_json_infinities_survive_the_complete_render_pipeline() {
+    let source = r#"usecase-beta
+json Data@{"positive":1e309,"negative":-1e309,"actualNull":null,"nested":[1e400,-1e400]}
+"#;
+    for layout in ["dagre", "elk"] {
+        for html_labels in [false, true] {
+            let (_, svg) = render_config(
+                source,
+                json!({
+                    "layout": layout, "look": "classic", "htmlLabels": html_labels
+                }),
+            );
+            let doc = roxmltree::Document::parse(&svg).expect("valid Usecase SVG");
+            let text = doc
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<Vec<_>>();
+            for (value, count) in [("Infinity", 2), ("-Infinity", 2), ("null", 1)] {
+                assert_eq!(
+                    text.iter().filter(|text| **text == value).count(),
+                    count,
+                    "{layout}, htmlLabels={html_labels}: {value}"
+                );
+            }
+        }
+    }
+}

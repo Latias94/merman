@@ -42,6 +42,7 @@ pub(crate) struct UsecaseLabelPlan {
     pub style: TextStyle,
     pub max_width: Option<f64>,
     pub styles: indexmap::IndexMap<String, String>,
+    pub math_html: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,15 +116,126 @@ impl UsecasePreparedArtifact {
     }
 }
 
+/// The literal source Mermaid passes to createText, before selecting its math branch.
+pub(crate) fn create_text_source(text: &str, kind: UsecaseLabelType) -> std::borrow::Cow<'_, str> {
+    match kind {
+        UsecaseLabelType::Markdown => std::borrow::Cow::Borrowed(text),
+        UsecaseLabelType::Text => std::borrow::Cow::Owned(
+            normalize_plain_label_line_breaks(text)
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;"),
+        ),
+    }
+}
+
+pub(crate) fn requires_math(
+    model: &UsecaseDiagramRenderModel,
+    config: &merman_core::MermaidConfig,
+) -> bool {
+    if config.as_value().get("htmlLabels").and_then(Value::as_bool) == Some(false) {
+        return false;
+    }
+    let has_math = |(text, kind): (&str, UsecaseLabelType)| {
+        let sanitized = merman_core::sanitize::sanitize_text(text, config);
+        crate::math::contains_delimited_math(&create_text_source(&sanitized, kind))
+    };
+    let mut labels = model
+        .nodes
+        .iter()
+        .flat_map(|node| {
+            std::iter::once((node.label.as_str(), node.label_type)).chain(
+                node.stereotype
+                    .as_deref()
+                    .map(|text| (text, UsecaseLabelType::Text)),
+            )
+        })
+        .chain(
+            model
+                .boundaries
+                .iter()
+                .map(|boundary| (boundary.label.as_str(), boundary.label_type)),
+        )
+        .chain(
+            model
+                .notes
+                .iter()
+                .map(|note| (note.label.as_str(), note.label_type)),
+        )
+        .chain(model.relationships.iter().filter_map(|edge| {
+            edge.label
+                .as_deref()
+                .map(|text| (text, edge.label_type.unwrap_or_default()))
+        }));
+    if labels.any(has_math) {
+        return true;
+    }
+    // JSON cells show the complete leaf path, not each object key in isolation.
+    let mut pending: Vec<_> = model
+        .json_nodes
+        .iter()
+        .map(|node| (&node.value, String::new()))
+        .collect();
+    while let Some((value, path)) = pending.pop() {
+        match value {
+            Value::Array(values)
+                if !values.is_empty()
+                    && values
+                        .iter()
+                        .all(|value| !value.is_array() && !value.is_object()) =>
+            {
+                if has_math((&path, UsecaseLabelType::Text))
+                    || values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|text| has_math((text, UsecaseLabelType::Text)))
+                {
+                    return true;
+                }
+            }
+            Value::Array(values) if !values.is_empty() => {
+                pending.extend(
+                    values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| (value, format!("{path}[{index}]"))),
+                );
+            }
+            Value::Object(values) if !values.is_empty() => {
+                pending.extend(values.iter().map(|(key, value)| {
+                    let path = if path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    (value, path)
+                }));
+            }
+            _ => {
+                if has_math((&path, UsecaseLabelType::Text))
+                    || value
+                        .as_str()
+                        .is_some_and(|text| has_math((text, UsecaseLabelType::Text)))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (mut nodes, mut edges) = measure::measure(model, effective_config, measurer, &mut work)?;
+    let (mut nodes, mut edges) =
+        measure::measure(model, effective_config, measurer, math_renderer, &mut work)?;
     if crate::layout_backend::resolve_graph_layout(effective_config).backend
         == crate::layout_backend::GraphLayoutBackend::Dagre
     {

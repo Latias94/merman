@@ -132,20 +132,25 @@ fn write_label(
         );
     }
     if html {
-        let content = match plan.label_type {
-            // Mermaid's plain-text HTML label path emits one paragraph around the escaped text.
-            UsecaseLabelType::Text => {
-                let text = crate::usecase::normalize_plain_label_line_breaks(&plan.text);
-                format!("<p>{}</p>", escape_xml(&text).replace('\n', "<br/>"))
-            }
-            // The Markdown helper already returns the complete XHTML fragment, including its
-            // paragraph wrapper when the source is an inline paragraph. Wrapping it again breaks
-            // folded stereotype annotation and changes the DOM nesting.
-            UsecaseLabelType::Markdown => crate::text::mermaid_markdown_to_xhtml_label_fragment(
-                &plan.text,
-                config_bool(config.as_value(), &["markdownAutoWrap"]).unwrap_or(true),
-            ),
-        };
+        let content = plan
+            .math_html
+            .clone()
+            .unwrap_or_else(|| match plan.label_type {
+                // Mermaid's plain-text HTML label path emits one paragraph around the escaped text.
+                UsecaseLabelType::Text => {
+                    let text = crate::usecase::normalize_plain_label_line_breaks(&plan.text);
+                    format!("<p>{}</p>", escape_xml(&text).replace('\n', "<br/>"))
+                }
+                // The Markdown helper already returns the complete XHTML fragment, including its
+                // paragraph wrapper when the source is an inline paragraph. Wrapping it again breaks
+                // folded stereotype annotation and changes the DOM nesting.
+                UsecaseLabelType::Markdown => {
+                    crate::text::mermaid_markdown_to_xhtml_label_fragment(
+                        &plan.text,
+                        config_bool(config.as_value(), &["markdownAutoWrap"]).unwrap_or(true),
+                    )
+                }
+            });
         if !is_edge_label && !is_boundary {
             out.push_str("<rect/>");
         }

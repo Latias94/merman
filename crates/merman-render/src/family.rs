@@ -1280,6 +1280,10 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(model) => {
+            crate::usecase::requires_math(model, &parsed.metadata().effective_config)
+        }
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => model
             .vertices
@@ -2066,6 +2070,7 @@ fn prepare_non_class_render(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.math_renderer(),
                     execution.work_meter(),
                     #[cfg(feature = "layout-elk")]
                     execution.elk_operation_seed(),

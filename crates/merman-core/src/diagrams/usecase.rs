@@ -177,6 +177,15 @@ pub struct UsecaseNote {
     pub label_type: UsecaseLabelType,
 }
 
+/// JavaScript JSON numbers whose binary64 value overflows. Compatibility JSON
+/// serializes these as null, while Usecase table labels retain their sign.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UsecaseJsonInfinity {
+    Positive,
+    Negative,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UsecaseJsonNode {
@@ -184,6 +193,10 @@ pub struct UsecaseJsonNode {
     pub value: Value,
     /// Source property order, keyed by RFC 6901 JSON pointers, including the root.
     pub property_order: BTreeMap<String, Vec<String>>,
+    /// Non-finite table values keyed by RFC 6901 JSON pointers. Their entries in
+    /// `value` are null, matching JavaScript JSON.stringify serialization.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub non_finite_numbers: BTreeMap<String, UsecaseJsonInfinity>,
     pub classes: Vec<String>,
     pub styles: Vec<String>,
 }
@@ -276,10 +289,20 @@ pub(crate) fn render_model_to_compat_json(
     model: &UsecaseDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
+    let json_nodes: Vec<_> = model
+        .json_nodes
+        .iter()
+        .map(|node| {
+            json!({
+                "id": node.id, "value": node.value, "propertyOrder": node.property_order,
+                "classes": node.classes, "styles": node.styles,
+            })
+        })
+        .collect();
     Ok(
         json!({ "type": meta.diagram_type, "direction": model.direction,
         "nodes": model.nodes, "boundaries": model.boundaries, "relationships": model.relationships,
-        "notes": model.notes, "jsonNodes": model.json_nodes, "classDefs": model.class_defs,
+        "notes": model.notes, "jsonNodes": json_nodes, "classDefs": model.class_defs,
         "title": model.title, "accTitle": model.acc_title, "accDescr": model.acc_description }),
     )
 }

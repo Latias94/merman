@@ -115,7 +115,7 @@ htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true
-serde_json = { workspace = true, features = ["preserve_order"] }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true

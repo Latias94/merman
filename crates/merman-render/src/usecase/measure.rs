@@ -3,7 +3,8 @@ use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{WrapMode, measure_wrapped_markdown_with_inline_styles};
 use merman_core::diagrams::usecase::{
-    UsecaseArrowType, UsecaseJsonNode, UsecaseNodeKind, UsecaseRelationshipType,
+    UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
+    UsecaseRelationshipType,
 };
 use std::collections::HashSet;
 
@@ -105,8 +106,9 @@ fn styled(mut base: TextStyle, styles: &indexmap::IndexMap<String, String>) -> T
 }
 
 struct LabelContext<'a> {
-    config: &'a Value,
+    config: &'a merman_core::MermaidConfig,
     measurer: &'a dyn TextMeasurer,
+    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
 }
 
@@ -120,6 +122,7 @@ fn label(
 ) -> UsecaseLabelPlan {
     let html = context
         .config
+        .as_value()
         .get("htmlLabels")
         .and_then(Value::as_bool)
         .unwrap_or(true);
@@ -128,18 +131,41 @@ fn label(
     } else {
         WrapMode::SvgLike
     };
-    let mut metrics = if label_type == UsecaseLabelType::Markdown {
-        measure_wrapped_markdown_with_inline_styles(context.measurer, text, style, max_width, mode)
+    let source = create_text_source(text, label_type);
+    let source = source.as_ref();
+    let math_renderer = context
+        .math_renderer
+        .filter(|_| crate::math::contains_delimited_math(source));
+    let math_html = if html {
+        crate::math::render_math_html_label(source, context.config, math_renderer)
     } else {
-        // Plain Usecase labels are escaped before createText; markup is literal content.
-        let escaped = normalize_plain_label_line_breaks(text)
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;");
-        context
-            .measurer
-            .measure_wrapped(&escaped, style, max_width, mode)
+        None
     };
+    let mut metrics =
+        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+            measurer: context.measurer,
+            raw_label: source,
+            style,
+            max_width_px: max_width,
+            wrap_mode: mode,
+            config: context.config,
+            math_renderer,
+        })
+        .unwrap_or_else(|| {
+            if label_type == UsecaseLabelType::Markdown {
+                measure_wrapped_markdown_with_inline_styles(
+                    context.measurer,
+                    text,
+                    style,
+                    max_width,
+                    mode,
+                )
+            } else {
+                context
+                    .measurer
+                    .measure_wrapped(source, style, max_width, mode)
+            }
+        });
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
         metrics.width = metrics.width.max(min_width);
@@ -150,12 +176,31 @@ fn label(
         metrics,
         style: style.clone(),
         max_width,
+        math_html,
         styles: context
             .styles
             .iter()
             .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
+    }
+}
+
+fn json_scalar_display(value: &Value, infinity: Option<&UsecaseJsonInfinity>) -> String {
+    if value.is_null() {
+        match infinity {
+            Some(UsecaseJsonInfinity::Positive) => return "Infinity".into(),
+            Some(UsecaseJsonInfinity::Negative) => return "-Infinity".into(),
+            None => {}
+        }
+    }
+    match value {
+        Value::String(value) => value.clone(),
+        Value::Number(number) => number.as_f64().map_or_else(
+            || number.to_string(),
+            |value| ryu_js::Buffer::new().format(value).to_string(),
+        ),
+        _ => value.to_string(),
     }
 }
 
@@ -182,10 +227,10 @@ fn flatten_json(
                     } else {
                         String::new()
                     };
-                    let value = value
-                        .as_str()
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| value.to_string());
+                    let value = json_scalar_display(
+                        value,
+                        node.non_finite_numbers.get(&format!("{pointer}/{index}")),
+                    );
                     rows.push((display, path.clone(), value));
                 }
             }
@@ -217,7 +262,11 @@ fn flatten_json(
                 }
             }
             Value::String(value) => rows.push((path.clone(), path, value.clone())),
-            _ => rows.push((path.clone(), path, value.to_string())),
+            _ => rows.push((
+                path.clone(),
+                path,
+                json_scalar_display(value, node.non_finite_numbers.get(&pointer)),
+            )),
         }
     }
     Ok(rows)
@@ -244,6 +293,7 @@ pub(super) fn measure(
     model: &UsecaseDiagramRenderModel,
     config: &Value,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(Vec<UsecaseNodePlan>, Vec<UsecaseEdgePlan>)> {
     let sanitize_config = merman_core::MermaidConfig::from_value(config.clone());
@@ -261,8 +311,9 @@ pub(super) fn measure(
             let css = styles(model, &node.classes, &node.styles);
             let style = styled(text_style(config, Some(actor)), &css);
             let label_context = LabelContext {
-                config,
+                config: &sanitize_config,
                 measurer,
+                math_renderer,
                 styles: &css,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
@@ -360,8 +411,9 @@ pub(super) fn measure(
         let css = styles(model, &[], &[]);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config,
+            config: &sanitize_config,
             measurer,
+            math_renderer,
             styles: &css,
         };
         let main = label(
@@ -393,8 +445,9 @@ pub(super) fn measure(
         let css = styles(model, &node.classes, &node.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config,
+            config: &sanitize_config,
             measurer,
+            math_renderer,
             styles: &css,
         };
         let main = label(
@@ -472,8 +525,9 @@ pub(super) fn measure(
         let css = styles(model, &boundary.classes, &boundary.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config,
+            config: &sanitize_config,
             measurer,
+            math_renderer,
             styles: &css,
         };
         let main = label(
@@ -506,8 +560,9 @@ pub(super) fn measure(
         let css = styles(model, &edge.classes, &edge.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
-            config,
+            config: &sanitize_config,
             measurer,
+            math_renderer,
             styles: &css,
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
@@ -650,6 +705,30 @@ mod tests {
     }
 
     #[test]
+    fn json_number_rows_use_javascript_precision_and_exponent_notation() {
+        let node = UsecaseJsonNode {
+            id: "data".into(),
+            value: json!({"values": [9007199254740993_u64, 1e20, 1e21, -0.0, 1e-7, 1e-6]}),
+            property_order: BTreeMap::new(),
+            non_finite_numbers: BTreeMap::new(),
+            classes: Vec::new(),
+            styles: Vec::new(),
+        };
+        let rows = flatten_json(&node, &mut work()).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.2.as_str()).collect::<Vec<_>>(),
+            [
+                "9007199254740992",
+                "100000000000000000000",
+                "1e+21",
+                "0",
+                "1e-7",
+                "0.000001",
+            ]
+        );
+    }
+
+    #[test]
     fn actor_footprint_tracks_font_without_inheriting_box_minimum() {
         let mut model = model();
         model.nodes.push(UsecaseNode {
@@ -670,6 +749,7 @@ mod tests {
             &model,
             &json!({"usecase": {"minNodeWidth": 900}}),
             &measurer,
+            None,
             &mut work(),
         )
         .unwrap();
@@ -677,6 +757,7 @@ mod tests {
             &model,
             &json!({"usecase": {"actorFontSize": 40}}),
             &measurer,
+            None,
             &mut work(),
         )
         .unwrap();
@@ -694,6 +775,7 @@ mod tests {
                 (String::new(), vec!["z".into(), "a".into()]),
                 ("/z".into(), vec!["second".into(), "first".into()]),
             ]),
+            non_finite_numbers: BTreeMap::new(),
             classes: Vec::new(),
             styles: Vec::new(),
         });
@@ -701,6 +783,7 @@ mod tests {
             &model,
             &json!({}),
             &DeterministicTextMeasurer::default(),
+            None,
             &mut work(),
         )
         .unwrap();
@@ -723,6 +806,7 @@ mod tests {
             id: "data".into(),
             value: json!({"roles": ["admin", "viewer"]}),
             property_order: BTreeMap::new(),
+            non_finite_numbers: BTreeMap::new(),
             classes: Vec::new(),
             styles: Vec::new(),
         };
@@ -731,6 +815,33 @@ mod tests {
             [
                 ("roles".into(), "roles".into(), "admin".into()),
                 ("".into(), "roles".into(), "viewer".into()),
+            ]
+        );
+    }
+    #[test]
+    fn json_infinities_retain_sign_in_scalar_arrays_and_nested_rows() {
+        let node = UsecaseJsonNode {
+            id: "data".into(),
+            value: json!({"a/b": [null, null, null, "1e309"], "nested": [{"~key": null}], "null": null}),
+            property_order: BTreeMap::new(),
+            non_finite_numbers: BTreeMap::from([
+                ("/a~1b/0".into(), UsecaseJsonInfinity::Positive),
+                ("/a~1b/1".into(), UsecaseJsonInfinity::Negative),
+                ("/nested/0/~0key".into(), UsecaseJsonInfinity::Negative),
+            ]),
+            classes: Vec::new(),
+            styles: Vec::new(),
+        };
+        let rows = flatten_json(&node, &mut work()).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.2.as_str()).collect::<Vec<_>>(),
+            [
+                "Infinity",
+                "-Infinity",
+                "null",
+                "1e309",
+                "-Infinity",
+                "null"
             ]
         );
     }

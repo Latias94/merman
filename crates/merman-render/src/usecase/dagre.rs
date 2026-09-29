@@ -49,6 +49,7 @@ pub(super) fn expand_self_loops(
                     parent: parents[&edge.source].clone(),
                     source_label: String::new(),
                     label: UsecaseLabelPlan {
+                        math_html: None,
                         text: String::new(),
                         label_type: UsecaseLabelType::Text,
                         metrics: TextMetrics {
