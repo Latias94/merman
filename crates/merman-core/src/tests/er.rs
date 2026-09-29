@@ -1298,3 +1298,172 @@ fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_sp
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
+
+#[test]
+fn parse_diagram_er_keyword_boundaries_match_ascii_word_characters() {
+    let engine = Engine::new();
+    // Mermaid 12's generated Jison rules end keywords with non-Unicode `\b`.
+    for name in [
+        "end-user",
+        "style-guide",
+        "end注文",
+        "END-user",
+        "class-guide",
+        "classDef注文",
+    ] {
+        let source = format!("erDiagram\n{name}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .is_err(),
+            "{name}"
+        );
+        let quoted = format!("erDiagram\n\"{name}\"\n");
+        let parsed = engine
+            .parse_diagram_sync(&quoted, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert!(parsed.model["entities"].get(name).is_some(), "{name}");
+    }
+    for name in [
+        "ending",
+        "end_注文",
+        "style_guide",
+        "classDefinition",
+        "subgraph2",
+    ] {
+        let source = format!("erDiagram\n{name}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert!(parsed.model["entities"].get(name).is_some(), "{name}");
+    }
+}
+
+#[test]
+fn parse_diagram_er_direction_is_an_entity_without_a_direction_rule_match() {
+    let engine = Engine::new();
+    for source in [
+        "erDiagram\ndirection\n",
+        "erDiagram\ndirection {}\n",
+        "erDiagram\ndirection sideways\n",
+        "erDiagram\nA||--||direction: owns\n",
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert!(
+            parsed.model["entities"].get("direction").is_some(),
+            "{source}"
+        );
+        assert_eq!(parsed.model["direction"], json!("TB"));
+    }
+    for (statement, expected) in [
+        ("direction LR", "LR"),
+        ("DiReCtIoN\tbt", "BT"),
+        ("direction\u{00a0}RL", "RL"),
+        ("direction\nLR", "LR"),
+        ("direction LRtail", "LR"),
+        ("xdirection BT", "BT"),
+        ("direction RL direction TB", "TB"),
+        ("direction\u{feff}BT", "BT"),
+    ] {
+        let source = format!("erDiagram\n{statement}\nA\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["direction"], json!(expected), "{statement}");
+        assert_eq!(
+            parsed.model["entities"].as_object().unwrap().len(),
+            1,
+            "{statement}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_er_parent_cardinality_does_not_require_leading_whitespace() {
+    let engine = Engine::new();
+    for name in ["u-table", "U-table", "u.table"] {
+        for indent in ["", " ", "\t"] {
+            let source = format!("erDiagram\n{indent}{name}\n");
+            assert!(
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .is_err(),
+                "{source}"
+            );
+        }
+        let source = format!("erDiagram\n\"{name}\"\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .model["entities"]
+                .get(name)
+                .is_some()
+        );
+    }
+    for marker in ["u", "U"] {
+        let source = format!("erDiagram\n\"A\"{marker}--o{{ B : owns\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            parsed.model["relationships"][0]["relSpec"]["cardB"],
+            json!("MD_PARENT")
+        );
+    }
+}
+
+#[test]
+fn parse_er_editor_direction_selection_tracks_the_matched_rule() {
+    let engine = Engine::new();
+    for (statement, value) in [
+        ("direction RL direction TB", "TB"),
+        ("xdirection BT", "BT"),
+        ("direction\u{00a0}RL", "RL"),
+        ("direction\nLR", "LR"),
+        ("direction LRtail", "LR"),
+    ] {
+        let source = format!("erDiagram\n{statement}\n");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("er", &source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        let selected = facts
+            .expected_syntax
+            .iter()
+            .filter(|expected| expected.kind == EditorExpectedSyntaxKind::CardinalDirectionValue)
+            .collect::<Vec<_>>();
+        assert_eq!(selected.len(), 1, "{statement}");
+        let start = source.rfind(value).unwrap();
+        assert_eq!(
+            selected[0].span,
+            SourceSpan::new(start, start + value.len()),
+            "{statement}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_er_requires_style_payload_at_eof_or_newline() {
+    let engine = Engine::new();
+    for statement in ["style A", "classDef C", "style-guide", "classDef注文"] {
+        for suffix in ["", "\n", " ;", " ;\n"] {
+            let source = format!("erDiagram\n{statement}{suffix}");
+            assert!(
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .is_err(),
+                "{source}"
+            );
+        }
+    }
+}
