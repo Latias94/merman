@@ -708,7 +708,7 @@ mod tests {
         let capabilities: Value = serde_json::from_slice(&bytes).unwrap();
         let capabilities = capabilities.as_array().unwrap();
 
-        assert_eq!(capabilities.len(), 33);
+        assert_eq!(capabilities.len(), 34);
         let flowchart = capabilities
             .iter()
             .find(|capability| capability["diagram_type"] == "flowchart")
