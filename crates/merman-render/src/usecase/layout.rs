@@ -12,6 +12,7 @@ pub(super) fn layout(
     work: &mut OperationLayoutWorkControl,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecaseDiagramLayout> {
+    crate::layout_backend::resolve_graph_layout(config).validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
     if crate::layout_backend::resolve_graph_layout(config).backend
         == crate::layout_backend::GraphLayoutBackend::Elk

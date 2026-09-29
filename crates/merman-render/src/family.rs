@@ -1342,32 +1342,53 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
             }
         }
         #[cfg(feature = "diagram-agentflow")]
-        RenderSemanticModel::Agentflow(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Agentflow(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-usecase")]
-        RenderSemanticModel::Usecase(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Usecase(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-state")]
-        RenderSemanticModel::State(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::State(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-requirement")]
-        RenderSemanticModel::Requirement(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Requirement(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Flowchart(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Class(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(_) if crate::er::uses_elk_layout(effective_config.as_value()) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Er(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         _ => {}
     }

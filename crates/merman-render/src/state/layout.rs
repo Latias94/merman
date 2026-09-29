@@ -1403,6 +1403,7 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     let mut work_control = OperationLayoutWorkControl::new(execution.work_meter());
     let adapter_work = state_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
+    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
     if crate::layout_backend::resolve_graph_layout(effective_config).backend
         == crate::layout_backend::GraphLayoutBackend::Elk

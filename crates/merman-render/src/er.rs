@@ -26,10 +26,6 @@ pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRender
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
 
-pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
-    ErConfigView::new(effective_config).is_elk_layout()
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct ErBoxLabel {
     markdown_input: String,
@@ -851,6 +847,7 @@ fn layout_er_diagram_typed_with_elk_authority(
     let adapter_work = er_layout_adapter_work(model, work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
+    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
 
     #[cfg(not(feature = "layout-elk"))]
     let _ = elk_authority;

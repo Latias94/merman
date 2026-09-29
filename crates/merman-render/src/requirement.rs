@@ -671,7 +671,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
     work_meter.charge(requirement_layout_work_units(model))?;
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
-    let backend = crate::layout_backend::resolve_graph_layout(effective_config).backend;
+    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    selection.validate_rootless_graph()?;
+    let backend = selection.backend;
     let direction = if model.direction.trim().is_empty() {
         normalize_dir("TB")
     } else {

@@ -593,20 +593,6 @@ impl std::ops::Deref for LayoutExecution<'_> {
     }
 }
 
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-usecase",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-class",
-    feature = "diagram-state",
-    feature = "diagram-requirement"
-))]
-fn uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
-    layout_backend::resolve_graph_layout(effective_config.as_value()).backend
-        == layout_backend::GraphLayoutBackend::Elk
-}
-
 #[cfg(feature = "diagram-class")]
 pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
@@ -619,8 +605,10 @@ pub(crate) fn layout_class_typed_by_engine(
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
+    let selection = layout_backend::resolve_graph_layout(effective_config.as_value());
+    selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
-    if uses_elk_layout(effective_config) {
+    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
         return class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
             model,
             effective_config,
@@ -671,8 +659,11 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
+    options.session.checkpoint(OperationPhase::Layout)?;
+    let selection = layout_backend::resolve_graph_layout(effective_config.as_value());
+    selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
-    if uses_elk_layout(effective_config) {
+    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
         return flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
             model,
             render_label_sources,
@@ -1394,6 +1385,65 @@ id1(Start)-->id2(Stop)
             .svg()
             .to_owned();
         assert!(svg.contains("edgePath"), "{svg}");
+    }
+
+    #[test]
+    fn registered_cose_graph_failure_is_not_replaced_by_dagre() {
+        for body in [
+            "flowchart LR\nA-->B\nA-->C",
+            "agentflow-beta\nA-->B",
+            "usecase-beta\nactor A\nA --> B",
+            "classDiagram\nA --> B",
+            "stateDiagram-v2\nA --> B",
+            "erDiagram\nA ||--o{ B : relates",
+            "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
+        ] {
+            for layout in ["cose-bilkent", "unknown-layout-probe"] {
+                let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}\n");
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                let result = crate::family::prepare(parsed, &LayoutOptions::default(), session);
+                if layout == "cose-bilkent" && cfg!(feature = "layout-cytoscape") {
+                    assert!(
+                        matches!(result, Err(Error::InvalidModel { message }) if message.contains("Root node is required")),
+                        "{body}"
+                    );
+                } else {
+                    result.unwrap_or_else(|error| panic!("{body}: {layout}: {error}"));
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "layout-cytoscape")]
+    #[test]
+    fn registered_cose_host_denial_precedes_missing_root_failure() {
+        let source = "---\nconfig:\n  layout: cose-bilkent\n---\nusecase-beta\nactor A\nA --> B\n";
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_capability_policy(RenderCapabilityPolicy::deny_all())
+            .begin_session()
+            .unwrap();
+        let plan = crate::family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(
+            plan.missing_capabilities(),
+            &[RenderCapability::LayoutCytoscape]
+        );
+        assert!(matches!(
+            crate::family::prepare(parsed, &LayoutOptions::default(), session),
+            Err(Error::MissingCapability {
+                capability: RenderCapability::LayoutCytoscape,
+                ..
+            })
+        ));
     }
 
     #[cfg(feature = "layout-elk")]

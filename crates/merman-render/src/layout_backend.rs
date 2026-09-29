@@ -10,6 +10,7 @@ use serde_json::Value;
 pub(crate) enum GraphLayoutBackend {
     Dagre,
     Elk,
+    CoseBilkent,
 }
 
 /// The root loaders registered by Mermaid 12. Container metadata has its own allowlist.
@@ -59,12 +60,35 @@ pub(crate) struct GraphLayoutSelection<'a> {
     pub backend: GraphLayoutBackend,
 }
 
-/// Selection for the graph families currently sharing the Dagre/ELK adapters.
+impl GraphLayoutSelection<'_> {
+    pub(crate) fn required_capability(self) -> Option<crate::RenderCapability> {
+        match self.backend {
+            GraphLayoutBackend::Dagre => None,
+            GraphLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
+            GraphLayoutBackend::CoseBilkent => Some(crate::RenderCapability::LayoutCytoscape),
+        }
+    }
+
+    /// The selected CoSE loader requires Mindmap's root node. Graph-family adapters
+    /// must preserve that upstream failure instead of silently executing Dagre.
+    pub(crate) fn validate_rootless_graph(self) -> crate::Result<()> {
+        if self.backend == GraphLayoutBackend::CoseBilkent {
+            return Err(crate::Error::InvalidModel {
+                message: "Root node is required for the cose-bilkent layout".to_owned(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Select a registered loader before validating the family's layout data.
 pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection<'_> {
     let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
     let backend =
         if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(requested).is_some() {
             GraphLayoutBackend::Elk
+        } else if cfg!(feature = "layout-cytoscape") && requested == "cose-bilkent" {
+            GraphLayoutBackend::CoseBilkent
         } else {
             GraphLayoutBackend::Dagre
         };
@@ -75,6 +99,31 @@ pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection<'_> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn registered_cose_preserves_missing_root_failure_while_unknown_layout_falls_back() {
+        let config = json!({"layout": "cose-bilkent"});
+        let selected = resolve_graph_layout(&config);
+        if cfg!(feature = "layout-cytoscape") {
+            assert_eq!(selected.backend, GraphLayoutBackend::CoseBilkent);
+            assert_eq!(
+                selected.required_capability(),
+                Some(crate::RenderCapability::LayoutCytoscape)
+            );
+            assert!(
+                matches!(selected.validate_rootless_graph(), Err(crate::Error::InvalidModel { message }) if message.contains("Root node is required"))
+            );
+        } else {
+            assert_eq!(selected.backend, GraphLayoutBackend::Dagre);
+            assert_eq!(selected.required_capability(), None);
+            selected.validate_rootless_graph().unwrap();
+        }
+        let unknown = json!({"layout": "unknown-layout-probe"});
+        let selected = resolve_graph_layout(&unknown);
+        assert_eq!(selected.backend, GraphLayoutBackend::Dagre);
+        assert_eq!(selected.required_capability(), None);
+        selected.validate_rootless_graph().unwrap();
+    }
 
     #[test]
     fn graph_layout_selection_retains_request_and_resolves_available_loader() {
