@@ -1702,10 +1702,23 @@ impl<'input> Lexer<'input> {
         ))
     }
 
+    /// Whether the word of `len` bytes at the cursor ends at a word boundary, like Mermaid's `\b`
+    /// after a word. Mermaid's regexes are not Unicode-aware, so only ASCII `[A-Za-z0-9_]`
+    /// continues a word: `tokens` is a name, while `to-do` and `to注文` start with `to`.
+    fn ends_word_at(&self, len: usize) -> bool {
+        self.input
+            .as_bytes()
+            .get(self.pos + len)
+            .is_none_or(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+    }
+
     fn lex_rel_tokens(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let s = &self.input[self.pos..];
 
+        // Word cardinalities only match at a word boundary (`/^(?:one or zero\b)/i`,
+        // `/^(?:many\b)/i`, `/^(?:to\b)/i`, ...), so entity names such as `tokens`, `oneshot`
+        // or `manyToMany` fall through to `lex_name_or_str`.
         let lower = s.to_ascii_lowercase();
         for (pat, tok) in [
             ("optionally to", Tok::NonIdentifying),
@@ -1717,7 +1730,7 @@ impl<'input> Lexer<'input> {
             ("zero or many", Tok::ZeroOrMore),
             ("only one", Tok::OnlyOne),
         ] {
-            if lower.starts_with(pat) {
+            if lower.starts_with(pat) && self.ends_word_at(pat.len()) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }
@@ -1739,11 +1752,11 @@ impl<'input> Lexer<'input> {
             self.pos += "1+".len();
             return Some((start, Tok::OneOrMore, self.pos));
         }
-        if lower.starts_with("many") {
+        if lower.starts_with("many") && self.ends_word_at("many".len()) {
             self.pos += "many".len();
             return Some((start, Tok::ZeroOrMore, self.pos));
         }
-        if lower.starts_with("one") {
+        if lower.starts_with("one") && self.ends_word_at("one".len()) {
             self.pos += "one".len();
             return Some((start, Tok::OnlyOne, self.pos));
         }
@@ -1751,7 +1764,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
             return Some((start, Tok::OnlyOne, self.pos));
         }
-        if lower.starts_with("to") {
+        if lower.starts_with("to") && self.ends_word_at("to".len()) {
             self.pos += "to".len();
             return Some((start, Tok::Identifying, self.pos));
         }
@@ -1765,7 +1778,9 @@ impl<'input> Lexer<'input> {
             ("}|", Tok::OneOrMore),
             ("}o", Tok::ZeroOrMore),
         ] {
-            if s.starts_with(pat) {
+            // Only `|o` and `}o` end with a word character, so only they carry `\b` in Mermaid.
+            let needs_boundary = pat.ends_with('o');
+            if s.starts_with(pat) && (!needs_boundary || self.ends_word_at(pat.len())) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }

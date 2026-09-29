@@ -160,14 +160,15 @@ jobs:
       CARGO_BUILD_JOBS: "1"
       CARGO_INCREMENTAL: "0"
     steps:
-      - name: Checkout head
+      # Keep PR contract recipes and source on the same merge revision.
+      - name: Checkout contract revision
         uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
           persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+          ref: ${{ inputs.head_ref || github.sha }}
+          repository: ${{ inputs.head_repository || github.repository }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
