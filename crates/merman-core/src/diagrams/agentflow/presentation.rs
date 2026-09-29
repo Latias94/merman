@@ -20,6 +20,8 @@ pub struct AgentflowPresentation {
     #[serde(default)]
     subgraph_classes: HashMap<String, Vec<String>>,
     #[serde(default)]
+    pub(super) subgraph_label_types: HashMap<String, String>,
+    #[serde(default)]
     class_defs: IndexMap<String, Vec<String>>,
     #[serde(default)]
     edge_defaults: Option<FlowEdgeDefaults>,
@@ -31,6 +33,8 @@ pub struct AgentflowPresentation {
 pub(super) struct NodePresentation {
     #[serde(default)]
     pub(super) dom_index: Option<usize>,
+    #[serde(default)]
+    pub(super) label_type: Option<String>,
     classes: Vec<String>,
     styles: Vec<String>,
     link: Option<String>,
@@ -40,6 +44,8 @@ pub(super) struct NodePresentation {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct EdgePresentation {
+    #[serde(default)]
+    label_type: Option<String>,
     classes: Vec<String>,
     styles: Vec<String>,
     interpolate: Option<String>,
@@ -48,7 +54,9 @@ struct EdgePresentation {
 }
 
 impl AgentflowPresentation {
-    pub(super) fn add_edge(&mut self, id: &str) {
+    pub(super) fn add_edge(&mut self, id: &str, label_type: Option<&str>) {
+        self.edges.entry(id.to_string()).or_default().label_type =
+            Some(label_type.unwrap_or("text").to_string());
         if let Some(interpolate) = self
             .edge_defaults
             .as_ref()
@@ -81,6 +89,10 @@ impl AgentflowPresentation {
             .collect();
         for node in &mut model.nodes {
             if let Some(presentation) = self.nodes.get(&node.id) {
+                node.label_type = presentation
+                    .label_type
+                    .clone()
+                    .or_else(|| Some("text".into()));
                 node.classes.extend(presentation.classes.iter().cloned());
                 node.styles = presentation.styles.clone();
                 node.link = presentation.link.clone();
@@ -90,6 +102,7 @@ impl AgentflowPresentation {
         }
         for edge in &mut model.edges {
             if let Some(presentation) = self.edges.get(&edge.id) {
+                edge.label_type = presentation.label_type.clone();
                 edge.classes = presentation.classes.clone();
                 edge.style = presentation.styles.clone();
                 edge.interpolate = presentation.interpolate.clone();
@@ -98,6 +111,7 @@ impl AgentflowPresentation {
             }
         }
         for graph in &mut model.subgraphs {
+            graph.label_type = self.subgraph_label_types.get(&graph.id).cloned();
             // addNodeFromVertex overrides container CSS when the id also has a vertex record.
             if let Some(vertex) = self.nodes.get(&graph.id) {
                 graph.classes = vertex.classes.clone();
@@ -183,6 +197,7 @@ impl Parser<'_> {
                         id: style.target.clone(),
                         id_span,
                         label: None,
+                        label_type: None,
                         syntax_shape: None,
                         metadata: Map::new(),
                         metadata_span: None,

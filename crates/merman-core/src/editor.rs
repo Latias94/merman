@@ -231,6 +231,10 @@ impl EditorRenamePolicy {
             Self::RailroadAbnfRule => {
                 crate::diagrams::railroad::is_valid_editor_abnf_rule_identifier(candidate)
             }
+            #[cfg(not(feature = "diagram-agentflow"))]
+            Self::AgentflowNodeId => false,
+            #[cfg(feature = "diagram-agentflow")]
+            Self::AgentflowNodeId => crate::diagrams::agentflow::is_valid_editor_node_id(candidate),
             #[cfg(not(feature = "diagram-usecase"))]
             Self::UsecaseIdentifier => false,
             #[cfg(feature = "diagram-usecase")]
@@ -911,6 +915,47 @@ mod tests {
         assert!(EditorRenamePolicy::RailroadPegRule.accepts("terminal"));
         assert!(EditorRenamePolicy::RailroadAbnfRule.accepts("rule-name"));
         assert!(!EditorRenamePolicy::RailroadAbnfRule.accepts("rule_name"));
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-agentflow")]
+    fn agentflow_rename_policy_uses_its_own_keyword_boundaries() {
+        for candidate in ["flow", "connector", "global", "flow-guide", "global注文"] {
+            assert!(
+                !EditorRenamePolicy::AgentflowNodeId.accepts(candidate),
+                "{candidate}"
+            );
+        }
+        for candidate in ["flow_user", "flowUser", "Connector", "friend-end"] {
+            assert!(
+                EditorRenamePolicy::AgentflowNodeId.accepts(candidate),
+                "{candidate}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-usecase")]
+    fn usecase_rename_policy_rejects_statement_only_keywords() {
+        for candidate in [
+            "package",
+            "PACKAGE",
+            "rectangle",
+            "allowmixing",
+            "newpage",
+            "skinparam",
+        ] {
+            assert!(
+                !EditorRenamePolicy::UsecaseIdentifier.accepts(candidate),
+                "{candidate}"
+            );
+        }
+        for candidate in ["package_user", "packageUser", "1User"] {
+            assert!(
+                EditorRenamePolicy::UsecaseIdentifier.accepts(candidate),
+                "{candidate}"
+            );
+        }
     }
 
     #[test]

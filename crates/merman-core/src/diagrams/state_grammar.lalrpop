@@ -48,7 +48,7 @@ extern {
     StyleIds => Tok::StyleIds(<String>),
     StyleDefStyleOpts => Tok::StyleDefStyleOpts(<String>),
 
-    Direction => Tok::Direction(<String>),
+    Direction => Tok::Direction(<crate::diagrams::state::SpannedDirection>),
     AccTitle => Tok::AccTitle(<String>),
     AccDescr => Tok::AccDescr(<String>),
     AccDescrMultiline => Tok::AccDescrMultiline(<String>),
@@ -219,7 +219,7 @@ CssClassStatement: Stmt = {
 };
 
 DirectionStatement: Stmt = {
-  <d:Direction> => Stmt::Direction(d),
+  <d:Direction> => Stmt::Direction(d.value),
 };
 
 AccessibilityStatement: Stmt = {

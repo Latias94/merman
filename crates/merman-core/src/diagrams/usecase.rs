@@ -19,6 +19,7 @@ mod resolve;
 /// Whether an unquoted spelling is one complete identifier in the pinned grammar.
 pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
     if candidate.is_empty()
+        || is_forbidden_statement_identifier(candidate)
         || !candidate
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
@@ -29,6 +30,18 @@ pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
         return false;
     };
     tokens.len() == 2 && tokens[0].kind == lexer::TokenKind::Identifier
+}
+
+fn is_forbidden_statement_identifier(candidate: &str) -> bool {
+    [
+        "allowmixing",
+        "newpage",
+        "package",
+        "rectangle",
+        "skinparam",
+    ]
+    .iter()
+    .any(|keyword| candidate.eq_ignore_ascii_case(keyword))
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

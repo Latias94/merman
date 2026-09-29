@@ -475,6 +475,7 @@ struct Construction {
 struct Context {
     id: Option<String>,
     title: Option<String>,
+    label_type: Option<&'static str>,
     metadata: Map<String, Value>,
     nodes: Vec<String>,
     direction: Option<String>,
@@ -679,6 +680,12 @@ impl<'a> Parser<'a> {
                 SourceSpan::new(header_start, header_start + header.len()),
             )));
         }
+        if header_tokens.len() > 2 {
+            return Ok(Err(self.failure(
+                "unexpected content after agentflow header direction",
+                SourceSpan::new(header_start, header_start + header.len()),
+            )));
+        }
         if let Some(value) = header_tokens.get(1) {
             self.direction = match normalize_direction(value) {
                 Some(direction) => direction,
@@ -720,28 +727,17 @@ impl<'a> Parser<'a> {
             if self.in_frontmatter || trimmed.starts_with("---") {
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix("direction ") {
-                let direction = match normalize_direction(rest.trim()) {
-                    Some(direction) => direction,
-                    None => {
-                        return Ok(Err(self.failure(
-                            "invalid agentflow direction",
-                            span_of(line_start, line, trimmed),
-                        )));
-                    }
-                };
-                if let Some(context) = self.contexts.last_mut() {
-                    context.direction = Some(direction);
-                } else {
-                    self.direction = direction;
-                }
-                continue;
-            }
-            if let Some(rest) = trimmed.strip_prefix("accTitle:") {
+            if let Some(rest) = trimmed.strip_prefix("accTitle").and_then(|rest| {
+                rest.trim_start_matches(super::scan::is_ecmascript_whitespace)
+                    .strip_prefix(':')
+            }) {
                 self.acc_title = Some(rest.trim().to_string());
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix("accDescr:") {
+            if let Some(rest) = trimmed.strip_prefix("accDescr").and_then(|rest| {
+                rest.trim_start_matches(super::scan::is_ecmascript_whitespace)
+                    .strip_prefix(':')
+            }) {
                 self.acc_descr = Some(rest.trim().to_string());
                 continue;
             }
@@ -755,6 +751,14 @@ impl<'a> Parser<'a> {
                     )));
                 };
                 self.acc_descr = Some(description.trim().to_string());
+                continue;
+            }
+            if let Some(direction) = statement_direction(trimmed) {
+                if let Some(context) = self.contexts.last_mut() {
+                    context.direction = Some(direction.to_string());
+                } else {
+                    self.direction = direction.to_string();
+                }
                 continue;
             }
             if trimmed == "end" {
@@ -777,8 +781,8 @@ impl<'a> Parser<'a> {
             if let Some(rest) = trimmed.strip_prefix("flow")
                 && rest.chars().next().is_none_or(char::is_whitespace)
             {
-                let (id, title, metadata) = if rest.trim().is_empty() {
-                    (None, None, Map::new())
+                let (id, title, label_type, metadata) = if rest.trim().is_empty() {
+                    (None, None, Some("markdown"), Map::new())
                 } else {
                     match parse_declaration(
                         rest,
@@ -790,11 +794,12 @@ impl<'a> Parser<'a> {
                             id,
                             id_span,
                             label: title,
+                            label_type,
                             metadata,
                             ..
                         }) => {
                             self.push_symbol(&id, EditorSemanticKind::Namespace, id_span, false);
-                            (Some(id), title, metadata)
+                            (Some(id), title, label_type.or(Some("text")), metadata)
                         }
                         Err(error) => return Ok(Err(error)),
                     }
@@ -803,6 +808,7 @@ impl<'a> Parser<'a> {
                 self.contexts.push(Context {
                     id,
                     title,
+                    label_type,
                     metadata,
                     declaration_span,
                     ..Default::default()
@@ -848,6 +854,7 @@ impl<'a> Parser<'a> {
                     id: id.clone(),
                     id_span,
                     label: title,
+                    label_type: Some("text"),
                     syntax_shape: None,
                     metadata: Map::new(),
                     metadata_span: None,
@@ -1001,6 +1008,7 @@ impl<'a> Parser<'a> {
                 id: id.clone(),
                 id_span,
                 label: declaration.label.clone(),
+                label_type: declaration.label_type,
                 syntax_shape: declaration.syntax_shape.clone(),
                 metadata: Map::new(),
                 metadata_span: None,
@@ -1081,6 +1089,7 @@ impl<'a> Parser<'a> {
                     }
                     self.push_edge(
                         edge,
+                        operator.label_type,
                         SourceSpan::new(statement_start, statement_start + statement.len()),
                     )?;
                 }
@@ -1135,6 +1144,7 @@ impl<'a> Parser<'a> {
     fn push_edge(
         &mut self,
         mut edge: AgentflowEdge,
+        label_type: Option<&str>,
         span: SourceSpan,
     ) -> std::result::Result<(), ParseFailure> {
         if self.edges.len().is_multiple_of(128) {
@@ -1171,8 +1181,10 @@ impl<'a> Parser<'a> {
             let counter = if count == 0 { 0 } else { count + 1 };
             edge.id = Some(format!("L_{}_{}_{counter}", edge.start, edge.end));
         }
-        self.presentation
-            .add_edge(edge.id.as_deref().expect("edge id is assigned above"));
+        self.presentation.add_edge(
+            edge.id.as_deref().expect("edge id is assigned above"),
+            label_type,
+        );
         self.edges.push(edge);
         Ok(())
     }
@@ -1191,16 +1203,28 @@ impl<'a> Parser<'a> {
         let Declaration {
             id,
             label,
+            label_type,
             syntax_shape,
             metadata,
             ..
         } = declaration;
-        self.presentation.nodes.entry(id.clone()).or_default();
-        let label = metadata
+        let presentation = self.presentation.nodes.entry(id.clone()).or_default();
+        if label.is_some() {
+            presentation.label_type = label_type.map(str::to_owned);
+        }
+        let metadata_label = metadata
             .get("label")
             .and_then(Value::as_str)
-            .map(str::to_string)
-            .or(label);
+            .filter(|label| !label.is_empty());
+        if metadata_label.is_some() {
+            let label_type = metadata
+                .get("labelType")
+                .and_then(Value::as_str)
+                .filter(|kind| matches!(*kind, "text" | "string" | "markdown"))
+                .unwrap_or("markdown");
+            presentation.label_type = Some(label_type.to_string());
+        }
+        let label = metadata_label.map(str::to_string).or(label);
         let shape = metadata
             .get("shape")
             .and_then(Value::as_str)
@@ -1289,6 +1313,11 @@ impl<'a> Parser<'a> {
                 .then(|| self.direction.clone())
         });
         let title = context.title.unwrap_or_default();
+        // Duplicate containers retain the label type from their first declaration.
+        self.presentation
+            .subgraph_label_types
+            .entry(id.clone())
+            .or_insert_with(|| context.label_type.unwrap_or("text").to_string());
         if let Some(&index) = self.sub_graph_index.get(&id) {
             let graph = &mut self.sub_graphs[index];
             graph.nodes.extend(nodes);
@@ -1354,7 +1383,7 @@ impl<'a> Parser<'a> {
             EditorSemanticSymbol::new(id, None, kind, span, span)
         };
         self.facts
-            .push_symbol(symbol.with_rename_policy(EditorRenamePolicy::FlowchartNodeId));
+            .push_symbol(symbol.with_rename_policy(EditorRenamePolicy::AgentflowNodeId));
     }
 
     fn failure(&self, message: impl Into<String>, span: SourceSpan) -> ParseFailure {
@@ -1372,6 +1401,7 @@ struct Operator {
     semantic: AgentflowEdgeSemantic,
     length: usize,
     label: Option<String>,
+    label_type: Option<&'static str>,
 }
 
 fn edge_for(
@@ -1625,6 +1655,7 @@ fn split_top_level<'a>(
             return Some((start, &source[start..cursor]));
         }
         let mut depth = 0usize;
+        let mut in_label = false;
         let mut quote = None;
         let mut escaped = false;
         while cursor < source.len() {
@@ -1639,6 +1670,14 @@ fn split_top_level<'a>(
                 }
             } else if opens_quote(source, cursor) {
                 quote = Some(byte);
+            } else if in_label
+                && source.as_bytes()[cursor..].starts_with(b"%%")
+                && source.as_bytes().get(cursor + 2) != Some(&b'{')
+            {
+                cursor = source[cursor..]
+                    .find('\n')
+                    .map_or(source.len(), |end| cursor + end);
+                continue;
             } else if depth == 0 && source.as_bytes()[cursor..].starts_with(b"%%") {
                 let end = cursor;
                 cursor = source[cursor..]
@@ -1646,9 +1685,14 @@ fn split_top_level<'a>(
                     .map_or(source.len(), |n| cursor + n + 1);
                 return Some((start, &source[start..end]));
             } else if matches!(byte, b'[' | b'(' | b'{') {
+                if depth == 0 {
+                    in_label = byte != b'{'
+                        || source.as_bytes().get(cursor.wrapping_sub(1)) != Some(&b'@');
+                }
                 depth += 1;
             } else if matches!(byte, b']' | b')' | b'}') {
                 depth = depth.saturating_sub(1);
+                in_label &= depth > 0;
             } else if depth == 0 && separators.contains(&byte) {
                 let end = cursor;
                 cursor += 1;
@@ -1683,6 +1727,7 @@ fn span_of(line_start: usize, line: &str, value: &str) -> SourceSpan {
 fn find_operator(source: &str, from: usize) -> Option<Operator> {
     let bytes = source.as_bytes();
     let mut depth = 0usize;
+    let mut in_label = false;
     let mut quote = None;
     let mut escaped = false;
     let mut index = from;
@@ -1704,13 +1749,23 @@ fn find_operator(source: &str, from: usize) -> Option<Operator> {
             index += 1;
             continue;
         }
+        if in_label && bytes[index..].starts_with(b"%%") && bytes.get(index + 2) != Some(&b'{') {
+            index = source[index..]
+                .find('\n')
+                .map_or(source.len(), |end| index + end);
+            continue;
+        }
         if matches!(ch, '[' | '(' | '{') {
+            if depth == 0 {
+                in_label = ch != '{' || bytes.get(index.wrapping_sub(1)) != Some(&b'@');
+            }
             depth += 1;
             index += 1;
             continue;
         }
         if matches!(ch, ']' | ')' | '}') {
             depth = depth.saturating_sub(1);
+            in_label &= depth > 0;
             index += 1;
             continue;
         }
@@ -1722,7 +1777,9 @@ fn find_operator(source: &str, from: usize) -> Option<Operator> {
                     && let Some(close) = source[label_start + 1..].find('|')
                 {
                     let close = label_start + 1 + close;
-                    operator.label = Some(unquote(source[label_start + 1..close].trim()));
+                    let (label, label_type) = parse_label_text(&source[label_start + 1..close]);
+                    operator.label = Some(label);
+                    operator.label_type = Some(label_type);
                     operator.end = close + 1;
                 }
                 return Some(operator);
@@ -1736,7 +1793,8 @@ fn find_operator(source: &str, from: usize) -> Option<Operator> {
                         end: arrow.end,
                         semantic: arrow.semantic,
                         length: arrow.length,
-                        label: (!label.is_empty()).then(|| unquote(label)),
+                        label: (!label.is_empty()).then(|| parse_label_text(label).0),
+                        label_type: (!label.is_empty()).then(|| parse_label_text(label).1),
                     });
                 }
             }
@@ -1771,6 +1829,7 @@ fn link_at(source: &str, start: usize) -> Option<Operator> {
         semantic,
         length: length.min(10),
         label: None,
+        label_type: None,
     })
 }
 
@@ -1788,6 +1847,7 @@ struct Declaration {
     id: String,
     id_span: SourceSpan,
     label: Option<String>,
+    label_type: Option<&'static str>,
     syntax_shape: Option<String>,
     metadata: Map<String, Value>,
     metadata_span: Option<SourceSpan>,
@@ -1888,14 +1948,14 @@ fn parse_declaration(
         .unwrap_or("")
         .trim()
         .to_string();
-    if id.is_empty() {
+    if id.is_empty() || starts_reserved_identifier(&id) {
         return Err(ParseFailure::Syntax {
             message: "expected agentflow node identifier".to_string(),
             span: span_of(line_start, line, head),
         });
     }
     let remainder = head[id_end..].trim();
-    let (label, shape) = parse_label(remainder);
+    let (label, shape, label_type) = parse_label(remainder);
     if head[..id_end].trim() != id || (!remainder.is_empty() && shape.is_none()) {
         return Err(ParseFailure::Syntax {
             message: "invalid agentflow declaration or unsupported edge operator".into(),
@@ -1912,6 +1972,7 @@ fn parse_declaration(
         id,
         id_span,
         label,
+        label_type,
         syntax_shape: shape.map(resolve_shape),
         metadata,
         metadata_span,
@@ -1920,7 +1981,9 @@ fn parse_declaration(
     })
 }
 
-fn parse_label(remainder: &str) -> (Option<String>, Option<&'static str>) {
+fn parse_label(remainder: &str) -> (Option<String>, Option<&'static str>, Option<&'static str>) {
+    let cleaned = strip_label_comments(remainder);
+    let remainder = cleaned.as_str();
     // Match longer delimiters first; their meaning is defined by agentflow.jison.
     for (open, close, shape) in [
         ("(((", ")))", "doublecircle"),
@@ -1942,10 +2005,56 @@ fn parse_label(remainder: &str) -> (Option<String>, Option<&'static str>) {
             .strip_prefix(open)
             .and_then(|body| body.strip_suffix(close))
         {
-            return (Some(unquote(body.trim())), Some(shape));
+            let (text, kind) = parse_label_text(body);
+            return (Some(text), Some(shape), Some(kind));
         }
     }
-    (None, None)
+    (None, None, None)
+}
+
+fn parse_label_text(value: &str) -> (String, &'static str) {
+    let value = value.trim();
+    if let Some(body) = value
+        .strip_prefix("\"`")
+        .and_then(|body| body.strip_suffix("`\""))
+    {
+        (body.trim().to_string(), "markdown")
+    } else if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        (unquote(value).trim().to_string(), "string")
+    } else {
+        (unquote(value), "text")
+    }
+}
+
+fn strip_label_comments(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    for (index, ch) in value.char_indices() {
+        if comment {
+            if ch != '\n' {
+                continue;
+            }
+            comment = false;
+        }
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == delimiter {
+                quote = None;
+            }
+        } else if opens_quote(value, index) {
+            quote = Some(ch);
+        } else if value[index..].starts_with("%%") && !value[index..].starts_with("%%{") {
+            comment = true;
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn split_edge_id(source: &str) -> (&str, Option<String>) {
@@ -1973,6 +2082,61 @@ fn is_style_identifier(value: &str) -> bool {
             .all(|ch| ch.is_alphanumeric() || "!#$%&'*+.-/\\_`?:,=".contains(ch))
 }
 
+// These Jison tokens are excluded from idStringToken. Its word boundary is ASCII,
+// so punctuation and non-ASCII letters terminate the reserved word as well.
+fn starts_reserved_identifier(value: &str) -> bool {
+    [
+        "agentflow-beta",
+        "flow",
+        "connector",
+        "global",
+        "end",
+        "style",
+        "linkStyle",
+        "interpolate",
+        "classDef",
+        "class",
+        "_self",
+        "_blank",
+        "_parent",
+        "_top",
+    ]
+    .into_iter()
+    .any(|keyword| {
+        value.strip_prefix(keyword).is_some_and(|suffix| {
+            suffix
+                .as_bytes()
+                .first()
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+        })
+    })
+}
+
+pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
+    crate::diagrams::flowchart::is_valid_editor_node_id(candidate)
+        && !starts_reserved_identifier(candidate)
+}
+
+fn statement_direction(statement: &str) -> Option<&'static str> {
+    let prefix_end = statement
+        .find(['\n', '\r', '\u{2028}', '\u{2029}'])
+        .unwrap_or(statement.len());
+    ["TB", "BT", "RL", "LR", "TD"]
+        .into_iter()
+        .find(|direction| {
+            statement[..prefix_end]
+                .char_indices()
+                .rev()
+                .any(|(offset, _)| {
+                    let Some(suffix) = statement[offset..].strip_prefix("direction") else {
+                        return false;
+                    };
+                    let value = suffix.trim_start_matches(super::scan::is_ecmascript_whitespace);
+                    value.len() < suffix.len() && value.starts_with(direction)
+                })
+        })
+}
+
 fn is_identifier(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|ch| !ch.is_whitespace() && ch != '"')
 }
@@ -1985,7 +2149,12 @@ fn find_top_level_marker(value: &str, marker: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
     let mut escaped = false;
+    let mut comment = false;
     for (index, ch) in value.char_indices() {
+        if comment {
+            comment = ch != '\n';
+            continue;
+        }
         if let Some(q) = quote {
             if escaped {
                 escaped = false;
@@ -1998,6 +2167,10 @@ fn find_top_level_marker(value: &str, marker: &str) -> Option<usize> {
         }
         if opens_quote(value, index) {
             quote = Some(ch);
+            continue;
+        }
+        if depth > 0 && value[index..].starts_with("%%") && !value[index..].starts_with("%%{") {
+            comment = true;
             continue;
         }
         if depth == 0 && value[index..].starts_with(marker) {
@@ -2177,6 +2350,198 @@ mod tests {
             config: MermaidConfig::empty_object(),
             effective_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn agentflow_markdown_labels_preserve_types_in_the_render_projection() {
+        let source = r#"agentflow-beta TB
+flow F["`**group**`"]
+A["`**bold**`"] -->|"`**edge**`"| B["**plain**"]
+B -- "`**split**`" --> C[plain]
+end
+connector K["`**connector**`"]
+"#;
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        for (id, label, kind) in [
+            ("A", "**bold**", "markdown"),
+            ("B", "**plain**", "string"),
+            ("C", "plain", "text"),
+            ("K", "**connector**", "text"),
+        ] {
+            let node = flow.nodes.iter().find(|node| node.id == id).unwrap();
+            assert_eq!(node.label.as_deref(), Some(label), "{id}");
+            assert_eq!(node.label_type.as_deref(), Some(kind), "{id}");
+        }
+        for (index, label) in ["**edge**", "**split**"].into_iter().enumerate() {
+            assert_eq!(flow.edges[index].label.as_deref(), Some(label));
+            assert_eq!(flow.edges[index].label_type.as_deref(), Some("markdown"));
+        }
+        assert_eq!(flow.subgraphs[0].title, "**group**");
+        assert_eq!(flow.subgraphs[0].label_type.as_deref(), Some("markdown"));
+        let semantic = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(semantic["vertices"][0]["label"], "**bold**");
+        for collection in ["vertices", "edges", "subGraphs", "connectors"] {
+            assert!(
+                semantic[collection]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|item| item.get("labelType").is_none())
+            );
+        }
+    }
+
+    #[test]
+    fn agentflow_metadata_label_types_follow_upstream_default_and_update_rules() {
+        let source = r#"agentflow-beta TB
+Default@{label: "**default**"}
+Text@{label: "**text**", labelType: text}
+String@{label: "**string**", labelType: string}
+Markdown@{label: "**markdown**", labelType: markdown}
+Invalid@{label: "**invalid**", labelType: other}
+Kept["`**kept**`"]
+Kept@{label: "", labelType: text}
+Kept@{labelType: string}
+Default["plain"]
+A -->|"`edge`"| B
+L_A_B_0@{labelType: text}
+flow Group["`**first**`"]
+X
+end
+flow Group["**second**"]
+Y
+end
+Group@{labelType: text}
+"#;
+        let model =
+            parse_agentflow_model_for_render_controlled(source, &meta(), &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        let (flow, _) = model.to_flowchart_model();
+        for (id, kind) in [
+            ("Default", "string"),
+            ("Text", "text"),
+            ("String", "string"),
+            ("Markdown", "markdown"),
+            ("Invalid", "markdown"),
+            ("Kept", "markdown"),
+        ] {
+            let node = flow.nodes.iter().find(|node| node.id == id).unwrap();
+            assert_eq!(node.label_type.as_deref(), Some(kind), "{id}");
+        }
+        assert_eq!(
+            flow.nodes
+                .iter()
+                .find(|node| node.id == "Kept")
+                .unwrap()
+                .label
+                .as_deref(),
+            Some("**kept**")
+        );
+        assert_eq!(flow.edges[0].label_type.as_deref(), Some("markdown"));
+        assert_eq!(flow.subgraphs[0].title, "**second**");
+        assert_eq!(flow.subgraphs[0].label_type.as_deref(), Some("markdown"));
+    }
+
+    #[test]
+    fn agentflow_header_requires_a_separator_after_direction() {
+        for source in [
+            "agentflow-beta TB extra\nA\n",
+            "agentflow-beta LR A --> B\n",
+        ] {
+            assert!(parse_agentflow(source, &meta()).is_err(), "{source}");
+        }
+        for source in [
+            "agentflow-beta TB; A\n",
+            "agentflow-beta TB %% comment\nA\n",
+        ] {
+            assert!(parse_agentflow(source, &meta()).is_ok(), "{source}");
+        }
+    }
+
+    #[test]
+    fn agentflow_accessibility_accepts_lexer_whitespace_before_colon() {
+        let source = "agentflow-beta TB\naccTitle \t: Heading\naccDescr\u{3000}: direction LR describes the graph\nA\n";
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(model["accTitle"], "Heading");
+        assert_eq!(model["accDescr"], "direction LR describes the graph");
+        assert_eq!(model["direction"], "TB");
+    }
+
+    #[test]
+    fn agentflow_label_comments_preserve_quoted_percent_signs_and_source_spans() {
+        let markdown = "[\"`one %% literal`\"]";
+        assert_eq!(strip_label_comments(markdown), markdown);
+        for (label, expected) in [
+            ("[one %%comment\n two]", "one \n two"),
+            ("[one %% ] --> X @{ ignored\n two]", "one \n two"),
+            ("[\"one %% literal\"]", "one %% literal"),
+        ] {
+            let source = format!("agentflow-beta TB\nA{label}\n");
+            let model = parse_agentflow(&source, &meta()).unwrap();
+            assert_eq!(model["vertices"][0]["label"], expected, "{source}");
+            assert_eq!(model["vertices"].as_array().unwrap().len(), 1, "{source}");
+        }
+        assert!(parse_agentflow("agentflow-beta TB\nA[one %% hidden close]\n", &meta()).is_err());
+    }
+
+    #[test]
+    fn agentflow_reserved_identifiers_follow_ascii_keyword_boundaries() {
+        for id in [
+            "end-user",
+            "end注文",
+            "global-user",
+            "style-guide",
+            "flow-user",
+            "connector-user",
+        ] {
+            for statement in [id.to_string(), format!("A --> {id}")] {
+                assert!(
+                    parse_agentflow(&format!("agentflow-beta TB\n{statement}\n"), &meta()).is_err(),
+                    "{statement}"
+                );
+            }
+        }
+        for id in [
+            "end_user",
+            "endUser",
+            "End-user",
+            "global_user",
+            "flowUser",
+            "friend-end",
+        ] {
+            let parsed = parse_agentflow(&format!("agentflow-beta TB\n{id}\n"), &meta()).unwrap();
+            assert_eq!(parsed["vertices"][0]["id"], id);
+        }
+    }
+
+    #[test]
+    fn agentflow_direction_statements_follow_ordered_jison_rules() {
+        for (statement, expected) in [
+            ("direction\tLR", "LR"),
+            ("direction\u{3000}RL", "RL"),
+            ("direction LRignored", "LR"),
+            ("prefixdirection BT", "BT"),
+            ("direction LR direction TB", "TB"),
+        ] {
+            let source = format!("agentflow-beta TB\nflow F\n{statement}\nA\nend\n");
+            let model = parse_agentflow_model_for_render_controlled(
+                &source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                model.sub_graphs[0].direction.as_deref(),
+                Some(expected),
+                "{statement}"
+            );
         }
     }
 

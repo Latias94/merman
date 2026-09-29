@@ -744,3 +744,73 @@ fn usecase_recovery_refuses_rename_for_non_mergeable_declarations() {
         assert_eq!(edit.changes[snapshot.uri()].len(), 3, "{declarations}");
     }
 }
+
+#[test]
+fn new_family_rename_rejects_reserved_names_and_preserves_valid_documents() {
+    let harness = SnapshotHarness::new();
+    for (family, body, invalid, valid) in [
+        (
+            "agentflow",
+            "A\nA --> B\n",
+            &["flow", "global", "connector", "flow-guide", "global注文"][..],
+            &["flow_user", "flowUser", "Connector", "friend-end"][..],
+        ),
+        (
+            "usecase",
+            "A(Work)\nA --> B\n",
+            &[
+                "package",
+                "PACKAGE",
+                "rectangle",
+                "allowmixing",
+                "newpage",
+                "skinparam",
+                "actor",
+            ][..],
+            &["package_user", "packageUser", "1User", "Work"][..],
+        ),
+    ] {
+        let source = format!("{family}-beta\n{body}");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/rename.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .expect("valid family document");
+        let position = Position::new(1, 0);
+        for name in invalid {
+            assert!(
+                matches!(
+                    rename(&snapshot, position, name),
+                    Err(RenameError::InvalidName)
+                ),
+                "{family} accepted reserved rename {name}"
+            );
+        }
+        for name in valid {
+            let edit = rename(&snapshot, position, name)
+                .expect("valid family identifier")
+                .expect("rename edit");
+            let mut changed = source.clone();
+            let edits = &edit.changes[snapshot.uri()];
+            assert_eq!(edits.len(), 2, "{family}: {name}");
+            for edit in edits.iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            let renamed = harness
+                .analyze("file:///tmp/renamed.mmd", 2, changed, DocumentKind::Diagram)
+                .expect("renamed document snapshot");
+            assert_eq!(
+                renamed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{family}: {name} must remain parseable"
+            );
+            let references = references(&renamed, position, true).expect("renamed references");
+            assert_eq!(references.len(), 2, "{family}: {name}");
+        }
+    }
+}

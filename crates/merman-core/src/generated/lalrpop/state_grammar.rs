@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: ad12e290972e53e810834ca98ff6e821e0e24f897673659316ba96ad13468b12
+// sha3: 06cb172a02406190187bdc3c8c7e2b83df5cf891932a65bec4f5a9fa267a69a6
 use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
@@ -29,14 +29,15 @@ mod ___parse___Root {
         Variant1(String),
         Variant2((String, String)),
         Variant3(usize),
-        Variant4(Option<Stmt>),
-        Variant5(alloc::vec::Vec<Option<Stmt>>),
-        Variant6(Stmt),
-        Variant7(Vec<Stmt>),
-        Variant8(StateStmt),
-        Variant9(Option<Vec<Stmt>>),
-        Variant10(Option<String>),
-        Variant11(()),
+        Variant4(crate::diagrams::state::SpannedDirection),
+        Variant5(Option<Stmt>),
+        Variant6(alloc::vec::Vec<Option<Stmt>>),
+        Variant7(Stmt),
+        Variant8(Vec<Stmt>),
+        Variant9(StateStmt),
+        Variant10(Option<Vec<Stmt>>),
+        Variant11(Option<String>),
+        Variant12(()),
     }
     const ___ACTION: &[i8] = &[
         // State 0
@@ -597,8 +598,8 @@ mod ___parse___Root {
     {
         #[allow(clippy::manual_range_patterns)]match ___token_index {
             0 | 1 | 4 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 19 | 20 | 22 | 25 | 28 | 35 | 36 => ___Symbol::Variant0(___token),
-            2 | 5 | 13 | 14 | 15 | 16 | 17 | 18 | 23 | 24 | 26 | 27 | 29 | 30 | 31 | 32 | 33 | 34 | 37 => match ___token {
-                Tok::Id(___tok0) | Tok::Descr(___tok0) | Tok::NoteText(___tok0) | Tok::StateDescr(___tok0) | Tok::CompositState(___tok0) | Tok::Fork(___tok0) | Tok::Join(___tok0) | Tok::Choice(___tok0) | Tok::ClassDefId(___tok0) | Tok::ClassDefStyleOpts(___tok0) | Tok::ClassEntityIds(___tok0) | Tok::StyleClass(___tok0) | Tok::StyleIds(___tok0) | Tok::StyleDefStyleOpts(___tok0) | Tok::Direction(___tok0) | Tok::AccTitle(___tok0) | Tok::AccDescr(___tok0) | Tok::AccDescrMultiline(___tok0) | Tok::StringLit(___tok0) if true => ___Symbol::Variant1(___tok0),
+            2 | 5 | 13 | 14 | 15 | 16 | 17 | 18 | 23 | 24 | 26 | 27 | 29 | 30 | 32 | 33 | 34 | 37 => match ___token {
+                Tok::Id(___tok0) | Tok::Descr(___tok0) | Tok::NoteText(___tok0) | Tok::StateDescr(___tok0) | Tok::CompositState(___tok0) | Tok::Fork(___tok0) | Tok::Join(___tok0) | Tok::Choice(___tok0) | Tok::ClassDefId(___tok0) | Tok::ClassDefStyleOpts(___tok0) | Tok::ClassEntityIds(___tok0) | Tok::StyleClass(___tok0) | Tok::StyleIds(___tok0) | Tok::StyleDefStyleOpts(___tok0) | Tok::AccTitle(___tok0) | Tok::AccDescr(___tok0) | Tok::AccDescrMultiline(___tok0) | Tok::StringLit(___tok0) if true => ___Symbol::Variant1(___tok0),
                 _ => unreachable!(),
             },
             3 => match ___token {
@@ -607,6 +608,10 @@ mod ___parse___Root {
             },
             21 => match ___token {
                 Tok::ScaleWidth(___tok0) if true => ___Symbol::Variant3(___tok0),
+                _ => unreachable!(),
+            },
+            31 => match ___token {
+                Tok::Direction(___tok0) if true => ___Symbol::Variant4(___tok0),
                 _ => unreachable!(),
             },
             _ => unreachable!(),
@@ -1175,7 +1180,7 @@ mod ___parse___Root {
             }
             53 => {
                 // ___Root = Root => ActionFn(0);
-                let ___sym0 = ___pop_Variant7(___symbols);
+                let ___sym0 = ___pop_Variant8(___symbols);
                 let ___start = ___sym0.0.clone();
                 let ___end = ___sym0.2.clone();
                 let ___nt = super::___action0::<>(___sym0);
@@ -1194,13 +1199,13 @@ mod ___parse___Root {
     fn ___symbol_type_mismatch() -> ! {
         panic!("symbol type mismatch")
     }
-    fn ___pop_Variant11<
+    fn ___pop_Variant12<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, (), usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant11(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant12(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
@@ -1214,20 +1219,30 @@ mod ___parse___Root {
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant4<
+    fn ___pop_Variant5<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, Option<Stmt>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant4(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant5(___v), ___r)) => (___l, ___v, ___r),
+            _ => ___symbol_type_mismatch()
+        }
+    }
+    fn ___pop_Variant11<
+    >(
+        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+    ) -> (usize, Option<String>, usize)
+     {
+        match ___symbols.pop() {
+            Some((___l, ___Symbol::Variant11(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
     fn ___pop_Variant10<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Option<String>, usize)
+    ) -> (usize, Option<Vec<Stmt>>, usize)
      {
         match ___symbols.pop() {
             Some((___l, ___Symbol::Variant10(___v), ___r)) => (___l, ___v, ___r),
@@ -1237,30 +1252,20 @@ mod ___parse___Root {
     fn ___pop_Variant9<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, Option<Vec<Stmt>>, usize)
+    ) -> (usize, StateStmt, usize)
      {
         match ___symbols.pop() {
             Some((___l, ___Symbol::Variant9(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant8<
-    >(
-        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
-    ) -> (usize, StateStmt, usize)
-     {
-        match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant8(___v), ___r)) => (___l, ___v, ___r),
-            _ => ___symbol_type_mismatch()
-        }
-    }
-    fn ___pop_Variant6<
+    fn ___pop_Variant7<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, Stmt, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant6(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant7(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
@@ -1284,23 +1289,33 @@ mod ___parse___Root {
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant7<
+    fn ___pop_Variant8<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, Vec<Stmt>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant7(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant8(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
-    fn ___pop_Variant5<
+    fn ___pop_Variant6<
     >(
         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
     ) -> (usize, alloc::vec::Vec<Option<Stmt>>, usize)
      {
         match ___symbols.pop() {
-            Some((___l, ___Symbol::Variant5(___v), ___r)) => (___l, ___v, ___r),
+            Some((___l, ___Symbol::Variant6(___v), ___r)) => (___l, ___v, ___r),
+            _ => ___symbol_type_mismatch()
+        }
+    }
+    fn ___pop_Variant4<
+    >(
+        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+    ) -> (usize, crate::diagrams::state::SpannedDirection, usize)
+     {
+        match ___symbols.pop() {
+            Some((___l, ___Symbol::Variant4(___v), ___r)) => (___l, ___v, ___r),
             _ => ___symbol_type_mismatch()
         }
     }
@@ -1322,11 +1337,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // (Item) = Item => ActionFn(50);
-        let ___sym0 = ___pop_Variant4(___symbols);
+        let ___sym0 = ___pop_Variant5(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action50::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant4(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 0)
     }
     fn ___reduce1<
@@ -1340,7 +1355,7 @@ mod ___parse___Root {
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
         let ___nt = super::___action48::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (0, 1)
     }
     fn ___reduce2<
@@ -1351,11 +1366,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // (Item)* = (Item)+ => ActionFn(49);
-        let ___sym0 = ___pop_Variant5(___symbols);
+        let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action49::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (1, 1)
     }
     fn ___reduce3<
@@ -1366,11 +1381,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // (Item)+ = Item => ActionFn(53);
-        let ___sym0 = ___pop_Variant4(___symbols);
+        let ___sym0 = ___pop_Variant5(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action53::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (1, 2)
     }
     fn ___reduce4<
@@ -1382,12 +1397,12 @@ mod ___parse___Root {
     {
         // (Item)+ = (Item)+, Item => ActionFn(54);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant4(___symbols);
-        let ___sym0 = ___pop_Variant5(___symbols);
+        let ___sym1 = ___pop_Variant5(___symbols);
+        let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
         let ___nt = super::___action54::<>(___sym0, ___sym1);
-        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
         (2, 2)
     }
     fn ___reduce5<
@@ -1430,7 +1445,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action38::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce8<
@@ -1445,7 +1460,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action39::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce9<
@@ -1460,7 +1475,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action40::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 5)
     }
     fn ___reduce10<
@@ -1473,12 +1488,12 @@ mod ___parse___Root {
         // Block = "{", Items, "}" => ActionFn(31);
         assert!(___symbols.len() >= 3);
         let ___sym2 = ___pop_Variant0(___symbols);
-        let ___sym1 = ___pop_Variant7(___symbols);
+        let ___sym1 = ___pop_Variant8(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
         let ___nt = super::___action31::<>(___sym0, ___sym1, ___sym2);
-        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (3, 6)
     }
     fn ___reduce11<
@@ -1496,7 +1511,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
         let ___nt = super::___action34::<>(___sym0, ___sym1, ___sym2);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 7)
     }
     fn ___reduce12<
@@ -1510,12 +1525,12 @@ mod ___parse___Root {
         assert!(___symbols.len() >= 4);
         let ___sym3 = ___pop_Variant1(___symbols);
         let ___sym2 = ___pop_Variant1(___symbols);
-        let ___sym1 = ___pop_Variant8(___symbols);
+        let ___sym1 = ___pop_Variant9(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action41::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 8)
     }
     fn ___reduce13<
@@ -1529,12 +1544,12 @@ mod ___parse___Root {
         assert!(___symbols.len() >= 4);
         let ___sym3 = ___pop_Variant1(___symbols);
         let ___sym2 = ___pop_Variant0(___symbols);
-        let ___sym1 = ___pop_Variant8(___symbols);
+        let ___sym1 = ___pop_Variant9(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action42::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 8)
     }
     fn ___reduce14<
@@ -1552,7 +1567,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
         let ___nt = super::___action36::<>(___sym0, ___sym1, ___sym2);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 9)
     }
     fn ___reduce15<
@@ -1563,11 +1578,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // DirectionStatement = Direction => ActionFn(37);
-        let ___sym0 = ___pop_Variant1(___symbols);
+        let ___sym0 = ___pop_Variant4(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action37::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 10)
     }
     fn ___reduce16<
@@ -1582,7 +1597,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action66::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce17<
@@ -1597,7 +1612,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action67::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce18<
@@ -1612,7 +1627,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action59::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
         (1, 11)
     }
     fn ___reduce19<
@@ -1627,7 +1642,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action5::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant4(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 12)
     }
     fn ___reduce20<
@@ -1638,11 +1653,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Item = Statement => ActionFn(6);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action6::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant4(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
         (1, 12)
     }
     fn ___reduce21<
@@ -1656,7 +1671,7 @@ mod ___parse___Root {
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
         let ___nt = super::___action55::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (0, 13)
     }
     fn ___reduce22<
@@ -1667,11 +1682,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Items = (Item)+ => ActionFn(56);
-        let ___sym0 = ___pop_Variant5(___symbols);
+        let ___sym0 = ___pop_Variant6(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action56::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (1, 13)
     }
     fn ___reduce23<
@@ -1720,7 +1735,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action68::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 15)
     }
     fn ___reduce26<
@@ -1739,7 +1754,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action26::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 15)
     }
     fn ___reduce27<
@@ -1753,7 +1768,7 @@ mod ___parse___Root {
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
         let ___nt = super::___action32::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
         (0, 16)
     }
     fn ___reduce28<
@@ -1764,11 +1779,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // OptBlock = Block => ActionFn(33);
-        let ___sym0 = ___pop_Variant7(___symbols);
+        let ___sym0 = ___pop_Variant8(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action33::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
         (1, 16)
     }
     fn ___reduce29<
@@ -1782,7 +1797,7 @@ mod ___parse___Root {
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
         let ___nt = super::___action29::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
         (0, 17)
     }
     fn ___reduce30<
@@ -1797,7 +1812,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action30::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
         (1, 17)
     }
     fn ___reduce31<
@@ -1811,7 +1826,7 @@ mod ___parse___Root {
         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
         let ___end = ___start;
         let ___nt = super::___action2::<>(&___start, &___end);
-        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
         (0, 18)
     }
     fn ___reduce32<
@@ -1823,12 +1838,12 @@ mod ___parse___Root {
     {
         // Prelude = Newline, Prelude => ActionFn(3);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant11(___symbols);
+        let ___sym1 = ___pop_Variant12(___symbols);
         let ___sym0 = ___pop_Variant0(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
         let ___nt = super::___action3::<>(___sym0, ___sym1);
-        ___symbols.push((___start, ___Symbol::Variant11(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant12(___nt), ___end));
         (2, 18)
     }
     fn ___reduce33<
@@ -1840,13 +1855,13 @@ mod ___parse___Root {
     {
         // Root = Prelude, "stateDiagram", Items => ActionFn(1);
         assert!(___symbols.len() >= 3);
-        let ___sym2 = ___pop_Variant7(___symbols);
+        let ___sym2 = ___pop_Variant8(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
-        let ___sym0 = ___pop_Variant11(___symbols);
+        let ___sym0 = ___pop_Variant12(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
         let ___nt = super::___action1::<>(___sym0, ___sym1, ___sym2);
-        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
         (3, 19)
     }
     fn ___reduce34<
@@ -1857,11 +1872,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = ClassDefStatement => ActionFn(7);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action7::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce35<
@@ -1872,11 +1887,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = StyleStatement => ActionFn(8);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action8::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce36<
@@ -1887,11 +1902,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = CssClassStatement => ActionFn(9);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action9::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce37<
@@ -1902,11 +1917,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = DirectionStatement => ActionFn(10);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action10::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce38<
@@ -1917,11 +1932,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = AccessibilityStatement => ActionFn(11);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action11::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce39<
@@ -1932,11 +1947,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = ClickStatement => ActionFn(12);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action12::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce40<
@@ -1947,11 +1962,11 @@ mod ___parse___Root {
     ) -> (usize, usize)
     {
         // Statement = NoteStatement => ActionFn(13);
-        let ___sym0 = ___pop_Variant6(___symbols);
+        let ___sym0 = ___pop_Variant7(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action13::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce41<
@@ -1966,7 +1981,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action14::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce42<
@@ -1981,7 +1996,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action15::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce43<
@@ -1993,14 +2008,14 @@ mod ___parse___Root {
     {
         // Statement = IdStatement, "-->", IdStatement, OptDescr => ActionFn(16);
         assert!(___symbols.len() >= 4);
-        let ___sym3 = ___pop_Variant10(___symbols);
-        let ___sym2 = ___pop_Variant8(___symbols);
+        let ___sym3 = ___pop_Variant11(___symbols);
+        let ___sym2 = ___pop_Variant9(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
-        let ___sym0 = ___pop_Variant8(___symbols);
+        let ___sym0 = ___pop_Variant9(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action16::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 20)
     }
     fn ___reduce44<
@@ -2012,12 +2027,12 @@ mod ___parse___Root {
     {
         // Statement = IdStatement, OptDescr => ActionFn(17);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant10(___symbols);
-        let ___sym0 = ___pop_Variant8(___symbols);
+        let ___sym1 = ___pop_Variant11(___symbols);
+        let ___sym0 = ___pop_Variant9(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
         let ___nt = super::___action17::<>(___sym0, ___sym1);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (2, 20)
     }
     fn ___reduce45<
@@ -2032,7 +2047,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action18::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce46<
@@ -2044,12 +2059,12 @@ mod ___parse___Root {
     {
         // Statement = CompositState, Block => ActionFn(69);
         assert!(___symbols.len() >= 2);
-        let ___sym1 = ___pop_Variant7(___symbols);
+        let ___sym1 = ___pop_Variant8(___symbols);
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym1.2.clone();
         let ___nt = super::___action69::<>(___sym0, ___sym1);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (2, 20)
     }
     fn ___reduce47<
@@ -2061,14 +2076,14 @@ mod ___parse___Root {
     {
         // Statement = StateDescr, "as", Id, OptBlock => ActionFn(62);
         assert!(___symbols.len() >= 4);
-        let ___sym3 = ___pop_Variant9(___symbols);
+        let ___sym3 = ___pop_Variant10(___symbols);
         let ___sym2 = ___pop_Variant1(___symbols);
         let ___sym1 = ___pop_Variant0(___symbols);
         let ___sym0 = ___pop_Variant1(___symbols);
         let ___start = ___sym0.0.clone();
         let ___end = ___sym3.2.clone();
         let ___nt = super::___action62::<>(___sym0, ___sym1, ___sym2, ___sym3);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (4, 20)
     }
     fn ___reduce48<
@@ -2083,7 +2098,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action63::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce49<
@@ -2098,7 +2113,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action64::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce50<
@@ -2113,7 +2128,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action65::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce51<
@@ -2128,7 +2143,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym0.2.clone();
         let ___nt = super::___action24::<>(___sym0);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (1, 20)
     }
     fn ___reduce52<
@@ -2146,7 +2161,7 @@ mod ___parse___Root {
         let ___start = ___sym0.0.clone();
         let ___end = ___sym2.2.clone();
         let ___nt = super::___action35::<>(___sym0, ___sym1, ___sym2);
-        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+        ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
         (3, 21)
     }
 }
@@ -2596,10 +2611,10 @@ fn ___action36<
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn ___action37<
 >(
-    (_, d, _): (usize, String, usize),
+    (_, d, _): (usize, crate::diagrams::state::SpannedDirection, usize),
 ) -> Stmt
 {
-    Stmt::Direction(d)
+    Stmt::Direction(d.value)
 }
 
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]

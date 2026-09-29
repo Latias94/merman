@@ -1467,3 +1467,61 @@ fn assert_expected_syntax_covers(
         "missing {label}"
     );
 }
+
+#[test]
+fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
+    let engine = Engine::new();
+    for source in [
+        "stateDiagram-v2\ndirection\n",
+        "stateDiagram-v2\ndirection --> Done\n",
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert!(
+            parsed.model["states"].get("direction").is_some(),
+            "{source}"
+        );
+    }
+    for (statement, expected) in [
+        ("direction lrignored", "LR"),
+        ("prefixdirection BT", "BT"),
+        ("direction LR direction TB", "TB"),
+    ] {
+        let source = format!("stateDiagram-v2\n{statement}\nA --> B\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["direction"], expected, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
+    let engine = Engine::new();
+    for statement in [
+        r#"click A href "https://example.test/direction LR""#,
+        r#"click A "https://example.test" "direction LR""#,
+        r#""direction LR" as A"#,
+        r#"href "direction LR""#,
+        "default direction LR",
+    ] {
+        let source = format!("stateDiagram-v2\nA\n{statement}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .is_err(),
+            "{source}"
+        );
+    }
+    // The STATE introducer has lower lexer priority than a whole-line direction.
+    let source = "stateDiagram-v2\nstate \"direction LR\" as A\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "LR");
+    assert!(parsed.model["states"].get("A").is_none());
+}

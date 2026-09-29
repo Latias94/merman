@@ -56,10 +56,13 @@ pub enum EditorRenamePolicy {
     /// A Usecase ASCII identifier, including digit prefixes and excluding reserved tokens.
     #[serde(rename = "usecase_identifier")]
     UsecaseIdentifier,
+    /// An Agentflow node id, excluding family-specific reserved keywords.
+    #[serde(rename = "agentflow_node_id")]
+    AgentflowNodeId,
 }
 
 impl EditorRenamePolicy {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::None,
         Self::Identifier,
         Self::QualifiedIdentifier,
@@ -73,9 +76,10 @@ impl EditorRenamePolicy {
         Self::RailroadPegRule,
         Self::RailroadAbnfRule,
         Self::UsecaseIdentifier,
+        Self::AgentflowNodeId,
     ];
 
-    pub const IDS: [&'static str; 13] = [
+    pub const IDS: [&'static str; 14] = [
         "none",
         "identifier",
         "qualified_identifier",
@@ -89,6 +93,7 @@ impl EditorRenamePolicy {
         "railroad_peg_rule",
         "railroad_abnf_rule",
         "usecase_identifier",
+        "agentflow_node_id",
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -106,6 +111,7 @@ impl EditorRenamePolicy {
             Self::RailroadPegRule => "railroad_peg_rule",
             Self::RailroadAbnfRule => "railroad_abnf_rule",
             Self::UsecaseIdentifier => "usecase_identifier",
+            Self::AgentflowNodeId => "agentflow_node_id",
         }
     }
 }

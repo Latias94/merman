@@ -269,10 +269,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 if self.kind() == K::Identifier
-                    && matches!(
-                        self.text(self.current()).to_ascii_lowercase().as_str(),
-                        "allowmixing" | "newpage" | "package" | "rectangle" | "skinparam"
-                    )
+                    && super::is_forbidden_statement_identifier(self.text(self.current()))
                 {
                     return Err(ParseIssue::new(
                         "PlantUML statements are not part of the Usecase grammar",

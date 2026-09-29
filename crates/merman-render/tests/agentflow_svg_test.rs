@@ -290,3 +290,63 @@ fn agentflow_hand_drawn_containers_keep_flow_group_paint() {
         assert_eq!(border.attribute("stroke-width"), Some("0.75"));
     }
 }
+
+#[test]
+fn agentflow_label_types_reach_html_and_svg_markdown_rendering() {
+    let source = r#"agentflow-beta
+A["`**bold**`"]
+B["**plain**"]
+C@{label: "`**literal**`", labelType: text}
+"#;
+    for html in [false, true] {
+        let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+            json!({"layout":"dagre", "htmlLabels":html}),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let text_content = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>()
+        };
+        let nodes: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "node")
+                    })
+            })
+            .collect();
+        assert_eq!(nodes.len(), 3);
+        for expected in ["bold", "**plain**", "`**literal**`"] {
+            let node = nodes
+                .iter()
+                .copied()
+                .find(|node| text_content(*node) == expected)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing {expected:?}, htmlLabels={html}: {}",
+                        rendered.svg()
+                    )
+                });
+            let bold = node.descendants().any(|node| {
+                if html {
+                    node.has_tag_name("strong")
+                } else {
+                    node.has_tag_name("tspan") && node.attribute("font-weight") == Some("bold")
+                }
+            });
+            assert_eq!(bold, expected == "bold", "{expected}, htmlLabels={html}");
+        }
+    }
+}
