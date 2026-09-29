@@ -1525,3 +1525,78 @@ fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
     assert_eq!(parsed.model["direction"], "LR");
     assert!(parsed.model["states"].get("A").is_none());
 }
+
+#[test]
+fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
+    let engine = Engine::new();
+    for (statement, kind, id, field, value) in [
+        (
+            r#"state "direction LR" as Inner"#,
+            "state",
+            "Inner",
+            "description",
+            "direction LR",
+        ),
+        (
+            "classDef custom fill:direction LR",
+            "classDef",
+            "custom",
+            "classes",
+            "fill:direction LR",
+        ),
+        (
+            "style Inner fill:direction LR",
+            "style",
+            "Inner",
+            "styleClass",
+            "fill:direction LR",
+        ),
+        (
+            "class Inner direction LR",
+            "applyClass",
+            "Inner",
+            "styleClass",
+            "direction LR",
+        ),
+    ] {
+        let source = format!("stateDiagram-v2\nstate Outer {{\n{statement}\n}}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let statement = &parsed.model["states"]["Outer"]["doc"][0];
+        assert_eq!(statement["stmt"], kind, "{source}");
+        assert_eq!(statement["id"], id, "{source}");
+        assert_eq!(statement[field], value, "{source}");
+    }
+    // NOTE remains lower priority than directions in the upstream struct lexer.
+    let source = "stateDiagram-v2\nstate Outer {\nnote \"direction LR\" as N\n}\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.model["states"]["Outer"]["doc"][0],
+        json!({"stmt": "dir", "value": "LR"})
+    );
+}
+
+#[test]
+fn parse_state_editor_struct_state_label_preserves_entity_selection() {
+    let engine = Engine::new();
+    let source = "stateDiagram-v2\nstate Outer {\nstate \"direction LR\" as Inner\n}\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let start = source.find("Inner").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Inner"
+        && symbol.selection == SourceSpan::new(start, start + "Inner".len())));
+    assert!(
+        !facts
+            .expected_syntax
+            .iter()
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::CardinalDirectionValue)
+    );
+}

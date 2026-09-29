@@ -9,7 +9,7 @@ pub(super) fn parse(
     source: &str,
     offset: usize,
 ) -> Result<(Value, BTreeMap<String, Vec<String>>), ParseIssue> {
-    let value: Value = serde_json::from_str(source).map_err(|error| {
+    let mut value: Value = serde_json::from_str(source).map_err(|error| {
         let line_start = source
             .split_inclusive('\n')
             .take(error.line().saturating_sub(1))
@@ -42,6 +42,9 @@ pub(super) fn parse(
             },
         ));
     }
+    // JSON.parse uses binary64 for every number, including integer literals.
+    // Keep serde_json authoritative for syntax and finite-number admission.
+    normalize_json_numbers(&mut value);
     let mut collector = Collector {
         source,
         offset: 0,
@@ -57,6 +60,19 @@ pub(super) fn parse(
         )
     })?;
     Ok((value, collector.property_order))
+}
+
+fn normalize_json_numbers(value: &mut Value) {
+    match value {
+        Value::Number(number) => {
+            if let Some(number) = number.as_f64() {
+                *value = crate::compatibility_json::number_value(number);
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(normalize_json_numbers),
+        Value::Object(values) => values.values_mut().for_each(normalize_json_numbers),
+        _ => {}
+    }
 }
 
 struct Collector<'a> {
@@ -194,6 +210,21 @@ impl Collector<'_> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn numbers_follow_javascript_binary64_and_normalize_negative_zero() {
+        let (value, _) = parse(r#"{"safe":9007199254740991,"rounded":9007199254740993,"nested":[-9007199254740993,1e20,1e21,-0],"boundary":9223372036854775808}"#, 0).unwrap();
+        assert_eq!(value["safe"], json!(9007199254740991_i64));
+        assert_eq!(value["rounded"], json!(9007199254740992_i64));
+        assert_eq!(value["nested"][0], json!(-9007199254740992_i64));
+        assert_eq!(value["nested"][1].as_f64(), Some(1e20));
+        assert_eq!(value["nested"][2].as_f64(), Some(1e21));
+        assert_eq!(value["nested"][3], json!(0));
+        assert_eq!(value["boundary"].as_f64(), Some(9223372036854775808.0));
+        assert_ne!(value["boundary"], json!(i64::MAX));
+        // Non-finite JSON.parse results cannot be represented by this public JSON model.
+        assert!(parse(r#"{"overflow":1e309}"#, 0).is_err());
+    }
 
     #[test]
     fn nested_arrays_and_escaped_json_pointers_preserve_source_order() {

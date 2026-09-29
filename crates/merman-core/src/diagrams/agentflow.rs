@@ -756,8 +756,6 @@ impl<'a> Parser<'a> {
             if let Some(direction) = statement_direction(trimmed) {
                 if let Some(context) = self.contexts.last_mut() {
                     context.direction = Some(direction.to_string());
-                } else {
-                    self.direction = direction.to_string();
                 }
                 continue;
             }
@@ -1639,6 +1637,8 @@ fn split_top_level<'a>(
     separators: &'static [u8],
 ) -> impl Iterator<Item = (usize, &'a str)> {
     let mut cursor = 0;
+    let mut physical_line_end = 0;
+    let mut direction_scan_end = 0;
     std::iter::from_fn(move || {
         if cursor >= source.len() {
             return None;
@@ -1653,6 +1653,37 @@ fn split_top_level<'a>(
                 .find('}')
                 .map_or(source.len(), |end| source.len() - body.len() + end + 1);
             return Some((start, &source[start..cursor]));
+        }
+        if separators == b";\n" {
+            let tail = &source[start..];
+            if start >= physical_line_end {
+                physical_line_end = start + tail.find('\n').unwrap_or(tail.len());
+            }
+            let line_end = physical_line_end - start;
+            let line = &tail[..line_end];
+            let trimmed = line.trim_start();
+            let accessibility_line = ["accTitle", "accDescr"].into_iter().any(|keyword| {
+                trimmed.strip_prefix(keyword).is_some_and(|rest| {
+                    rest.trim_start_matches(super::scan::is_ecmascript_whitespace)
+                        .starts_with(':')
+                })
+            });
+            // Whole-line Jison rules run before the semicolon token. Keep the
+            // header and earlier keyword rules in their existing token stream.
+            let direction_line = !starts_reserved_identifier(trimmed)
+                && !trimmed.starts_with('"')
+                && start >= direction_scan_end
+                && {
+                    let matched = statement_direction(line).is_some();
+                    if !matched {
+                        direction_scan_end = physical_line_end;
+                    }
+                    matched
+                };
+            if accessibility_line || direction_line {
+                cursor = start + line_end + usize::from(line_end < tail.len());
+                return Some((start, line));
+            }
         }
         let mut depth = 0usize;
         let mut in_label = false;
@@ -2223,6 +2254,8 @@ fn parse_metadata(
     body: &str,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
+    let normalized = normalize_metadata_quoted_newlines(body);
+    let body = normalized.as_str();
     let mut result = crate::inline_config::parse_mermaid_inline_object_controlled(body, control)?;
     if result.is_err() && body.contains('\n') {
         let stripped = strip_line_trailing_commas(body);
@@ -2238,6 +2271,31 @@ fn parse_metadata(
         Value::Object(object) => Ok(object),
         _ => Err("agentflow metadata must be an object".to_string()),
     }))
+}
+
+// The shapeDataStr lexer rewrites LF plus following ECMAScript whitespace
+// before YAML decoding, including strings used for non-presentation metadata.
+fn normalize_metadata_quoted_newlines(body: &str) -> String {
+    let mut normalized = String::with_capacity(body.len());
+    let mut double_quoted = false;
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            double_quoted = !double_quoted;
+        }
+        if double_quoted && ch == '\n' {
+            normalized.push_str("<br/>");
+            while chars
+                .peek()
+                .is_some_and(|ch| super::scan::is_ecmascript_whitespace(*ch))
+            {
+                chars.next();
+            }
+        } else {
+            normalized.push(ch);
+        }
+    }
+    normalized
 }
 
 /// Mermaid retries invalid block YAML once after removing syntactically trailing commas.
@@ -2325,17 +2383,12 @@ fn strip_prototype_keys(value: Value) -> Value {
 
 fn unquote(value: &str) -> String {
     let value = value.trim();
-    if value.len() >= 2
-        && ((value.starts_with('"') && value.ends_with('"'))
-            || (value.starts_with('\'') && value.ends_with('\'')))
-    {
-        let body = &value[1..value.len() - 1];
-        return body
-            .replace("\\\"", "\"")
-            .replace("\\'", "'")
-            .replace("\\n", "\n");
-    }
-    value.to_string()
+    // Jison STR strips the delimiters without interpreting backslash escapes.
+    value
+        .strip_prefix('"')
+        .and_then(|body| body.strip_suffix('"'))
+        .unwrap_or(value)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -2351,6 +2404,60 @@ mod tests {
             effective_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    #[test]
+    fn agentflow_direction_is_scoped_to_flow_and_consumes_its_physical_line() {
+        let source = "agentflow-beta TB\ndirection LR\nflow F\ndirection RL; A --> B\nend\nC; D\n";
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(model["direction"], "TB");
+        assert_eq!(model["subGraphs"][0]["direction"], "RL");
+        assert_eq!(model["subGraphs"][0]["nodes"], json!([]));
+        assert_eq!(model["edges"], json!([]));
+        assert_eq!(model["vertices"].as_array().unwrap().len(), 2);
+        assert_eq!(model["vertices"][0]["id"], "C");
+        assert_eq!(model["vertices"][1]["id"], "D");
+    }
+
+    #[test]
+    fn agentflow_accessibility_lines_preserve_semicolons_and_percent_signs() {
+        let source =
+            "agentflow-beta TB\naccTitle: hello; world %% literal\naccDescr: describe; all\nA\n";
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(model["accTitle"], "hello; world %% literal");
+        assert_eq!(model["accDescr"], "describe; all");
+        assert_eq!(model["vertices"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn agentflow_plain_quoted_labels_preserve_literal_backslashes() {
+        let source = r#"agentflow-beta TB
+flow F["C:\new"]
+A["C:\new"] -->|"C:\new"| B
+end
+"#;
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(model["vertices"][0]["label"], r"C:\new");
+        assert_eq!(model["edges"][0]["label"], r"C:\new");
+        assert_eq!(model["subGraphs"][0]["title"], r"C:\new");
+    }
+
+    #[test]
+    fn agentflow_metadata_double_quoted_newlines_match_shape_data_lexer() {
+        let source =
+            "agentflow-beta TB\nA@{\n label: \"first\n second\",\n instruction: \"do\n next\"\n}\n";
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(model["vertices"][0]["label"], "first<br/>second");
+        assert_eq!(
+            model["vertices"][0]["metadata"]["instruction"],
+            "do<br/>next"
+        );
+        let source = "agentflow-beta TB\nA@{\n instruction: |\n  first\n  second\n}\n";
+        let model = parse_agentflow(source, &meta()).unwrap();
+        assert_eq!(
+            model["vertices"][0]["metadata"]["instruction"],
+            "first\nsecond\n"
+        );
     }
 
     #[test]

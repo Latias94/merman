@@ -964,6 +964,23 @@ impl Iterator for Lexer<'_> {
             }
         }
 
+        // In struct mode these explicit rules precede directions; in INITIAL they follow them.
+        // Require the upstream whitespace suffix so punctuation does not change rule priority.
+        if self.mode() == Mode::Struct
+            && ["classDef", "class", "style", "state"]
+                .into_iter()
+                .any(|keyword| {
+                    self.starts_with_ci(keyword)
+                        && self.input[self.pos + keyword.len()..]
+                            .chars()
+                            .next()
+                            .is_some_and(is_ecmascript_whitespace)
+                })
+            && let Some(token) = self.lex_stmt_line()
+        {
+            return Some(self.emit_result(token));
+        }
+
         if let Some(dir) = self.lex_direction() {
             return Some(self.emit_result(dir));
         }
