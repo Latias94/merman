@@ -92,6 +92,23 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             with self.subTest(workflow=path.name):
                 self.assertNotIn("  pull_request:", read(path))
 
+    def test_performance_contracts_use_the_workflow_merge_revision(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "performance.yml")
+        contracts = workflow_job(workflow, "contracts")
+        self.assertIn("ref: ${{ inputs.head_ref || github.sha }}", contracts)
+        self.assertIn(
+            "repository: ${{ inputs.head_repository || github.repository }}",
+            contracts,
+        )
+        self.assertNotIn("github.event.pull_request.head", contracts)
+
+        # Measurements intentionally compare the actual branch revisions.
+        for job in ("measurement-plan", "measurement"):
+            with self.subTest(job=job):
+                self.assertIn(
+                    "github.event.pull_request.head.sha", workflow_job(workflow, job)
+                )
+
     def test_main_security_calls_the_full_dependency_closure(self) -> None:
         ci = read(CI_WORKFLOW)
         self.assertIn(
