@@ -174,3 +174,10 @@ Validated changes have been split into local Conventional Commits:
 The numeric model and its renderer changes were committed together. These scoped fixes do not
 claim full browser-root admission.
 No changes have been pushed.
+
+## Follow-up
+
+The isolated UTF-16 limitation above is addressed by the subsequent
+[UTF-16 and title follow-up](MERMAID_12_UTF16_AND_TITLE_2026_09_29.md).
+That report records the lossless model change and public Web regression evidence;
+the deterministic title 029 browser-root blocker remains explicitly open.
