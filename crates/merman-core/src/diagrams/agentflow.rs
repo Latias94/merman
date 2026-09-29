@@ -727,6 +727,23 @@ impl<'a> Parser<'a> {
             if self.in_frontmatter || trimmed.starts_with("---") {
                 continue;
             }
+            // Direction precedes whitespace in Jison. Preserve the statement's raw
+            // cursor so indentation cannot promote a later keyword ahead of it.
+            if let Some(direction) = statement_direction(line) {
+                if !direction_has_prior_token(line) {
+                    if let Some(context) = self.contexts.last_mut() {
+                        context.direction = Some(direction.to_string());
+                    }
+                    continue;
+                }
+                if !starts_accessibility_statement(line) && !keyword_with_whitespace(line, "click")
+                {
+                    return Ok(Err(self.failure(
+                        "unexpected direction after agentflow statement token",
+                        span_of(line_start, line, trimmed),
+                    )));
+                }
+            }
             if let Some(rest) = trimmed.strip_prefix("accTitle").and_then(|rest| {
                 rest.trim_start_matches(super::scan::is_ecmascript_whitespace)
                     .strip_prefix(':')
@@ -760,22 +777,6 @@ impl<'a> Parser<'a> {
                     "unexpected direction in agentflow click statement",
                     span_of(line_start, line, trimmed),
                 )));
-            }
-            // CLICK enters an exclusive lexer state, so its href/callback strings
-            // must reach the presentation parser instead of the direction rule.
-            if !keyword_with_whitespace(trimmed, "click")
-                && let Some(direction) = statement_direction(trimmed)
-            {
-                if direction_has_prior_token(trimmed) {
-                    return Ok(Err(self.failure(
-                        "unexpected direction after agentflow statement token",
-                        span_of(line_start, line, trimmed),
-                    )));
-                }
-                if let Some(context) = self.contexts.last_mut() {
-                    context.direction = Some(direction.to_string());
-                }
-                continue;
             }
             if trimmed == "end" {
                 let Some(context) = self.contexts.pop() else {
@@ -1665,6 +1666,9 @@ fn split_top_level<'a>(
         if separators == b";\n"
             && let Some(rest) = source[start..].trim_start().strip_prefix("accDescr")
             && let Some(body) = rest.trim_start().strip_prefix('{')
+            && (starts_accessibility_statement(&source[start..])
+                || statement_direction(source[start..].split('\n').next().unwrap_or_default())
+                    .is_none())
         {
             // The accessibility lexer treats everything up to the first } as plain text.
             cursor = body
@@ -1674,12 +1678,6 @@ fn split_top_level<'a>(
         }
         if separators == b";\n" {
             let tail = &source[start..];
-            let trimmed = tail.trim_start_matches([' ', '\t']);
-            if keyword_suffix(trimmed, "end").is_some() {
-                // Each END closes its own scope before any following direction.
-                cursor = start + tail.len() - trimmed.len() + "end".len();
-                return Some((start, &source[start..cursor]));
-            }
             if start >= physical_line_end {
                 physical_line_end = start + tail.find('\n').unwrap_or(tail.len());
             }
@@ -1695,7 +1693,7 @@ fn split_top_level<'a>(
             // Whole-line Jison rules run before the semicolon token. Keep the
             // header and earlier keyword rules in their existing token stream.
             let direction_line =
-                !direction_has_prior_token(trimmed) && start >= direction_scan_end && {
+                !direction_has_prior_token(line) && start >= direction_scan_end && {
                     let matched = statement_direction(line).is_some();
                     if !matched {
                         direction_scan_end = physical_line_end;
@@ -1705,6 +1703,13 @@ fn split_top_level<'a>(
             if accessibility_line || direction_line {
                 cursor = start + line_end + usize::from(line_end < tail.len());
                 return Some((start, line));
+            }
+            if let Some(suffix) = keyword_suffix(trimmed, "end") {
+                // END consumes horizontal whitespace itself. A following END must
+                // start at its keyword, rather than at the preceding separator.
+                let token_end = start + line.len() - trimmed.len() + "end".len();
+                cursor = token_end + suffix.len() - suffix.trim_start_matches([' ', '\t']).len();
+                return Some((start, &source[start..token_end]));
             }
         }
         let mut depth = 0usize;
@@ -2207,8 +2212,18 @@ fn click_contains_unshielded_direction(statement: &str) -> bool {
     }
 }
 
+fn starts_accessibility_statement(value: &str) -> bool {
+    ["accTitle", "accDescr"].into_iter().any(|keyword| {
+        value.strip_prefix(keyword).is_some_and(|suffix| {
+            let suffix = suffix.trim_start_matches(super::scan::is_ecmascript_whitespace);
+            suffix.starts_with(':') || (keyword == "accDescr" && suffix.starts_with('{'))
+        })
+    })
+}
+
 fn direction_has_prior_token(value: &str) -> bool {
     starts_reserved_identifier(value)
+        || starts_accessibility_statement(value)
         || value.starts_with('"')
         || keyword_suffix(value, "default").is_some()
         || ["click", "call", "href"]
@@ -2802,6 +2817,50 @@ Group@{labelType: text}
             flow.nodes[0].link.as_deref(),
             Some("https://example.test/direction%20LR")
         );
+    }
+
+    #[test]
+    fn indented_end_direction_preserves_the_open_container() {
+        for indent in ["  ", "\u{00a0}"] {
+            let source = format!("agentflow-beta TB\nflow O\nA\n{indent}end direction LR\nend\n");
+            let model = parse_agentflow_model_for_render_controlled(
+                &source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(model.sub_graphs.len(), 1, "{source}");
+            assert_eq!(model.sub_graphs[0].id, "O");
+            assert_eq!(
+                model.sub_graphs[0].direction.as_deref(),
+                Some("LR"),
+                "{source}"
+            );
+            assert_eq!(model.vertices[0].id, "A");
+        }
+    }
+
+    #[test]
+    fn indented_direction_precedes_click_and_classdef_keywords() {
+        for statement in [
+            r#"  click A href "https://example.test/direction LR""#,
+            "  classDef c fill:direction LR",
+        ] {
+            let source = format!("agentflow-beta TB\nA\n{statement}\n");
+            let model = parse_agentflow_model_for_render_controlled(
+                &source,
+                &meta(),
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .unwrap();
+            let (flow, _) = model.to_flowchart_model();
+            assert_eq!(flow.nodes.len(), 1, "{source}");
+            assert_eq!(flow.nodes[0].id, "A");
+            assert_eq!(flow.nodes[0].link, None, "{source}");
+            assert!(flow.class_defs.is_empty(), "{source}");
+        }
     }
 
     #[test]
