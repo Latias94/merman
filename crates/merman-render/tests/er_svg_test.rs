@@ -301,3 +301,99 @@ fn er_svg_row_fills_follow_optional_theme_colors() {
         }
     }
 }
+
+#[test]
+fn er_redux_explicit_styles_override_palette_on_every_table_path() {
+    for theme in ["redux", "redux-dark", "redux-color", "redux-dark-color"] {
+        for look in ["classic", "neo"] {
+            for html_labels in [false, true] {
+                let source = format!(
+                    r#"---
+config:
+  theme: {theme}
+  look: {look}
+  layout: dagre
+  htmlLabels: {html_labels}
+---
+erDiagram
+  BOOK["Book"]:::core {{
+    string title PK
+    string author FK
+  }}
+  classDef core fill:#f96,stroke:#456,stroke-width:3px,color:#fff
+  class BOOK core
+  style BOOK fill:#f9f,stroke:#333,stroke-width:2px
+"#
+                );
+                let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                let entity = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-entity-BOOK-0"))
+                    .expect("BOOK entity");
+                for path in entity
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path"))
+                {
+                    let style = path.attribute("style").unwrap_or_default();
+                    assert!(
+                        style.contains("fill:#f9f !important"),
+                        "{theme}/{look}: {style}"
+                    );
+                    assert!(
+                        style.contains("stroke:#333 !important"),
+                        "{theme}/{look}: {style}"
+                    );
+                    assert!(
+                        style.contains("stroke-width:2px !important"),
+                        "{theme}/{look}: {style}"
+                    );
+                    assert!(
+                        !style.contains("#f96"),
+                        "class fill must lose to explicit style"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn er_non_redux_preserves_row_colors_and_styles_both_divider_paths() {
+    let source = r#"---
+config:
+  theme: default
+  look: neo
+  layout: dagre
+---
+erDiagram
+  BOOK {
+    string title PK
+    string author FK
+  }
+  style BOOK fill:#f9f,stroke:#333,stroke-width:2px,stroke-dasharray:4 2
+"#;
+    let svg = render_er_svg_from_text(source, &SvgRenderOptions::default());
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for group in document.descendants().filter(|node| {
+        matches!(
+            node.attribute("class"),
+            Some("outer-path" | "row-rect-odd" | "row-rect-even" | "divider")
+        )
+    }) {
+        for path in group.children().filter(|node| node.has_tag_name("path")) {
+            let style = path.attribute("style").unwrap_or_default();
+            assert!(
+                style.contains("stroke:#333 !important"),
+                "{}: {style}",
+                group.attribute("class").unwrap()
+            );
+            // Mermaid erDiagram.jison skips whitespace in style blocks and joins tokens.
+            assert!(style.contains("stroke-dasharray:42 !important"), "{style}");
+            assert_eq!(
+                style.contains("fill:#f9f !important"),
+                group.attribute("class") == Some("row-rect-even")
+            );
+        }
+    }
+}

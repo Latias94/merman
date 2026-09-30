@@ -430,7 +430,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_stroke_path_for_svg_path(
                 d,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

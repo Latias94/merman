@@ -85,6 +85,7 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
     let include = token(&["usecaseIncludeLine", "lineColor"], &line);
     let extend = token(&["usecaseExtendLine", "lineColor"], &line);
     let text = token(&["primaryTextColor"], "#333");
+    let root_text = token(&["textColor"], "#333");
     let actor_text = token(&["actorTextColor", "primaryTextColor"], &text);
     let title = token(&["titleColor", "primaryTextColor"], &text);
     let note = token(&["noteBkgColor"], "#fff5ad");
@@ -98,37 +99,9 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
     let font = font_style(cfg);
     let _ = write!(
         css,
-        "#{id}{{font-family:{};font-size:{}px;fill:{text}}}",
+        "#{id}{{font-family:{};font-size:{}px;fill:{root_text}}}",
         font.font_family.as_deref().unwrap_or("sans-serif"),
         fmt(font.font_size)
-    );
-    let _ = write!(
-        css,
-        r#"
-#{id} text,#{id} .nodeLabel{{fill:{text};color:{text}}}
-#{id} .usecase-element ellipse,#{id} .usecase-element rect{{fill:{body};stroke:{border};stroke-width:2px}}
-#{id} .usecase-actor-glyph{{fill:{actor};stroke:{actor_border};stroke-width:2px}}
-#{id} .usecase-actor-stick{{fill:none}}
-#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{color:{actor_text};fill:{actor_text}}}
-#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{font-family:var(--mermaid-usecase-actor-font-family);font-size:var(--mermaid-usecase-actor-font-size);font-weight:var(--mermaid-usecase-actor-font-weight)}}
-#{id} .usecase-element .nodeLabel,#{id} .usecase-label{{font-family:var(--mermaid-usecase-font-family);font-size:var(--mermaid-usecase-font-size);font-weight:var(--mermaid-usecase-font-weight)}}
-#{id} .system-boundary rect{{fill:{boundary};stroke:{boundary_border};stroke-width:1px}}
-#{id} .system-boundary-title text,#{id} .system-boundary-title span{{fill:{title};color:{title}}}
-#{id} .relationship{{fill:none;stroke:{line};stroke-width:1px}}
-#{id} .relationship-include{{stroke:{include};stroke-dasharray:3}}
-#{id} .relationship-extend{{stroke:{extend};stroke-dasharray:3}}
-#{id} .relationship-note{{stroke-dasharray:3}}
-#{id} .marker{{fill:{line};stroke:{line}}}#{id} .marker.extension{{fill:{main};stroke:{line}}}
-#{id} .usecase-note .label-container{{fill:{note};stroke:{note_border}}}
-#{id} .usecase-note .nodeLabel{{color:{note_text};fill:{note_text}}}
-#{id} .usecase-json-table rect,#{id} .usecase-json-cell{{fill:{main};stroke:{node_border}}}
-#{id} .usecase-business-marker{{stroke:{border};fill:none}}
-#{id} .edgeLabel,#{id} .edgeLabel p{{background-color:{edge_background}}}
-#{id} .edgeLabel .label rect{{fill:{edge_background}}}
-@keyframes dash{{to{{stroke-dashoffset:0}}}}
-#{id} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round}}
-#{id} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round}}
-"#
     );
     let look = look(cfg);
     let rotate = cfg.pointer("/usecase/colorScheme").and_then(Value::as_str) == Some("rotate");
@@ -171,6 +144,45 @@ pub(super) fn write_css(out: &mut String, id: SvgDiagramId<'_>, cfg: &Value) {
             }
         }
     }
+    let _ = write!(
+        css,
+        r#"
+#{id} text,#{id} .nodeLabel{{fill:{text};color:{text}}}
+#{id} .usecase-element ellipse,#{id} .usecase-element rect{{fill:{body};stroke:{border};stroke-width:2px}}
+#{id} .usecase-actor-shape,#{id} .usecase-actor-hollow,#{id} .usecase-actor-awesome,#{id} .usecase-actor-icon{{fill:{actor};stroke:{actor_border};stroke-width:2px}}
+#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{color:{actor_text};fill:{actor_text}}}
+#{id} .usecase-actor .nodeLabel,#{id} .actor-label{{font-family:var(--mermaid-usecase-actor-font-family);font-size:var(--mermaid-usecase-actor-font-size);font-weight:var(--mermaid-usecase-actor-font-weight)}}
+#{id} .usecase-element .nodeLabel,#{id} .usecase-label{{font-family:var(--mermaid-usecase-font-family);font-size:var(--mermaid-usecase-font-size);font-weight:var(--mermaid-usecase-font-weight)}}
+#{id} .system-boundary rect.boundary-body,#{id} .system-boundary rect.boundary-tab,#{id} .system-boundary-package-tab{{fill:{boundary};stroke:{boundary_border};stroke-width:1px}}
+#{id} .system-boundary-title text,#{id} .system-boundary-title span{{fill:{title};color:{title}}}
+#{id} .relationship{{fill:none;stroke:{line};stroke-width:1px}}
+#{id} .relationship-include{{stroke:{include};stroke-dasharray:3}}
+#{id} .relationship-extend{{stroke:{extend};stroke-dasharray:3}}
+#{id} .relationship-note{{stroke-dasharray:3}}
+#{id} .marker{{fill:{line};stroke:{line}}}#{id} .marker.extension{{fill:{main};stroke:{line}}}
+#{id} .usecase-note{{fill:{note};stroke:{note_border};color:{note_text}}}
+#{id} .usecase-note .nodeLabel{{color:{note_text};fill:{note_text}}}
+#{id} .usecase-json-table,#{id} .usecase-json-table rect,#{id} .usecase-json-cell{{fill:{main};stroke:{node_border}}}
+#{id} .usecase-stereotype,#{id} .usecase-business-marker{{stroke:{border};fill:{text};color:{text}}}
+#{id} .usecase-json-title,#{id} .usecase-json-key,#{id} .usecase-json-value{{fill:{text};color:{text}}}
+#{id} .edgeLabel,#{id} .edgeLabel p{{background-color:{edge_background}}}
+#{id} .edgeLabel .label rect{{fill:{edge_background}}}
+@keyframes dash{{to{{stroke-dashoffset:0}}}}
+#{id} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round}}
+#{id} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round}}
+"#
+    );
+    // Mermaid appends shared neo paint after family CSS. The role selectors must
+    // name the actual glyph/body children to outrank direct neo path/rect rules.
+    if look != "handDrawn" {
+        let _ = write!(
+            css,
+            r#"#{id} .node.usecase-actor .usecase-actor-glyph path,#{id} .node.usecase-actor .usecase-actor-glyph circle{{stroke:{actor_border}}}
+#{id} [data-look="{look}"].node.usecase-element ellipse,#{id} [data-look="{look}"].node.usecase-element rect{{fill:{body};stroke:{border}}}
+#{id} [data-look="{look}"].node.usecase-element .usecase-business-marker{{stroke:{border}}}"#
+        );
+    }
+    super::super::css::write_mermaid_common_neo_css(&mut css, id, cfg);
     // CSS is XML character data. Preserve declarations while preventing a token from closing style.
     out.push_str("<style>");
     util::escape_xml_raw_into(out, &css);

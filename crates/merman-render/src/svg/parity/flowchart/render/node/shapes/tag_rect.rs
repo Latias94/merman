@@ -52,8 +52,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &rect_path,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,
@@ -66,8 +64,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &tag_path,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,

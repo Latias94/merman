@@ -321,8 +321,6 @@ pub(super) fn write_node(
                     y: -node.height / 2.0,
                     w: node.width,
                     h: node.height,
-                    fill: &note_fill,
-                    stroke: &note_stroke,
                     stroke_width: 1.3,
                     randomness: &randomness,
                 })

@@ -129,8 +129,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                         y: -h / 2.0,
                         w,
                         h,
-                        fill: &line_color,
-                        stroke: &line_color,
                         stroke_width: common.stroke_width,
                         randomness: common.hand_drawn_seed,
                     })
@@ -194,8 +192,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
                         &path_data,
-                        common.fill_color,
-                        common.stroke_color,
                         common.stroke_width,
                         common.stroke_dasharray,
                         common.hand_drawn_seed,
@@ -283,8 +279,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
                         &line_path,
-                        common.fill_color,
-                        common.stroke_color,
                         common.stroke_width,
                         common.stroke_dasharray,
                         common.hand_drawn_seed,

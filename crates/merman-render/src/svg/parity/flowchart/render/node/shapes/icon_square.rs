@@ -138,8 +138,6 @@ fn render_icon_rect_frame(
         match super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_paths_for_svg_path_single_set(
                 &rounded_rect,
-                common.fill_color,
-                common.fill_color,
                 1.3,
                 "0 0",
                 common.hand_drawn_seed,

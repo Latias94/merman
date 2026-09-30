@@ -203,8 +203,6 @@ pub(super) fn render_state_node_svg(
                     y: -h / 2.0,
                     w,
                     h,
-                    fill: "#333333",
-                    stroke: "#333333",
                     stroke_width: 1.3,
                     randomness: &ctx.hand_drawn_seed,
                 })
@@ -253,8 +251,6 @@ pub(super) fn render_state_node_svg(
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_choice_diamond_path_data(w, h),
-                    "#ECECFF",
-                    "#9370DB",
                     1.3,
                     "0 0",
                     &ctx.hand_drawn_seed,
@@ -326,8 +322,6 @@ pub(super) fn render_state_node_svg(
                     y: -h / 2.0,
                     w,
                     h,
-                    fill: "#fff5ad",
-                    stroke: "#aaaa33",
                     stroke_width: 1.3,
                     randomness: &ctx.hand_drawn_seed,
                 })
@@ -736,8 +730,6 @@ pub(super) fn render_state_node_svg(
             let (fill_d, stroke_d) = ctx.rough_cache.get_or_build_paths(key, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_rounded_rect_path_data(w, h),
-                    "#ECECFF",
-                    "#9370DB",
                     1.3,
                     "0 0",
                     &ctx.hand_drawn_seed,

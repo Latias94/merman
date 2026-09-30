@@ -73,8 +73,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_hachure_paths_for_svg_path(
                     &path_data,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
@@ -107,8 +105,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.hand_drawn_seed,
