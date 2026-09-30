@@ -15,17 +15,13 @@ The command line has four explicit workflows:
 
 ## Install
 
-This README documents the current source checkout. The installation examples below pin the
-published `merman-cli` `0.8.0-alpha.6` package and binary channel; development features such as ASCII
-`auto` layout and report schema 3 require a build containing those changes. For the published
-contract, use the README at tag `v0.8.0-alpha.6`. Prefer the complete prebuilt binary from the selected
-release, with a source-build fallback when no official archive is available for the current target:
+This guide and the version-pinned commands below target `0.8.0-alpha.7`. Install its complete prebuilt binary:
 
 ```sh
-cargo binstall merman-cli@0.8.0-alpha.6
+cargo binstall merman-cli@0.8.0-alpha.7
 ```
 
-The alpha.6 binary channel is published. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at tag `v0.8.0-alpha.6` when you need that published source contract.
+Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
 
 Homebrew users can install the stable formula:
 
@@ -37,13 +33,13 @@ The formula follows stable releases and may trail this pre-release documentation
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
-From a checkout at tag `v0.8.0-alpha.6`:
+From the matching reviewed alpha.7 source checkout:
 
 ```sh
 cargo install --path crates/merman-cli --locked
 ```
 
-The alpha.6 source-install command above uses that release's default capability set, which omits ELK. The current alpha.7 source default includes ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
+The alpha.7 source default includes ELK; alpha.6 source defaults omitted it. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
@@ -337,7 +333,7 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 The default feature set is the complete local product. It includes `all-diagrams`. For a slim current-source binary, disable defaults and select the
 required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language
-surface. Published alpha.6 install examples below predate these selectors:
+surface. The alpha.7 recipes below select families explicitly:
 
 | Build | Capabilities |
 | --- | --- |
@@ -354,8 +350,8 @@ surface. Published alpha.6 install examples below predate these selectors:
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.6 --locked \
-  --no-default-features --features analysis
+cargo install merman-cli --version 0.8.0-alpha.7 --locked \
+  --no-default-features --features all-diagrams,analysis
 ```
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The alpha.7 source default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.

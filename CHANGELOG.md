@@ -4,49 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0-alpha.7] - 2026-09-30
+
+Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the compatibility baseline to Mermaid 12.0.0, adds Agentflow and Usecase, and makes diagram-family selection explicit for custom Rust builds. This is a breaking prerelease; see the [alpha.6 to alpha.7 upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating source dependencies, generated bindings, or snapshots. Package channels publish independently.
+
+### Breaking changes
+
+- Updated the compatibility baseline from Mermaid `11.17.2` to `12.0.0`. Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow now default to ELK when that capability is compiled in; Mermaid 12 appearance defaults also change supported families to `redux-color` and `neo`. Refresh layout/SVG snapshots, replace removed family-local `defaultRenderer` selectors with top-level `layout`, and explicitly select `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is required. #154
+- The default `merman`, `merman-cli`, and `merman-rustdoc` source builds now include the EPL-2.0 `merman-elk-layered` implementation. Merman's own MIT OR Apache-2.0 license is unchanged. To omit ELK from a Rust dependency graph, use `default-features = false` with the required diagram families and `complete-svg` or narrower capability leaves, and check feature unification across the application. Selecting Dagre at runtime does not remove the compiled ELK dependency. Existing full prebuilt artifacts already included ELK; review the [third-party notices](THIRD_PARTY_NOTICES.md) for the selected artifact. #154
+- Low-level crates and `default-features = false` consumers now require positive `diagram-*` selectors. Add `all-diagrams` to retain the previous parser surface, or select only required families. Family-exclusive public model types and enum variants are conditional. Default facade, CLI, and Rustdoc builds retain all families; `complete-svg` selects outputs and engines without selecting languages. #149
+- `merman-rustdoc` now defaults to all families, SVG, Cytoscape, and ELK without math. Add `features = ["math"]` when upgrading diagrams that relied on alpha.6's math-enabled default. Macro SVG backgrounds are transparent by default; set `background = "white"` for an opaque canvas. Generated IDs include occurrence and theme identity, so regenerate snapshots. #131 #154
+- ASCII reports advance to schema `3` with requested/effective layouts and Compact-attempt information. Direct Python/Apple UniFFI bindings advance to API `7`; regenerate wrappers and native libraries together. The C ABI remains `3`, Android transport API remains `2`, and Web/WASM transport API remains `5`. #134
+- Custom artifact-recipe readers must adopt `artifact-profiles-v2.json` schema `2`, including exact logical parser IDs in `expected.diagram_families`. Runtime capability IDs and `feature-surface-v1.json` are unchanged. #149
 
 ### Added
 
-- Added positive `diagram-*` Cargo selectors and `all-diagrams` so source consumers can compile only the built-in families they use, including Flowchart + Gantt without other family implementations. Output, layout, and math selections remain independent (#148).
-
-- Added `DeterministicTextMeasurer::with_width_callback(...)` so Rust applications can supply whole-string CSS-pixel widths while Merman handles wrapping and line layout.
-- Added `merman-rustdoc` options `background` for the SVG canvas color, `id_prefix` for generated items with overlapping source locations, and `inherit` to control parent tree rendering defaults. See the [macro guide](crates/merman-rustdoc/README.md#configure-rendering) for configuration and scope rules.
-- Added `merman-doc`, a shared Markdown diagram discovery and HTML wrapping library used by the CLI rustdoc generator and attribute macro; it does not depend on a renderer or perform file access.
-- Documented stable Cargo integration for `.mmd` changes through a consumer `build.rs` watching the diagram directory, with no extra build dependency. Directory tracking covers file edits, additions, deletions, and restoration of missing includes; macro file reads alone do not register those dependencies.
+- Added native Agentflow and Usecase parsing, semantic models, layout, and SVG rendering, plus Playground examples, Tree-sitter highlighting, lint/diagnostic integration, and LSP/editor navigation and rename. Agentflow diagnostics cover removed shapes, unsupported shapes, and cyclic containment. Neither family has ASCII output; Agentflow follows upstream beta syntax, and body completion remains limited. The independently versioned `tree-sitter-mermaid` package moves to `0.2.0`. #154
+- Added Linux ARM64 GNU CLI and LSP release targets with final-archive execution checks on native ARM64 runners. Thanks @mrueg for #128.
+- Added `DeterministicTextMeasurer::with_width_callback(...)` so Rust hosts can measure complete strings in their display font while Merman owns wrapping and geometry. A monospace example demonstrates font selection and shaping. Thanks @manixate for #140.
+- Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. Flowchart Compact uses a smaller default horizontal rank gap while retaining explicit spacing overrides. #134
+- Added Rustdoc macro options `background`, `id_prefix`, and `inherit`, plus documented `build.rs` directory tracking for `.mmd` edits, additions, and deletions. The new `merman-doc` crate shares discovery and HTML wrapping between the macro and CLI without a renderer or file-access dependency. #131
 
 ### Changed
 
-- Low-level crates and `default-features = false` consumers now require explicit family selection: add `all-diagrams` to retain the previous parser surface, or select individual families. Family-exclusive public model types and enum variants are conditional. Default facade, CLI, and Rustdoc builds retain all families; `complete-svg` selects only output/engine capabilities. See the [migration guide](docs/FEATURES.md#select-diagram-families).
-- Migrated current artifact recipes to `artifact-profiles-v2.json` (schema 2), with required exact logical parser IDs in `expected.diagram_families`. Update custom recipe readers together; runtime capability IDs and `feature-surface-v1.json` are unchanged.
-
-- Diagram-local colors and typography now pass through a shared CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled by default, and host `secure` policies can still lock presentation fields.
-
-- Added opt-in ASCII `auto` layout for bounded Flowchart and Sequence output, with one Compact retry before the selected overflow policy. ASCII reports now use schema 3 and identify requested/effective layout and Compact attempts. Flowchart Compact uses a smaller default horizontal rank gap; explicit spacing overrides are preserved. Direct UniFFI bindings advance to API 7 for the revised ASCII output record; regenerate native libraries and Python/Swift wrappers together.
-
-- Clarified SVG pipeline selection in the Playground, CLI help, and SDK documentation. `readable` is an advanced text-fallback mode with browser overlap guidance and a one-click return to the default Mermaid SVG preview; pipeline values and defaults are unchanged.
-
-- Updated CI Actions and the host JavaScript toolchain to Node.js `24.21.0` and npm `12.0.2`, including npm JSON output handling and explicit dependency install-script approvals. Native Linux build containers retain their existing ABI baselines.
-- Mermaid compatibility work now targets the pinned `12.0.0` behavior graph, with ordinary ELK-backed rendering, source-backed layered defaults, and explicit lean feature selections retaining their documented fallback and EPL-2.0 closure.
-- Flowchart and State ELK rendering now preserve Mermaid post-layout edge behavior, including directional implicit ports, rounded route paint, terminal alignment, and configured line hops.
-- Agentflow and Usecase parser, semantic, layout, SVG, editor, and capability surfaces continue through the shared family pipeline so their native contracts can be admitted without a JavaScript runtime.
-- `merman-rustdoc` now defaults to all diagram families, SVG, Cytoscape, and ELK without math. Consumers rendering mathematical labels must add `features = ["math"]` or `features = ["complete-svg"]` to the macro dependency. The `merman` facade now defaults to `all-diagrams + complete-svg-elk`. The explicit SVG aggregates retain their output/backend membership; consumers disabling defaults must also choose diagram families as described above. Published `0.8.0-alpha.6` still includes math by default.
-- Rustdoc macro diagrams now use transparent backgrounds by default. Set `background = "white"` to retain an opaque white canvas. Generated SVG IDs now include occurrence and theme identity; regenerate output snapshots instead of relying on historical IDs.
-- Duplicate macro options now report errors. Strict SVG embedding rejects unsafe embedded resources while preserving safe browser HTML labels and navigation links; remove disallowed resources from affected diagrams.
-- Rustdoc diagram discovery now follows Markdown structure and embeds diagrams inside lists, blockquotes, footnotes, and their nested combinations. Standalone includes require explicit container indentation and blockquote markers; lazy continuation includes report the missing prefix. Write `include_mmd!` paths as JSON-compatible quoted strings; Rust raw-string paths are not supported.
+- Coupled prerelease crates now require exact sibling versions so fresh Cargo resolution cannot mix APIs from different prereleases. Upgrade the coupled graph together; independently versioned packages retain their own compatibility requirements.
+- Diagram-local colors and typography now pass through one CSS-value admission boundary for init directives and YAML frontmatter. Safe `themeVariables` and fonts work by default; `themeCSS` remains host-controlled, and host `secure` policies can lock presentation fields. #138
+- Rustdoc diagram discovery follows Markdown structure in lists, blockquotes, footnotes, and nested combinations. Standalone includes require explicit container prefixes and JSON-compatible quoted paths. Duplicate macro options report errors; strict embedding rejects unsafe resources while preserving supported HTML labels and navigation links. #131
+- LSP semantic-token work uses bounded workers and reuses unchanged syntax line indexes within a per-session budget. Rendering avoids repeated image-label scans and discarded SVG serialization during pure-math measurement. These changes do not imply an across-the-board speedup after the new Mermaid defaults. #139
+- ASCII graph maps use faster hashing for internal numeric keys. Thanks @makenowjust for #133.
+- Playground, CLI help, and SDK guides clarify that `readable` SVG is an advanced text-fallback mode; the default Mermaid SVG preview and pipeline values are unchanged. #134
 
 ### Fixed
 
-- Updated the CLI TLS dependency to `rustls 0.23.45` to fix TLS 1.3 handshake encryption-level validation (RUSTSEC-2026-0285).
+- Corrected Mermaid keyword, Unicode whitespace, identifier, and ER cardinality boundaries, including names beginning with cardinality words, the entity name `direction`, and parent-cardinality tokens. Flowchart, Class, and State parsing now follows upstream character ranges rather than a generic Unicode-word approximation. Thanks @betyourluck for #146 and #153; additional coverage landed in #147 and #154.
+- Fixed `base` theme overrides leaving derived Sequence, State, Gantt, and Pie colors at their defaults. Theme calculations now preserve intermediate and explicit derived overrides. #138
+- Fixed XML text type-inference failures in integrated dependency graphs such as Zed without changing SVG validation policy. Thanks @lucaschoeneberg for #136.
+- Preserved horizontal ASCII/Unicode edge segments around labels, including bidirectional arrows, and corrected even-width label centering. #132 #134
+- Fixed Rustdoc handling of conditionally disabled items, renamed Cargo dependencies, inherited options, comments, code examples, mixed documentation attributes, and blank lines inside SVG text or CSS. Isolated SVG IDs and built-in styles across embedded diagrams, including Event Modeling, Ishikawa, TreeView, ZenUML, and Error output. Identical methods from one declarative-macro call still need distinct `id_prefix` values or tree annotations on complete impl blocks. #131
+- Aligned Flowchart and State ELK edge ports, routing, terminal alignment, and line hops with Mermaid 12, and corrected Mermaid 11.17 Flowchart behavior carried forward into this release. #120 #154
+- Updated vulnerable dependencies, including `rustls 0.23.45` for TLS 1.3 handshake encryption-level validation (RUSTSEC-2026-0285) and `js-yaml 4.3.2` for merge-key CPU exhaustion (GHSA-2883-xcg3-v3hh).
 
-- Fixed `base` theme overrides leaving derived Sequence, State, Gantt, and Pie colors at their default values. The base palette now follows Mermaid's complete ordered theme calculation, including intermediate and explicit derived overrides.
+### Known limitations and next steps
 
-- Preserved visible line segments on both sides of horizontal ASCII/Unicode edge labels, including bidirectional arrows, and corrected cell centering for even-width labels (#132).
-
-- Updated `js-yaml` to `4.3.2` in the Playground and Node/VS Code tooling to fix the merge-key CPU exhaustion advisory GHSA-2883-xcg3-v3hh.
-- Fixed rustdoc macro rendering and include reads for conditionally disabled functions, fields, and variants. Enabled child annotations inherit parent tree rendering options and override explicit fields; `scope` stays local, and `inherit = "off"` restores defaults before local overrides. Renamed Cargo dependencies resolve correctly.
-- Fixed CLI and macro rustdoc handling of comments, code examples, adjacent Markdown, and embedded SVG text or CSS containing blank lines. The macro also preserves multiline and decorated block documentation, mixed literal attributes, and dynamic documentation boundaries.
-- Isolated SVG IDs and built-in styles to prevent diagrams on the same page from sharing themes or references. Corrected Event Modeling, Ishikawa, TreeView, and ZenUML style scopes and Error diagram style namespaces. Embedding repairs duplicate Mindmap background IDs while raw parity retains the upstream DOM. Identical methods generated by one declarative-macro call still need distinct `id_prefix` values or tree annotations on complete impl blocks.
+- The broader theme refactor announced in alpha.6 is deferred to a future release because the remaining implementation work, code-size impact, and performance concerns need more time. Alpha.7 includes the Mermaid 12 theme defaults and targeted theme fixes above, but does not complete the planned reusable theme system across first-party surfaces. Stabilization is the next focus for the 0.8.0 line.
+- Deterministic headless text measurement does not load the display font. Browser font metrics can still overflow some calculated bounds, including the documented Flowchart title case. Hosts requiring display-font measurement should supply their own measurement callback; see the [font-boundary report](docs/alignment/MERMAID_12_TITLE_029_FONT_BOUNDARY_2026_09_30.md).
 
 ## [0.8.0-alpha.6] - 2026-09-02
 

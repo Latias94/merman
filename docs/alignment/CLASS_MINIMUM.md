@@ -12,8 +12,7 @@ original collection versions.
 
 - Header:
   - `classDiagram`
-  - `classDiagram-v2` (parsed as the same semantic model; detector selection depends on
-    `class.defaultRenderer`)
+  - `classDiagram-v2` (the same semantic model and detector identity; layout uses top-level `layout`)
 - Statement separators: newline
 - Comments: `%% ...`
 - Accessibility metadata:

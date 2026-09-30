@@ -4,6 +4,14 @@ The `tree-sitter-mermaid` CST and canonical query captures are experimental befo
 must pin a released version or immutable repository commit and compile their queries against that
 exact generated parser.
 
+## 0.1.0 to 0.2.0
+
+Version 0.2.0 adds Mermaid 12 Agentflow and Usecase syntax, increasing the public family set from 35 to 37. The original 35-family syntax baseline remains Mermaid 11.16.1 and ZenUML Core remains 3.50.1; the package does not claim a wholesale Mermaid 12 grammar migration. The language ABI stays at 15.
+
+The new named family roots are `agentflow_diagram` and `usecase_diagram`; their structured child nodes and portable captures are part of the same parser/query package. No named node from 0.1.0 is removed. Recompile custom queries against the new `src/node-types.json`, update any exhaustive family-root dispatch, and install the parser and query files from the same version.
+
+The verified Web runtime advances to `web-tree-sitter` 0.27.0; the generator and Rust runtime stay on 0.26.12 and the native Node runtime contract stays on 0.25.x. The independent grammar version, language ABI, and runtime package versions are distinct contracts.
+
 ## Query ownership
 
 - `queries/portable` is the canonical package query set referenced by `tree-sitter.json`.
@@ -12,8 +20,8 @@ exact generated parser.
   portable capture vocabulary.
 
 The repository compiles every shipped query and keeps one compact canonical highlight contract:
-non-header capture classes for all 35 public families plus focused exact-span, recovery, and
-incremental-parse cases. It does not maintain a fixed-editor download matrix, 35-by-surface
+non-header capture classes for all 37 public families plus focused exact-span, recovery, and
+incremental-parse cases. It does not maintain a fixed-editor download matrix, per-family
 applicability table, or exact capture forest. Real downstream adoption is verified in the
 downstream pull request against an immutable grammar release.
 

@@ -184,21 +184,21 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples describe this source checkout. Auto layout and schema-3 ASCII reports are
-unreleased changes here; do not assume they are available in `0.8.0-alpha.6`. To run the new
-terminal examples in another crate, use a path dependency on this checkout:
+These examples target `0.8.0-alpha.7`, including Auto layout and schema-3 ASCII reports. Use the version-pinned dependency below, or a path dependency on the matching source checkout. For alpha.6, use examples from its matching release tag.
+
+The release-facing dependency for the SVG examples is:
+
+```toml
+[dependencies]
+merman = { version = "=0.8.0-alpha.7" }
+```
+
+For terminal-only source development:
 
 ```toml
 [dependencies]
 merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["all-diagrams", "ascii"] }
 serde_json = "1" # Needed by render_agent_log.
-```
-
-For the published alpha.6 API, use examples from its matching release tag and dependency:
-
-```toml
-[dependencies]
-merman = { version = "=0.8.0-alpha.6" }
 ```
 
 Copy the relevant `.rs` file into your application's `examples/` directory and run it by filename:

@@ -81,7 +81,7 @@ Write the changelog for users:
 - State installation, integration, migration, compatibility, or behavior changes users can act on.
 - Remove duplicate metadata and internal implementation detail.
 - Keep each Markdown paragraph or bullet on one physical line.
-- Use the repository's release-note voice; use `$writing-great-skills` for an evidence-backed range report and `$humanizer` when prose needs a final polish.
+- Use the repository's release-note voice. Compare the full delta from the previous release, consolidate changes into user outcomes, and preserve contributor credit. When the maintainer requests a comparative release report, follow [Release Reports](../../../docs/release/RELEASE_REPORTS.md); ordinary changelog preparation does not require a benchmark matrix.
 
 ### Version Projection And Documentation Review
 

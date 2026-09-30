@@ -2,6 +2,21 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.8.0-alpha.7] - 2026-09-30
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
+
+### Compatibility
+
+- Native and Node-targeted WASM packages remain an experimental Node.js 22+ group. The existing SVG/layout capability recipe does not add ASCII, analysis, math, or raster/PDF export. Update the loader and all selected transport packages together.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes the published alpha.6 package group. All seven packages, including `@mermanjs/node-wasm`, were manually bootstrapped from the verified package-group artifact. The immutable alpha.6 npm tarballs have no npm provenance; later releases use Trusted Publishing.

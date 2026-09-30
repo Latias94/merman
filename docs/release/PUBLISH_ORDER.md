@@ -1,11 +1,13 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-06
+Last updated: 2026-09-30
 
 ## Version Decision
 
-Published workspace prerelease baseline: `0.8.0-alpha.6`.
+Selected candidate: `0.8.0-alpha.7`, planned as the final alpha of the 0.8.0 cycle. Published workspace prerelease baseline: `0.8.0-alpha.6`.
+
+Prepare the full alpha.6-to-alpha.7 delta, including the [upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md), and freeze a reviewed commit only after local checks and dated release notes are ready. The candidate contains 21 coupled crates, including the new `merman-doc`; derive their order from Cargo metadata rather than the historical alpha.6 count below. The independent `tree-sitter-mermaid` `0.2.0` Cargo package must be published before the candidate LSP package. Its npm/GitHub publication and every native or JavaScript channel remain separately authorized release surfaces. The broader theme refactor is deferred; the root changelog records that scope decision.
 
 The workspace release is published from immutable tag `v0.8.0-alpha.6` at commit
 `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. The crates.io workflow published all 20 workspace
@@ -103,14 +105,14 @@ The unreleased `merman-doc` implementation crate joins this coupled graph throug
 Both `merman-cli` and `merman-rustdoc` depend on it, so it is packaged and published before either
 consumer without a separate workflow or a hand-maintained package list. Its inherited version is
 the current workspace development baseline; its addition does not authorize republishing the
-already released `0.8.0-alpha.6` consumers. Select the next workspace version before releasing
-this refactor, then verify the derived graph and each generated `.crate` through the existing
-release preflight.
+already released `0.8.0-alpha.6` consumers. The selected alpha.7 candidate includes
+this refactor; verify the derived graph and each generated `.crate` through the existing release
+preflight and per-batch publication dry runs.
 
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
-`tree-sitter-mermaid` `0.1.0` is a separately packaged language distribution. Its Cargo package is
+`tree-sitter-mermaid` is a separately packaged language distribution; `0.2.0` is the current candidate and `0.1.0` remains its published baseline. Its Cargo package is
 `tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
 `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
 prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a

@@ -7,19 +7,19 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Initial version: `0.1.0`
-- Tag form: `tree-sitter-mermaid-v0.1.0`
+- Candidate version: `0.2.0`; published baseline: `0.1.0`
+- Candidate tag: `tree-sitter-mermaid-v0.2.0`
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
 - Language ABI: 15
-- Tree-sitter CLI/Rust/web runtime: 0.26.12
+- Tree-sitter CLI/Rust runtime: 0.26.12
+- Verified Web runtime: 0.27.0
 - Native Node runtime contract: 0.25.x
-- Mermaid baseline: 11.16.1
+- Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-Cargo, npm, and `tree-sitter.json` versions must match. A release tag must resolve to the immutable
-commit containing the generated parser, root WASM, queries, and legal material.
+Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
 ## Preflight
 
@@ -60,7 +60,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.1.0.crate` for crates.io;
+- `tree-sitter-mermaid-0.2.0.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;

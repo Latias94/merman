@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 
 from scripts import verify_release_changelog as verify
@@ -18,8 +19,11 @@ class ReleaseChangelogTests(unittest.TestCase):
             shown = "0.8.0a6" if relative.name == "CHANGELOG.md" and "python" in str(relative) else version
             path.write_text(f"# Changelog\n\n## [{shown}] - Unreleased\n", encoding="utf-8")
 
-    def test_current_repository_projections_match_alpha6(self) -> None:
-        verify.verify_repository(Path(__file__).resolve().parents[1], "0.8.0-alpha.6")
+    def test_current_repository_projections_match_workspace_version(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        with (root / "Cargo.toml").open("rb") as manifest:
+            workspace = tomllib.load(manifest)
+        verify.verify_repository(root, workspace["workspace"]["package"]["version"])
 
     def test_python_uses_pep440_projection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

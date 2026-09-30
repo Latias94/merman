@@ -13,6 +13,8 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
+The alpha.6 XCFramework uses UniFFI API `6`. This guide targets `0.8.0-alpha.7` with API `7`; use the matching source/generated Swift and native archive, as described in the [changelog](CHANGELOG.md).
+
 ## Add A Release XCFramework
 
 Check out the source tree at the same release tag as the archive, then extract `Merman.xcframework-<tag>.zip` from [GitHub Releases](https://github.com/Latias94/merman/releases) so the framework is located at `platforms/apple/Merman.xcframework`. Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product.

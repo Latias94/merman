@@ -10,7 +10,7 @@ It is browser-only. It is not a Node.js/SSR transport and is not the import-free
 
 ## Use The Public Packages
 
-See the [browser package guide](https://github.com/Latias94/merman/tree/main/platforms/web#readme) for version-matched installation, initialization, and package selection. The guide distinguishes the current source candidate from published npm artifacts; do not combine this crate's `main`-branch transport contract with an older package release.
+See the [browser package guide](https://github.com/Latias94/merman/tree/main/platforms/web#readme) for version-matched installation, initialization, and package selection. Use the same release version for the transport contract and npm package artifacts.
 
 ## Transport Contract
 

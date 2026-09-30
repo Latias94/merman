@@ -6,12 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This checkout is ahead of the published `0.8.0-alpha.6`. The dependency snippets below install
-> alpha.6 for the basic workflow. New options (`background`, `id_prefix`, and `inherit`), Markdown
-> container support, and the refactored behavior described here are available from this source
-> checkout and are planned for `0.8.0-alpha.7`; alpha.6 does not include them. This checkout also
-> makes math opt-in and enables ELK by default. The alpha.6 quick-start recipe below selects SVG
-> and Cytoscape explicitly; it includes neither math nor ELK.
+> This guide and its dependency examples target `0.8.0-alpha.7`. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6; use its tagged documentation when maintaining an older dependency.
 
 ## Quick Start
 
@@ -19,7 +14,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg", "layout-cytoscape"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.7", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -132,7 +127,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.7", default-features = false, features = ["diagram-flowchart", "svg"], optional = true }
 ```
 
 | Feature | Adds |
@@ -150,8 +145,7 @@ For the current checkout, disable defaults and select both families and outputs 
 merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
 ```
 
-Use `all-diagrams` to retain the complete parser surface. The version-pinned alpha.6 recipes above
-predate family selectors and retain their original meaning. `complete-svg` and `complete-svg-elk`
+Use `all-diagrams` to retain the complete parser surface. `complete-svg` and `complete-svg-elk`
 select output/engine closures; neither enables a family when defaults are disabled. See the
 [migration guide](../../docs/FEATURES.md#select-diagram-families).
 

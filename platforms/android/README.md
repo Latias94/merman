@@ -12,6 +12,8 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 
 At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The published Android AAR carries the default native prebuilt SKU: SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
+This guide targets `0.8.0-alpha.7` with Mermaid 12 and schema-3 ASCII output. The alpha.6 AAR retains the previous contract; see the [changelog](CHANGELOG.md) and keep each AAR intact.
+
 ## Add A Release AAR
 
 Download `merman-android-<tag>.aar` from the matching [GitHub Release](https://github.com/Latias94/merman/releases), place it in the application's `app/libs/` directory, and add it as a local dependency:

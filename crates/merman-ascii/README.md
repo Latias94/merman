@@ -23,8 +23,7 @@ cells per structural token.
 `merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
 required families, or `all-diagrams` for the complete parser and terminal-adapter surface.
 Each selector forwards to `merman-core`; it does not enable system clock, time-zone, random,
-or timing adapters. These selectors apply to the current source checkout; published alpha.6
-packages predate family selection. Parser availability alone does not promise a terminal projection.
+or timing adapters. Alpha.6 packages predate family selection. Parser availability alone does not promise a terminal projection.
 
 > **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.
 
@@ -34,13 +33,15 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
+
 ## Quick Start
 
 Most applications should use the `merman` facade so parsing and text rendering stay in one operation. The facade owns source parsing, operation control, and target selection; this crate exposes only the typed-model backend seam.
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii"] }
+merman = { version = "=0.8.0-alpha.7", default-features = false, features = ["all-diagrams", "ascii"] }
 ```
 
 For a current-source checkout beside the application, select the required families explicitly:
