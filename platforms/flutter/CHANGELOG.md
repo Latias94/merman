@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.0-alpha.7] - Unreleased
+## [0.8.0-alpha.7] - 2026-09-30
 
 ### Added
 
