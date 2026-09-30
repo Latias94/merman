@@ -26,10 +26,12 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
+This source checkout prepares `0.2.0`; the published `0.1.0` predates Agentflow and Usecase. The version-pinned examples below target the candidate and require its publication before registry installation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
+
 ## Node.js
 
 ```console
-npm install tree-sitter @mermanjs/tree-sitter-mermaid
+npm install tree-sitter@0.25.1 @mermanjs/tree-sitter-mermaid@0.2.0
 ```
 
 With npm 12 or later, review and approve the native install scripts, then rebuild:
@@ -66,7 +68,7 @@ import Mermaid from '@mermanjs/tree-sitter-mermaid';
 ## Browser and Workers
 
 ```console
-npm install web-tree-sitter @mermanjs/tree-sitter-mermaid
+npm install web-tree-sitter@0.27.0 @mermanjs/tree-sitter-mermaid@0.2.0
 ```
 
 The package exports `@mermanjs/tree-sitter-mermaid/tree-sitter-mermaid.wasm`. Copy that asset to a
@@ -87,7 +89,7 @@ A no-build browser prototype can pin the exact grammar version on jsDelivr:
 
 ```js
 const language = await Language.load(
-  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.1.0/tree-sitter-mermaid.wasm',
+  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.2.0/tree-sitter-mermaid.wasm',
 );
 ```
 
@@ -99,7 +101,7 @@ diagnostics, completion, navigation, and rename.
 ## Rust
 
 ```console
-cargo add tree-sitter tree-sitter-mermaid
+cargo add tree-sitter@=0.26.12 tree-sitter-mermaid@=0.2.0
 ```
 
 ```rust
@@ -149,7 +151,8 @@ int main(void) {
 | Agentflow and Usecase syntax | 12.0.0 |
 | ZenUML Core syntax baseline | 3.50.1 |
 | Tree-sitter language ABI | 15 |
-| Tested Rust and Web runtime | 0.26.12 |
+| Tested Rust runtime | 0.26.12 |
+| Tested Web runtime | 0.27.0 |
 | Native Node runtime contract | 0.25.x |
 
 Before 1.0, a minor release may change named nodes, fields, canonical captures, the language ABI, or
