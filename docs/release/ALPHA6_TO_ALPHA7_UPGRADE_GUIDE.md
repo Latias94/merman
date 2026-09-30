@@ -1,6 +1,6 @@
 # Upgrading from 0.8.0-alpha.6 to 0.8.0-alpha.7
 
-This guide describes the alpha.7 candidate. Alpha.6 remains the published workspace baseline during preparation; each registry and binary channel has its own publication step. Use alpha.7 examples with a matching source checkout until the exact package is published, then keep all coupled Merman dependencies and generated artifacts on that release. Alpha.7 is planned as the last alpha in the 0.8.0 cycle.
+This guide targets the published `0.8.0-alpha.7` release from immutable tag `v0.8.0-alpha.7`, published on 2026-09-30. Keep coupled Merman dependencies and generated artifacts on that release; the [publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot) records each independently published channel. Alpha.7 is planned as the last alpha in the 0.8.0 cycle. Use the [versioned upgrade index](README.md#workspace-upgrades) if starting before alpha.6.
 
 ## Select diagram families in custom Rust builds
 

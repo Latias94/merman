@@ -1,5 +1,7 @@
 # Native ABI 3 Migration
 
+Status: maintained current-source C/Flutter protocol guide. ABI `3` is a protocol version, not a workspace release number. Read this file at the same release tag as the generated headers and native library; use the [versioned upgrade index](../release/README.md#workspace-upgrades) for changes between specific Merman releases.
+
 The `0.8.0-alpha.3` packages used native ABI 2. Current source uses native ABI 3 and intentionally
 does not preserve ABI 2 or prerelease ABI 3 consumer compatibility. Rebuild every C, C++, Dart FFI,
 or custom native host against the generated headers from the same Merman release.

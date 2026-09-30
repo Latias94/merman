@@ -1,8 +1,10 @@
-# Alpha.6 Detailed Migration Reference
+<a id="alpha6-detailed-migration-reference"></a>
+
+# 0.8.0-alpha.5 to 0.8.0-alpha.6 Detailed Migration Reference
 
 > This guide applies to the published `0.8.0-alpha.6` workspace release after `v0.8.0-alpha.5`. It covers the workspace crates and CLI/LSP archives from the immutable alpha.6 tag; Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent channels with separate publication evidence.
 
-Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference.
+Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference. Its historical `UNRELEASED_UPGRADE_GUIDE.md` filename is retained for existing links; the content is fixed to alpha.6, not the current development branch. Use the [versioned upgrade index](README.md#workspace-upgrades) for other releases.
 
 ## Rust analysis and editor migration
 

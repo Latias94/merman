@@ -7,8 +7,8 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Candidate version: `0.2.0`; published baseline: `0.1.0`
-- Candidate tag: `tree-sitter-mermaid-v0.2.0`
+- Published version: `0.2.0` (2026-09-30)
+- Immutable release tag: `tree-sitter-mermaid-v0.2.0`
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
@@ -18,6 +18,8 @@ publication without the protected release environment and maintainer credentials
 - Native Node runtime contract: 0.25.x
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
+
+The [dated publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot) records the completed `0.2.0` crates.io, npm, and GitHub Release publication from commit `580e39b69cc1b0ca35c4f8272683e622b2e9b8db`. Consumer changes from `0.1.0` are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md#010-to-020). This checklist remains the procedure for a future selected version.
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
@@ -106,11 +108,9 @@ tag rather than a separately rebuilt archive.
 For `0.1.0`, crates.io and npm publication completed on 2026-08-18 from
 `tree-sitter-mermaid-v0.1.0`. npm used a manual 2FA bootstrap and therefore has no npm provenance.
 Trusted Publishing is configured for later versions through `release-tree-sitter-mermaid.yml` and
-the `npm` environment. The standalone GitHub Release is intentionally deferred.
+the `npm` environment. The standalone `0.1.0` GitHub Release was deferred; that historical decision does not apply to the published `0.2.0` GitHub Release.
 
-For a failed publication run, re-run the failed jobs from the same workflow run. Native prebuilds are
-run-scoped artifacts and are deliberately not imported from another run; if the run's artifacts have
-expired or are unavailable, start a new tagged run and treat it as a new candidate.
+For a failed publication run, re-run the failed jobs from the same workflow run. Native prebuilds are run-scoped artifacts and are deliberately not imported from another run. Preserve the original staged packages and publication reports. Once an upload may have started, a missing report or registry lookup failure means unknown state, not permission to upload a rebuilt package. Reconcile the original bytes and persisted observation-only state according to [registry recovery](RELEASING.md#registry-propagation-and-recovery). If the original artifacts are unavailable, leave that release blocked until its identity and outcome can be recovered; do not rebuild and call the same version a fresh candidate or move its tag. A later authorized version is a separate release.
 
 Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub release exists.
 Those repositories pin the release commit and their own query copies; they do not consume the npm

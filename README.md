@@ -21,7 +21,7 @@ For incremental editor syntax, the repository also publishes [`tree-sitter-merma
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
 This guide covers `0.8.0-alpha.7`, which follows `mermaid@12.0.0`. Alpha.6 follows `mermaid@11.17.2`. Parser, layout, configuration, theming, sanitization,
-and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor.
+and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor, or the [versioned upgrade index](docs/release/README.md) when upgrading from an earlier release.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
