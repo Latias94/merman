@@ -50,7 +50,7 @@ library for Markdown recognition and HTML embedding, and the renderer owns SVG s
 isolation. The shared library does not depend on either product or select rendering features; it
 is published in the workspace dependency order before both consumers.
 
-In the current source for `0.8.0-alpha.7`, the macro defaults to `all-diagrams`, `svg`,
+In `0.8.0-alpha.7`, the macro defaults to `all-diagrams`, `svg`,
 `layout-cytoscape`, and `layout-elk`; mathematical labels require `math` or `complete-svg-elk`.
 The published alpha.6 macro includes math and excludes ELK by default. The `merman` facade
 uses `all-diagrams + complete-svg-elk` by default.

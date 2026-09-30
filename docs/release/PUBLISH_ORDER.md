@@ -1,15 +1,36 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
 ## Version Decision
 
-Selected candidate: `0.8.0-alpha.7`, planned as the final alpha of the 0.8.0 cycle. Published workspace prerelease baseline: `0.8.0-alpha.6`.
+Published workspace prerelease: `0.8.0-alpha.7`, planned as the final alpha of the 0.8.0 cycle. The broader theme refactor remains deferred; the root changelog records that scope decision. Read the [alpha.6-to-alpha.7 upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating coupled packages.
 
-Prepare the full alpha.6-to-alpha.7 delta, including the [upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md), and freeze a reviewed commit only after local checks and dated release notes are ready. The candidate contains 21 coupled crates, including the new `merman-doc`; derive their order from Cargo metadata rather than the historical alpha.6 count below. The independent `tree-sitter-mermaid` `0.2.0` Cargo package must be published before the candidate LSP package. Its npm/GitHub publication and every native or JavaScript channel remain separately authorized release surfaces. The broader theme refactor is deferred; the root changelog records that scope decision.
+## Alpha.7 Publication Snapshot
 
-The workspace release is published from immutable tag `v0.8.0-alpha.6` at commit
+Published on 2026-09-30 from immutable source commit `580e39b69cc1b0ca35c4f8272683e622b2e9b8db`. The workspace tag `v0.8.0-alpha.7`, Flutter tag `flutter-v0.8.0-alpha.7`, and independent grammar tag `tree-sitter-mermaid-v0.2.0` all resolve to that commit. The merged `main` commit `bb1df0a78719c713c854b10a4bcab1ce63fd3a90` has the same source tree. This is a dated operator snapshot, not machine release authority; re-query each owning registry or GitHub Release before recovery or another publication.
+
+| Surface | Verified publication | Owner run |
+| --- | --- | --- |
+| Workspace crates | All 21 coupled crates at `0.8.0-alpha.7`; every batch receipt is complete and every registry checksum matches its prepared artifact | [36727907019, attempt 2](https://github.com/Latias94/merman/actions/runs/36727907019) |
+| CLI/LSP | Ten archives across five targets, installers, checksums, and verification metadata on the alpha.7 GitHub prerelease | [36727907026](https://github.com/Latias94/merman/actions/runs/36727907026) |
+| Web npm group | All five packages at `0.8.0-alpha.7` under `alpha`; original artifact integrities and npm provenance match | [36730731324, attempt 2](https://github.com/Latias94/merman/actions/runs/36730731324) |
+| Node npm group | All seven packages at `0.8.0-alpha.7` under `alpha`; original artifact integrities and npm provenance match | [36730739282](https://github.com/Latias94/merman/actions/runs/36730739282) |
+| Python | PyPI `merman==0.8.0a7`; all three wheel hashes match the GitHub Release assets | [36734845127](https://github.com/Latias94/merman/actions/runs/36734845127) |
+| Flutter | pub.dev `merman 0.8.0-alpha.7`; published package contents match the source-bound candidate archive | [36730730700](https://github.com/Latias94/merman/actions/runs/36730730700) |
+| Android | Alpha.7 AAR attached to the GitHub Release; its digest matches the original workflow artifact | [36734851815](https://github.com/Latias94/merman/actions/runs/36734851815) |
+| Apple | Alpha.7 XCFramework archive and matching checksum attached to the GitHub Release | [36734858180](https://github.com/Latias94/merman/actions/runs/36734858180) |
+| Tree-sitter Mermaid | Independent `0.2.0` on crates.io and npm, plus six original attested assets on its own GitHub Release; the Cargo package preceded the workspace publication | [36723376105, attempt 2](https://github.com/Latias94/merman/actions/runs/36723376105) |
+| Playground | Pages deployment succeeded for the merged source tree and the deployed site responds successfully | [36727744516](https://github.com/Latias94/merman/actions/runs/36727744516) |
+
+The successful retries reconciled registry propagation delays against the original receipts or package-group artifacts. No published tag was moved and no npm group was rebuilt for recovery. The grammar GitHub Release uses the attested artifacts from its original attempt. Alpha publication leaves unrelated npm tags and GitHub's stable Latest release unchanged.
+
+The Typst wrapper remains independently published as `@preview/merman:0.3.0`; the new `merman-typst-plugin` Cargo crate does not update that wrapper. VS Code Marketplace, Android Maven Central, and stable package-manager submissions were not part of this alpha publication.
+
+## Alpha.6 Backfill Snapshot
+
+The alpha.6 workspace release was published from immutable tag `v0.8.0-alpha.6` at commit
 `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. The crates.io workflow published all 20 workspace
 crates, and the GitHub Release published the CLI/LSP archives and their verification assets. The
 browser, Node.js, Flutter, Python, Apple, Android, and Typst package groups remain independent
@@ -20,8 +41,6 @@ previously published as an authorized alpha-channel test at `0.8.0-alpha.5` from
 verified package-group manifests and workflow artifacts identify that commit. Because that first
 publication was a manual bootstrap, those npm registry artifacts do not expose npm provenance
 attestations; documentation must not imply either an attestation or cross-channel byte identity.
-
-## Alpha.6 Backfill Snapshot
 
 Initial state was observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`; the Node npm group was reconciled on 2026-09-06. This is a dated operator snapshot, not machine release authority; re-query each owning registry or GitHub Release immediately before any mutation.
 
@@ -40,8 +59,7 @@ Initial state was observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.
 The Python wheel, Flutter package archive, and Node alpha.6 loader tarball were built before this
 post-publication documentation reconciliation, so their immutable payloads may retain
 prepared-candidate wording in embedded README or changelog text. The current source guidance is
-corrected on `main`; the immutable payloads are not rewritten, and the wording correction will ship
-with the next version.
+corrected on `main` and in the alpha.7 package documentation; the immutable alpha.6 payloads are not rewritten.
 
 VS Code currently produces GitHub Actions VSIX artifacts only, Homebrew validates stable formulae, and
 Android Maven Central and the Typst wrapper do not share the workspace crates.io publication path.
@@ -71,10 +89,6 @@ the crates.io graph; native platform bytes are delivered by their owner workflow
 implied by the presence of the source crates. Registry tarballs are immutable; if a published
 prerelease contains a moving sibling requirement, the correction takes effect only in a later
 release (or a new compatibility line), not by editing the already-published version in this tree.
-Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
-`34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
-deferred so it can be announced alongside the next Merman product release; the two releases retain
-their own tags and version identities.
 
 ## Typst Package Surface
 
@@ -101,18 +115,12 @@ dedicated workflows. Only crates within the same coupled batch use lexical order
 publish flow, release preflight, and release workflow consume this same projection; Markdown is
 not parsed as a release-order database.
 
-The unreleased `merman-doc` implementation crate joins this coupled graph through Cargo metadata.
-Both `merman-cli` and `merman-rustdoc` depend on it, so it is packaged and published before either
-consumer without a separate workflow or a hand-maintained package list. Its inherited version is
-the current workspace development baseline; its addition does not authorize republishing the
-already released `0.8.0-alpha.6` consumers. The selected alpha.7 candidate includes
-this refactor; verify the derived graph and each generated `.crate` through the existing release
-preflight and per-batch publication dry runs.
+The `merman-doc` implementation crate joined the coupled graph in `0.8.0-alpha.7`, bringing it to 21 packages. Both `merman-cli` and `merman-rustdoc` depend on it, so Cargo metadata places it before either consumer without a separate workflow or a hand-maintained package list. Future releases must continue to verify the derived graph and each generated `.crate` through the release preflight and per-batch publication dry runs.
 
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
-`tree-sitter-mermaid` is a separately packaged language distribution; `0.2.0` is the current candidate and `0.1.0` remains its published baseline. Its Cargo package is
+`tree-sitter-mermaid` is a separately packaged language distribution; `0.2.0` is published on crates.io, npm, and its own GitHub Release. Its Cargo package is
 `tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
 `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
 prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
@@ -124,7 +132,7 @@ exist on crates.io before publishing a dependent workspace release. The scoped n
 independent of the workspace crates and supplies browser consumers with the same grammar WASM and
 queries.
 
-The initial npm package was bootstrapped manually from attested run `32114670734` with the
+The historical `0.1.0` npm package was bootstrapped manually from attested run `32114670734` with the
 maintainer's 2FA-protected credential. Its registry tarball SHA-256 is
 `a4e54b9caee7940cfbcffbe2b97d6edf04d8979b3eafe75fc0bba7804d04b23b`; it does not carry npm
 provenance. Trusted Publishing is configured for later versions through
