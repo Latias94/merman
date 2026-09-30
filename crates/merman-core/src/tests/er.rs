@@ -1467,3 +1467,113 @@ fn parse_diagram_er_requires_style_payload_at_eof_or_newline() {
         }
     }
 }
+
+#[test]
+fn parse_diagram_er_accessibility_direction_uses_raw_cursor() {
+    let engine = Engine::new();
+    for keyword in ["accTitle:", "accDescr:"] {
+        for prefix in ["", "  ", "\t", "\u{00a0}", "\u{feff}"] {
+            let source = format!("erDiagram\n{prefix}{keyword} direction LR\nA\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                parsed.model["direction"],
+                if prefix.is_empty() { "TB" } else { "LR" },
+                "{source}"
+            );
+            let field = if keyword == "accTitle:" {
+                "accTitle"
+            } else {
+                "accDescr"
+            };
+            if prefix.is_empty() {
+                assert_eq!(parsed.model[field], "direction LR", "{source}");
+            } else {
+                assert!(parsed.model[field].is_null(), "{source}");
+                let facts = engine
+                    .parse_editor_semantic_facts_with_type_sync("er", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    EditorSemanticCompleteness::Complete,
+                    "{source}"
+                );
+                let selected = facts
+                    .expected_syntax
+                    .iter()
+                    .find(|item| item.kind == EditorExpectedSyntaxKind::CardinalDirectionValue)
+                    .unwrap();
+                let start = source.rfind("LR").unwrap();
+                assert_eq!(selected.span, SourceSpan::new(start, start + 2), "{source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_er_accessibility_requires_complete_prefix() {
+    let engine = Engine::new();
+    for name in ["accTitle", "accDescr"] {
+        let source = format!("erDiagram\n{name}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert!(parsed.model["entities"].get(name).is_some(), "{source}");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("er", &source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            facts.completeness,
+            EditorSemanticCompleteness::Complete,
+            "{source}"
+        );
+        let start = source.find(name).unwrap();
+        assert!(
+            facts.symbols.iter().any(|symbol| symbol.name == name
+                && symbol.selection == SourceSpan::new(start, start + name.len())),
+            "{source}"
+        );
+    }
+    let source = "erDiagram\naccDescr nonsense direction LR: label\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "LR");
+    assert!(parsed.model["accDescr"].is_null());
+    for (keyword, field) in [("accTitle", "accTitle"), ("accDescr", "accDescr")] {
+        for (before_colon, after_colon) in [("\u{feff}", "\u{feff}"), ("", "\n"), ("\n", " ")] {
+            let source = format!("erDiagram\n{keyword}{before_colon}:{after_colon}Heading\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model[field], "Heading", "{source}");
+            assert!(
+                parsed.model["entities"].get("Heading").is_none(),
+                "{source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_er_accessibility_multiline_uses_ecmascript_trim() {
+    let engine = Engine::new();
+    for (body, expected) in [
+        ("\u{feff}Heading\u{feff}", "Heading"),
+        ("\u{0085}Heading\u{0085}", "\u{0085}Heading\u{0085}"),
+    ] {
+        let source = format!("erDiagram\naccDescr {{{body}}}\nA\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["accDescr"], expected, "{source}");
+    }
+}

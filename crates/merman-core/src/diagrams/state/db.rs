@@ -1262,13 +1262,16 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
 }
 
 fn normalize_multiline_ws(input: &str) -> String {
-    let trimmed = input.trim();
+    let trimmed = input.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
     let mut out = String::with_capacity(trimmed.len());
     let mut chars = trimmed.chars().peekable();
     while let Some(ch) = chars.next() {
         out.push(ch);
         if ch == '\n' {
-            while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            while chars
+                .peek()
+                .is_some_and(|c| crate::diagrams::scan::is_ecmascript_whitespace(*c))
+            {
                 chars.next();
             }
         }

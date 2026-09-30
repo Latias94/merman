@@ -443,17 +443,17 @@ impl ErDb {
             } => return Some(self.add_subgraph(id, title, label_type, body)),
             Action::SetDirection(dir) => self.direction = dir,
             Action::SetAccTitle(t) => {
-                self.acc_title = Some(t.trim().trim_start().to_string());
+                self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
             }
             Action::SetAccDescr(t) => {
                 // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
-                let trimmed = t.trim();
+                let trimmed = t.trim_matches(is_ecmascript_whitespace);
                 let mut out = String::with_capacity(trimmed.len());
                 let mut chars = trimmed.chars().peekable();
                 while let Some(ch) = chars.next() {
                     out.push(ch);
                     if ch == '\n' {
-                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
                             chars.next();
                         }
                     }
@@ -1508,14 +1508,20 @@ impl<'input> Lexer<'input> {
         }
         let after = self.pos + "accTitle".len();
         let rest = &self.input[after..];
-        let rest_trim = rest.trim_start();
+        let rest_trim = rest.trim_start_matches(is_ecmascript_whitespace);
         if !rest_trim.starts_with(':') {
             return None;
         }
         let consumed_ws = rest.len() - rest_trim.len();
-        self.pos = after + consumed_ws + 1;
+        let body =
+            self.input[after + consumed_ws + 1..].trim_start_matches(is_ecmascript_whitespace);
+        self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((start, Tok::AccTitle(s.trim().to_string()), self.pos)))
+        Some(Ok((
+            start,
+            Tok::AccTitle(s.trim_matches(is_ecmascript_whitespace).to_string()),
+            self.pos,
+        )))
     }
 
     fn lex_acc_descr(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -1525,10 +1531,10 @@ impl<'input> Lexer<'input> {
         }
         let after = self.pos + "accDescr".len();
         let rest = &self.input[after..];
-        let rest_trim = rest.trim_start();
-        if rest_trim.starts_with('{') {
-            let consumed_ws = rest.len() - rest_trim.len();
-            self.pos = after + consumed_ws + 1;
+        let rest_trim = rest.trim_start_matches(is_ecmascript_whitespace);
+        if let Some(body) = rest_trim.strip_prefix('{') {
+            let body = body.trim_start_matches(is_ecmascript_whitespace);
+            self.pos = self.input.len() - body.len();
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 self.pos = self.input.len();
                 return Some(Err(LexError::new(
@@ -1540,14 +1546,20 @@ impl<'input> Lexer<'input> {
             self.pos = self.pos + end_rel + 1;
             return Some(Ok((
                 start,
-                Tok::AccDescrMultiline(body.trim().to_string()),
+                Tok::AccDescrMultiline(body.trim_matches(is_ecmascript_whitespace).to_string()),
                 self.pos,
             )));
         }
-        let colon_pos = rest.find(':')?;
-        self.pos = after + colon_pos + 1;
+        let body = rest_trim
+            .strip_prefix(':')?
+            .trim_start_matches(is_ecmascript_whitespace);
+        self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((start, Tok::AccDescr(s.trim().to_string()), self.pos)))
+        Some(Ok((
+            start,
+            Tok::AccDescr(s.trim_matches(is_ecmascript_whitespace).to_string()),
+            self.pos,
+        )))
     }
 
     fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
@@ -2064,9 +2076,32 @@ impl Iterator for Lexer<'_> {
         }
 
         loop {
+            // INITIAL accessibility rules precede directions, which in turn
+            // precede whitespace. Exclusive attribute/style modes bypass them.
+            if matches!(
+                self.mode,
+                Mode::Default
+                    | Mode::NeedIdListOnly
+                    | Mode::NeedClassFirstIdList
+                    | Mode::NeedClassSecondIdList
+            ) {
+                if let Some(tok) = self.lex_acc_title() {
+                    return Some(self.emit_result(tok));
+                }
+                if let Some(tok) = self.lex_acc_descr() {
+                    return Some(self.emit_result(tok));
+                }
+                if let Some(tok) = self.lex_direction() {
+                    return Some(self.emit_token(tok));
+                }
+            }
+            let before_whitespace = self.pos;
             match self.mode {
                 Mode::Block => self.skip_ws_block(),
                 _ => self.skip_ws_default(),
+            }
+            if self.pos != before_whitespace {
+                continue;
             }
 
             if self.pos >= self.input.len() {
@@ -2093,18 +2128,6 @@ impl Iterator for Lexer<'_> {
             }
 
             if let Some(tok) = self.lex_newline() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_acc_title() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_acc_descr() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_direction() {
                 return Some(self.emit_token(tok));
             }
 
