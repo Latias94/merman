@@ -2,7 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
     LinkStyleStmt, StyleStmt, TitleKind, ast::FlowchartClickEditorEvidence,
 };
-use crate::SourceSpan;
+use crate::{SourceSpan, diagrams::scan::is_ecmascript_whitespace};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let quoted = raw.starts_with('"') && raw.ends_with('"');
@@ -382,8 +382,14 @@ impl<'a> ClickParse<'a> {
     }
 
     fn skip_ws(&mut self) {
-        while self.i < self.s.len() && self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
+        while self.i < self.s.len() {
+            let Some(ch) = self.s[self.i..].chars().next() else {
+                break;
+            };
+            if !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            self.i += ch.len_utf8();
         }
     }
 
@@ -394,8 +400,14 @@ impl<'a> ClickParse<'a> {
     fn take_word(&mut self) -> Option<String> {
         self.skip_ws();
         let start = self.i;
-        while self.i < self.s.len() && !self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
+        while self.i < self.s.len() {
+            let Some(ch) = self.s[self.i..].chars().next() else {
+                break;
+            };
+            if is_ecmascript_whitespace(ch) {
+                break;
+            }
+            self.i += ch.len_utf8();
         }
         if self.i == start {
             return None;
@@ -431,10 +443,13 @@ impl<'a> ClickParse<'a> {
 
 fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<SourceSpan> {
     (parser.i > boundary_end).then(|| {
-        parser.source_span(
-            boundary_end.saturating_add(1).min(parser.s.len()),
-            parser.s.len(),
-        )
+        // Keep the completion slot after the first separator, including any
+        // remaining spaces, without placing a byte span inside a UTF-8 character.
+        let separator_len = parser.s[boundary_end..]
+            .chars()
+            .next()
+            .map_or(0, char::len_utf8);
+        parser.source_span(boundary_end + separator_len, parser.s.len())
     })
 }
 
@@ -474,9 +489,9 @@ pub(super) fn parse_click_stmt(
 
     if p.rest().starts_with("href")
         && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let action_start = p.i;
         let _ = p.take_word();
@@ -529,9 +544,9 @@ pub(super) fn parse_click_stmt(
 
     if p.rest().starts_with("call")
         && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let action_start = p.i;
         let _ = p.take_word();
@@ -543,11 +558,13 @@ pub(super) fn parse_click_stmt(
         );
         let start = p.i;
         while p.i < p.s.len() {
-            let b = p.s.as_bytes()[p.i];
-            if b.is_ascii_whitespace() || b == b'(' {
+            let Some(ch) = p.s[p.i..].chars().next() else {
+                break;
+            };
+            if is_ecmascript_whitespace(ch) || ch == '(' {
                 break;
             }
-            p.i += 1;
+            p.i += ch.len_utf8();
         }
         if p.i == start {
             return Err(click_statement_error(
@@ -688,9 +705,9 @@ pub(super) fn parse_link_style_stmt(
     let mut interpolate: Option<String> = None;
     if p.rest().starts_with("interpolate")
         && p.rest()
-            .as_bytes()
-            .get("interpolate".len())
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get("interpolate".len()..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let _ = p.take_word();
         interpolate = p.take_word();
@@ -755,6 +772,40 @@ mod tests {
             }
             _ => panic!("expected link action"),
         }
+    }
+
+    #[test]
+    fn parse_click_stmt_accepts_ecmascript_whitespace_without_corrupting_utf8_spans() {
+        for separator in [
+            "\u{0009}", "\u{000a}", "\u{000b}", "\u{000c}", "\u{000d}", "\u{0020}", "\u{00a0}",
+            "\u{1680}", "\u{2000}", "\u{2001}", "\u{2002}", "\u{2003}", "\u{2004}", "\u{2005}",
+            "\u{2006}", "\u{2007}", "\u{2008}", "\u{2009}", "\u{200a}", "\u{2028}", "\u{2029}",
+            "\u{202f}", "\u{205f}", "\u{3000}", "\u{feff}",
+        ] {
+            let source =
+                format!("A{separator}href{separator}\"url\"{separator}\"tip\"{separator}_blank");
+            let stmt = parse_click_stmt(&source, 11).unwrap();
+            assert_eq!(stmt.ids, vec!["A"]);
+            assert_eq!(stmt.tooltip.as_deref(), Some("tip"));
+            assert_eq!(stmt.id_spans[0], SourceSpan::new(11, 12));
+            let expected_payload = format!("\"url\"{separator}\"tip\"{separator}_blank");
+            for expected in stmt.interaction_evidence.iter() {
+                let span = expected.span;
+                let actual = source
+                    .get(span.start - 11..span.end - 11)
+                    .expect("interaction spans must stay on UTF-8 character boundaries");
+                match expected.kind {
+                    crate::EditorExpectedSyntaxKind::InteractionAction => {
+                        assert_eq!(actual, "href")
+                    }
+                    crate::EditorExpectedSyntaxKind::Payload => {
+                        assert_eq!(actual, expected_payload)
+                    }
+                    _ => panic!("unexpected click interaction evidence"),
+                }
+            }
+        }
+        assert!(parse_click_stmt("A\u{0085}href\u{0085}\"url\"", 0).is_err());
     }
 
     #[test]

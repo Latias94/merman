@@ -16,20 +16,20 @@ fn directive_argument_spans(
     rest_start: usize,
 ) -> (Option<SourceSpan>, Option<SourceSpan>) {
     let leading = rest
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let body = &rest[leading..];
     if body.is_empty() {
         return (None, None);
     }
 
     let first_len = body
-        .as_bytes()
-        .iter()
-        .position(|byte| byte.is_ascii_whitespace())
-        .unwrap_or(body.len());
+        .char_indices()
+        .find(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map_or(body.len(), |(index, _)| index);
     let first_start = rest_start + leading;
     let first_end = first_start + first_len;
     let first = SourceSpan::new(first_start, first_end);
@@ -39,10 +39,11 @@ fn directive_argument_spans(
     }
 
     let remainder_leading = remainder
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let value_start = first_end + remainder_leading;
     let value_end = rest_start + rest.len();
     (Some(first), Some(SourceSpan::new(value_start, value_end)))
@@ -72,11 +73,12 @@ fn active_following_span(
     let local_start = following.start.checked_sub(rest_start)?;
     let raw = rest.get(local_start..)?;
     let trailing = raw
-        .as_bytes()
-        .iter()
+        .char_indices()
         .rev()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, _)| raw.len() - index)
+        .last()
+        .unwrap_or(0);
     if raw.is_empty() || trailing > 0 {
         return Some(SourceSpan::new(following.end, following.end));
     }

@@ -261,3 +261,20 @@ json Data@{"positive":1e309,"negative":-1e309,"null":null}
             .is_none()
     );
 }
+
+#[test]
+fn stereotype_uses_ecmascript_trim_and_excludes_u0085() {
+    let trimmed = model("usecase-beta\nA <<\u{feff} Human \u{3000}>>");
+    assert_eq!(trimmed.nodes[0].stereotype.as_deref(), Some("Human"));
+    let preserved = model("usecase-beta\nA <<\u{0085}>>");
+    assert_eq!(preserved.nodes[0].stereotype.as_deref(), Some("\u{0085}"));
+    assert!(
+        parse_usecase_model_for_render_controlled(
+            "usecase-beta\nA <<\u{feff}>>",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .is_err()
+    );
+}

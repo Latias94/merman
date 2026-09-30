@@ -1,6 +1,9 @@
 use super::lexer::{Token, TokenKind as K};
 use super::*;
-use crate::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol};
+use crate::{
+    EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
+    diagrams::scan::is_ecmascript_whitespace,
+};
 
 #[derive(Debug, Clone)]
 pub(super) struct Label {
@@ -418,7 +421,10 @@ impl<'a> Parser<'a> {
         };
         let stereotype = if allow_stereotype && self.eat(K::StereotypeStart) {
             let token = self.expect(K::StereotypeText)?;
-            let value = self.text(&token).trim().to_string();
+            let value = self
+                .text(&token)
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
             self.expect(K::StereotypeEnd)?;
             Some(value)
         } else {

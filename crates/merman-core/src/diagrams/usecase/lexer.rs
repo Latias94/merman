@@ -1,5 +1,7 @@
 use super::ParseIssue;
-use crate::{OperationControl, OperationControlResult, SourceSpan};
+use crate::{
+    OperationControl, OperationControlResult, SourceSpan, diagrams::scan::is_ecmascript_whitespace,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TokenKind {
@@ -379,7 +381,8 @@ pub(super) fn lex(
             if bytes.get(offset..offset + 2) != Some(b">>") {
                 return Ok(Err(issue("Unclosed stereotype", start, offset)));
             }
-            if source[start + 2..offset].trim().is_empty() {
+            let stereotype = &source[start + 2..offset];
+            if stereotype.is_empty() || stereotype.chars().all(is_ecmascript_whitespace) {
                 return Ok(Err(issue("Expected stereotype text", start + 2, offset)));
             }
             push(&mut tokens, StereotypeText, start + 2, offset);

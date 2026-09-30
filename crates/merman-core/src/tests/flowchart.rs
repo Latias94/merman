@@ -3999,3 +3999,38 @@ fn parse_diagram_flowchart_preserves_ascii_keyword_boundaries_before_unicode() {
     assert_eq!(parsed.model["direction"], "TB");
     assert_eq!(parsed.model["vertexCalls"], json!(["開始", "B"]));
 }
+
+#[test]
+fn flowchart_unicode_click_separators_preserve_links_and_editor_ranges() {
+    let engine = Engine::new();
+    for separator in ["\u{00a0}", "\u{1680}", "\u{202f}", "\u{3000}", "\u{feff}"] {
+        for href in ["", "href "] {
+            let source = format!(
+                "flowchart LR\nA\nclick A{separator}{href}\"https://example.com\"{separator}\"tooltip\"{separator}_blank\n"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node["link"], "https://example.com/", "{source}");
+            assert_eq!(node["linkTarget"], "_blank", "{source}");
+            assert_eq!(parsed.model["tooltips"]["A"], "tooltip", "{source}");
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                facts.completeness,
+                EditorSemanticCompleteness::Complete,
+                "{source}: {facts:?}"
+            );
+            let start = source.find("click A").unwrap() + "click ".len();
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == "A"
+                    && symbol.selection == SourceSpan::new(start, start + 1)),
+                "{source}"
+            );
+        }
+    }
+}
