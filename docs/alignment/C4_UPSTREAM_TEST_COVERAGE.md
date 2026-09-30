@@ -98,5 +98,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Diagram.jiso
 
 The user-facing C4Dynamic canary is
 `fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd`. Relation `c2 -> c3` must retain
-`offsetX=-40` and `offsetY=60`. Its signed browser residual is approximately `(+0.308px,+5px)`;
-the pre-fix `(+100px,-55px)` displacement is rejected by the semantic-label mutation suite.
+`offsetX=-40` and `offsetY=60`. Its exact signed geometry and current browser-measurement residual
+are documented in `C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md`. That audit also records the obsolete
+top-left intersection error previously included in the receipt and the source-backed routing
+correction; it must not be treated as a font-only difference. The historical offset-swap mutation
+remains rejected by the semantic-label mutation suite.

@@ -195,11 +195,11 @@
           "to": "s1",
           "rel_type": "rel",
           "start_point": {
-            "x": 270.58,
-            "y": 337.524
+            "x": 270.541,
+            "y": 337.257
           },
           "end_point": {
-            "x": 317.761,
+            "x": 300.797,
             "y": 543.524
           },
           "offset_x": null,
@@ -226,11 +226,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 416.0,
-            "y": 605.135
+            "y": 592.627
           },
           "end_point": {
             "x": 516.0,
-            "y": 618.123
+            "y": 592.627
           },
           "offset_x": null,
           "offset_y": null,

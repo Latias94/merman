@@ -150,102 +150,44 @@ fn has_sprite(v: &Option<Value>) -> bool {
     })
 }
 
-fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
-    let x1 = from.origin.x;
-    let y1 = from.origin.y;
-    let x2 = end_point.x;
-    let y2 = end_point.y;
-
-    let from_center_x = x1 + from.size.width / 2.0;
-    let from_center_y = y1 + from.size.height / 2.0;
-
-    let dx = (x1 - x2).abs();
-    let dy = (y1 - y2).abs();
-    let tan_dyx = dy / dx;
-    let from_dyx = from.size.height / from.size.width;
-
-    let mut return_point: Option<LayoutPoint> = None;
-
-    if y1 == y2 && x1 < x2 {
-        return_point = Some(LayoutPoint {
-            x: x1 + from.size.width,
-            y: from_center_y,
-        });
-    } else if y1 == y2 && x1 > x2 {
-        return_point = Some(LayoutPoint {
-            x: x1,
-            y: from_center_y,
-        });
-    } else if x1 == x2 && y1 < y2 {
-        return_point = Some(LayoutPoint {
-            x: from_center_x,
-            y: y1 + from.size.height,
-        });
-    } else if x1 == x2 && y1 > y2 {
-        return_point = Some(LayoutPoint {
-            x: from_center_x,
-            y: y1,
-        });
+fn intersect_rect_point(rect: &Rect, target: LayoutPoint) -> LayoutPoint {
+    // Mermaid's unified shapes and C4 boundaries use the same centre-based intersect.rect.
+    // The grid stores top-left coordinates; convert once before finding the ray intersection.
+    let center_x = rect.origin.x + rect.size.width / 2.0;
+    let center_y = rect.origin.y + rect.size.height / 2.0;
+    let dx = target.x - center_x;
+    let dy = target.y - center_y;
+    let mut half_width = rect.size.width / 2.0;
+    let mut half_height = rect.size.height / 2.0;
+    let (x, y) = if dy.abs() * half_width > dx.abs() * half_height {
+        if dy < 0.0 {
+            half_height = -half_height;
+        }
+        (
+            if dy == 0.0 {
+                0.0
+            } else {
+                half_height * dx / dy
+            },
+            half_height,
+        )
+    } else {
+        if dx < 0.0 {
+            half_width = -half_width;
+        }
+        (
+            half_width,
+            if dx == 0.0 { 0.0 } else { half_width * dy / dx },
+        )
+    };
+    LayoutPoint {
+        x: center_x + x,
+        y: center_y + y,
     }
-
-    if x1 > x2 && y1 < y2 {
-        if from_dyx >= tan_dyx {
-            return_point = Some(LayoutPoint {
-                x: x1,
-                y: from_center_y + (tan_dyx * from.size.width) / 2.0,
-            });
-        } else {
-            return_point = Some(LayoutPoint {
-                x: from_center_x - ((dx / dy) * from.size.height) / 2.0,
-                y: y1 + from.size.height,
-            });
-        }
-    } else if x1 < x2 && y1 < y2 {
-        if from_dyx >= tan_dyx {
-            return_point = Some(LayoutPoint {
-                x: x1 + from.size.width,
-                y: from_center_y + (tan_dyx * from.size.width) / 2.0,
-            });
-        } else {
-            return_point = Some(LayoutPoint {
-                x: from_center_x + ((dx / dy) * from.size.height) / 2.0,
-                y: y1 + from.size.height,
-            });
-        }
-    } else if x1 < x2 && y1 > y2 {
-        if from_dyx >= tan_dyx {
-            return_point = Some(LayoutPoint {
-                x: x1 + from.size.width,
-                y: from_center_y - (tan_dyx * from.size.width) / 2.0,
-            });
-        } else {
-            return_point = Some(LayoutPoint {
-                x: from_center_x + ((from.size.height / 2.0) * dx) / dy,
-                y: y1,
-            });
-        }
-    } else if x1 > x2 && y1 > y2 {
-        if from_dyx >= tan_dyx {
-            return_point = Some(LayoutPoint {
-                x: x1,
-                y: from_center_y - (from.size.width / 2.0) * tan_dyx,
-            });
-        } else {
-            return_point = Some(LayoutPoint {
-                x: from_center_x - ((from.size.height / 2.0) * dx) / dy,
-                y: y1,
-            });
-        }
-    }
-
-    return_point.unwrap_or(LayoutPoint {
-        x: from_center_x,
-        y: from_center_y,
-    })
 }
 
 fn intersect_cylinder_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
-    let mut point = intersect_point(from, end_point.clone());
+    let mut point = intersect_rect_point(from, end_point.clone());
     let center_x = from.origin.x + from.size.width / 2.0;
     let center_y = from.origin.y + from.size.height / 2.0;
     let x = point.x - center_x;
@@ -271,18 +213,11 @@ fn intersect_cylinder_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint 
 }
 
 fn intersect_horizontal_cylinder_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
-    let mut point = intersect_point(from, end_point.clone());
+    let mut point = intersect_rect_point(from, end_point.clone());
     let center_x = from.origin.x + from.size.width / 2.0;
     let center_y = from.origin.y + from.size.height / 2.0;
     let y = point.y - center_y;
     let half_height = from.size.height / 2.0;
-    let top_or_bottom_center = (end_point.x - center_x).abs() < 1e-6
-        && (point.x - center_x).abs() < 1e-6
-        && (y.abs() - half_height).abs() < 1e-6;
-    if top_or_bottom_center {
-        return point;
-    }
-
     let ry = half_height;
     let rx = if ry == 0.0 {
         0.0
@@ -309,7 +244,7 @@ fn cross(a: LayoutPoint, b: LayoutPoint) -> f64 {
     a.x * b.y - a.y * b.x
 }
 
-fn ray_polygon_intersection(
+fn line_polygon_intersection(
     origin: LayoutPoint,
     target: LayoutPoint,
     polygon: &[LayoutPoint],
@@ -342,15 +277,19 @@ fn ray_polygon_intersection(
         }
         let t = cross(origin_to_a.clone(), edge) / denominator;
         let u = cross(origin_to_a, direction.clone()) / denominator;
-        if t < 0.0 || !(0.0..=1.0).contains(&u) {
+        if !(0.0..=1.0).contains(&u) {
             continue;
         }
         let point = LayoutPoint {
             x: origin.x + direction.x * t,
             y: origin.y + direction.y * t,
         };
-        if nearest.as_ref().is_none_or(|(best, _)| t < *best) {
-            nearest = Some((t, point));
+        // Mermaid intersects the complete center/target line, then picks the nearest boundary
+        // point. A containing boundary can place its target inside the person; in that case
+        // the nearest intersection can be opposite the center-to-target direction.
+        let distance = (point.x - target.x).hypot(point.y - target.y);
+        if nearest.as_ref().is_none_or(|(best, _)| distance < *best) {
+            nearest = Some((distance, point));
         }
     }
     nearest.map(|(_, point)| point)
@@ -359,23 +298,25 @@ fn ray_polygon_intersection(
 fn person_polygon(width: f64, height: f64) -> Vec<LayoutPoint> {
     fn append_arc(
         points: &mut Vec<LayoutPoint>,
-        cx: f64,
-        cy: f64,
+        center_x: f64,
+        center_y: f64,
         radius: f64,
+        count: usize,
         start_deg: f64,
         end_deg: f64,
     ) {
-        for i in 1..=6 {
-            let angle = (start_deg + (end_deg - start_deg) * i as f64 / 6.0).to_radians();
+        // Same sampling and coordinate orientation as Mermaid's generateCirclePoints.
+        let start = start_deg.to_radians();
+        let step = (end_deg.to_radians() - start) / (count - 1) as f64;
+        for index in 0..count {
+            let angle = start + index as f64 * step;
             points.push(LayoutPoint {
-                x: cx + radius * angle.cos(),
-                y: cy + radius * angle.sin(),
+                x: -(center_x + radius * angle.cos()),
+                y: -(center_y + radius * angle.sin()),
             });
         }
     }
 
-    let width = width.max(1.0);
-    let height = height.max(1.0);
     let head_radius = (width * 0.23).clamp(16.0, 56.0);
     let overlap = head_radius * 0.27;
     let body_height = (height - 2.0 * head_radius + overlap).max(0.0);
@@ -383,139 +324,118 @@ fn person_polygon(width: f64, height: f64) -> Vec<LayoutPoint> {
     let top = -height / 2.0;
     let body_top = top + 2.0 * head_radius - overlap;
     let head_center_y = top + head_radius;
-    let intersection_y = body_top - head_center_y;
-    let intersection_x = (head_radius * head_radius - intersection_y * intersection_y)
-        .max(0.0)
-        .sqrt();
+    let phi_right_deg = ((body_top - head_center_y) / head_radius)
+        .min(1.0)
+        .asin()
+        .to_degrees();
 
-    let mut points = Vec::with_capacity(48);
-    let start = intersection_y.atan2(intersection_x);
-    // Walk the exposed (upper) major arc, leaving the lower central arc hidden by the body.
-    let end = std::f64::consts::PI - start - 2.0 * std::f64::consts::PI;
-    for i in 0..=24 {
-        let angle = start + (end - start) * i as f64 / 24.0;
-        points.push(LayoutPoint {
-            x: head_radius * angle.cos(),
-            y: head_center_y + head_radius * angle.sin(),
-        });
+    // person.ts uses 24 samples for the exposed head and 12 for each body corner.
+    let mut points = Vec::with_capacity(72);
+    append_arc(
+        &mut points,
+        0.0,
+        -head_center_y,
+        head_radius,
+        24,
+        180.0 + phi_right_deg,
+        -phi_right_deg,
+    );
+    for (center_x, center_y, start, end) in [
+        (
+            width / 2.0 - body_radius,
+            -(body_top + body_radius),
+            90.0,
+            0.0,
+        ),
+        (
+            width / 2.0 - body_radius,
+            -(height / 2.0 - body_radius),
+            360.0,
+            270.0,
+        ),
+        (
+            -(width / 2.0 - body_radius),
+            -(height / 2.0 - body_radius),
+            270.0,
+            180.0,
+        ),
+        (
+            -(width / 2.0 - body_radius),
+            -(body_top + body_radius),
+            180.0,
+            90.0,
+        ),
+    ] {
+        append_arc(&mut points, center_x, center_y, body_radius, 12, start, end);
     }
 
-    // Continue clockwise from the left shoulder around the rounded body.
-    points.push(LayoutPoint {
-        x: -width / 2.0 + body_radius,
-        y: body_top,
-    });
-    append_arc(
-        &mut points,
-        -width / 2.0 + body_radius,
-        body_top + body_radius,
-        body_radius,
-        -90.0,
-        -180.0,
-    );
-    points.push(LayoutPoint {
-        x: -width / 2.0,
-        y: height / 2.0 - body_radius,
-    });
-    append_arc(
-        &mut points,
-        -width / 2.0 + body_radius,
-        height / 2.0 - body_radius,
-        body_radius,
-        180.0,
-        90.0,
-    );
-    points.push(LayoutPoint {
-        x: width / 2.0 - body_radius,
-        y: height / 2.0,
-    });
-    append_arc(
-        &mut points,
-        width / 2.0 - body_radius,
-        height / 2.0 - body_radius,
-        body_radius,
-        90.0,
-        0.0,
-    );
-    points.push(LayoutPoint {
-        x: width / 2.0,
-        y: body_top + body_radius,
-    });
-    append_arc(
-        &mut points,
-        width / 2.0 - body_radius,
-        body_top + body_radius,
-        body_radius,
-        0.0,
-        -90.0,
-    );
-    points.push(LayoutPoint {
-        x: intersection_x,
-        y: body_top,
-    });
     points
 }
 
-fn intersect_person_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+fn intersect_polygon_point(
+    from: &Rect,
+    end_point: LayoutPoint,
+    polygon: &[LayoutPoint],
+) -> LayoutPoint {
     let center = LayoutPoint {
         x: from.origin.x + from.size.width / 2.0,
         y: from.origin.y + from.size.height / 2.0,
     };
-    let local_target = LayoutPoint {
-        x: end_point.x - center.x,
-        y: end_point.y - center.y,
+    // intersect.polygon aligns the sampled outline's minimum coordinates to the node box.
+    // Query in the polygon's coordinates; the person samples need not hit the exact circle top.
+    let origin = LayoutPoint {
+        x: from.size.width / 2.0
+            + polygon
+                .iter()
+                .map(|point| point.x)
+                .fold(f64::INFINITY, f64::min),
+        y: from.size.height / 2.0
+            + polygon
+                .iter()
+                .map(|point| point.y)
+                .fold(f64::INFINITY, f64::min),
     };
-    let polygon = person_polygon(from.size.width, from.size.height);
-    if let Some(point) =
-        ray_polygon_intersection(LayoutPoint { x: 0.0, y: 0.0 }, local_target, &polygon)
-    {
+    let target = LayoutPoint {
+        x: origin.x + (end_point.x - center.x),
+        y: origin.y + (end_point.y - center.y),
+    };
+    if let Some(point) = line_polygon_intersection(origin.clone(), target, polygon) {
         return LayoutPoint {
-            x: center.x + point.x,
-            y: center.y + point.y,
+            x: center.x + point.x - origin.x,
+            y: center.y + point.y - origin.y,
         };
     }
-    intersect_point(from, end_point)
+    center
 }
 
-fn intersect_boundary_point(boundary: &Rect, target: LayoutPoint) -> LayoutPoint {
-    // c4Renderer.drawBoundary uses the shared, centre-based intersect.rect function.
-    let center_x = boundary.origin.x + boundary.size.width / 2.0;
-    let center_y = boundary.origin.y + boundary.size.height / 2.0;
-    let dx = target.x - center_x;
-    let dy = target.y - center_y;
-    let mut half_width = boundary.size.width / 2.0;
-    let mut half_height = boundary.size.height / 2.0;
-    let (x, y) = if dy.abs() * half_width > dx.abs() * half_height {
-        if dy < 0.0 {
-            half_height = -half_height;
-        }
-        (
-            if dy == 0.0 {
-                0.0
-            } else {
-                half_height * dx / dy
-            },
-            half_height,
-        )
-    } else {
-        if dx < 0.0 {
-            half_width = -half_width;
-        }
-        (
-            half_width,
-            if dx == 0.0 { 0.0 } else { half_width * dy / dx },
-        )
-    };
-    LayoutPoint {
-        x: center_x + x,
-        y: center_y + y,
-    }
+fn intersect_framed_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
+    // subroutine.ts exposes the inner frame and the outer perimeter to intersect.polygon.
+    let inner_width = from.size.width - 16.0;
+    let height = from.size.height;
+    let polygon = [
+        (0.0, 0.0),
+        (inner_width, 0.0),
+        (inner_width, -height),
+        (0.0, -height),
+        (0.0, 0.0),
+        (-8.0, 0.0),
+        (inner_width + 8.0, 0.0),
+        (inner_width + 8.0, -height),
+        (-8.0, -height),
+        (-8.0, 0.0),
+    ]
+    .map(|(x, y)| LayoutPoint { x, y });
+    intersect_polygon_point(from, end_point, &polygon)
 }
 
 fn intersect_shape_point(shape: C4NodeShape, from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
     match shape {
-        C4NodeShape::Rounded | C4NodeShape::Framed => intersect_point(from, end_point),
-        C4NodeShape::Person => intersect_person_point(from, end_point),
+        C4NodeShape::Rounded => intersect_rect_point(from, end_point),
+        C4NodeShape::Framed => intersect_framed_point(from, end_point),
+        C4NodeShape::Person => {
+            let polygon = person_polygon(from.size.width, from.size.height);
+            intersect_polygon_point(from, end_point, &polygon)
+        }
         C4NodeShape::Cylinder => intersect_cylinder_point(from, end_point),
         C4NodeShape::HorizontalCylinder => intersect_horizontal_cylinder_point(from, end_point),
     }
@@ -1233,11 +1153,11 @@ pub(crate) fn layout_c4_diagram_typed(
         };
         let start_point = match from_shape {
             Some(shape) => intersect_shape_point(*shape, from, from_center),
-            None => intersect_boundary_point(from, from_center),
+            None => intersect_rect_point(from, from_center),
         };
         let end_point = match to_shape {
             Some(shape) => intersect_shape_point(*shape, to, to_center),
-            None => intersect_boundary_point(to, to_center),
+            None => intersect_rect_point(to, to_center),
         };
 
         rels_out.push(C4RelLayout {

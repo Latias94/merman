@@ -157,11 +157,11 @@
           "to": "sign",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 281.927,
+            "x": 266.923,
             "y": 276.834
           },
           "end_point": {
-            "x": 318.894,
+            "x": 300.093,
             "y": 482.834
           },
           "offset_x": null,
