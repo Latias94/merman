@@ -127,31 +127,7 @@ pub mod railroad;
 pub mod requirement;
 #[cfg(feature = "diagram-sankey")]
 pub mod sankey;
-#[cfg(any(
-    test,
-    feature = "diagram-architecture",
-    feature = "diagram-c4",
-    feature = "diagram-class",
-    feature = "diagram-cynefin",
-    feature = "diagram-er",
-    feature = "diagram-event-modeling",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow",
-    feature = "diagram-gantt",
-    feature = "diagram-ishikawa",
-    feature = "diagram-journey",
-    feature = "diagram-kanban",
-    feature = "diagram-mindmap",
-    feature = "diagram-quadrant-chart",
-    feature = "diagram-requirement",
-    feature = "diagram-state",
-    feature = "diagram-timeline",
-    feature = "diagram-tree-view",
-    feature = "diagram-treemap",
-    feature = "diagram-wardley",
-    feature = "diagram-xychart"
-))]
+// Common metadata normalization also uses ECMAScript scanning without diagram features.
 #[allow(
     dead_code,
     reason = "Shared parser facilities have different consumers in each family selection."

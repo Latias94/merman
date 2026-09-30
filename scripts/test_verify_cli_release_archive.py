@@ -1205,6 +1205,15 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_ascii_contract_covers_every_release_diagram_family(self) -> None:
+        contract = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        aliases = {"gitGraph": "gitgraph", "quadrantChart": "quadrantchart"}
+        expected = sorted(aliases.get(family, family) for family in contract["diagram_families"])
+        actual = canonical_ascii_capabilities()
+        self.assertEqual([family["family"] for family in actual["families"]], expected)
+        mappings = {mapping["family"] for mapping in actual["detected_type_mappings"]}
+        self.assertEqual(mappings, set(expected) - {"swimlane"})
+
     def test_pdf_validator_accepts_pdf_token_spacing_without_matching_pages_tree(self) -> None:
         for page_type in (b"/Type/Page", b"/Type /Page", b"/Type\t/Page"):
             with self.subTest(page_type=page_type):

@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "merman-editor-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-analysis",
  "merman-core",

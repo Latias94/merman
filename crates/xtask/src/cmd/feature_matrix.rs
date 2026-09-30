@@ -248,7 +248,7 @@ const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
     DependencyFeatureContract {
         package: "merman-core",
         dependency: "serde_json",
-        expected_features: &["preserve_order"],
+        expected_features: &["float_roundtrip", "preserve_order"],
         expected_uses_default_features: None,
     },
     DependencyFeatureContract {
