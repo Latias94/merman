@@ -87,6 +87,24 @@ cover browser measurement only after this routing correction. `shapeUtil.ts` use
 through ELK node placement, channel lengths, label anchors, and Neo dash masks. Label text,
 style, markers, CSS, edge identity, and route topology remain checked.
 
+### Namespace paint order and the font-size receipt
+
+The common ELK painter emits `clusters`, `edges edgePaths`, `edgeLabels`, then `nodes`,
+matching pinned `rendering-util/createGraph.ts`. Namespace backgrounds therefore paint
+behind relation paths and markers. Margin marker paths also retain the shared
+`markers.js` stroke widths: aggregation uses 2; composition and dependency use 0.
+
+The exact browser-text receipt for
+`stress_class_svg_font_size_px_string_precedence_026` was rebound after these corrections.
+An old/new compiled-render replay reproduced the previously admitted signature and
+proved that reversing only the six marker style additions and empty-group ordering/class
+change restored the old SVG byte-for-byte. All path geometry, text/tspan subtrees, CSS,
+and root attributes were unchanged, as were the input and pinned upstream SVG hashes.
+The original font residual remains: the first long member occupies two local text rows
+versus three upstream, retaining the same concatenated-text space difference. Receipt
+modes, precision, and comparator policy are unchanged; this refresh admits no new font
+or layout difference.
+
 ## Remaining Gaps
 
 - Remaining interactivity parity:

@@ -5,6 +5,10 @@ use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_class(text: &str) -> String {
+    render_class_with_id(text, "merman")
+}
+
+fn render_class_with_id(text: &str, diagram_id: &str) -> String {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse Class")
@@ -12,7 +16,13 @@ fn render_class(text: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout Class")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
         .expect("render Class")
         .svg()
         .to_owned()
@@ -116,7 +126,7 @@ fn class_elk_omits_unlabelled_edges_but_keeps_terminal_only_labels() {
     assert!(
         document
             .descendants()
-            .any(|node| node.attribute("class") == Some("edgePaths edges"))
+            .any(|node| node.attribute("class") == Some("edges edgePaths"))
     );
 }
 
@@ -217,4 +227,165 @@ fn class_elk_routes_relations_with_rounded_corners() {
         paths.iter().all(|path| !path.contains('C')),
         "ELK must not smooth routes with basis curves"
     );
+}
+
+#[test]
+fn class_namespace_relations_paint_above_frames_with_scoped_markers() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        for direction in ["LR", "RL", "TB", "BT"] {
+            for depth in [0, 1, 3] {
+                let namespace = (0..depth)
+                    .map(|index| format!("Scope{index}"))
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let classes = if namespace.is_empty() {
+                    "class A\nclass B\n".to_owned()
+                } else {
+                    format!("namespace {namespace} {{\nclass A\nclass B\n}}\n")
+                };
+                let text = format!(
+                    "---\nconfig:\n  layout: {layout}\n---\nclassDiagram\ndirection {direction}\n{classes}A --> B : association\nA <|-- B : inheritance\nA o-- B : aggregation\nA *-- B : composition\nA ..> B : dependency\nA -- B : link\n"
+                );
+                let diagram_id = format!("class-{layout}-{direction}-{depth}");
+                let svg = render_class_with_id(&text, &diagram_id);
+                let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+                let roots = document
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("root"));
+                for root in roots {
+                    let groups = root
+                        .children()
+                        .filter(|node| node.is_element())
+                        .filter_map(|node| node.attribute("class"))
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        groups,
+                        [
+                            "clusters",
+                            if *layout == "elk" {
+                                "edges edgePaths"
+                            } else {
+                                "edgePaths"
+                            },
+                            "edgeLabels",
+                            "nodes",
+                        ],
+                        "{diagram_id}: namespace fills must not cover relations"
+                    );
+                }
+                let paths = document
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                    .collect::<Vec<_>>();
+                assert_eq!(paths.len(), 6, "{diagram_id}: every relation must render");
+                let mut marker_count = 0;
+                for path in paths {
+                    for reference in [path.attribute("marker-start"), path.attribute("marker-end")]
+                        .into_iter()
+                        .flatten()
+                    {
+                        marker_count += 1;
+                        let id = reference
+                            .strip_prefix("url(#")
+                            .and_then(|value| value.strip_suffix(')'))
+                            .expect("local marker reference");
+                        assert!(id.starts_with(&format!("{diagram_id}_")), "{id}");
+                        assert_eq!(
+                            document
+                                .descendants()
+                                .filter(|node| node.has_tag_name("marker")
+                                    && node.attribute("id") == Some(id))
+                                .count(),
+                            1,
+                            "{diagram_id}: each arrow must resolve to its own definition"
+                        );
+                    }
+                }
+                assert_eq!(
+                    marker_count, 5,
+                    "{diagram_id}: all arrow types retain markers"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn class_nested_namespace_original_input_retains_visible_relation_layers() {
+    let text = include_str!("../../../fixtures/class/upstream_namespaces_and_generics.mmd");
+    let first = render_class_with_id(text, "first-class");
+    let second = render_class_with_id(text, "second-class");
+    let combined = format!("<diagrams>{first}{second}</diagrams>");
+    let document = roxmltree::Document::parse(&combined).expect("two valid Class SVGs");
+    let mut ids = std::collections::HashSet::new();
+    for node in document.descendants() {
+        if let Some(id) = node.attribute("id") {
+            assert!(
+                ids.insert(id),
+                "multiple diagrams must not duplicate id {id}"
+            );
+        }
+    }
+    for diagram in document
+        .root_element()
+        .children()
+        .filter(|node| node.is_element())
+    {
+        let relation = diagram
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("id_Admin_User_1"))
+            .expect("original manages relation");
+        assert!(relation.attribute("marker-end").is_some());
+        let edge_group = relation.parent_element().expect("edge group");
+        let groups = edge_group
+            .parent_element()
+            .expect("render root")
+            .children()
+            .filter(|node| node.is_element())
+            .collect::<Vec<_>>();
+        let clusters = groups
+            .iter()
+            .position(|node| node.attribute("class") == Some("clusters"))
+            .expect("namespace frames");
+        let edges = groups
+            .iter()
+            .position(|node| *node == edge_group)
+            .expect("relation layer");
+        assert!(
+            clusters < edges,
+            "namespace backgrounds must paint before manages"
+        );
+    }
+}
+
+#[test]
+fn class_margin_marker_stroke_widths_follow_shared_mermaid_definitions() {
+    let svg = render_class("classDiagram\nA o-- B\nB *-- C\nC --> D\n");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for (kind, width) in [
+        ("aggregation", "2"),
+        ("composition", "0"),
+        ("dependency", "0"),
+    ] {
+        for end in ["Start", "End"] {
+            let id = format!("merman_classDiagram-{kind}{end}-margin");
+            let marker = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("marker") && node.attribute("id") == Some(id.as_str())
+                })
+                .expect("margin marker");
+            let path = marker.first_element_child().expect("marker path");
+            assert_eq!(
+                path.attribute("style"),
+                Some(format!("stroke-width: {width};").as_str()),
+                "{id}"
+            );
+        }
+    }
 }
