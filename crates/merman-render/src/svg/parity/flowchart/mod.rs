@@ -71,3 +71,12 @@ pub(super) use swimlane::render_swimlane_svg_artifact;
 
 #[cfg(all(test, feature = "layout-elk"))]
 mod browser_measurement_tests;
+
+/// Shared by the title element and its stylesheet; Agentflow owns its title class.
+fn title_css_class(diagram_type: &str) -> &'static str {
+    if diagram_type == "agentflow" {
+        "agentflowTitleText"
+    } else {
+        "flowchartTitleText"
+    }
+}

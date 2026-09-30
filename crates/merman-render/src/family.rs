@@ -1221,13 +1221,45 @@ fn project_agentflow_flowchart_config(
     config: &merman_core::MermaidConfig,
 ) -> merman_core::MermaidConfig {
     let mut projected = config.clone();
-    let Some(agentflow) = config
-        .as_value()
-        .get("agentflow")
-        .and_then(serde_json::Value::as_object)
-    else {
-        return projected;
-    };
+    let root = config.as_value();
+    let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);
+    // Agentflow's renderer owns the root viewport. Defaults here mirror its `??`
+    // expressions; normal Engine configuration already includes schema defaults.
+    // Overwrite even absent family values so unrelated Flowchart settings cannot leak in.
+    for (key, fallback) in [
+        ("diagramPadding", serde_json::json!(8)),
+        ("useMaxWidth", serde_json::json!(true)),
+        ("titleTopMargin", serde_json::json!(0)),
+    ] {
+        let value = agentflow.get(key).filter(|value| !value.is_null());
+        projected.set_value(
+            &format!("flowchart.{key}"),
+            value.cloned().unwrap_or(fallback),
+        );
+    }
+    // Dagre takes a truthy root override before the renderer's family spacing.
+    // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
+    // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
+    // Resolve registration first: an unavailable ELK loader executes Dagre instead.
+    let uses_dagre = crate::layout_backend::resolve_graph_layout(root).backend
+        == crate::layout_backend::GraphLayoutBackend::Dagre;
+    for key in ["nodeSpacing", "rankSpacing"] {
+        let value = uses_dagre
+            .then(|| {
+                root.get(key)
+                    .filter(|value| crate::config::json_value_is_truthy(value))
+                    .or_else(|| {
+                        agentflow
+                            .get(key)
+                            .filter(|value| crate::config::json_value_is_truthy(value))
+                    })
+            })
+            .flatten();
+        projected.set_value(
+            &format!("flowchart.{key}"),
+            value.cloned().unwrap_or_else(|| serde_json::json!(50)),
+        );
+    }
     // AgentflowDB assigns these values to each node before the shared shape helpers
     // read them. Node-specific values precede Flowchart configuration; only a falsy
     // wrappingWidth falls through via labelHelper's JavaScript `||` expression.
@@ -2197,6 +2229,96 @@ mod tests {
             let projected = project_agentflow_flowchart_config(&config);
             assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
             assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
+        }
+    }
+
+    #[test]
+    fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings() {
+        for family in [json!({}), json!(null)] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "agentflow": family,
+                "flowchart": {
+                    "diagramPadding": 99, "titleTopMargin": 99, "useMaxWidth": false,
+                    "nodeSpacing": 99, "rankSpacing": 99,
+                    "padding": 17, "curve": "linear", "htmlLabels": false,
+                    "inheritDir": true, "subGraphTitleMargin": {"top": 7}
+                }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            assert_eq!(flow["diagramPadding"], 8);
+            assert_eq!(flow["titleTopMargin"], 0);
+            assert_eq!(flow["useMaxWidth"], true);
+            assert_eq!(flow["nodeSpacing"], 50);
+            assert_eq!(flow["rankSpacing"], 50);
+            for key in [
+                "padding",
+                "curve",
+                "htmlLabels",
+                "inheritDir",
+                "subGraphTitleMargin",
+            ] {
+                assert_eq!(flow[key], config.as_value()["flowchart"][key]);
+            }
+        }
+        for value in [json!(null), json!(0)] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "nodeSpacing": 90, "rankSpacing": 0,
+                "agentflow": {
+                    "diagramPadding": value, "titleTopMargin": value, "useMaxWidth": false,
+                    "nodeSpacing": 200, "rankSpacing": value
+                }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            assert_eq!(flow["diagramPadding"], if value.is_null() { 8 } else { 0 });
+            assert_eq!(flow["titleTopMargin"], 0);
+            assert_eq!(flow["useMaxWidth"], false);
+            assert_eq!(flow["nodeSpacing"], 90);
+            assert_eq!(flow["rankSpacing"], 50);
+        }
+    }
+
+    #[test]
+    fn agentflow_spacing_projection_follows_registered_backend_selection() {
+        for layout in [
+            "dagre",
+            "unknown",
+            "elk.layered",
+            "elk",
+            "elk.stress",
+            "elk.force",
+            "elk.mrtree",
+            "elk.sporeOverlap",
+            "elk.box",
+            "elk.rectpacking",
+        ] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "layout": layout,
+                "nodeSpacing": 90, "rankSpacing": 110,
+                "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
+                "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
+            }));
+            let selected = crate::layout_backend::resolve_graph_layout(config.as_value());
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            let elk_registered = cfg!(feature = "layout-elk")
+                && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
+            assert_eq!(
+                selected.backend == crate::layout_backend::GraphLayoutBackend::Elk,
+                elk_registered,
+                "{layout}"
+            );
+            assert_eq!(
+                flow["nodeSpacing"],
+                if elk_registered { 50 } else { 90 },
+                "{layout}"
+            );
+            assert_eq!(
+                flow["rankSpacing"],
+                if elk_registered { 50 } else { 110 },
+                "{layout}"
+            );
         }
     }
 

@@ -418,3 +418,155 @@ fn agentflow_measurement_config_wins_over_flowchart_defaults_and_overrides() {
         );
     }
 }
+fn render_agentflow_config_probe(
+    source: &str,
+    config: serde_json::Value,
+    frontmatter: bool,
+) -> (serde_json::Value, String) {
+    let (engine, source) = if frontmatter {
+        (
+            Engine::new(),
+            format!("---\nconfig: {config}\n---\n{source}"),
+        )
+    } else {
+        (
+            Engine::new().with_site_config(merman_core::MermaidConfig::from_value(config)),
+            source.to_owned(),
+        )
+    };
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let layout = artifact.layout_json().unwrap()["layout"].clone();
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    (layout, svg)
+}
+
+#[test]
+fn agentflow_viewport_and_spacing_ignore_unrelated_flowchart_settings() {
+    for backend in ["dagre", "elk"] {
+        for frontmatter in [false, true] {
+            let source = "agentflow-beta\nA-->B\nA-->C";
+            let base =
+                render_agentflow_config_probe(source, json!({"layout": backend}), frontmatter);
+            let polluted = render_agentflow_config_probe(
+                source,
+                json!({
+                    "layout": backend,
+                    "flowchart": {
+                        "nodeSpacing": 200, "rankSpacing": 200,
+                        "diagramPadding": 60, "useMaxWidth": false, "titleTopMargin": 100
+                    }
+                }),
+                frontmatter,
+            );
+            assert_eq!(base, polluted, "{backend}, frontmatter={frontmatter}");
+            let family = render_agentflow_config_probe(
+                source,
+                json!({
+                    "layout": backend,
+                    "agentflow": {"diagramPadding": 60, "useMaxWidth": false}
+                }),
+                frontmatter,
+            );
+            assert_eq!(base.0, family.0, "viewport options cannot move nodes");
+            let base_doc = roxmltree::Document::parse(&base.1).unwrap();
+            let family_doc = roxmltree::Document::parse(&family.1).unwrap();
+            let bounds = |node: roxmltree::Node<'_, '_>| -> Vec<f64> {
+                node.attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|value| value.parse().unwrap())
+                    .collect()
+            };
+            let before = bounds(base_doc.root_element());
+            let after = bounds(family_doc.root_element());
+            assert_eq!(
+                after,
+                vec![
+                    before[0] - 52.0,
+                    before[1] - 52.0,
+                    before[2] + 104.0,
+                    before[3] + 104.0
+                ]
+            );
+            assert_eq!(base_doc.root_element().attribute("width"), Some("100%"));
+            assert_ne!(family_doc.root_element().attribute("width"), Some("100%"));
+            assert!(family_doc.root_element().attribute("height").is_some());
+        }
+    }
+}
+
+#[test]
+fn agentflow_dagre_spacing_obeys_family_values_and_root_precedence() {
+    let source = "agentflow-beta\nA-->B\nA-->C";
+    let config = |family, root| {
+        json!({
+            "layout": "dagre", "nodeSpacing": root, "rankSpacing": root,
+            "agentflow": {"nodeSpacing": family, "rankSpacing": family}
+        })
+    };
+    let base = render_agentflow_config_probe(source, config(50, 0), false);
+    let zero = render_agentflow_config_probe(source, config(0, 0), false);
+    assert_eq!(base, zero);
+    let wide = render_agentflow_config_probe(source, config(200, 0), false);
+    assert_ne!(base.0, wide.0);
+    let root = render_agentflow_config_probe(source, config(200, 50), false);
+    assert_eq!(base, root);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn agentflow_elk_spacing_ignores_root_family_and_flowchart_overrides() {
+    let source = "agentflow-beta\nflow Workers\nA-->B\nA-->C\nend\nC-->D";
+    for frontmatter in [false, true] {
+        let base = render_agentflow_config_probe(source, json!({"layout": "elk"}), frontmatter);
+        for overrides in [
+            json!({"agentflow": {"nodeSpacing": 200, "rankSpacing": 210}}),
+            json!({"flowchart": {"nodeSpacing": 300, "rankSpacing": 310}}),
+            json!({"nodeSpacing": 90, "rankSpacing": 110}),
+            json!({
+                "nodeSpacing": 90, "rankSpacing": 110,
+                "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
+                "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
+            }),
+        ] {
+            let mut config = overrides.clone();
+            config["layout"] = json!("elk");
+            let actual = render_agentflow_config_probe(source, config, frontmatter);
+            assert_eq!(base, actual, "frontmatter={frontmatter}, {overrides}");
+        }
+    }
+}
+
+#[test]
+fn agentflow_title_uses_family_margin_and_matching_css_class() {
+    for backend in ["dagre", "elk"] {
+        for (margin, expected) in [(json!(100), "-100"), (json!(0), "0"), (json!(null), "-25")] {
+            let (_, svg) = render_agentflow_config_probe(
+                "---\ntitle: Heading\n---\nagentflow-beta\nA",
+                json!({
+                    "layout": backend,
+                    "agentflow": {"titleTopMargin": margin},
+                    "flowchart": {"titleTopMargin": 200}
+                }),
+                false,
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("agentflowTitleText"))
+                .unwrap();
+            assert_eq!(title.attribute("y"), Some(expected), "{backend}, {margin}");
+            assert!(svg.contains(".agentflowTitleText{text-anchor:middle;font-size:18px;"));
+            assert!(!svg.contains("flowchartTitleText"));
+        }
+    }
+}

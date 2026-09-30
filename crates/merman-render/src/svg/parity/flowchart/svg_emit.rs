@@ -517,9 +517,10 @@ pub(super) fn render_flowchart_svg_model(
         let title_y = -title_top_margin;
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="flowchartTitleText">{}</text>"#,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="{}">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
+            title_css_class(diagram_type),
             escape_xml(title)
         );
     }
