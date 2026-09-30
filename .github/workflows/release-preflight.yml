@@ -175,11 +175,13 @@ jobs:
         run: |
           set -euo pipefail
           roughr_version="$(cargo pkgid -p roughr-merman | sed -E 's/.*[#@]//')"
+          stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
+          prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' HEAD)"
           python3 scripts/release_registry_dependents.py \
             --dependency "roughr-merman=$roughr_version" \
             --candidate-path crates/roughr \
-            --dependent merman-render=0.7.0 \
-            --dependent merman-render=0.8.0-alpha.5
+            --dependent "merman-render=${stable_tag#v}" \
+            --dependent "merman-render=${prerelease_tag#v}"
 
       - name: Prefetch locked Rust dependencies for offline metadata and license reports
         run: cargo fetch --locked

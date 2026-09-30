@@ -64,6 +64,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
+      stable_dependent_version: ${{ steps.dependent-versions.outputs.stable_version }}
+      prerelease_dependent_version: ${{ steps.dependent-versions.outputs.prerelease_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,17 +119,29 @@ jobs:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
         run: cargo semver-checks check-release -p "$PACKAGE" --color always
 
+      - name: Select published dependent release tags
+        id: dependent-versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          stable_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
+          prerelease_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*-*' HEAD)"
+          printf 'stable_version=%s\n' "${stable_tag#v}" >> "$GITHUB_OUTPUT"
+          printf 'prerelease_version=%s\n' "${prerelease_tag#v}" >> "$GITHUB_OUTPUT"
+
       - name: Compile published dependents against the candidate
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          STABLE_DEPENDENT_VERSION: ${{ steps.dependent-versions.outputs.stable_version }}
+          PRERELEASE_DEPENDENT_VERSION: ${{ steps.dependent-versions.outputs.prerelease_version }}
         run: |
           set -euo pipefail
           python3 scripts/release_registry_dependents.py \
             --dependency "$PACKAGE=$VERSION" \
             --candidate-path crates/roughr \
-            --dependent merman-render=0.7.0 \
-            --dependent merman-render=0.8.0-alpha.5
+            --dependent "merman-render=$STABLE_DEPENDENT_VERSION" \
+            --dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"
 
       - name: Verify registry bytes or dry-run independent crate publication
         env:
@@ -220,9 +234,11 @@ jobs:
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          STABLE_DEPENDENT_VERSION: ${{ needs.preflight.outputs.stable_dependent_version }}
+          PRERELEASE_DEPENDENT_VERSION: ${{ needs.preflight.outputs.prerelease_dependent_version }}
         run: |
           set -euo pipefail
           python3 scripts/release_registry_dependents.py \
             --dependency "$PACKAGE=$VERSION" \
-            --dependent merman-render=0.7.0 \
-            --dependent merman-render=0.8.0-alpha.5
+            --dependent "merman-render=$STABLE_DEPENDENT_VERSION" \
+            --dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"
