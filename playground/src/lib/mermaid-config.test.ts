@@ -6,6 +6,7 @@ import { SUPPORTED_THEMES } from "@mermanjs/web";
 import { resolveMermaidCanvasTone } from "./mermaid-canvas-tone.ts";
 import {
   buildMermaidConfig,
+  buildMermaidOperationInput,
   sourceWithConfig,
 } from "./mermaid-config.ts";
 
@@ -193,4 +194,46 @@ test("the string null sentinel retains the initialized theme palette", () => {
   const source = 'flowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
   assert.equal(resolveMermaidCanvasTone('{"theme":"dark"}', "auto", source, "flowchart"), "dark");
   assert.equal(resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"dark"}}', "auto", source, "flowchart"), "light");
+});
+
+
+test("operation initialization admits only theme names and leaves authored settings in source", () => {
+  for (const [selection, expectedTheme] of [["auto", undefined], ["default", "default"], ["dark", "dark"]] as const) {
+    const operation = buildMermaidOperationInput("flowchart TD\nA-->B", selection, "{}");
+    assert.equal(operation.initializationConfig.theme, expectedTheme);
+    assert.equal(operation.initializationConfig.securityLevel, undefined);
+    assert.equal(operation.initializationConfig.startOnLoad, undefined);
+    assert.equal(Object.isFrozen(operation), true);
+    assert.equal(Object.isFrozen(operation.initializationConfig), true);
+  }
+  const operation = buildMermaidOperationInput(
+    '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"theme":"neutral"}}%%',
+    "dark",
+    '{"flowchart":{"theme":"null"},"securityLevel":"strict","secure":["theme"]}',
+  );
+  assert.equal(operation.initializationConfig.theme, "dark");
+  assert.equal(operation.initializationConfig.flowchart, undefined);
+  assert.equal(operation.initializationConfig.securityLevel, undefined);
+  assert.equal(operation.initializationConfig.secure, undefined);
+  assert.deepEqual(Object.keys(operation.initializationConfig), ["theme"]);
+  assert.ok(operation.configuredSource.startsWith('---\nconfig: {theme: forest}\n---\n%%{init:'));
+  assert.ok(operation.configuredSource.endsWith('%%{init: {"theme":"neutral"}}%%'));
+});
+
+
+test("canvas resolves invalid themes without granting authored secure host authority", () => {
+  const invalid = 'flowchart TD\nA-->B\n%%{init: {"theme":"unknown"}}%%';
+  assert.equal(resolveMermaidCanvasTone("{}", "dark", invalid, "flowchart"), "dark");
+  const override = '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"theme":"neutral","flowchart":{"theme":"forest"}}}%%';
+  assert.equal(resolveMermaidCanvasTone('{"secure":["theme"]}', "dark", override, "flowchart"), "light");
+  assert.equal(resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"dark"},"secure":["flowchart"]}', "auto", override, "flowchart"), "light");
+});
+
+
+test("invalid authored themes initialize the default palette without inheriting the selection", () => {
+  for (const theme of ["unknown", "null", null, false, "constructor"]) {
+    const operation = buildMermaidOperationInput("flowchart TD\nA-->B", "dark", JSON.stringify({ theme }));
+    assert.deepEqual(operation.initializationConfig, {});
+    assert.equal(resolveMermaidCanvasTone(JSON.stringify({ theme }), "dark", "flowchart TD\nA-->B", "flowchart"), "light");
+  }
 });

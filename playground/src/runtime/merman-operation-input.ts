@@ -1,7 +1,7 @@
 import type { SvgBindingOptions } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { sourceWithConfig } from "../lib/mermaid-config.ts";
+import { buildMermaidOperationInput, type MermaidConfigObject } from "../lib/mermaid-config.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -206,15 +206,16 @@ function freezeConfiguredInput(
 ): ConfiguredMermanOperationInput {
   let configuredSource = source;
   let configurationError: ErrorProjection | null = null;
+  let initializationConfig: Readonly<MermaidConfigObject> | undefined;
   try {
-    configuredSource = sourceWithConfig(source, theme, configJson, {
-      diagramFont: options.diagramFont,
-    });
+    ({ configuredSource, initializationConfig } = buildMermaidOperationInput(
+      source, theme, configJson, { diagramFont: options.diagramFont },
+    ));
   } catch (error) {
     configurationError = projectError(error);
   }
   return Object.freeze({
-    bindingOptions: bindingOptionsForRender(options),
+    bindingOptions: bindingOptionsForRender(options, initializationConfig),
     configurationError,
     configuredSource,
     source,
@@ -223,7 +224,8 @@ function freezeConfiguredInput(
 }
 
 function bindingOptionsForRender(
-  options: NormalizedMermanOptions
+  options: NormalizedMermanOptions,
+  initializationConfig: Readonly<MermaidConfigObject> | undefined,
 ): Readonly<SvgBindingOptions> {
   const presentation =
     options.presentationProfileId || options.presentationThemePresetId
@@ -258,6 +260,7 @@ function bindingOptionsForRender(
     : undefined;
   return Object.freeze({
     version: 2,
+    ...(initializationConfig ? { site_config: initializationConfig } : {}),
     ...(presentation ? { presentation } : {}),
     ...(svg ? { svg } : {}),
     ...(layout ? { layout } : {}),

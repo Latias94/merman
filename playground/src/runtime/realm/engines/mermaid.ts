@@ -1,8 +1,7 @@
 import type { Mermaid, MermaidConfig } from "mermaid";
 
 import {
-  buildMermaidConfig,
-  sourceWithMermaidConfig,
+  buildMermaidOperationInput,
 } from "../../../lib/mermaid-config.ts";
 import {
   MERMAID_JS_VERSION,
@@ -56,19 +55,17 @@ export async function renderWithMermaid(
       input.externalRequirements
     )
   );
-  const config = await runStage("initialize", onStage, async () => {
-    const config = buildMermaidConfig(input.configJson, input.theme, {
-      diagramFont: input.diagramFont,
-    });
+  const { configuredSource } = await runStage("initialize", onStage, async () => {
+    const configured = buildMermaidOperationInput(
+      input.source, input.theme, input.configJson, { diagramFont: input.diagramFont },
+    );
     mermaid.initialize({
-      ...config,
+      ...configured.initializationConfig,
       startOnLoad: false,
-      securityLevel: config.securityLevel ?? "loose",
+      securityLevel: configured.initializationConfig.securityLevel ?? "loose",
     } as MermaidConfig);
-    return config;
+    return configured;
   });
-
-  const configuredSource = sourceWithMermaidConfig(input.source, config);
   assertRealmSourceBudget(configuredSource);
   const renderStartedAt = performance.now();
   onStage("render");
