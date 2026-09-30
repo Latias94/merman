@@ -20,8 +20,7 @@ text, agent/log output, browser SVG, and raster export using the existing reques
 For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
 grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
-The published `0.8.0-alpha.6` follows `mermaid@11.17.2`. This source checkout for the planned
-`0.8.0-alpha.7` follows `mermaid@12.0.0`. Parser, layout, configuration, theming, sanitization,
+This guide covers `0.8.0-alpha.7`, which follows `mermaid@12.0.0`. Alpha.6 follows `mermaid@11.17.2`. Parser, layout, configuration, theming, sanitization,
 and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor.
 
 > [!NOTE]
@@ -33,7 +32,7 @@ and SVG structure are checked against the selected pinned Mermaid source and fix
 
 ## Quick start
 
-The release-facing Rust dependency is `merman = "=0.8.0-alpha.7"`. During preparation, use the source checkout for this candidate; the published alpha.6 package has its own tagged documentation.
+Add `merman = "=0.8.0-alpha.7"` to your Cargo dependencies. Upgrade coupled Merman crates together; use the matching tagged documentation for an older release.
 
 Run the maintained SVG example from a source checkout:
 

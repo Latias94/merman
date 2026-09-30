@@ -8,7 +8,7 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation and predates the family selectors; use a matching source checkout until alpha.7 is available. Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
+This guide targets `0.8.0-alpha.7`. Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
 
 ```toml
 [dependencies]

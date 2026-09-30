@@ -6,7 +6,7 @@ Parser-backed Mermaid diagnostics, lint metadata, and document source mapping wi
 
 Use `merman-analysis` directly when a Rust application needs to validate Mermaid, inspect diagnostics, analyze Markdown/MDX fences, or build editor tooling. Use [`merman`](https://crates.io/crates/merman) for rendering, [`merman-cli`](https://crates.io/crates/merman-cli) for command-line linting, or [`merman-lsp`](https://crates.io/crates/merman-lsp) for an editor protocol.
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
 
 ## Source Feature Selection
 

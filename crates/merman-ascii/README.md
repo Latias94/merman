@@ -33,7 +33,7 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
 
 ## Quick Start
 

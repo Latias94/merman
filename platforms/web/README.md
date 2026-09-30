@@ -17,8 +17,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. The npm `alpha` channel includes
-`0.8.0-alpha.6`; pin that exact version when reproducible installs matter. This source checkout prepares `0.8.0-alpha.7`; Mermaid 12 defaults, Agentflow/Usecase, and schema-3 ASCII output require the matching candidate. See the [upgrade guide](../../docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md).
+All public browser packages use one lockstep version. This guide targets `0.8.0-alpha.7`, including Mermaid 12 defaults, Agentflow/Usecase, and schema-3 ASCII output. Pin the exact version when reproducible installs matter. See the [upgrade guide](../../docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md).
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -32,7 +31,7 @@ its documented DOM-admission helpers without owning the surrounding editor or te
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@alpha
+npm install @mermanjs/web@0.8.0-alpha.7
 ```
 
 For source validation, use the repository's package workspace and lockfile at the accepted preflight commit. Registry dist-tags are not source-provenance guarantees.

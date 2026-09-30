@@ -15,7 +15,7 @@ The command line has four explicit workflows:
 
 ## Install
 
-This guide and the version-pinned commands below target the `0.8.0-alpha.7` candidate. Alpha.6 remains the published package and binary baseline during preparation; use its tagged documentation for an alpha.6 install, or build this source checkout to try alpha.7. Once the selected channel publishes alpha.7, prefer its complete prebuilt binary:
+This guide and the version-pinned commands below target `0.8.0-alpha.7`. Install its complete prebuilt binary:
 
 ```sh
 cargo binstall merman-cli@0.8.0-alpha.7

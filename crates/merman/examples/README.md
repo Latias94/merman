@@ -184,7 +184,7 @@ boundary, as described in [ADR-0008](../../../docs/adr/0008-async-and-runtime.md
 
 ## Copy Into An Application
 
-These examples target the `0.8.0-alpha.7` candidate, including Auto layout and schema-3 ASCII reports. During preparation, alpha.6 remains the published baseline; use a path dependency on this checkout to try the new examples. For alpha.6, use examples from its matching release tag.
+These examples target `0.8.0-alpha.7`, including Auto layout and schema-3 ASCII reports. Use the version-pinned dependency below, or a path dependency on the matching source checkout. For alpha.6, use examples from its matching release tag.
 
 The release-facing dependency for the SVG examples is:
 

@@ -6,7 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This guide and its dependency examples target the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use a matching source checkout until alpha.7 is published. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6.
+> This guide and its dependency examples target `0.8.0-alpha.7`. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6; use its tagged documentation when maintaining an older dependency.
 
 ## Quick Start
 

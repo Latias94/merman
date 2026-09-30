@@ -26,7 +26,7 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-This source checkout prepares `0.2.0`; the published `0.1.0` predates Agentflow and Usecase. The version-pinned examples below target the candidate and require its publication before registry installation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
+The version-pinned examples below target `0.2.0`, which adds Agentflow and Usecase to the `0.1.0` family catalog. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
 
 ## Node.js
 

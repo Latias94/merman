@@ -7,7 +7,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect an allocation plan, or schedule encoding separately from Mermaid
 rendering.
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
 
 ## Choose A Feature
 

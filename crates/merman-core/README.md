@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
 
 ## Source Feature Migration
 

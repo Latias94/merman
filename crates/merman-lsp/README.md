@@ -11,7 +11,7 @@ code actions, symbols, and folding. Syntax highlighting uses the canonical
 [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
 for an integrated editor experience.
 
-This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+This guide targets `0.8.0-alpha.7`. Use the matching release version for the APIs and examples below.
 
 ## Install The Stdio Server
 

@@ -8,15 +8,13 @@ Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Da
 
 ## Install
 
-The published pub.dev prerelease channel includes `0.8.0-alpha.6`, built from the immutable
-Flutter release tag with its complete Native Assets matrix. Pin the exact version when pairing
-the Dart facade with its native libraries:
+This guide targets `0.8.0-alpha.7` with its complete Native Assets matrix. Pin the exact version when pairing the Dart facade with its native libraries:
 
 ```sh
-flutter pub add 'merman:0.8.0-alpha.6'
+flutter pub add 'merman:0.8.0-alpha.7'
 ```
 
-This source checkout prepares `0.8.0-alpha.7`, including Mermaid 12 and schema-3 ASCII output; the published alpha.6 package has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
+Version `0.8.0-alpha.7` includes Mermaid 12 and schema-3 ASCII output; alpha.6 has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
 
 ```yaml
 dependencies:
