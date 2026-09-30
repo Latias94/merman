@@ -257,6 +257,8 @@ def build_wasm(package: Path, cli: list[str], destination: Path) -> None:
             "-o",
             str(output),
             "-fPIC",
+            # Platform-specific Clang banners must not enter the producers section.
+            "-fno-ident",
             "-shared",
             "-Os",
             "-Wl,--export=tree_sitter_mermaid",

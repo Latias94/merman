@@ -2,12 +2,19 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { readFile } = require('node:fs/promises');
 const { Language, Parser } = require('web-tree-sitter');
 
 const languagePromise = (async () => {
   await Parser.init();
   return Language.load(require.resolve('../../tree-sitter-mermaid.wasm'));
 })();
+
+test('language WASM excludes platform-specific compiler metadata', async () => {
+  const bytes = await readFile(require.resolve('../../tree-sitter-mermaid.wasm'));
+  const module = await WebAssembly.compile(bytes);
+  assert.equal(WebAssembly.Module.customSections(module, 'producers').length, 0);
+});
 
 test('language WASM loads with ABI 15 and parses Mermaid', async () => {
   const language = await languagePromise;
