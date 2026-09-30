@@ -5,8 +5,8 @@
     "mermaid_cli_version": "11.17.0",
     "mermaid_source_tag": "mermaid@12.0.0",
     "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-    "package_json_sha256": "fe57af4ef2d8e23a250fd0424987f74d31ae1d6f3c2284d0ddabcba7122b18ed",
-    "package_lock_sha256": "a2eea1d94f5cbb3105a1c216f94f86d8a7cef1f22cbbafe1a00832e2fb765f5d",
+    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
+    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },

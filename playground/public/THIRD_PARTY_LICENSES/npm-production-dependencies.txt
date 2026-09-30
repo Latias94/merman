@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: c1e68ed88503da01a770c8dded8a19825406f97761b9a84a1ea39d0c5fba080c
+package-lock.json SHA-256: 43a3cff14819f9671e065f62c2815cf46aa66ad364cf71d4f454b2ffb1f5682f
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -3308,12 +3308,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -----------
 
-The following npm packages may be included in this product:
+The following npm package may be included in this product:
 
- - lodash-es@4.17.23
  - lodash-es@4.18.1
 
-These packages each contain the following license:
+This package contains the following license:
 
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
