@@ -42,6 +42,7 @@ def command(
         args,
         cwd=cwd,
         text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -260,11 +261,13 @@ def first_parent_commits(repo: Path, base: str, target: str) -> list[dict[str, s
 
 
 def tool_version(executable: str, args: list[str] | None = None) -> str | None:
-    if shutil.which(executable) is None:
+    resolved = shutil.which(executable)
+    if resolved is None:
         return None
     result = subprocess.run(
-        [executable, *(args or ["--version"])],
+        [resolved, *(args or ["--version"])],
         text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
