@@ -91,13 +91,16 @@ fn newly_cataloged_host_options_change_effective_security_policy() {
 }
 
 fn list_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
+    // Generated reference SVGs and temporary/private trees are not authored source fixtures.
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         if dir
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|name| name.starts_with('_'))
+            .is_some_and(|name| {
+                name.starts_with('_') || name.starts_with('.') || name == "upstream-svgs"
+            })
         {
             continue;
         }
@@ -110,7 +113,9 @@ fn list_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
                 if path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .is_some_and(|name| name.starts_with('_'))
+                    .is_some_and(|name| {
+                        name.starts_with('_') || name.starts_with('.') || name == "upstream-svgs"
+                    })
                 {
                     continue;
                 }
