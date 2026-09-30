@@ -6,6 +6,8 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
+This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+
 ## Source Feature Migration
 
 The current checkout keeps empty default features and adds positive `diagram-*` selectors.
@@ -15,8 +17,7 @@ Select `all-diagrams` to retain every built-in parser, or select only the famili
 merman-core = { path = "../merman/crates/merman-core", default-features = false, features = ["diagram-gantt"] }
 ```
 
-This source recipe requires the selector change; the published alpha.6 command below retains its
-original behavior. Family-exclusive typed models and enum variants are conditional. The complete
+Family-exclusive typed models and enum variants are conditional. The complete
 identity catalog still recognizes disabled families, whose strict parse returns
 `UnsupportedDiagram`. `supported_diagrams()` enumerates compiled parsers;
 `diagram_family_capabilities()` retains complete identities with actual implementation flags.
@@ -25,10 +26,10 @@ suppression, and Cargo feature-unification rules.
 
 ## Quick Start
 
-Add the exact alpha.6 prerelease:
+Add the exact alpha.7 prerelease with all built-in parsers:
 
 ```sh
-cargo add merman-core@0.8.0-alpha.6
+cargo add merman-core@=0.8.0-alpha.7 --features all-diagrams
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:

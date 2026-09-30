@@ -11,13 +11,15 @@ code actions, symbols, and folding. Syntax highlighting uses the canonical
 [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
 for an integrated editor experience.
 
+This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation; use the matching source checkout until alpha.7 is available on the selected channel.
+
 ## Install The Stdio Server
 
 The crate defaults to a protocol-neutral Rust library. Enable `stdio` when installing the bundled language-server executable:
 
 ```sh
-cargo install merman-lsp --version 0.8.0-alpha.6 --locked \
-  --no-default-features --features stdio
+cargo install merman-lsp --version 0.8.0-alpha.7 --locked \
+  --no-default-features --features all-diagrams,stdio
 ```
 
 Configure an editor or LSP client to launch:
@@ -28,8 +30,7 @@ merman-lsp
 
 The server communicates over standard input and output. Logs go to standard error, so protocol messages remain isolated.
 
-For repository development, select families explicitly; the published alpha.6 install above
-predates these selectors. Defaults remain empty. Replace `all-diagrams` with the required
+For repository development, select families explicitly. Defaults remain empty. Replace `all-diagrams` with the required
 `diagram-*` selectors for a narrower source build:
 
 ```sh
@@ -83,7 +84,7 @@ defaults, not an independent accepted-shape definition.
 
 ```toml
 [dependencies]
-merman-lsp = { version = "=0.8.0-alpha.6", default-features = false }
+merman-lsp = { version = "=0.8.0-alpha.7", default-features = false, features = ["all-diagrams"] }
 ```
 
 The embedding boundary deliberately uses the same JSON-RPC and service types as `tower-lsp-server`. Declare those transport dependencies directly so Cargo resolves the traits and request types used by the host:
@@ -143,7 +144,7 @@ LSP analysis uses deterministic runtime state. Initialization and workspace sett
 
 The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `2`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
 
-When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates are offered only for compiled parsers. Direct source dependencies must select `all-diagrams` or their required families; published alpha.6 dependency snippets retain the old implicit parser surface.
+When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates are offered only for compiled parsers. Direct source dependencies must select `all-diagrams` or their required families. Alpha.6 packages predate these selectors.
 
 ## Related Documentation
 

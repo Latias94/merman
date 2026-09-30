@@ -4,11 +4,21 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0a7] - Unreleased
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
 
 ### Breaking changes
 
-- Advance the direct UniFFI binding API to `7`. Schema-3 ASCII output plans add the requested layout profile and whether Compact was attempted. Regenerate bindings and the native library together, and use `binding_api_version_v7()` to reject stale record layouts.
+- Added opt-in `auto` ASCII layout for bounded Flowchart and Sequence output, with a Compact retry before overflow handling. ASCII output reports now use schema `3`; update custom decoders for requested/effective layout and Compact-attempt fields.
+- Direct UniFFI binding API advances to `7`. Regenerate Python wrappers and the native library together; use `binding_api_version_v7()` to reject stale record layouts. The generic request remains `MermanOperationRequestV4`.
 
 ## [0.8.0a6] - 2026-09-02
 

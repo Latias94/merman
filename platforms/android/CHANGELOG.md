@@ -4,6 +4,22 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.8.0-alpha.7] - Unreleased
+
+### Added
+
+- Added Mermaid 12 Agentflow and Usecase parsing and SVG rendering. Agentflow follows upstream beta syntax; neither family supports ASCII output.
+
+### Changed
+
+- Updated the engine from Mermaid 11.17.2 to 12.0.0, including ELK layout defaults and the new theme/look defaults for supported families. Refresh SVG snapshots; use top-level `layout: dagre`, `theme: default`, and `look: classic` when the previous presentation is needed. The bundled artifact already included ELK and retains its EPL-2.0 notices.
+- Safe diagram-local theme variables and fonts are admitted from frontmatter and directives while host security policy remains authoritative.
+
+### Breaking changes
+
+- Added opt-in `auto` ASCII layout for bounded Flowchart and Sequence output, with a Compact retry before overflow handling. ASCII output reports now use schema `3`; update custom decoders for requested/effective layout and Compact-attempt fields.
+- Ship the Kotlin classes and native slices from the same AAR. JNI transport API remains `2`; custom ASCII JSON consumers must still adopt the new report schema.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching Android AAR was attached to the GitHub Release on 2026-09-04.

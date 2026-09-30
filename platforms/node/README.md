@@ -16,7 +16,7 @@ alpha releases remain intentionally experimental.
 npm install @mermanjs/node@alpha
 ```
 
-When validating alpha.6 from source, pin the exact commit accepted by release preflight rather than a moving branch.
+This source checkout prepares `0.8.0-alpha.7` with Mermaid 12 and Agentflow/Usecase support. The alpha.6 package does not contain those changes; see the [package changelog](CHANGELOG.md). For source validation, use the exact reviewed commit rather than a moving branch.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";

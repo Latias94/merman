@@ -8,13 +8,11 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-The current-source family selectors are not present in published alpha.6 packages. Check out a
-commit containing this migration and use the local facade for reproducible source integrations.
-Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
+This guide targets the `0.8.0-alpha.7` candidate. Alpha.6 remains the published baseline during preparation and predates the family selectors; use a matching source checkout until alpha.7 is available. Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
 
 ```toml
 [dependencies]
-merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["all-diagrams", "analysis", "editor"] }
+merman = { version = "=0.8.0-alpha.7", default-features = false, features = ["all-diagrams", "analysis", "editor"] }
 ```
 
 ```rust

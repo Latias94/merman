@@ -22,7 +22,7 @@ grammar and query package for Rust, Node.js, browser Workers, and editor integra
 
 The published `0.8.0-alpha.6` follows `mermaid@11.17.2`. This source checkout for the planned
 `0.8.0-alpha.7` follows `mermaid@12.0.0`. Parser, layout, configuration, theming, sanitization,
-and SVG structure are checked against the selected pinned Mermaid source and fixtures.
+and SVG structure are checked against the selected pinned Mermaid source and fixtures. Alpha.7 is planned as the final alpha in the 0.8.0 cycle; see the [upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) for the new defaults and deferred theme refactor.
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
@@ -32,6 +32,8 @@ and SVG structure are checked against the selected pinned Mermaid source and fix
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
 ## Quick start
+
+The release-facing Rust dependency is `merman = "=0.8.0-alpha.7"`. During preparation, use the source checkout for this candidate; the published alpha.6 package has its own tagged documentation.
 
 Run the maintained SVG example from a source checkout:
 

@@ -16,7 +16,7 @@ the Dart facade with its native libraries:
 flutter pub add 'merman:0.8.0-alpha.6'
 ```
 
-For alpha.6 source development, check out the exact commit accepted by release preflight and use a local path dependency:
+This source checkout prepares `0.8.0-alpha.7`, including Mermaid 12 and schema-3 ASCII output; the published alpha.6 package has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
 
 ```yaml
 dependencies:

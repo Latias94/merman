@@ -62,13 +62,14 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 
 Class ELK entry-point coverage:
 
-- Mermaid 12 defaults and explicit `layout: elk` / `class.defaultRenderer: elk` requests
+- Mermaid 12 defaults and explicit `layout: elk` requests
   dispatch through the feature-gated Class ELK adapter under `layout-elk`. The selected
   standard Mermaid runtime owns ELK; no legacy external layout registration is installed.
+  Obsolete `class.defaultRenderer` values no longer select a detector or layout;
+  `syntax_aliases_detect_independently_of_obsolete_renderer_selectors` covers that boundary.
   The shared painter emits `root` containing `edgePaths edges`, `clusters`, `edgeLabels`,
   and `nodes` in that order, with the common Mermaid 12 marker definitions.
-  `render_model_dispatch_uses_elk_for_class_layout_config`,
-  `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
+  `render_model_dispatch_uses_elk_for_class_layout_config` and
   `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered
   namespaces, styles, links, notes, relation labels, and cardinality terminals.
   `class_svg_elk_layout_uses_common_painter_dom` and
