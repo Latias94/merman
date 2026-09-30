@@ -327,6 +327,7 @@
     "svgBounds": "Show SVG Bounds"
   },
   "status": {
+    "renderingStatus": "Rendering status",
     "diagramType": "Type",
     "lines": "Lines",
     "chars": "Chars",

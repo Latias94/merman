@@ -327,6 +327,7 @@
     "svgBounds": "显示 SVG 边界"
   },
   "status": {
+    "renderingStatus": "渲染状态",
     "diagramType": "类型",
     "lines": "行数",
     "chars": "字符",

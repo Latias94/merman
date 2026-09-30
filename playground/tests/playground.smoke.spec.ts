@@ -42,6 +42,35 @@ test("loads the production WASM and renders a safe SVG", async ({ page }, testIn
   errors.assertNone();
 });
 
+test("rendering status remains reachable and horizontally scrollable by keyboard", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+  const status = page.getByRole("region", { name: "Rendering status" });
+  await expect(status).toBeVisible();
+  // Enlarged text makes overflow deterministic across Windows/Linux fonts and
+  // exercises the same scrolling required by users with larger text settings.
+  await page.addStyleTag({ content: "html { font-size: 200%; }" });
+  await expect.poll(() => status.evaluate((element) =>
+    element.scrollWidth > element.clientWidth,
+  )).toBe(true);
+
+  // The footer follows the editor and preview controls in document tab order.
+  // Start from the region, leave it, and return using the keyboard to prove it
+  // participates in navigation rather than only accepting programmatic focus.
+  await status.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(status).not.toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(status).toBeFocused();
+  const initialScrollLeft = await status.evaluate((element) => element.scrollLeft);
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => status.evaluate((element) => element.scrollLeft)).toBeGreaterThan(initialScrollLeft);
+  const scrolledRight = await status.evaluate((element) => element.scrollLeft);
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => status.evaluate((element) => element.scrollLeft)).toBeLessThan(scrolledRight);
+});
+
 test("editing the source publishes the matching SVG without page overflow", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
