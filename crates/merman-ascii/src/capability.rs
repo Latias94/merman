@@ -987,7 +987,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(capabilities.len(), 32);
+        assert_eq!(capabilities.len(), 34);
         assert_eq!(capability_types.len(), capabilities.len());
         assert_eq!(capability_types, core_types);
         assert!(!capability_types.contains("error"));

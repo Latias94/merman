@@ -4,8 +4,8 @@
     "mermaid": {
       "path": "repo-ref/mermaid",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@11.17.2",
-      "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3"
+      "ref": "mermaid@12.0.0",
+      "commit": "98a0945418c76238f15df2afaddbba4272656c3b"
     },
     "monaqa-tree-sitter-mermaid": {
       "path": "repo-ref/tree-sitter-mermaid-monaqa",
@@ -112,8 +112,8 @@
     "dompurify": {
       "path": "repo-ref/dompurify",
       "url": "https://github.com/cure53/DOMPurify.git",
-      "ref": "3.4.13",
-      "commit": "3067f774676975de12306effd6db6ad7a9a8c17f"
+      "ref": "3.4.15",
+      "commit": "1d7460c4f8a27be825c11b1c9d346d79db32c1e5"
     },
     "sanitize-url": {
       "path": "repo-ref/sanitize-url",

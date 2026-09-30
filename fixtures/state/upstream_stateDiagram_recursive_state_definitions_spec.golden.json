@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": 0,
+        "wrappingWidth": 120,
+        "minWidth": null,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "Configuring",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -56,8 +62,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "Configuring",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -75,8 +84,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "Configuring",
+        "colorIndex": 1,
+        "wrappingWidth": 120,
+        "minWidth": null,
         "centerLabel": true
       },
       {
@@ -94,8 +106,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "NewValuePreview",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -113,8 +128,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "NewValuePreview",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -124,80 +142,80 @@
         "start": "Configuring_start",
         "end": "NewValueSelection",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "NewValueSelection",
         "end": "NewValuePreview",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvNewValue",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "NewValuePreview",
         "end": "NewValueSelection",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvNewValueRejected",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "NewValuePreview",
         "end": "NewValueSelection",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvNewValueSaved",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge4",
         "start": "State1",
         "end": "State2",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},

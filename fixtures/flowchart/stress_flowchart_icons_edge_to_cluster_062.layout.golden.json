@@ -4,36 +4,36 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "Cluster",
+          "x": 406.219,
+          "y": 118.0,
+          "width": 200.0,
+          "height": 212.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Outside",
+          "x": 88.0,
+          "y": 130.0,
+          "width": 152.0,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
           "id": "X",
-          "x": 325.656,
-          "y": 70.0,
-          "width": 126.563,
-          "height": 54.0,
+          "x": 406.219,
+          "y": 82.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "Y",
-          "x": 325.656,
-          "y": 174.0,
-          "width": 126.563,
-          "height": 54.0,
+          "x": 406.219,
+          "y": 177.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
-        },
-        {
-          "id": "Outside",
-          "x": 67.844,
-          "y": 122.0,
-          "width": 119.688,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Cluster",
-          "x": 325.656,
-          "y": 122.0,
-          "width": 176.563,
-          "height": 228.0,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -45,27 +45,31 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 127.393,
-              "y": 95.0
+              "x": 164.0,
+              "y": 125.833
             },
             {
-              "x": 182.531,
-              "y": 70.0
+              "x": 184.0,
+              "y": 125.833
             },
             {
-              "x": 237.375,
-              "y": 70.0
+              "x": 184.0,
+              "y": 82.5
             },
             {
-              "x": 262.375,
-              "y": 70.0
+              "x": 296.219,
+              "y": 82.5
+            },
+            {
+              "x": 330.219,
+              "y": 82.5
             }
           ],
           "label": {
-            "x": 182.531,
-            "y": 70.0,
-            "width": 59.688,
-            "height": 24.0
+            "x": 230.109,
+            "y": 82.5,
+            "width": 52.219,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -83,27 +87,31 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 127.393,
-              "y": 149.0
+              "x": 164.0,
+              "y": 134.167
             },
             {
-              "x": 182.531,
-              "y": 174.0
+              "x": 184.0,
+              "y": 134.167
             },
             {
-              "x": 237.375,
-              "y": 174.0
+              "x": 184.0,
+              "y": 177.5
             },
             {
-              "x": 262.375,
-              "y": 174.0
+              "x": 296.219,
+              "y": 177.5
+            },
+            {
+              "x": 330.219,
+              "y": 177.5
             }
           ],
           "label": {
-            "x": 182.531,
-            "y": 174.0,
-            "width": 59.688,
-            "height": 24.0
+            "x": 230.109,
+            "y": 177.5,
+            "width": 52.219,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -117,31 +125,31 @@
       "clusters": [
         {
           "id": "Cluster",
-          "x": 325.656,
-          "y": 122.0,
-          "width": 176.563,
-          "height": 228.0,
+          "x": 406.219,
+          "y": 118.0,
+          "width": 200.0,
+          "height": 212.0,
           "diff": -4.0,
-          "offset_y": 20.0,
+          "offset_y": 15.0,
           "title": "Cluster fa:fa-cubes",
           "title_label": {
-            "x": 325.656,
-            "y": 20.0,
-            "width": 73.766,
-            "height": 24.0
+            "x": 406.219,
+            "y": 21.5,
+            "width": 64.547,
+            "height": 19.0
           },
           "requested_dir": null,
-          "effective_dir": "TB",
+          "effective_dir": "LR",
           "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 413.938,
-        "max_y": 236.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 506.219,
+        "max_y": 224.0
       }
     }
   }

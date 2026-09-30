@@ -334,6 +334,31 @@ fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
     }
 }
 
+fn state_rounded_end_marker_offset_points(
+    input: &[crate::model::LayoutPoint],
+    arrow_type_end: Option<&str>,
+) -> Vec<crate::model::LayoutPoint> {
+    let Some(offset) = state_marker_offset_for(arrow_type_end) else {
+        return input.to_vec();
+    };
+    if input.len() < 2 {
+        return input.to_vec();
+    }
+
+    // Mermaid's rounded-edge branch applies markerOffsets to the terminal point
+    // before generating the rounded path. It moves only that point; the linear
+    // branch below additionally handles short terminal stubs.
+    let mut out = input.to_vec();
+    let end = &input[input.len() - 1];
+    let previous = &input[input.len() - 2];
+    let angle = (end.y - previous.y).atan2(end.x - previous.x);
+    out[input.len() - 1] = crate::model::LayoutPoint {
+        x: end.x - offset * angle.cos(),
+        y: end.y - offset * angle.sin(),
+    };
+    out
+}
+
 fn state_line_with_end_marker_offset_points(
     input: &[crate::model::LayoutPoint],
     arrow_type_end: Option<&str>,
@@ -396,8 +421,8 @@ fn state_line_with_end_marker_offset_points(
     out
 }
 
-struct StatePreparedEdgeGeometry {
-    data_points: Vec<crate::model::LayoutPoint>,
+pub(super) struct StatePreparedEdgeGeometry {
+    pub(super) data_points: Vec<crate::model::LayoutPoint>,
     label_path_points: Vec<crate::model::LayoutPoint>,
     rendered_d: String,
     points_were_explicitly_updated: bool,
@@ -427,13 +452,47 @@ fn state_edge_finish_geometry(
     }
 }
 
-fn state_edge_prepare_geometry(
+pub(super) fn state_edge_prepare_geometry(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
 ) -> StatePreparedEdgeGeometry {
+    if ctx.uses_elk_adapter_dom {
+        let points = ctx
+            .elk_edge_paths
+            .get(&le.id)
+            .map(Vec::as_slice)
+            .unwrap_or(&le.points);
+        let data_points: Vec<_> = points
+            .iter()
+            .map(|point| crate::model::LayoutPoint {
+                x: point.x - origin_x,
+                y: point.y - origin_y,
+            })
+            .collect();
+        let curve = if le.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        };
+        let mut curve_points = data_points.clone();
+        let marker_end = if curve == "rounded" {
+            curve_points = state_rounded_end_marker_offset_points(&curve_points, arrow_type_end);
+            None
+        } else {
+            arrow_type_end
+        };
+        let rendered_d =
+            super::super::edge_path::render_path(&mut curve_points, curve, None, marker_end);
+        return StatePreparedEdgeGeometry {
+            label_path_points: data_points.clone(),
+            data_points,
+            rendered_d,
+            points_were_explicitly_updated: false,
+        };
+    }
     let mut raw_local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         raw_local_points.push(crate::model::LayoutPoint {
@@ -488,19 +547,42 @@ fn write_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    if le.points.len() < 2 {
+    if !ctx.uses_elk_adapter_dom && le.points.len() < 2 {
         return;
     }
 
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+    let rendered_d = ctx
+        .elk_line_hop_paths
+        .get(edge_id)
+        .map(String::as_str)
+        .unwrap_or(geometry.rendered_d.as_str());
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-        geometry.rendered_d,
+        r#"<path d="{}" id="{}" class="{}" style=""#,
+        rendered_d,
         state_scoped_dom_id(ctx, edge_id),
         escape_xml_display(classes),
+    );
+    if state_data_look(ctx) == "neo"
+        && let Some(length) = super::super::svg_path_length_from_d(rendered_d)
+    {
+        super::super::edge_path::write_neo_edge_mask(
+            out,
+            length,
+            None,
+            arrow_type_end,
+            classes
+                .split_whitespace()
+                .any(|class| class == "edge-pattern-dashed"),
+            false,
+        );
+    }
+    let _ = write!(
+        out,
+        r#"fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         escape_xml_display(edge_id),
         data_points,
         escape_xml_display(state_data_look(ctx))
@@ -518,7 +600,16 @@ pub(super) fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
+    let mut classes = if ctx.uses_elk_adapter_dom
+        && edge
+            .classes
+            .split_whitespace()
+            .any(|class| class == "note-edge")
+    {
+        "edge-thickness-normal edge-pattern-dashed".to_string()
+    } else {
+        "edge-thickness-normal edge-pattern-solid".to_string()
+    };
     for c in edge.classes.split_whitespace() {
         if c.trim().is_empty() {
             continue;
@@ -529,7 +620,15 @@ pub(super) fn render_state_edge_path(
 
     let marker_end = match edge.arrow_type_end.trim() {
         "arrow_barb" | "arrow_barb_neo" => {
-            Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))
+            let suffix = if state_data_look(ctx) == "neo" {
+                "-margin"
+            } else {
+                ""
+            };
+            Some(format!(
+                "url(#{}_stateDiagram-barbEnd{suffix})",
+                ctx.diagram_id
+            ))
         }
         _ => None,
     };
@@ -636,17 +735,20 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    let empty_edge_label_style = edge_label_div_style(0.0);
-    let label_text = edge.label.trim();
-    if label_text.is_empty() {
-        write_empty_edge_label(
-            out,
-            &edge.id,
-            ctx.html_labels,
-            empty_edge_label_style.as_str(),
-        );
+    if edge.label.is_empty() {
+        // ELK uses the common renderer's hasEdgeLabel gate; Dagre's recursive renderer
+        // still inserts an empty label group for every edge.
+        if !ctx.uses_elk_adapter_dom {
+            write_empty_edge_label(out, &edge.id, ctx.html_labels, &edge_label_div_style(0.0));
+        }
         return;
     }
+    let label_text = if ctx.uses_elk_adapter_dom {
+        crate::text::mermaid_html_breaks_to_newlines(&edge.label)
+    } else {
+        std::borrow::Cow::Borrowed(edge.label.as_str())
+    };
+    let label_text = label_text.trim();
 
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
         return;
@@ -688,6 +790,23 @@ pub(super) fn render_state_edge_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_rounded_end_marker_offset_moves_only_the_terminal_point() {
+        let input = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 0.0, y: 20.0 },
+            crate::model::LayoutPoint { x: 20.0, y: 20.0 },
+        ];
+
+        let output = state_rounded_end_marker_offset_points(&input, Some("arrow_barb_neo"));
+
+        assert_eq!(output.len(), input.len());
+        assert_eq!((output[0].x, output[0].y), (0.0, 0.0));
+        assert_eq!((output[1].x, output[1].y), (0.0, 20.0));
+        assert!((output[2].x - 14.5).abs() <= 1e-9);
+        assert!((output[2].y - 20.0).abs() <= 1e-9);
+    }
 
     #[test]
     fn state_line_with_end_marker_offset_shortens_neo_barb_terminal_point() {

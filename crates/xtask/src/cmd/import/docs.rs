@@ -604,62 +604,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         ));
     }
 
-    fn deferred_with_baselines_reason(
-        diagram_dir: &str,
-        stem: &str,
-        fixture_text: &str,
-    ) -> Option<&'static str> {
-        // Keep `--with-baselines` aligned with the current parity hardening scope.
-        //
-        // Some examples require upstream (browser) features we have not yet replicated in the
-        // headless pipeline. Import them later in dedicated parity work items (tracked in
-        // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
-        match diagram_dir {
-            "flowchart" => {
-                // Flowchart-ELK has a lightweight renderer path, but upstream SVG parity is tracked
-                // by the dedicated ELK layout lane.
-                if fixture_text.trim_start().starts_with("flowchart-elk")
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-                if (fixture_text.contains("\n  layout: elk")
-                    || fixture_text.contains("\nlayout: elk"))
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
-                {
-                    return Some(reason);
-                }
-                // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
-                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
-                    && !fixture_text.contains("\n  look: classic")
-                    && !fixture_text.contains("\nlook: classic")
-                {
-                    return Some("flowchart frontmatter config.look!=classic (deferred)");
-                }
-                // Math rendering depends on browser KaTeX + foreignObject details.
-                if fixture_text.contains("$$") {
-                    return Some("flowchart math (deferred)");
-                }
-            }
-            "gantt"
-                // Gantt + YAML frontmatter config is still drifting vs upstream (notably axis ticks).
-                // Import later once the renderer is aligned for these cases.
-                if fixture_text.starts_with("---\n")
-                    && fixture_text.contains("\n---\n")
-                    && fixture_text.contains("\ngantt:")
-                => {
-                    return Some("gantt frontmatter config (deferred)");
-                }
-            "sequence"
-                // Math rendering depends on browser KaTeX + font metrics.
-                if fixture_text.contains("$$") => {
-                    return Some("sequence math (deferred)");
-                }
-            _ => {}
-        }
-        None
-    }
-
     fn is_suspicious_blank_svg(svg_path: &Path) -> Result<bool, XtaskError> {
         // Mermaid CLI often emits a tiny 16x16 SVG for "empty" diagrams (e.g. `graph LR` with
         // no nodes/edges). These are usually unhelpful as parity fixtures and tend to create
@@ -849,7 +793,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 
         // `--with-baselines`: treat `--limit` as the number of fixtures that survive upstream
         // rendering + snapshot updates (instead of the number of files written).
-        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &f.stem, &c.body) {
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &c.body) {
             report_lines.push(format!(
                 "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\treason={reason}",
                 f.diagram_dir,
@@ -1098,17 +1042,80 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
     Ok(())
 }
 
+fn deferred_with_baselines_reason(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+    // Keep `--with-baselines` aligned with the current parity hardening scope.
+    //
+    // Some examples require upstream (browser) features we have not yet replicated in the
+    // headless pipeline. Import them later in dedicated parity work items (tracked in
+    // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
+    match diagram_dir {
+        "flowchart" => {
+            // Explicit neo is the Mermaid 12 default appearance. Retain this
+            // import lane's existing hand-drawn/unknown-look restriction.
+            if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                && !matches!(look.as_str(), "classic" | "neo")
+            {
+                return Some("flowchart frontmatter config.look unsupported (deferred)");
+            }
+            // Math rendering depends on browser KaTeX + foreignObject details.
+            if fixture_text.contains("$$") {
+                return Some("flowchart math (deferred)");
+            }
+        }
+        "gantt"
+            // Gantt + YAML frontmatter config is still drifting vs upstream (notably axis ticks).
+            // Import later once the renderer is aligned for these cases.
+            if fixture_text.starts_with("---\n")
+                && fixture_text.contains("\n---\n")
+                && fixture_text.contains("\ngantt:")
+            => {
+                return Some("gantt frontmatter config (deferred)");
+            }
+        "sequence"
+            // Math rendering depends on browser KaTeX + font metrics.
+            if fixture_text.contains("$$") => {
+                return Some("sequence math (deferred)");
+            }
+        _ => {}
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
     #[test]
+    fn mermaid_12_import_admits_default_explicit_elk_and_neo() {
+        for source in [
+            "flowchart TD\nA --> B\n",
+            "flowchart-elk TD\nA --> B\n",
+            "---\nconfig:\n  layout: elk\n  look: neo\n---\nflowchart TD\nA --> B\n",
+        ] {
+            assert_eq!(
+                super::deferred_with_baselines_reason("flowchart", source),
+                None
+            );
+        }
+        assert!(
+            super::deferred_with_baselines_reason("sequence", "sequenceDiagram\nA->>B: $$x$$\n")
+                .is_some()
+        );
+        assert!(
+            super::deferred_with_baselines_reason(
+                "flowchart",
+                "---\nconfig:\n  look: handDrawn\n---\nflowchart TD\nA --> B\n"
+            )
+            .is_some()
+        );
+    }
+    #[test]
     fn upstream_doc_routes_cover_every_documented_supported_family() {
         let expected = merman_core::supported_diagrams()
             .iter()
             .copied()
-            .filter(|diagram| *diagram != "info")
+            .filter(|diagram| !matches!(*diagram, "info" | "agentflow" | "usecase"))
             .collect::<BTreeSet<_>>();
         let actual = UPSTREAM_DOCS_BY_DIAGRAM
             .iter()

@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
+    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,67 +44,67 @@
   "fixtures": {
     "upstream_cypress_ishikawa_spec_10_should_render_when_usemaxwidth_is_true_010": {
       "input_sha256": "3d710fba8566b5a0aca86909d38273bdce2cc95b939a6e6199e155f69983bcb5",
-      "svg_sha256": "fe433199973cd968159dda3234064655c477f996dc0525d8d9f5c4e8efce609a",
+      "svg_sha256": "f636554198dcac40e784cb803fd2413a7c275196612f87d9d8aadb3afe94811c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_11_should_render_when_usemaxwidth_is_false_011": {
       "input_sha256": "d10a4f9fdc72b234feb801aa10ddc72947703e9a0746f437399b0e441d1f4232",
-      "svg_sha256": "6ee24738f5316806b63d53085644df816b3a8c9afeb39a5a70cd283386ae20b7",
+      "svg_sha256": "b2923426201b85b14d990fb1dd80152c4b94aafb8d4600d859283f8f306d8833",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_12_should_render_correctly_when_effect_is_indented_more_than_cau_010": {
       "input_sha256": "8e34129cd5ccde3e8bcdc3a3ce4f6a22c550f81a0afac1b8867a90dbf3e70600",
-      "svg_sha256": "61e70f06fee6a9dc75883eef941750cba6335f53052f07d1f6263de4c3a5fa48",
+      "svg_sha256": "91c61c0bf76fb36ceeb7b9ee81466b905c7fe4b820b06ef2f5e2c2897206205b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001": {
       "input_sha256": "45c4f88f488d8549827730363eb5108614da79026feeb859469e02127f7c0c40",
-      "svg_sha256": "ccfdb5e7133c86499ee9590257b3f6d63361473b7307a8cfbfa5ff4365e45a30",
+      "svg_sha256": "2dcd75b12a4a8ffc9e73ec01806180c03c739d2c18b4f6c9095d09a8cc65ac06",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_2_should_render_with_many_causes_on_both_sides_002": {
       "input_sha256": "88d704d48c9ea6f7c811ec2052e4091c879163cd07c807e49d94250946a59040",
-      "svg_sha256": "325a25456698350364f4b9bba888f931ed8e1bc64bfee4388f9f1c7313da838f",
+      "svg_sha256": "e0472eab5991246003954de97a83b642fef62ee7eebdd6095ef5f295df93dfad",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003": {
       "input_sha256": "9de6da366f3aa31479d050f6c8f1906d12c20107368ceb4c1035cd291a9edd64",
-      "svg_sha256": "662651ffed86ce4af857ce2003f032d0421427714f00289ca55d4abdb9107f51",
+      "svg_sha256": "156103b55121214b109f43dfea7e6a50c57e690d0dda225566d883c7862d54e8",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004": {
       "input_sha256": "a2b7306719475b687ba2ed7202c6db0c1a68602494b8cc3d957c5ab62f38a5db",
-      "svg_sha256": "05de10f8a7575f9a9b744405402780d452b10937fc7cc3e642bbcd248d368b7a",
+      "svg_sha256": "b6aa91be57cbc989a431aea3ea37866669d8c2c6726032ed3d9f21d3aba503bd",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005": {
       "input_sha256": "604bf5c9793a8174d6963ffda031f0b5ffd2c1bcf5daa8a8b432bcdfe958ca06",
-      "svg_sha256": "67bfe4fe0c6900f0fd09cf76766cf6e89dec39a197f0c14bb4faddb13ce76eca",
+      "svg_sha256": "56d85d963a97f9d2dc75e9902af27913a026d0fe1e0971bcd7552f425081576e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_6_should_render_with_handdrawn_look_006": {
       "input_sha256": "4c2718ba5e4e6f4718add3f7ff2415b9d72ab7e10bd8d154b7572b74e329c5c8",
-      "svg_sha256": "86f3c58737252e9bf3415e0866aec1c4796a2a5f324d01cc19dd6049a2845014",
+      "svg_sha256": "ec7bf33033409f5e1ee5499df9cb0d9253e006d35b6e99becd02e7ddd8691a77",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_7_should_render_with_forest_theme_007": {
       "input_sha256": "20a995efaea7651035bdde2a5d6cd898bd6aa4b59792c47b8aa8618a34d4d6da",
-      "svg_sha256": "c4b4d31baf74def753d53357d9e099f9905a4414d198017d6688b760bfe46427",
+      "svg_sha256": "5c1d0fea71784a7497cf02f4d3a5bf063cd9d17b797f436d0abf228194cfeb4e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_8_should_render_with_dark_theme_008": {
       "input_sha256": "90ba582c003b37554d08486c2f3410ad5da8524b9e5d77f37b5f161e5b41ac03",
-      "svg_sha256": "3f74dd7ca0d69bdecd55580e6fb75d9adc5ce89f0fbf09fd3a5b1c95bfd46206",
+      "svg_sha256": "951b1e486df06f3c127a588a98f26bb7db2ad2829805444912782e2a253cf0aa",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_ishikawa_spec_9_should_render_with_custom_diagrampadding_009": {
       "input_sha256": "459f6369376ed1474a31e53f84f0ac6097770be33fd8ab53f19340c128744152",
-      "svg_sha256": "6d7dce06551c5cc04fd68a245f30c0245b40171ff9b8c373061a13d52ecf2d97",
+      "svg_sha256": "8160773f0f8c993673399342429ab3341e43f356240e3c2d04c3560206c60212",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_ishikawa_basic": {
       "input_sha256": "b3ea7b01b554303df1a9a770154f4c9c2481fc734f9ccd6fa31857f3cb576c61",
-      "svg_sha256": "1a13263345ac71925456b8f5af10d73c9e888e8538d19ca3689422a9d4cc327b",
+      "svg_sha256": "ac295c84b4e2868c3534e3484fce79ecab029989c6f940d58a0a0465958abcc8",
       "renderer_profile": "mmdc-default"
     }
   },

@@ -89,6 +89,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
         let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
         let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+        // createText switches the max-width-constrained HTML cell to a wrapping
+        // table when its measured box reaches that width. The background padding
+        // participates in this decision; nowrap would paint outside the measured box.
+        let wraps_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
+            && label_bbox_w >= ctx.wrapping_width;
+        let label_div_style = if wraps_label {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;",
+                width = fmt_display(ctx.wrapping_width),
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt_display(ctx.wrapping_width),
+            )
+        };
 
         let outer_w = image_width.max(label_bbox_w);
         let outer_h = image_height + label_bbox_h + label_padding;
@@ -177,8 +193,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 r#"<rect/>"#,
                 r#"<foreignObject width="{}" height="{}"{}>"#,
                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
-                r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
-                r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
+                r#"style="{}"><span class="{}">{}</span></div>"#,
                 r#"</foreignObject></g>"#
             ),
             fmt_display(-label_bbox_w / 2.0),
@@ -186,7 +201,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             fmt_display(label_bbox_w),
             fmt_display(label_bbox_h),
             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            fmt_display(ctx.wrapping_width),
+            escape_xml_display(&label_div_style),
             super::super::helpers::flowchart_node_label_span_class(label.label_type),
             label_html
         );

@@ -13,7 +13,8 @@ mod css;
 use css::class_css;
 
 mod defs;
-use defs::{ClassMarkerProfile, class_markers, push_class_gradient, push_class_shadow_defs};
+use super::look_defs::{push_look_gradient, push_look_shadow_defs};
+use defs::class_markers;
 
 mod edge;
 

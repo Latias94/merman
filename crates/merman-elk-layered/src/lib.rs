@@ -6,7 +6,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/IntermediateProcessorStrategy.java
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph
 
+pub mod algorithms;
 mod common;
+mod components;
 mod compound;
 mod configurator;
 mod graph;
@@ -29,6 +31,9 @@ mod work;
 // execute it: they configure the graph first and either fail closed or resolve it from an
 // operation-owned seed. Keep phase helpers crate-private even when they are useful for parity
 // work; diagnostics must go through the guarded pipeline APIs below.
+pub use common::networksimplex::NetworkSimplexError;
+pub use common::nodespacing::inside_top_center_micro_layout;
+pub use components::ComponentError;
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,
@@ -48,12 +53,14 @@ pub use importer::{
 };
 pub use intermediate::IntermediateError;
 pub use options::{
-    Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
-    ElkDirection, ElkPadding, FixedAlignment, GreedySwitchType, HierarchyHandling, LayerConstraint,
-    LayeredOptions, LongEdgeOrderingStrategy, NodeLabelPlacement, NodePlacementStrategy,
-    OrderingStrategy, PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy,
-    SelfLoopOrderingStrategy, SpacingOptions,
+    Alignment, ContentAlignment, CycleBreakingStrategy, DirectionCongruency,
+    EdgeLabelSideSelection, EdgeRouting, ElkDirection, ElkPadding, FixedAlignment,
+    GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions, LayeringStrategy,
+    LongEdgeOrderingStrategy, NodeFlexibility, NodeLabelPlacement, NodePlacementStrategy,
+    NodeSizeError, OrderingStrategy, PortAlignment, PortConstraints, PortSortingStrategy,
+    SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, SpacingMargin, SpacingOptions,
 };
+pub use p2layers::LayeringError;
 pub use p3order::sweep::{HierarchySweepDebugTrace, HierarchySweepNodeDebug};
 pub use pipeline::{
     GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,

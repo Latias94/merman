@@ -708,7 +708,7 @@ mod tests {
         let capabilities: Value = serde_json::from_slice(&bytes).unwrap();
         let capabilities = capabilities.as_array().unwrap();
 
-        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capabilities.len(), 34);
         let flowchart = capabilities
             .iter()
             .find(|capability| capability["diagram_type"] == "flowchart")
@@ -994,7 +994,7 @@ mod tests {
             "parser_complete"
         );
         assert_eq!(value["diagrams"][0]["syntax"]["source_mapped_spans"], true);
-        assert_eq!(value["diagrams"][0]["syntax"]["effective_layout"], "dagre");
+        assert_eq!(value["diagrams"][0]["syntax"]["effective_layout"], "elk");
         assert!(
             value["diagrams"][0]["syntax"]["semantic_items"]
                 .as_array()
@@ -1368,7 +1368,7 @@ mod tests {
                 && capability.logical_family_kind == "flowchart"
                 && capability.metadata_id == Some("flowchart")
                 && capability.render_model_kind == Some("flowchart")
-                && capability.has_detector
+                && !capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser
                 && capability.has_combined_parser
@@ -1376,6 +1376,32 @@ mod tests {
                 && !capability.has_header
                 && capability.config_namespace == Some("flowchart")
         }));
+        assert!(capabilities.iter().any(|capability| {
+            capability.diagram_type == "flowchart-v2"
+                && capability.logical_family_kind == "flowchart"
+                && capability.metadata_id == Some("flowchart")
+                && capability.render_model_kind == Some("flowchart")
+                && capability.has_detector
+                && capability.has_header
+        }));
+        for (diagram_type, metadata_id) in [
+            ("agentflow", Some("agentflow")),
+            ("usecase", Some("usecase")),
+        ] {
+            assert!(capabilities.iter().any(|capability| {
+                capability.diagram_type == diagram_type
+                    && capability.logical_family_kind == diagram_type
+                    && capability.metadata_id == metadata_id
+                    && capability.render_model_kind == Some(diagram_type)
+                    && capability.has_detector
+                    && capability.has_semantic_parser
+                    && capability.has_editor_parser
+                    && capability.has_combined_parser
+                    && capability.has_render_parser
+                    && capability.has_header
+                    && capability.config_namespace == Some(diagram_type)
+            }));
+        }
         assert!(
             capabilities
                 .iter()

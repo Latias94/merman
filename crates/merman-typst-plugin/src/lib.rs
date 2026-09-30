@@ -600,9 +600,16 @@ mod tests {
         let svg = payload["data"]["svg"].as_str().expect("SVG payload");
         assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(svg.contains("User"), "{svg}");
+        let user_text_tag = svg
+            .split_once(">User</text>")
+            .expect("class User label")
+            .0
+            .rsplit_once("<text")
+            .expect("class User text element")
+            .1;
         assert!(
-            svg.contains("font-size:16px") || svg.contains("font-size: 16px"),
-            "class fallback typography must survive the Typst transport: {svg}"
+            user_text_tag.contains("font-size:14px") || user_text_tag.contains("font-size: 14px"),
+            "Mermaid 12 redux-color typography must survive on the class label: {user_text_tag}"
         );
     }
 
@@ -630,9 +637,16 @@ mod tests {
         let svg = payload["data"]["svg"].as_str().expect("SVG payload");
         assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(svg.contains("Typst Explicit Sans"), "{svg}");
+        let user_text_tag = svg
+            .split_once(">User</text>")
+            .expect("class User label")
+            .0
+            .rsplit_once("<text")
+            .expect("class User text element")
+            .1;
         assert!(
-            svg.contains("font-size:18px") || svg.contains("font-size: 18px"),
-            "explicit Typst typography must reach the fallback text: {svg}"
+            user_text_tag.contains("font-size:18px") || user_text_tag.contains("font-size: 18px"),
+            "explicit Typst typography must reach the class label: {user_text_tag}"
         );
     }
 

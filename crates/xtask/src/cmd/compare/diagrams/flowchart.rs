@@ -78,7 +78,6 @@ pub(super) fn compare_flowchart_args(
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode = fact.default_dom_mode.to_string();
-    let mut force_elk_fixture: bool = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -134,7 +133,6 @@ pub(super) fn compare_flowchart_args(
                     .map_err(|_| XtaskError::Usage)?
                     .to_string();
             }
-            "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -158,7 +156,6 @@ pub(super) fn compare_flowchart_args(
             upstream_root: upstream_root_arg,
             report_label,
             label_report_limit,
-            force_elk_fixture,
         },
     )
     .map(|_| ())
@@ -177,7 +174,6 @@ pub(super) fn compare_flowchart_request(
             upstream_root: None,
             report_label: false,
             label_report_limit: DEFAULT_LABEL_DELTA_REPORT_LIMIT,
-            force_elk_fixture: false,
         },
     )
 }
@@ -188,7 +184,6 @@ struct FlowchartCompareRequest {
     upstream_root: Option<PathBuf>,
     report_label: bool,
     label_report_limit: LabelDeltaReportLimit,
-    force_elk_fixture: bool,
 }
 
 fn run_flowchart_compare(
@@ -213,7 +208,6 @@ fn run_flowchart_compare_with_math_renderer(
         upstream_root: upstream_root_arg,
         report_label,
         label_report_limit,
-        force_elk_fixture,
     } = request;
     let out_path = common.out_path.clone();
     let filter = common.filter.clone();
@@ -265,7 +259,7 @@ fn run_flowchart_compare_with_math_renderer(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurement: `deterministic`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
+                "- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n- Text measurement: `deterministic`\n- Math renderer: `{}`\n",
                 fact.command,
                 options.dom_plan.label(),
                 options.dom_decimals,
@@ -273,11 +267,6 @@ fn run_flowchart_compare_with_math_renderer(
                     "node-katex"
                 } else {
                     "none"
-                },
-                if force_elk_fixture {
-                    "enabled"
-                } else {
-                    "disabled"
                 }
             );
             write_verification_policy_metadata(
@@ -326,22 +315,8 @@ fn run_flowchart_compare_with_math_renderer(
                         ));
                     }
                 };
-            let flowchart_layout_elk = semantic.metadata().effective_config.get_str("layout")
-                == Some("elk")
-                || semantic
-                    .metadata()
-                    .effective_config
-                    .get_str("flowchart.defaultRenderer")
-                    == Some("elk");
-            if (semantic.metadata().diagram_type == "flowchart-elk" || flowchart_layout_elk)
-                && !crate::cmd::flowchart_elk_svg_parity_admitted(input.stem)
-                && !force_elk_fixture
-                && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(input.stem)
-            {
-                return Ok(CompareFixtureResult::Skipped {
-                    reason: reason.to_string(),
-                });
-            }
+            // The admitted Mermaid 12 baseline owns all default and explicit ELK
+            // fixtures. Historical Cypress collection membership is not a render gate.
             let math_evidence_before = begin_math_evidence(observed_math_renderer.as_deref());
 
             if semantic.semantic_kind() != "flowchart" {
@@ -1171,7 +1146,6 @@ mod tests {
             upstream_root: Some(root.join("upstream")),
             report_label: false,
             label_report_limit: DEFAULT_LABEL_DELTA_REPORT_LIMIT,
-            force_elk_fixture: false,
         }
     }
 
@@ -1372,24 +1346,20 @@ mod tests {
     }
 
     #[test]
-    fn forced_flowchart_elk_fixture_diagnostics_use_the_canonical_layout() {
-        let out_path = crate::cmd::target_root()
-            .join("compare")
-            .join("xtask-tests")
-            .join("flowchart_elk_default_forced.md");
+    fn explicit_elk_compare_is_not_limited_to_historical_collection_members() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        let source = "---\nconfig:\n  layout: elk\n---\nflowchart LR\n  A --> B\n";
+        let upstream = render_plain_flowchart(fact, "explicit_elk", source);
+        write_flowchart_compare_fixture(temp.path(), "explicit_elk", source, &upstream);
 
-        compare_flowchart(vec![
-            "--filter".to_string(),
-            "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
-            "--force-elk-fixture".to_string(),
-            "--out".to_string(),
-            out_path.display().to_string(),
-        ])
-        .expect("forced ELK fixture diagnostics should use the canonical ELK layout");
-
-        let report = std::fs::read_to_string(&out_path).expect("forced report should be written");
-        assert!(report.contains("- Forced ELK fixtures: `enabled`"));
-        assert!(!report.contains("Flowchart ELK backend"));
+        let mut request = flowchart_compare_request(temp.path());
+        request.common.filter = Some("explicit_elk".to_string());
+        let evidence = run_flowchart_compare_with_math_renderer(fact, request, None)
+            .expect("an explicit ELK fixture must run the ordinary comparison");
+        assert_eq!(evidence.selected_fixtures(), 1);
+        assert_eq!(evidence.rendered_fixtures(), 1);
+        assert_eq!(evidence.comparisons(), 1);
     }
 
     #[test]

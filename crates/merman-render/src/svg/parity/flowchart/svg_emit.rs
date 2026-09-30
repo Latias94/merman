@@ -114,14 +114,13 @@ pub(super) fn render_flowchart_svg_model(
         default_edge_style,
         node_border_color,
         node_fill_color,
-        node_corner_radius,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
     } = prepare_flowchart_render_config(
         model,
         effective_config_value,
-        diagram_type,
+        layout.uses_elk_adapter_dom,
         presentation_policy,
     );
 
@@ -238,7 +237,12 @@ pub(super) fn render_flowchart_svg_model(
     let tx = 0.0;
     let ty = 0.0;
 
-    let node_dom_index = flowchart_node_dom_indices(model);
+    let mut node_dom_index = flowchart_node_dom_indices(model);
+    for node in &model.nodes {
+        if let Some(index) = render_context.node_dom_index(&node.id) {
+            node_dom_index.insert(node.id.as_str(), index);
+        }
+    }
 
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let icon_registry = options.icon_registry();
@@ -273,7 +277,6 @@ pub(super) fn render_flowchart_svg_model(
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
-        node_corner_radius,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
@@ -390,6 +393,8 @@ pub(super) fn render_flowchart_svg_model(
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
         family_kind: if swimlane_layout.is_some() {
             crate::family::RenderFamilyKind::Swimlane
+        } else if diagram_type == "agentflow" {
+            crate::family::RenderFamilyKind::Agentflow
         } else {
             crate::family::RenderFamilyKind::Flowchart
         },
@@ -407,11 +412,15 @@ pub(super) fn render_flowchart_svg_model(
     drop(_g_viewbox);
     let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
+    let css_presentation_policy = presentation_policy
+        .filter(|_| crate::config::config_diagram_look(effective_config_value).is_neo());
     let mut css = flowchart_css(
         diagram_id,
+        diagram_type,
         effective_config_value,
         &font_family,
         font_size,
+        css_presentation_policy,
         emit,
     )?;
     let class_defs_css = options.materialize_counted_svg_component(
@@ -434,6 +443,13 @@ pub(super) fn render_flowchart_svg_model(
         },
     )?;
     css.push_str(&class_defs_css);
+    if diagram_type == "agentflow" {
+        css.push_str(&super::agentflow::css(
+            diagram_id,
+            effective_config_value,
+            emit,
+        )?);
+    }
     emit.checkpoint()?;
     if swimlane_layout.is_some() {
         css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));
@@ -472,10 +488,18 @@ pub(super) fn render_flowchart_svg_model(
         out.push_str("</g>");
         // The shadow filters are siblings of Mermaid's marker/root wrapper,
         // rather than children of the wrapper that owns the painted graph.
-        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        super::super::look_defs::push_look_shadow_defs(
+            &mut out,
+            diagram_id,
+            effective_config_value,
+        );
         emit.checkpoint()?;
     } else {
-        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        super::super::look_defs::push_look_shadow_defs(
+            &mut out,
+            diagram_id,
+            effective_config_value,
+        );
         emit.checkpoint()?;
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
@@ -486,16 +510,17 @@ pub(super) fn render_flowchart_svg_model(
         emit.checkpoint()?;
         out.push_str("</g>");
     }
-    push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
+    super::super::look_defs::push_look_gradient(&mut out, diagram_id, effective_config_value);
     emit.checkpoint()?;
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
         let title_y = -title_top_margin;
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="flowchartTitleText">{}</text>"#,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="{}">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
+            title_css_class(diagram_type),
             escape_xml(title)
         );
     }
@@ -537,62 +562,6 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     root_document.complete(out)
-}
-
-fn push_flowchart_shadow_defs(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config_value: &serde_json::Value,
-) {
-    let flood_color = effective_config_value
-        .get("theme")
-        .and_then(|v| v.as_str())
-        .filter(|theme| theme.contains("dark"))
-        .map(|_| "#FFFFFF")
-        .unwrap_or("#000000");
-    let _ = write!(
-        out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id, flood_color, diagram_id, flood_color
-    );
-}
-
-fn push_flowchart_gradient(
-    out: &mut String,
-    diagram_id: SvgDiagramId<'_>,
-    effective_config_value: &serde_json::Value,
-) {
-    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return;
-    }
-
-    let gradient_start =
-        config_string(effective_config_value, &["themeVariables", "gradientStart"])
-            .or_else(|| {
-                config_string(
-                    effective_config_value,
-                    &["themeVariables", "primaryBorderColor"],
-                )
-            })
-            .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config_value,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
-    let _ = write!(
-        out,
-        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id,
-        gradient_start.as_str(),
-        gradient_stop.as_str()
-    );
 }
 
 #[cfg(test)]
@@ -680,5 +649,135 @@ mod tests {
             panic!("expected SVG byte rejection, got {error}");
         };
         assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    }
+
+    #[test]
+    fn elk_terminal_straightening_reaches_svg_and_preserves_ports() {
+        use crate::model::{LayoutEdge, LayoutPoint};
+        use base64::Engine as _;
+
+        // Pinned Mermaid geometry.spec.ts terminal-jog case, with measured rectangles whose
+        // boundaries coincide with its ports. The layout is fixed to isolate SVG postprocessing.
+        let render = |enabled: bool, trace: bool| {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    &format!("---\nconfig:\n  elk:\n    straightenEdges: {enabled}\n---\nflowchart LR\nA --> B"),
+                    ParseOptions::strict(),
+                ).unwrap().unwrap();
+            let render_context = parsed.flowchart_render_context().unwrap().clone();
+            let (metadata, semantic) = parsed.into_parts();
+            let RenderSemanticModel::Flowchart(model) = semantic else {
+                panic!("Flowchart");
+            };
+            let edge_id = model.edges[0].id.clone();
+            let layout = FlowchartLayout {
+                nodes: [("A", 153.0, 116.25), ("B", 400.0, 320.0)]
+                    .into_iter()
+                    .map(|(id, x, y)| LayoutNode {
+                        id: id.into(),
+                        x,
+                        y,
+                        width: 80.0,
+                        height: 40.0,
+                        is_cluster: false,
+                        label_width: Some(10.0),
+                        label_height: Some(10.0),
+                    })
+                    .collect(),
+                edges: vec![LayoutEdge {
+                    id: edge_id.clone(),
+                    from: "A".into(),
+                    to: "B".into(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points: [
+                        (193.0, 116.25),
+                        (218.0, 116.25),
+                        (218.0, 119.5),
+                        (400.0, 119.5),
+                        (400.0, 300.0),
+                    ]
+                    .into_iter()
+                    .map(|(x, y)| LayoutPoint { x, y })
+                    .collect(),
+                    label: None,
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                }],
+                clusters: Vec::new(),
+                bounds: None,
+                dom_node_order_by_root: std::collections::HashMap::from([(
+                    String::new(),
+                    vec!["A".into(), "B".into()],
+                )]),
+                uses_elk_adapter_dom: true,
+            };
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let request = SvgRenderOptions {
+                diagram_id: Some("terminal-jog".into()),
+                ..SvgRenderOptions::default()
+            };
+            let debug = if trace {
+                SvgDebugOptions::default().with_flowchart_edge_trace(
+                    edge_id,
+                    crate::svg::FlowchartEdgeTraceCollector::default(),
+                )
+            } else {
+                SvgDebugOptions::default()
+            };
+            let execution = SvgExecution::new(&request, &debug, &session).unwrap();
+            let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+            render_flowchart_svg_model(
+                FlowchartSvgModelRequest {
+                    layout: &layout,
+                    swimlane_layout: None,
+                    model: &model,
+                    render_context: &render_context,
+                    effective_config: &metadata.effective_config,
+                    diagram_type: metadata.diagram_type.as_str(),
+                    diagram_title: None,
+                    presentation_policy: None,
+                    svg_label_sidecar: &sidecar,
+                },
+                &execution,
+            )
+            .unwrap()
+            .to_string()
+        };
+        let route = |svg: &str| {
+            let doc = roxmltree::Document::parse(svg).unwrap();
+            let path = doc
+                .descendants()
+                .find(|n| n.attribute("data-points").is_some())
+                .unwrap();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(&bytes).unwrap();
+            (
+                path.attribute("d").unwrap().to_owned(),
+                points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+            )
+        };
+        let off = render(false, false);
+        let on = render(true, false);
+        let (old_path, old_points) = route(&off);
+        let (new_path, new_points) = route(&on);
+        assert_eq!(old_points.len(), 5);
+        assert_eq!(new_points.len(), 3);
+        assert_eq!(old_points.first(), new_points.first());
+        assert_eq!(old_points.last(), new_points.last());
+        assert_eq!(new_points[0].1, new_points[1].1);
+        assert_ne!(old_path, new_path);
+        assert_eq!(
+            on,
+            render(true, true),
+            "diagnostics must preserve processed geometry"
+        );
     }
 }

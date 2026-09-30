@@ -6,32 +6,6 @@ pub(super) use crate::svg::parity::roughjs_common::{
     closed_path_d_from_points as path_from_points, mermaid_arc_points as arc_points,
 };
 
-pub(in crate::svg::parity::flowchart) fn generate_circle_points(
-    center_x: f64,
-    center_y: f64,
-    radius: f64,
-    num_points: usize,
-    start_angle_deg: f64,
-    end_angle_deg: f64,
-) -> Vec<(f64, f64)> {
-    // Ported from Mermaid `generateCirclePoints(...)` in
-    // `packages/mermaid/src/rendering-util/rendering-elements/shapes/util.ts`.
-    //
-    // Note: Mermaid pushes negated coordinates (`{ x: -x, y: -y }`).
-    let start = start_angle_deg.to_radians();
-    let end = end_angle_deg.to_radians();
-    let angle_range = end - start;
-    let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
-    let mut pts: Vec<(f64, f64)> = Vec::with_capacity(num_points);
-    for i in 0..num_points {
-        let angle = start + (i as f64) * step;
-        let x = center_x + radius * angle.cos();
-        let y = center_y + radius * angle.sin();
-        pts.push((-x, -y));
-    }
-    pts
-}
-
 pub(in crate::svg::parity::flowchart) fn generate_full_sine_wave_points(
     x1: f64,
     y1: f64,

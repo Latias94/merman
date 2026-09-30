@@ -23,7 +23,8 @@ cells per structural token.
 `merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
 required families, or `all-diagrams` for the complete parser and terminal-adapter surface.
 Each selector forwards to `merman-core`; it does not enable system clock, time-zone, random,
-or timing adapters. Parser availability alone does not promise a terminal projection.
+or timing adapters. These selectors apply to the current source checkout; published alpha.6
+packages predate family selection. Parser availability alone does not promise a terminal projection.
 
 > **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.
 
@@ -39,7 +40,14 @@ Most applications should use the `merman` facade so parsing and text rendering s
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii"] }
+```
+
+For a current-source checkout beside the application, select the required families explicitly:
+
+```toml
+[dependencies]
+merman = { path = "../merman/crates/merman", default-features = false, features = ["ascii", "diagram-flowchart", "diagram-gantt"] }
 ```
 
 Depend on `merman-ascii` directly only when the application already owns a typed `merman-core::RenderSemanticModel`.

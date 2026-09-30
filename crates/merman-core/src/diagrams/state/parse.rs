@@ -3,9 +3,8 @@ use crate::{
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
     ParseDiagnosticSpanKind, ParseMetadata, Result, SourceSpan,
     editor::{
-        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
-        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
-        trailing_ascii_whitespace_slot,
+        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::Value;
@@ -763,14 +762,12 @@ impl StateTokenFactCollector<'_> {
             | Tok::ScaleWidth(_)
             | Tok::Href
             | Tok::StringLit(_) => {}
-            Tok::Direction(_) => {
-                if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
-                    push_state_expected_syntax(
-                        events,
-                        EditorExpectedSyntaxKind::CardinalDirectionValue,
-                        span,
-                    );
-                }
+            Tok::Direction(direction) => {
+                push_state_expected_syntax(
+                    events,
+                    EditorExpectedSyntaxKind::CardinalDirectionValue,
+                    direction.selection,
+                );
             }
         }
     }

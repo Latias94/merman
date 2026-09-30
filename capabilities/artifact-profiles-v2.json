@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7"
+    "digest": "sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed"
   },
   "profiles": [
     {
@@ -32,7 +32,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -66,7 +66,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -91,7 +91,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
@@ -128,7 +128,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis"],
         "runtime_ids": ["analysis"],
         "outputs": []
@@ -159,7 +159,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
           "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png",
@@ -201,7 +201,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -235,7 +235,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -267,7 +267,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -292,7 +292,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "editor"
         ],
@@ -327,7 +327,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "editor"
         ],
@@ -363,7 +363,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "outputs": ["ascii", "svg"]
@@ -388,7 +388,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
           "math", "pdf", "png", "svg", "system-clock", "system-random",
@@ -421,7 +421,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis"],
         "runtime_ids": ["analysis"],
         "outputs": []
@@ -446,7 +446,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["ascii"],
         "runtime_ids": ["ascii"],
         "outputs": ["ascii"]
@@ -471,7 +471,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
@@ -502,7 +502,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [],
         "runtime_ids": [],
         "outputs": []
@@ -527,7 +527,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "editor"],
         "runtime_ids": ["analysis", "editor"],
         "outputs": []
@@ -552,7 +552,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "editor"],
         "runtime_ids": ["analysis", "editor"],
         "outputs": []
@@ -677,7 +677,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
@@ -708,7 +708,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
@@ -739,7 +739,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
@@ -770,7 +770,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["svg"]
@@ -795,7 +795,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["svg"],
         "runtime_ids": ["svg"],
         "outputs": ["svg"]
@@ -820,7 +820,7 @@
         "build_target": { "kind": "host" }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["svg"]
@@ -848,7 +848,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "layout-cytoscape", "layout-elk", "svg"],
         "runtime_ids": [
           "analysis", "layout-cytoscape", "layout-elk", "svg"
@@ -878,7 +878,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis"],
         "runtime_ids": ["analysis"],
         "outputs": []
@@ -906,7 +906,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["ascii"],
         "runtime_ids": ["ascii"],
         "outputs": ["ascii"]
@@ -934,7 +934,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["analysis", "editor"],
         "runtime_ids": ["analysis", "editor"],
         "outputs": []
@@ -962,7 +962,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis",
           "ascii",
@@ -1006,7 +1006,7 @@
         }
       },
       "expected": {
-        "diagram_families": ["architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "venn", "wardley", "xychart", "zenuml"],
+        "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
         "outputs": ["svg"]

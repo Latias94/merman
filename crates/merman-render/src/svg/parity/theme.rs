@@ -33,6 +33,8 @@ impl CommonCssTheme {
 
 #[derive(Debug, Clone)]
 #[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-block"
@@ -45,8 +47,6 @@ pub(super) struct NodeDiagramTheme {
     pub(super) node_border: String,
     pub(super) arrowhead_color: String,
     pub(super) stroke_width: String,
-    pub(super) radius: String,
-    pub(super) drop_shadow: String,
     pub(super) edge_label_background: String,
     pub(super) tertiary: String,
     pub(super) cluster_bkg: String,
@@ -92,7 +92,6 @@ pub(super) struct SequenceDiagramTheme {
     pub(super) activation_fill: String,
     pub(super) activation_border: String,
     pub(super) node_border: String,
-    pub(super) note_font_weight: String,
     pub(super) label_box_filter: String,
 }
 
@@ -116,9 +115,6 @@ pub(super) struct StateDiagramTheme {
     pub(super) transition_label_color: String,
     pub(super) special_state_color: String,
     pub(super) inner_end_background: String,
-    pub(super) end_outer_fill: String,
-    pub(super) end_outer_stroke: String,
-    pub(super) end_inner_stroke: String,
     pub(super) composite_background: String,
     pub(super) state_bkg: String,
     pub(super) state_border: String,

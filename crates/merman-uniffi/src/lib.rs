@@ -2367,6 +2367,46 @@ mod tests {
         assert_eq!(result.metadata.output_plan, None);
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn generic_new_family_svg_error_keeps_reusable_engine_usable() {
+        let engine = reusable_engine(None);
+        let error = engine
+            .execute(MermanOperationRequestV4 {
+                operation_id: "svg".to_string(),
+                source: "agentflow-beta\nend\n".to_string(),
+                uri: None,
+                options_json: None,
+                control: None,
+            })
+            .expect_err("invalid Agentflow must return an error without an output result");
+        let MermanError::Binding {
+            code, code_name, ..
+        } = error;
+        assert_eq!(code, BindingStatus::ParseError.code());
+        assert_eq!(code_name, BindingStatus::ParseError.code_name());
+
+        let result = engine
+            .execute(MermanOperationRequestV4 {
+                operation_id: "svg".to_string(),
+                source:
+                    "usecase-beta\nactor User(\"Customer\")\nTask(\"Checkout\")\nUser --> Task\n"
+                        .to_string(),
+                uri: None,
+                options_json: None,
+                control: None,
+            })
+            .expect("the same engine must render Usecase after a failed Agentflow operation");
+        assert_eq!(result.operation_id, "svg");
+        assert_eq!(result.media_type, "image/svg+xml");
+        let svg = String::from_utf8(result.data).expect("UTF-8 SVG");
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains(r#"data-usecase-id="Task""#));
+        assert!(svg.contains("Checkout"));
+        assert_eq!(result.metadata.operation_id, "svg");
+        assert_eq!(result.metadata.byte_length, svg.len() as u64);
+    }
+
     #[test]
     fn typed_metadata_preserves_unknown_future_output_plans() {
         let metadata = BindingOperationMetadata::from_json_bytes(
@@ -3204,7 +3244,7 @@ mod tests {
                 && capability.logical_family_kind == "flowchart"
                 && capability.metadata_id.as_deref() == Some("flowchart")
                 && capability.render_model_kind.as_deref() == Some("flowchart")
-                && capability.has_detector
+                && !capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser
                 && capability.has_combined_parser

@@ -73,7 +73,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
     ));
 
     let wave_rect_path = path_from_points(&points);
-    let (mut wave_fill_d, wave_stroke_d) =
+    let (wave_fill_d, wave_stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &wave_rect_path,
@@ -85,11 +85,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
             )
         })
         .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-    if !ctx.node_html_labels && label.text.contains("tagged-document shape") {
-        // Same upstream fixture family as the curved trapezoid case above: geometry is aligned,
-        // but one RoughJS token lands on the opposite side of a 1e-3 rounding boundary.
-        wave_fill_d = wave_fill_d.replace("88.323", "88.324");
-    }
 
     let tag_path = path_from_points(&tag_points);
     let (tag_fill_d, tag_stroke_d) =

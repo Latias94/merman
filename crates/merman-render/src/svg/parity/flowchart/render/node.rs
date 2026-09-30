@@ -28,7 +28,6 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub stroke_color: &'a str,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
-    pub corner_radius: f64,
     pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub wrapped_in_a: bool,
     pub timing: RenderTiming,
@@ -139,6 +138,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         out,
         helpers::NodeWrapperAttrs {
             diagram_id: ctx.diagram_id,
+            diagram_type: ctx.diagram_type,
             node_id,
             dom_idx,
             class_attr_base,
@@ -151,6 +151,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             tooltip_enabled,
             tooltip,
             look,
+            color_slot: super::super::agentflow::container_color_slot(ctx, node_id),
         },
     );
     ctx.checkpoint_emit()?;
@@ -201,7 +202,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         stroke_color,
         stroke_width,
         stroke_dasharray,
-        corner_radius: ctx.node_corner_radius,
         hand_drawn_seed: &ctx.hand_drawn_seed,
         wrapped_in_a,
         timing,

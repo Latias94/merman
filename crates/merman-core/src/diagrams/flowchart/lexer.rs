@@ -16,20 +16,20 @@ fn directive_argument_spans(
     rest_start: usize,
 ) -> (Option<SourceSpan>, Option<SourceSpan>) {
     let leading = rest
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let body = &rest[leading..];
     if body.is_empty() {
         return (None, None);
     }
 
     let first_len = body
-        .as_bytes()
-        .iter()
-        .position(|byte| byte.is_ascii_whitespace())
-        .unwrap_or(body.len());
+        .char_indices()
+        .find(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map_or(body.len(), |(index, _)| index);
     let first_start = rest_start + leading;
     let first_end = first_start + first_len;
     let first = SourceSpan::new(first_start, first_end);
@@ -39,10 +39,11 @@ fn directive_argument_spans(
     }
 
     let remainder_leading = remainder
-        .as_bytes()
-        .iter()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .char_indices()
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
     let value_start = first_end + remainder_leading;
     let value_end = rest_start + rest.len();
     (Some(first), Some(SourceSpan::new(value_start, value_end)))
@@ -72,11 +73,12 @@ fn active_following_span(
     let local_start = following.start.checked_sub(rest_start)?;
     let raw = rest.get(local_start..)?;
     let trailing = raw
-        .as_bytes()
-        .iter()
+        .char_indices()
         .rev()
-        .take_while(|byte| byte.is_ascii_whitespace())
-        .count();
+        .take_while(|(_, ch)| is_ecmascript_trim_char(*ch))
+        .map(|(index, _)| raw.len() - index)
+        .last()
+        .unwrap_or(0);
     if raw.is_empty() || trailing > 0 {
         return Some(SourceSpan::new(following.end, following.end));
     }
@@ -202,6 +204,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(super) fn recovering(input: &'input str) -> Self {
         Self {
             recover_partial_node_labels: true,
@@ -799,19 +802,20 @@ impl<'input> Lexer<'input> {
         &mut self,
         keyword_start: usize,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        // Match Mermaid's flowchart parser behavior: it consumes a single "SPACE" token after the
-        // `subgraph` keyword, while any additional whitespace becomes part of the subgraph header
-        // token (`textNoTags`). This affects whether `FlowDB.addSubGraph(...)` decides to auto-generate
-        // a `subGraphN` id.
+        // Mermaid's current flowchart parser treats all horizontal whitespace after the
+        // `subgraph` keyword as a separator. Extra spaces therefore do not become part of the
+        // header token and must not force an otherwise named subgraph onto an auto-generated id.
         //
         // Example:
-        // - `subgraph main`   -> header text has no whitespace, id stays `main`
-        // - `subgraph  main`  -> header text begins with whitespace, id becomes `subGraphN`
+        // - `subgraph main`   -> id stays `main`
+        // - `subgraph  main`  -> id also stays `main`
         let rest = &self.input[self.pos..];
         if rest.starts_with('\n') || rest.starts_with("\r\n") || rest.starts_with(';') {
             return None;
         }
-        if let Some(ch) = rest.chars().next()
+        while let Some(ch) = self.input[self.pos..].chars().next()
+            && ch != '\n'
+            && ch != '\r'
             && is_ecmascript_trim_char(ch)
         {
             self.pos += ch.len_utf8();

@@ -10,6 +10,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference";
 import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
 test("loads the production WASM and renders a safe SVG", async ({ page }, testInfo) => {
@@ -39,6 +40,35 @@ test("loads the production WASM and renders a safe SVG", async ({ page }, testIn
   expect(accessibility.violations).toEqual([]);
 
   errors.assertNone();
+});
+
+test("rendering status remains reachable and horizontally scrollable by keyboard", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+  const status = page.getByRole("region", { name: "Rendering status" });
+  await expect(status).toBeVisible();
+  // Enlarged text makes overflow deterministic across Windows/Linux fonts and
+  // exercises the same scrolling required by users with larger text settings.
+  await page.addStyleTag({ content: "html { font-size: 200%; }" });
+  await expect.poll(() => status.evaluate((element) =>
+    element.scrollWidth > element.clientWidth,
+  )).toBe(true);
+
+  // The footer follows the editor and preview controls in document tab order.
+  // Start from the region, leave it, and return using the keyboard to prove it
+  // participates in navigation rather than only accepting programmatic focus.
+  await status.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(status).not.toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(status).toBeFocused();
+  const initialScrollLeft = await status.evaluate((element) => element.scrollLeft);
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => status.evaluate((element) => element.scrollLeft)).toBeGreaterThan(initialScrollLeft);
+  const scrolledRight = await status.evaluate((element) => element.scrollLeft);
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => status.evaluate((element) => element.scrollLeft)).toBeLessThan(scrolledRight);
 });
 
 test("editing the source publishes the matching SVG without page overflow", async ({ page }) => {
@@ -175,7 +205,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   errors.assertNone();
 });
 
-test("Compare detection and rendering share external ELK configuration", async ({
+test("Compare detection and rendering share built-in ELK configuration", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -196,6 +226,45 @@ test("Compare detection and rendering share external ELK configuration", async (
       expect.stringContaining("Configured input"),
     ]);
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
+  await expect(page.locator('[data-merman-compare-engine="mermaid"]')).toContainText(MERMAID_JS_VERSION);
+  errors.assertNone();
+});
+
+test("automatic and explicit default themes remain distinct in the presentation controls", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }))
+    .toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Default", exact: true }).click();
+  await waitForPreviewSvg(page);
+  await expect(page.locator("footer")).toContainText("Default");
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Default", exact: true }))
+    .toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Automatic (diagram default)", exact: true }).click();
+  await expect(page.locator("footer")).toContainText("Automatic (diagram default)");
+  errors.assertNone();
+});
+
+test("Compare renders Mermaid 12 Agentflow and Usecase through the production WASM", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  for (const [source, label] of [
+    ['agentflow-beta TB\nflow support["Support"]\n  input["Question"]@{ shape: input }\n  task["Resolve"]@{ shape: task }\n  input --> task\nend', "Question"],
+    ['usecase-beta\nactor Customer("Customer")\nsystemBoundary "Order system"\n  Checkout("Place order")\nend\nCustomer --> Checkout', "Place order"],
+  ]) {
+    await replaceEditorSource(page, source);
+    await expect.poll(() => compareSvgTexts(page)).toEqual([
+      expect.stringContaining(label),
+      expect.stringContaining(label),
+    ]);
+  }
   errors.assertNone();
 });
 

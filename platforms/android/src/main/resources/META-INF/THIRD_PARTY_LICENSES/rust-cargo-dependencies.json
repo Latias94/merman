@@ -7,6 +7,7 @@
         "id": "android-native",
         "semantic_target": "native",
         "diagram_families": [
+          "agentflow",
           "architecture",
           "block",
           "c4",
@@ -35,6 +36,7 @@
           "timeline",
           "treeView",
           "treemap",
+          "usecase",
           "venn",
           "wardley",
           "xychart",
@@ -89,9 +91,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
+    "cargo_lock_sha256": "463fc173ca572c039759744224b9425adbf9ae4e16e11da2229015d5224d9eab",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "6e2d10fd483dd0485ece41c19362d5633bd27cb1d959c3779fdb7950f8e52614"
+    "artifact_bundle_sha256": "ff9b90da742edc922cfa61ae4819806edc5a18c0ad64a12a442a4632517e2db9"
   },
   "target_dependency_closures": [
     {

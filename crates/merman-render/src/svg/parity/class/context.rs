@@ -34,6 +34,7 @@ pub(super) struct ClassRenderDetails {
 
 pub(super) struct ClassRenderLookups<'a> {
     pub class_nodes_by_id: FxHashMap<&'a str, &'a ClassSvgNode>,
+    pub class_color_indices: FxHashMap<&'a str, usize>,
     pub relations_by_id: FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: FxHashMap<&'a str, usize>,
     pub note_by_id: FxHashMap<&'a str, &'a ClassSvgNote>,
@@ -72,8 +73,15 @@ impl<'a> ClassRenderLookups<'a> {
             iface_by_id.insert(i.id.as_str(), i);
         }
 
+        let class_color_indices = model
+            .classes
+            .keys()
+            .enumerate()
+            .map(|(index, id)| (id.as_str(), index))
+            .collect();
         Self {
             class_nodes_by_id,
+            class_color_indices,
             relations_by_id,
             relation_index_by_id,
             note_by_id,

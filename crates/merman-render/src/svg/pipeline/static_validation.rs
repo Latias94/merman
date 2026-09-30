@@ -1024,6 +1024,13 @@ fn validate_root_layout_declarations<'i, 't>(
                 css_parse_checkpoint(declaration, control)?;
                 validate_root_dimension(&property, &value, root_dimension_limit)
                     .map_err(|message| declaration.new_custom_error(message))?;
+            } else if let Some(font_property) = usecase_root_font_property(&property) {
+                validate_usecase_root_font_value(
+                    declaration,
+                    font_property,
+                    root_dimension_limit,
+                    control,
+                )?;
             } else if is_allowed_root_presentation_property(&normalized) {
                 consume_scoped_css_tokens(declaration, nesting + 1, control)?;
             } else {
@@ -1032,6 +1039,81 @@ fn validate_root_layout_declarations<'i, 't>(
             }
             Ok(())
         })?;
+    }
+    Ok(())
+}
+
+// The Usecase renderer emits only these six literal font variables on the root.
+// Do not admit arbitrary custom properties or deferred values such as var()/url().
+fn usecase_root_font_property(property: &str) -> Option<&'static str> {
+    match property {
+        "--mermaid-usecase-actor-font-size" | "--mermaid-usecase-font-size" => Some("font-size"),
+        "--mermaid-usecase-actor-font-family" | "--mermaid-usecase-font-family" => {
+            Some("font-family")
+        }
+        "--mermaid-usecase-actor-font-weight" | "--mermaid-usecase-font-weight" => {
+            Some("font-weight")
+        }
+        _ => None,
+    }
+}
+
+fn validate_usecase_root_font_value<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    property: &str,
+    size_limit: f64,
+    control: &StaticCssControl<'_>,
+) -> std::result::Result<(), ParseError<'i, String>> {
+    let invalid = || format!("rendered SVG root layout has invalid Usecase {property}");
+    if property == "font-family" {
+        let mut has_family = false;
+        let mut quoted_family = false;
+        while !input.is_exhausted() {
+            css_parse_checkpoint(input, control)?;
+            match input.next()? {
+                Token::Ident(name)
+                    if !quoted_family
+                        && !["inherit", "initial", "unset", "revert", "revert-layer"]
+                            .iter()
+                            .any(|keyword| name.eq_ignore_ascii_case(keyword)) =>
+                {
+                    has_family = true;
+                }
+                Token::QuotedString(name) if !has_family && !name.is_empty() => {
+                    has_family = true;
+                    quoted_family = true;
+                }
+                Token::Comma if has_family => {
+                    has_family = false;
+                    quoted_family = false;
+                }
+                _ => return Err(input.new_custom_error(invalid())),
+            }
+        }
+        if !has_family {
+            return Err(input.new_custom_error(invalid()));
+        }
+    } else {
+        css_parse_checkpoint(input, control)?;
+        let valid = match (property, input.next()?) {
+            ("font-size", Token::Dimension { value, unit, .. }) => {
+                value.is_finite()
+                    && *value >= 0.0
+                    && f64::from(*value) <= size_limit
+                    && unit.eq_ignore_ascii_case("px")
+            }
+            ("font-weight", Token::Number { value, .. }) => {
+                value.is_finite() && (1.0..=1000.0).contains(value)
+            }
+            ("font-weight", Token::Ident(value)) => ["normal", "bold", "bolder", "lighter"]
+                .iter()
+                .any(|allowed| value.eq_ignore_ascii_case(allowed)),
+            _ => false,
+        };
+        if !valid {
+            return Err(input.new_custom_error(invalid()));
+        }
+        input.expect_exhausted()?;
     }
     Ok(())
 }
@@ -1674,6 +1756,71 @@ mod tests {
                     error.to_string().contains("SVG root layout"),
                     "{svg}: {error}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn allows_only_literal_usecase_font_variables_on_the_svg_root() {
+        let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
+            [validate_admission_with_limits, validate_static_with_limits];
+        for declarations in [
+            "--mermaid-usecase-actor-font-size:14px;--mermaid-usecase-font-size:12px;\
+             --mermaid-usecase-actor-font-family:'Open Sans', sans-serif;\
+             --mermaid-usecase-font-family:Arial, sans-serif;\
+             --mermaid-usecase-actor-font-weight:normal;--mermaid-usecase-font-weight:700",
+            "--mermaid-usecase-actor-font-size:0px;--mermaid-usecase-font-weight:bold",
+            "--mermaid-usecase-font-family:'inherit', sans-serif",
+        ] {
+            for svg in [
+                format!(r#"<svg id="root" style="{declarations}"/>"#),
+                format!(r#"<svg id="root"><style>#root{{{declarations}}}</style></svg>"#),
+            ] {
+                for validator in validators {
+                    validator(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_dynamic_or_unbounded_usecase_root_font_variables() {
+        let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
+            [validate_admission_with_limits, validate_static_with_limits];
+        for declaration in [
+            "--mermaid-usecase-other:fixed",
+            "--mermaid-usecase-font-size:var(--host-size)",
+            "--mermaid-usecase-font-size:calc(100vw)",
+            "--mermaid-usecase-font-size:10vw",
+            "--mermaid-usecase-font-size:-1px",
+            "--mermaid-usecase-font-size:999999999px",
+            "--mermaid-usecase-font-size:12px!important",
+            "--mermaid-usecase-font-family:url(https://tracker.test/font)",
+            "--mermaid-usecase-font-family:var(--host-font)",
+            "--mermaid-usecase-font-family:inherit",
+            "--mermaid-usecase-font-family:InHeRiT",
+            "--mermaid-usecase-font-family:initial",
+            "--mermaid-usecase-font-family:unset",
+            "--mermaid-usecase-font-family:revert",
+            "--mermaid-usecase-font-family:revert-layer",
+            r"--mermaid-usecase-font-family:\69nherit",
+            "--mermaid-usecase-font-family:Arial,",
+            "--mermaid-usecase-font-family:",
+            "--mermaid-usecase-font-weight:var(--host-weight)",
+            "--mermaid-usecase-font-weight:1001",
+            "--mermaid-usecase-font-weight:normal bold",
+            "--mermaid-usecase-font-weight:normal;position:fixed",
+        ] {
+            for svg in [
+                format!(r#"<svg id="root" style="{declaration}"/>"#),
+                format!(r#"<svg id="root"><style>#root{{{declaration}}}</style></svg>"#),
+            ] {
+                for validator in validators {
+                    assert!(
+                        validator(&svg, RenderResourcePolicy::trusted_native()).is_err(),
+                        "accepted {svg}"
+                    );
+                }
             }
         }
     }

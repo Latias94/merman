@@ -19,6 +19,7 @@ artifact-profile-required = true
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -47,6 +48,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -59,6 +61,8 @@ diagram-class = ["dep:lalrpop-util", "dep:indexmap"]
 diagram-cynefin = []
 diagram-er = ["dep:lalrpop-util", "dep:indexmap"]
 diagram-event-modeling = []
+diagram-agentflow = ["dep:rustc-hash", "dep:indexmap"]
+diagram-usecase = ["dep:indexmap"]
 diagram-flowchart = ["dep:lalrpop-util", "dep:rustc-hash", "dep:indexmap"]
 diagram-gantt = []
 diagram-git-graph = []
@@ -111,7 +115,7 @@ htmlize.workspace = true
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true
-serde_json = { workspace = true, features = ["preserve_order"] }
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 granit-parser.workspace = true
 json5.workspace = true
 thiserror.workspace = true

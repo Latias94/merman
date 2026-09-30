@@ -1778,14 +1778,18 @@ fn assign_text_argument(
 ) {
     match arg {
         None => {
-            obj.insert(positional_key.to_string(), wrap_text(json!(missing_value)));
+            // Boundary type defaults reset on redeclaration; text descriptions do not.
+            if positional_key == "type" {
+                obj.insert(positional_key.to_string(), wrap_text(json!(missing_value)));
+            } else {
+                obj.entry(positional_key.to_string())
+                    .or_insert_with(|| wrap_text(json!(missing_value)));
+            }
         }
         Some(C4Arg::Text(value)) => {
             obj.insert(positional_key.to_string(), wrap_text(json!(value)));
         }
-        Some(C4Arg::Named { key, value }) => {
-            obj.insert(key.clone(), wrap_text(json!(value)));
-        }
+        Some(C4Arg::Named { key, value }) => assign_named_argument(obj, key, value),
     }
 }
 
@@ -1802,10 +1806,18 @@ fn assign_optional_argument(
         Some(C4Arg::Text(value)) => {
             obj.insert(positional_key.to_string(), json!(value));
         }
-        Some(C4Arg::Named { key, value }) => {
-            obj.insert(key.clone(), json!(value));
-        }
+        Some(C4Arg::Named { key, value }) => assign_named_argument(obj, key, value),
     }
+}
+
+fn assign_named_argument(obj: &mut Map<String, Value>, key: &str, value: &str) {
+    let value = json!(value);
+    let value = if matches!(key, "label" | "descr" | "techn" | "type") {
+        wrap_text(value)
+    } else {
+        value
+    };
+    obj.insert(key.to_string(), value);
 }
 
 fn apply_update_argument(obj: &mut Map<String, Value>, positional_key: &str, arg: Option<&C4Arg>) {
@@ -2768,7 +2780,7 @@ Person(customer, "Second")
         let shape = model["shapes"][0].as_object().unwrap();
 
         assert_eq!(shape["label"]["text"], json!("Second"));
-        assert_eq!(shape["descr"]["text"], json!(""));
+        assert_eq!(shape["descr"]["text"], json!("Original description"));
         assert_eq!(shape["sprite"], json!("users"));
         assert_eq!(shape["tags"], json!("retail"));
         assert_eq!(shape["link"], json!("https://example.com"));
@@ -2798,8 +2810,8 @@ Component(component, "Second component")
             let shape = shape.as_object().unwrap();
             assert_eq!(shape["alias"], json!(alias));
             assert_eq!(shape["label"]["text"], json!(label));
-            assert_eq!(shape["techn"]["text"], json!(""));
-            assert_eq!(shape["descr"]["text"], json!(""));
+            assert_eq!(shape["techn"]["text"], json!("Rust"));
+            assert_eq!(shape["descr"]["text"], json!("Description"));
             assert!(shape.contains_key("sprite"));
             assert!(shape.contains_key("tags"));
             assert!(shape.contains_key("link"));
@@ -2818,8 +2830,8 @@ Rel(a, b, "Second")
 
         assert_eq!(model["rels"].as_array().unwrap().len(), 1);
         assert_eq!(rel["label"]["text"], json!("Second"));
-        assert_eq!(rel["techn"]["text"], json!(""));
-        assert_eq!(rel["descr"]["text"], json!(""));
+        assert_eq!(rel["techn"]["text"], json!("HTTPS"));
+        assert_eq!(rel["descr"]["text"], json!("Description"));
         assert!(rel.contains_key("sprite"));
         assert!(rel.contains_key("tags"));
         assert!(rel.contains_key("link"));
@@ -2853,6 +2865,114 @@ Person(p, "Person", "Description", $tags="tag1,tag2", $link="https://example.com
 
         assert_eq!(shape["tags"], json!("tag1,tag2"));
         assert_eq!(shape["link"], json!("https://example.com"));
+    }
+
+    #[test]
+    fn c4_named_attributes_use_field_types_independent_of_argument_slot() {
+        // Mermaid 12 c4NamedAttributes.spec.ts: both text and optional slots use TEXT_FIELDS.
+        for (header, statement, collection, index, key, expected) in [
+            (
+                "C4Context",
+                r#"System(s, "S", $tags="cylinder")"#,
+                "shapes",
+                0,
+                "tags",
+                json!("cylinder"),
+            ),
+            (
+                "C4Context",
+                r#"Person(p, "P", $descr="description")"#,
+                "shapes",
+                0,
+                "descr",
+                json!({"text": "description"}),
+            ),
+            (
+                "C4Container",
+                r#"Container(c, "C", $sprite="database", $link="https://example.com")"#,
+                "shapes",
+                0,
+                "sprite",
+                json!("database"),
+            ),
+            (
+                "C4Container",
+                r#"Container(c, "C", $descr="description")"#,
+                "shapes",
+                0,
+                "descr",
+                json!({"text": "description"}),
+            ),
+            (
+                "C4Component",
+                r#"Component(c, "C", "Rust", "Description", $techn="Java")"#,
+                "shapes",
+                0,
+                "techn",
+                json!({"text": "Java"}),
+            ),
+            (
+                "C4Container",
+                r#"System_Boundary(b, "B", $type="custom") {
+  Container(c, "C")
+}"#,
+                "boundaries",
+                1,
+                "type",
+                json!({"text": "custom"}),
+            ),
+            (
+                "C4Container",
+                r#"Container_Boundary(b, "B", $type="custom") {
+  Component(c, "C")
+}"#,
+                "boundaries",
+                1,
+                "type",
+                json!({"text": "custom"}),
+            ),
+            (
+                "C4Deployment",
+                r#"Node(b, "B", $descr="description") {
+  Container(c, "C")
+}"#,
+                "boundaries",
+                1,
+                "descr",
+                json!({"text": "description"}),
+            ),
+            (
+                "C4Dynamic",
+                r#"Rel(a, b, "Uses", $tags="async")"#,
+                "rels",
+                0,
+                "tags",
+                json!("async"),
+            ),
+            (
+                "C4Dynamic",
+                r#"Rel(a, b, "Uses", $descr="description")"#,
+                "rels",
+                0,
+                "descr",
+                json!({"text": "description"}),
+            ),
+            (
+                "C4Context",
+                r#"System(s, "S", "Description", $label="Renamed")"#,
+                "shapes",
+                0,
+                "label",
+                json!({"text": "Renamed"}),
+            ),
+        ] {
+            let source = format!("{header}\n{statement}\n");
+            let model = parse(&source);
+            assert_eq!(model[collection][index][key], expected, "{statement}");
+        }
+
+        let model = parse("C4Container\nContainer(c, \"C\", $techn=\"Java\")\n");
+        assert_eq!(model["shapes"][0]["descr"], json!({"text": ""}));
     }
 
     #[test]

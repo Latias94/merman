@@ -1,5 +1,5 @@
 import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
-import { normalizeMermaidThemeName } from "./mermaid-theme-name.ts";
+import { isMermaidThemeSelection, normalizeMermaidThemeSelection, type ThemeName } from "./mermaid-theme-name.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;
 
@@ -32,14 +32,55 @@ export function buildMermaidConfig(
   options: MermaidConfigBuildOptions = {}
 ): MermaidConfigObject {
   const config = { ...parseMermaidConfigJson(configJson) };
-  const normalizedTheme = normalizeMermaidThemeName(theme);
-  if (normalizedTheme !== "default" && config.theme === undefined) {
+  const normalizedTheme = normalizeMermaidThemeSelection(theme);
+  if (normalizedTheme !== "auto" && config.theme === undefined) {
     config.theme = normalizedTheme;
   }
   if (options.diagramFont) {
     applyDiagramFont(config, diagramFontStack(options.diagramFont));
   }
   return config;
+}
+
+// Only validated theme names and UI font choices belong to host initialization.
+// Authored config stays in the source layer, including secure/CSS/resource keys,
+// so each engine retains its own sanitizer and security policy.
+export function buildMermaidOperationInput(
+  source: string,
+  theme: string,
+  configJson: string,
+  options: MermaidConfigBuildOptions = {},
+): Readonly<{
+  initializationConfig: Readonly<MermaidConfigObject>;
+  configuredSource: string;
+}> {
+  const authoredConfig = buildMermaidConfig(configJson, theme, options);
+  const initializationConfig = safeInitializationConfig(authoredConfig, options);
+  const configuredSource = sourceWithMermaidConfig(source, authoredConfig);
+  return Object.freeze({ initializationConfig, configuredSource });
+}
+
+function safeInitializationConfig(
+  authoredConfig: MermaidConfigObject,
+  options: MermaidConfigBuildOptions,
+): Readonly<MermaidConfigObject> {
+  const safe: MermaidConfigObject = {};
+  const authoredTheme = authoredConfig.theme;
+  if (isKnownThemeName(authoredTheme)) {
+    safe.theme = authoredTheme;
+  }
+  // Font values come only from the validated UI enum. User config font/CSS fields
+  // remain source directives and therefore pass through Mermaid/Core sanitization.
+  if (options.diagramFont) {
+    const fontFamily = diagramFontStack(options.diagramFont);
+    safe.fontFamily = fontFamily;
+    safe.themeVariables = Object.freeze({ fontFamily });
+  }
+  return Object.freeze(safe);
+}
+
+function isKnownThemeName(value: unknown): value is ThemeName {
+  return typeof value === "string" && value !== "auto" && isMermaidThemeSelection(value);
 }
 
 export function sourceWithConfig(

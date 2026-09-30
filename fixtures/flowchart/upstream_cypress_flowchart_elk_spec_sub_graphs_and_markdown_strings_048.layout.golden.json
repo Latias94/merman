@@ -5,50 +5,50 @@
       "nodes": [
         {
           "id": "**Two**",
-          "x": 196.161,
-          "y": 73.3,
-          "width": 368.323,
-          "height": 122.6,
+          "x": 245.93,
+          "y": 81.2,
+          "width": 434.438,
+          "height": 138.4,
           "is_cluster": true
         },
         {
           "id": "One",
-          "x": 196.161,
-          "y": 235.9,
-          "width": 349.309,
-          "height": 122.6,
+          "x": 245.93,
+          "y": 269.1,
+          "width": 467.86,
+          "height": 157.4,
           "is_cluster": true
         },
         {
           "id": "c",
-          "x": 70.602,
-          "y": 83.6,
-          "width": 93.203,
-          "height": 78.0,
+          "x": 127.711,
+          "y": 90.4,
+          "width": 150.0,
+          "height": 72.0,
           "is_cluster": false
         },
         {
           "id": "d",
-          "x": 294.443,
-          "y": 83.6,
-          "width": 147.76,
-          "height": 54.0,
+          "x": 364.149,
+          "y": 90.4,
+          "width": 150.0,
+          "height": 51.0,
           "is_cluster": false
         },
         {
           "id": "a",
-          "x": 80.108,
-          "y": 246.2,
-          "width": 93.203,
-          "height": 78.0,
+          "x": 111.0,
+          "y": 278.3,
+          "width": 150.0,
+          "height": 72.0,
           "is_cluster": false
         },
         {
           "id": "b",
-          "x": 282.683,
-          "y": 246.2,
-          "width": 152.266,
-          "height": 39.0,
+          "x": 353.86,
+          "y": 278.3,
+          "width": 204.0,
+          "height": 91.0,
           "is_cluster": false
         }
       ],
@@ -61,19 +61,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 117.203,
-              "y": 83.6
+              "x": 202.711,
+              "y": 90.4
             },
             {
-              "x": 220.563,
-              "y": 83.6
+              "x": 289.149,
+              "y": 90.4
             }
           ],
           "label": {
-            "x": 168.883,
-            "y": 82.9,
-            "width": 43.359,
-            "height": 21.6
+            "x": 245.93,
+            "y": 89.6,
+            "width": 38.438,
+            "height": 19.4
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -91,19 +91,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 126.71,
-              "y": 246.2
+              "x": 186.0,
+              "y": 278.3
             },
             {
-              "x": 206.55,
-              "y": 246.2
+              "x": 251.86,
+              "y": 278.3
             }
           ],
           "label": {
-            "x": 166.63,
-            "y": 245.5,
-            "width": 19.84,
-            "height": 21.6
+            "x": 218.93,
+            "y": 277.5,
+            "width": 17.86,
+            "height": 19.4
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -117,18 +117,18 @@
       "clusters": [
         {
           "id": "**Two**",
-          "x": 196.161,
-          "y": 73.3,
-          "width": 368.323,
-          "height": 122.6,
+          "x": 245.93,
+          "y": 81.2,
+          "width": 434.438,
+          "height": 138.4,
           "diff": -4.0,
-          "offset_y": 11.6,
+          "offset_y": 9.4,
           "title": "**Two**",
           "title_label": {
-            "x": 196.161,
-            "y": 19.8,
-            "width": 28.953,
-            "height": 15.6
+            "x": 245.93,
+            "y": 18.7,
+            "width": 25.344,
+            "height": 13.4
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -138,18 +138,18 @@
         },
         {
           "id": "One",
-          "x": 196.161,
-          "y": 235.9,
-          "width": 349.309,
-          "height": 122.6,
+          "x": 245.93,
+          "y": 269.1,
+          "width": 467.86,
+          "height": 157.4,
           "diff": -4.0,
-          "offset_y": 11.6,
+          "offset_y": 9.4,
           "title": "One",
           "title_label": {
-            "x": 196.161,
-            "y": 182.4,
-            "width": 23.36,
-            "height": 15.6
+            "x": 245.93,
+            "y": 197.1,
+            "width": 20.44,
+            "height": 13.4
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -161,8 +161,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 380.323,
-        "max_y": 297.2
+        "max_x": 479.86,
+        "max_y": 347.8
       }
     }
   }

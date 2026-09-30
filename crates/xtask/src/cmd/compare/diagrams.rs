@@ -47,6 +47,36 @@ macro_rules! verification_fact {
 
 pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
     verification_fact!(
+        "agentflow",
+        "compare-agentflow-svgs",
+        "Agentflow",
+        "parity",
+        "agentflow-beta\nA[Task]\n",
+        Default,
+        HandDrawnSeed,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
+        "usecase",
+        "compare-usecase-svgs",
+        "Usecase",
+        "parity",
+        "usecase-beta\nactor A\nA --> B\n",
+        Default,
+        HandDrawnSeed,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
         "er",
         "compare-er-svgs",
         "ER",
@@ -639,7 +669,10 @@ mod tests {
         for (diagram, stem) in [
             ("info", "upstream_info_spec"),
             ("er", "basic"),
-            ("flowchart", "basic"),
+            (
+                "flowchart",
+                "upstream_examples_flowchart_basic_flowchart_001",
+            ),
             ("gantt", "basic"),
         ] {
             let report_path = output_root.join(format!("{diagram}.md"));

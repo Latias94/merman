@@ -213,11 +213,13 @@ Enable `features = ["png"]` on the Merman dependency when copying `render_png`, 
 
 ## Minimize Features Later
 
-The commands above favor a successful first run. Once the workflow is known, disable defaults and compile only the observable capabilities it needs:
+The commands above favor a successful first run. Once the workflow is known, disable defaults,
+select the required `diagram-*` families (or `all-diagrams`), and add only the capabilities it needs.
+The table lists output and engine requirements in addition to that family selection:
 
-| Examples | Minimal selection |
+| Examples | Additional capability selection |
 | --- | --- |
-| `inspect_semantics`, `deterministic_gantt` | No Merman features |
+| `inspect_semantics`, `deterministic_gantt` | None beyond the required diagram families |
 | `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
 | `presentation_profile` | `layout-elk` (also enables `svg`) |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |

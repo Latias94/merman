@@ -23,11 +23,19 @@ use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpa
 /// shared Flowchart/Swimlane grammar independently of the editor's local feature selection.
 /// Returns an empty iterator when that grammar is not compiled.
 pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     {
         crate::diagrams::flowchart::flowchart_public_shape_names()
     }
-    #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+    #[cfg(not(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )))]
     {
         std::iter::empty()
     }
@@ -175,9 +183,17 @@ impl EditorRenamePolicy {
                 (1..=3).contains(&candidate.len())
                     && candidate.bytes().all(|byte| byte.is_ascii_digit())
             }
-            #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+            #[cfg(not(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            )))]
             Self::FlowchartNodeId => false,
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            ))]
             Self::FlowchartNodeId => crate::diagrams::flowchart::is_valid_editor_node_id(candidate),
             #[cfg(not(feature = "diagram-git-graph"))]
             Self::GitGraphReference => false,
@@ -214,6 +230,16 @@ impl EditorRenamePolicy {
             #[cfg(feature = "diagram-railroad")]
             Self::RailroadAbnfRule => {
                 crate::diagrams::railroad::is_valid_editor_abnf_rule_identifier(candidate)
+            }
+            #[cfg(not(feature = "diagram-agentflow"))]
+            Self::AgentflowNodeId => false,
+            #[cfg(feature = "diagram-agentflow")]
+            Self::AgentflowNodeId => crate::diagrams::agentflow::is_valid_editor_node_id(candidate),
+            #[cfg(not(feature = "diagram-usecase"))]
+            Self::UsecaseIdentifier => false,
+            #[cfg(feature = "diagram-usecase")]
+            Self::UsecaseIdentifier => {
+                crate::diagrams::usecase::is_valid_editor_identifier(candidate)
             }
         }
     }
@@ -889,6 +915,47 @@ mod tests {
         assert!(EditorRenamePolicy::RailroadPegRule.accepts("terminal"));
         assert!(EditorRenamePolicy::RailroadAbnfRule.accepts("rule-name"));
         assert!(!EditorRenamePolicy::RailroadAbnfRule.accepts("rule_name"));
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-agentflow")]
+    fn agentflow_rename_policy_uses_its_own_keyword_boundaries() {
+        for candidate in ["flow", "connector", "global", "flow-guide", "global注文"] {
+            assert!(
+                !EditorRenamePolicy::AgentflowNodeId.accepts(candidate),
+                "{candidate}"
+            );
+        }
+        for candidate in ["flow_user", "flowUser", "Connector", "friend-end"] {
+            assert!(
+                EditorRenamePolicy::AgentflowNodeId.accepts(candidate),
+                "{candidate}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-usecase")]
+    fn usecase_rename_policy_rejects_statement_only_keywords() {
+        for candidate in [
+            "package",
+            "PACKAGE",
+            "rectangle",
+            "allowmixing",
+            "newpage",
+            "skinparam",
+        ] {
+            assert!(
+                !EditorRenamePolicy::UsecaseIdentifier.accepts(candidate),
+                "{candidate}"
+            );
+        }
+        for candidate in ["package_user", "packageUser", "1User"] {
+            assert!(
+                EditorRenamePolicy::UsecaseIdentifier.accepts(candidate),
+                "{candidate}"
+            );
+        }
     }
 
     #[test]

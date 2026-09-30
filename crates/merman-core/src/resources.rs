@@ -1,7 +1,11 @@
 //! Backend-independent Mermaid source and semantic-model resource policy.
 
 use crate::diagram::{ParsedDiagramRender, RenderSemanticModel};
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 use crate::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-ishikawa")]
 use crate::diagrams::ishikawa::IshikawaDiagramRenderModel;
@@ -392,7 +396,11 @@ impl InputResourcePolicy {
         )
     }
 
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     pub fn check_flowchart_complexity(
         &self,
         model: &FlowchartModel,
@@ -571,6 +579,10 @@ impl ModelComplexity {
             RenderSemanticModel::Venn(model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-wardley")]
             RenderSemanticModel::Wardley(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-usecase")]
+            RenderSemanticModel::Usecase(model) => Self::from_serializable(model),
+            #[cfg(feature = "diagram-agentflow")]
+            RenderSemanticModel::Agentflow(model) => Self::from_serializable(model),
         }
     }
 
@@ -1109,7 +1121,11 @@ impl<'a> serde::Serializer for &'a mut ModelComplexitySerializer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub struct FlowchartComplexity {
     pub nodes: usize,
     pub edges: usize,
@@ -1118,7 +1134,11 @@ pub struct FlowchartComplexity {
     pub subgraph_depth: usize,
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 impl FlowchartComplexity {
     pub fn from_model(model: &FlowchartModel) -> Self {
         Self {
@@ -1722,7 +1742,11 @@ impl ZenumlComplexity {
     }
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     let mut total = [
         Some(model.keyword.as_str()),
@@ -1834,7 +1858,11 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
     total
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
     if model.subgraphs.is_empty() {
         return 0;

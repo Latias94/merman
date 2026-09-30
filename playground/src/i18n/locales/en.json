@@ -327,6 +327,7 @@
     "svgBounds": "Show SVG Bounds"
   },
   "status": {
+    "renderingStatus": "Rendering status",
     "diagramType": "Type",
     "lines": "Lines",
     "chars": "Chars",
@@ -348,6 +349,7 @@
     "syntaxIssues": "Syntax issues"
   },
   "themes": {
+    "auto": "Automatic (diagram default)",
     "default": "Default",
     "dark": "Dark",
     "forest": "Forest",

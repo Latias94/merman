@@ -281,12 +281,23 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
 
         match snapshot.outcome() {
             DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
-                assert_eq!(model["accDescr"], Value::Null, "{}", case.family);
-                assert!(
-                    !facts
+                // State's multiline lexer emits a final empty value at EOF, overwriting
+                // any partial description. Other accepting families leave it unset.
+                let expected_description = if case.family == "state" {
+                    json!("")
+                } else {
+                    Value::Null
+                };
+                assert_eq!(model["accDescr"], expected_description, "{}", case.family);
+                // State recognizes the multiline token even when EOF supplies its empty value.
+                assert_eq!(
+                    facts
                         .directive_prefixes
                         .iter()
-                        .any(|prefix| prefix == "accDescr")
+                        .any(|prefix| prefix == "accDescr"),
+                    case.family == "state",
+                    "{}",
+                    case.family
                 );
                 match case.family {
                     "flowchart" => assert_eq!(model["nodes"], json!([])),

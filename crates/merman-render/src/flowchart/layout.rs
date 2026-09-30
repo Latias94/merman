@@ -1721,6 +1721,15 @@ fn layout_flowchart_with_model(
                 &n.classes,
             );
         }
+        metrics = metrics.with_label_min_width(
+            raw_label,
+            super::flowchart_node_label_min_width(
+                raw_label,
+                n.layout_shape.as_deref(),
+                effective_config,
+            ),
+            None,
+        );
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
@@ -4150,9 +4159,10 @@ flowchart TD
 
     #[test]
     fn dagre_preserves_operation_computed_length_precision() {
+        // Isolate host precision from Mermaid 12's minimum label width.
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false, \"minNodeWidth\": 0}}}%%\nflowchart TB\nA[alpha]\n",
                 ParseOptions::default(),
             )
             .expect("parse ok")
@@ -4752,6 +4762,7 @@ flowchart TD
         let mut subgraphs = Vec::with_capacity(depth);
         for i in 0..depth {
             subgraphs.push(FlowSubgraph {
+                metadata: None,
                 id: format!("n{i}"),
                 title: format!("n{i}"),
                 dir: None,

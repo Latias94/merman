@@ -13,13 +13,17 @@ describe("WASM artifact freshness CLI", () => {
   it("selects every package-owned WASM artifact", () => {
     const targets = parseVerificationTargets(["--all-packages"]);
     assert.deepEqual(
-      targets.map((target) => [target.descriptor.id, target.profile.name, target.outputDir.relative]),
+      targets.map((target) => [
+        target.descriptor.id,
+        target.profile.name,
+        target.outputDir.relative.replaceAll("\\", "/"),
+      ]),
       [
-        ["full", "web-full", path.join("pkg", "full")],
-        ["analysis", "web-analysis", path.join("pkg", "analysis")],
-        ["render", "web-render", path.join("pkg", "render")],
-        ["editor", "web-editor", path.join("pkg", "editor")],
-        ["ascii", "web-ascii", path.join("pkg", "ascii")],
+        ["full", "web-full", path.posix.join("pkg", "full")],
+        ["analysis", "web-analysis", path.posix.join("pkg", "analysis")],
+        ["render", "web-render", path.posix.join("pkg", "render")],
+        ["editor", "web-editor", path.posix.join("pkg", "editor")],
+        ["ascii", "web-ascii", path.posix.join("pkg", "ascii")],
       ],
     );
   });

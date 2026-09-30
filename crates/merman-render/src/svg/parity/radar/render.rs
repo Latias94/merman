@@ -4,7 +4,7 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn radar_css<I>(diagram_id: I, theme: &RadarTheme) -> String
+fn radar_css<I>(diagram_id: I, theme: &RadarTheme, effective_config: &serde_json::Value) -> String
 where
     I: Copy + std::fmt::Display,
 {
@@ -102,10 +102,10 @@ where
         );
     }
 
-    let _ = write!(
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        diagram_id, theme.font_family_css
+        diagram_id,
+        &crate::config::config_root_font_family_css(effective_config),
     );
 
     out
@@ -182,7 +182,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     let theme = PresentationTheme::new(effective_config).radar();
-    let css = radar_css(diagram_id, &theme);
+    let css = radar_css(diagram_id, &theme, effective_config);
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
     options.checkpoint_emit()?;
@@ -372,7 +372,7 @@ mod tests {
         });
 
         let theme = PresentationTheme::new(&cfg).radar();
-        let css = radar_css("radar", &theme);
+        let css = radar_css("radar", &theme, &cfg);
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#606060;stroke-width:4;}"#));
@@ -412,7 +412,7 @@ mod tests {
         });
 
         let theme = PresentationTheme::new(&cfg).radar();
-        let css = radar_css("radar", &theme);
+        let css = radar_css("radar", &theme, &cfg);
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
         assert!(css.contains(r#"#radar .radarAxisLabel{font-size:12px;color:#404040;}"#));

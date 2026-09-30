@@ -81,13 +81,26 @@ mod edge_label_geometry;
         reason = "Shared rendering utilities have different callers in each diagram selection."
     )
 )]
+mod edge_path;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
 mod emitted_bounds;
 #[cfg(feature = "diagram-er")]
 mod er;
 mod error;
 #[cfg(feature = "diagram-event-modeling")]
 mod eventmodeling;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod flowchart;
 #[cfg(feature = "diagram-gantt")]
 mod gantt;
@@ -119,6 +132,24 @@ mod label;
     )
 )]
 mod layout_debug;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod line_hops;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "Shared rendering utilities have different callers in each diagram selection."
+    )
+)]
+mod look_defs;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -208,6 +239,8 @@ mod timing;
 mod tree_view;
 #[cfg(feature = "diagram-treemap")]
 mod treemap;
+#[cfg(feature = "diagram-usecase")]
+mod usecase;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1159,6 +1192,10 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
         }
+        #[cfg(feature = "diagram-agentflow")]
+        BuiltinFamilyArtifact::Agentflow { flow, .. } => {
+            flowchart::render_flowchart_svg_artifact(flow, metadata, options)
+        }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
@@ -1288,6 +1325,15 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        #[cfg(feature = "diagram-usecase")]
+        BuiltinFamilyArtifact::Usecase(pair) => usecase::render_usecase_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
         #[cfg(feature = "diagram-sankey")]
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)

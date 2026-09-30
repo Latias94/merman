@@ -22,6 +22,8 @@ fn main() {
     assert_eq!(selected, expected("MERMAN_EXPECTED_FAMILIES"));
     let engine = merman_core::Engine::new();
     for (family, source) in [
+        ("agentflow", "agentflow-beta\nA --> B\n"),
+        ("usecase", "usecase-beta\nactor User\nUser --> Login\n"),
         ("flowchart", "flowchart TD\nA[Start]-->B[Finish]\n"),
         ("swimlane", "swimlane-beta LR\nA[Start]-->B[Finish]\n"),
         (

@@ -102,10 +102,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     let mut ctx = StateRenderCtx {
         diagram_id,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        elk_edge_paths: &layout.elk_edge_paths,
+        elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
+        palette_size: state_palette_size(effective_config),
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
+        label_min_width: state_render_settings.label_min_width,
         state_padding: state_render_settings.state_padding,
         node_order,
         nodes_by_id,
@@ -263,7 +268,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         out
     }
 
-    ctx.nested_roots = compute_state_nested_roots(&ctx);
+    if layout.uses_elk_adapter_dom {
+        ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
+    } else {
+        ctx.nested_roots = compute_state_nested_roots(&ctx);
+    }
 
     drop(_g_build_ctx);
 
@@ -448,6 +457,99 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     root_document.complete(out)
 }
 
+fn prepare_state_line_hop_paths(
+    ctx: &StateRenderCtx<'_>,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<FxHashMap<String, String>> {
+    use crate::svg::parity::line_hops::{
+        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops,
+        process_edges_with_line_hops,
+    };
+
+    let line_hops_value = effective_config
+        .get("elk")
+        .and_then(|value| value.get("lineHops"));
+    if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
+        return Ok(FxHashMap::default());
+    }
+    let jump_style = if line_hops_value.and_then(serde_json::Value::as_str) == Some("gap") {
+        LineHopStyle::Gap
+    } else {
+        LineHopStyle::Arc
+    };
+
+    struct OwnedEdge<'a> {
+        id: &'a str,
+        points: Vec<crate::model::LayoutPoint>,
+        curve: Option<&'static str>,
+        arrow_type_end: Option<&'a str>,
+    }
+
+    let mut owned_edges = Vec::new();
+    for edge in ctx.edges {
+        if state_is_hidden(ctx, edge.start.as_str())
+            || state_is_hidden(ctx, edge.end.as_str())
+            || state_is_hidden(ctx, edge.id.as_str())
+        {
+            continue;
+        }
+        let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+            continue;
+        };
+        let geometry = state_edge_prepare_geometry(
+            ctx,
+            layout_edge,
+            Some(edge.arrow_type_end.as_str()),
+            0.0,
+            0.0,
+        );
+        let curve = if layout_edge.points.is_empty() {
+            "linear"
+        } else {
+            "rounded"
+        };
+        owned_edges.push(OwnedEdge {
+            id: edge.id.as_str(),
+            points: geometry.data_points,
+            curve: Some(curve),
+            arrow_type_end: Some(edge.arrow_type_end.as_str()),
+        });
+    }
+
+    let edges: Vec<_> = owned_edges
+        .iter()
+        .map(|edge| LineHopEdge {
+            id: edge.id,
+            points: &edge.points,
+            curve: edge.curve,
+            arrow_type_start: None,
+            arrow_type_end: edge.arrow_type_end,
+        })
+        .collect();
+    let paths = process_edges_with_line_hops(
+        &edges,
+        LineHopConfig {
+            enabled: true,
+            jump_radius: 6.0,
+            jump_style,
+        },
+        options.work_meter(),
+    )?;
+
+    Ok(paths
+        .into_iter()
+        .filter(|path| {
+            path.has_hops
+                && edges
+                    .iter()
+                    .find(|edge| edge.id == path.edge_id)
+                    .is_some_and(|edge| curve_supports_line_hops(edge.curve))
+        })
+        .map(|path| (path.edge_id.to_owned(), path.path))
+        .collect())
+}
+
 fn render_state_root(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
@@ -586,7 +688,11 @@ fn render_state_root(
 
     // edge paths
     let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-    out.push_str(r#"<g class="edgePaths">"#);
+    out.push_str(if ctx.uses_elk_adapter_dom {
+        r#"<g class="edges edgePaths">"#
+    } else {
+        r#"<g class="edgePaths">"#
+    });
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -691,8 +797,8 @@ fn render_state_root(
         }
     }
 
-    // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
-    if ctx.include_edges {
+    // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
+    if ctx.include_edges && !ctx.uses_elk_adapter_dom {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -787,13 +893,34 @@ fn render_state_cluster(
     let y = top - origin_y;
     let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
 
+    let _ = write!(
+        out,
+        r#"<g class="{}" id="{}""#,
+        escape_attr(class),
+        dom_id.attr()
+    );
+    if shape != "divider" {
+        let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+    }
+    let _ = write!(out, r#" data-look="{}""#, escape_attr(data_look));
+    if ctx.palette_size > 0
+        && let Some(color_index) = ctx
+            .nodes_by_id
+            .get(cluster_id)
+            .and_then(|node| node.color_index)
+    {
+        let _ = write!(
+            out,
+            r#" data-color-id="color-{}""#,
+            color_index % ctx.palette_size
+        );
+    }
+    out.push('>');
+
     if shape == "divider" {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(data_look),
+            r#"<g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
@@ -810,14 +937,16 @@ fn render_state_cluster(
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
 
+    // roundedWithTitle in Mermaid's clusters.js uses the painted label bbox in both
+    // rendering modes. ELK's reduced title-strip reservation is not the paint height.
+    let title_height = cluster.title_label.height;
+    let inner_y = y + title_height + 2.0;
+    let inner_height = cluster.height - title_height - 6.0;
+
     if ctx.html_labels {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
@@ -826,33 +955,30 @@ fn render_state_cluster(
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
             fmt(cluster.title_label.width.max(0.0)),
-            escape_xml(&title),
+            fmt(title_height),
+            state_node_label_plain_html(&title),
             fmt(x),
-            fmt(y + 26.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 30.0).max(1.0))
+            fmt(inner_height)
         );
     } else {
         let title_dom = state_svg_text_label(&title, false, None);
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-            escape_attr(class),
-            dom_id.attr(),
-            escape_attr(cluster_id),
-            escape_attr(data_look),
+            r#"<g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(y + 1.0),
+            fmt(y - 2.0),
             title_dom,
             fmt(x),
-            fmt(y + 21.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 29.0).max(1.0))
+            fmt(inner_height)
         );
     }
 }

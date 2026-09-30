@@ -53,7 +53,67 @@ impl Default for Spacing {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LayoutOptions {
+    pub algorithm: Algorithm,
     pub layered: LayeredOptions,
+    pub container: ContainerOptions,
+}
+
+/// Resolved ELK provider identity. Root loader names and container metadata have distinct
+/// allowlists in Mermaid; callers must resolve those before constructing the graph.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Algorithm {
+    #[default]
+    Layered,
+    Box,
+    Rectpacking,
+    Force,
+    Stress,
+    MrTree,
+    Radial,
+    SporeOverlap,
+}
+
+impl Algorithm {
+    /// Exact Mermaid 12 container allowlist. Root loaders have a different set of names.
+    pub fn from_container_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "elk.layered" => Self::Layered,
+            "elk.box" => Self::Box,
+            "elk.rectpacking" => Self::Rectpacking,
+            "elk.force" => Self::Force,
+            "elk.stress" => Self::Stress,
+            "elk.mrtree" => Self::MrTree,
+            "elk.radial" => Self::Radial,
+            "elk.sporeOverlap" => Self::SporeOverlap,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ContainerNodeOptions {
+    /// A valid metadata algorithm; absent or invalid metadata leaves this unset.
+    pub algorithm: Option<Algorithm>,
+    /// Mermaid's measured node padding, used for the title minimum (not ELK content padding).
+    pub padding: f64,
+}
+
+/// Mermaid resolves container placement independently from root placement in named presets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContainerOptions {
+    pub cycle_breaking: CycleBreakingStrategy,
+    pub node_placement: NodePlacementStrategy,
+    pub node_placement_alignment: NodePlacementAlignment,
+}
+
+impl Default for ContainerOptions {
+    fn default() -> Self {
+        Self {
+            cycle_breaking: CycleBreakingStrategy::DepthFirst,
+            node_placement: NodePlacementStrategy::BrandesKoepf,
+            node_placement_alignment: NodePlacementAlignment::Balanced,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +124,8 @@ pub struct LayeredOptions {
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
     pub cycle_breaking: CycleBreakingStrategy,
+    pub layering: LayeringStrategy,
+    pub layering_layer_bound: i32,
     pub node_placement: NodePlacementStrategy,
     pub node_placement_alignment: NodePlacementAlignment,
     pub model_order: ModelOrderStrategy,
@@ -83,9 +145,11 @@ impl Default for LayeredOptions {
             random_seed: 1,
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
-            cycle_breaking: CycleBreakingStrategy::Greedy,
+            cycle_breaking: CycleBreakingStrategy::DepthFirst,
+            layering: LayeringStrategy::NetworkSimplex,
+            layering_layer_bound: 4,
             node_placement: NodePlacementStrategy::BrandesKoepf,
-            node_placement_alignment: NodePlacementAlignment::None,
+            node_placement_alignment: NodePlacementAlignment::Balanced,
             model_order: ModelOrderStrategy::NodesAndEdges,
             consider_model_order: true,
             force_node_model_order: false,
@@ -93,7 +157,7 @@ impl Default for LayeredOptions {
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: true,
             inside_self_loops_activate: false,
-            self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            self_loop_distribution: SelfLoopDistributionStrategy::North,
             self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
         }
     }
@@ -124,8 +188,21 @@ pub enum CycleBreakingStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayeringStrategy {
+    #[default]
+    NetworkSimplex,
+    LongestPath,
+    LongestPathSource,
+    CoffmanGraham,
+    MinWidth,
+    StretchWidth,
+    Interactive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NodePlacementStrategy {
     Simple,
+    Interactive,
     NetworkSimplex,
     LinearSegments,
     #[default]
@@ -172,13 +249,29 @@ pub enum SelfLoopOrderingStrategy {
 pub struct Node {
     pub id: String,
     pub kind: NodeKind,
+    /// ELK container title text. Leaf text is already measured and is not an ELK node label.
+    pub label_text: Option<String>,
+    pub container: ContainerNodeOptions,
     pub width: f64,
     pub height: f64,
     pub parent: Option<String>,
     pub direction: Option<Direction>,
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
+    /// Alignment of this node's implicit ports, overriding the provider default.
+    pub port_alignment: Option<PortAlignment>,
+    /// Measured label bounds for painting. Only non-empty groups expose these as ELK node labels;
+    /// leaf labels are already accounted for in the shape's width and height.
     pub label: Option<Label>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortAlignment {
+    Distributed,
+    Justified,
+    Begin,
+    Center,
+    End,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +307,7 @@ pub struct LayoutResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeLayout {
     pub id: String,
+    /// Node center in the containing result coordinate system.
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -223,6 +317,8 @@ pub struct NodeLayout {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeLayout {
     pub id: String,
+    /// Provider route. Empty means no section was emitted; the renderer must apply Mermaid's
+    /// missing-section handling after final node placement and shape intersection are known.
     pub points: Vec<Point>,
     pub labels: Vec<EdgeLabelLayout>,
 }

@@ -41,6 +41,7 @@ fn load_class_layout_fixture(name: &str) -> ClassDiagramLayout {
         .join("class")
         .join(format!("{name}.mmd"));
     let text = std::fs::read_to_string(&path).expect("fixture");
+    let text = format!("---\nconfig:\n  layout: dagre\n---\n{text}");
 
     layout_class_with_dagre(&text, &environment)
 }
@@ -334,7 +335,14 @@ fn class_layout_nested_namespace_copy_order_keeps_leaf_cluster_vertical() {
 
 #[test]
 fn class_layout_v3_namespace_node_order_matches_mermaid_copy_order() {
-    let layout = load_class_layout_fixture("stress_class_nested_namespaces_cross_edges_008");
+    let text = std::fs::read_to_string(
+        workspace_root().join("fixtures/class/stress_class_nested_namespaces_cross_edges_008.mmd"),
+    )
+    .expect("fixture");
+    let layout = layout_class_with_dagre(
+        &format!("%%{{init: {{\"layout\": \"dagre\"}}}}%%\n{text}"),
+        &RenderEnvironment::deterministic(),
+    );
 
     let one_a = layout
         .nodes
@@ -404,8 +412,15 @@ namespace Company.Project {
 
 #[test]
 fn class_layout_notes_precede_lollipop_interfaces_in_pinned_source_order() {
-    let layout =
-        load_class_layout_fixture("upstream_html_demos_classchart_class_diagram_demos_006");
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures/class/upstream_html_demos_classchart_class_diagram_demos_006.mmd"),
+    )
+    .expect("fixture");
+    let layout = layout_class_with_dagre(
+        &format!("%%{{init: {{\"layout\": \"dagre\"}}}}%%\n{text}"),
+        &RenderEnvironment::deterministic(),
+    );
 
     assert_eq!(
         layout

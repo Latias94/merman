@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -39,8 +42,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -58,8 +64,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -79,8 +88,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -105,8 +117,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -116,96 +131,96 @@
         "start": "root_start",
         "end": "Still",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "Still",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "Still",
         "end": "Moving",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "Moving",
         "end": "Still",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge4",
         "start": "Moving",
         "end": "Crash",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge5",
         "start": "Crash",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -214,17 +229,6 @@
     "accTitle": "This is the accessible title",
     "accDescr": "This is an accessible description",
     "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
       "Still": {
         "id": "Still",
         "type": "default",
@@ -233,6 +237,19 @@
         "note": null,
         "classes": [
           "notMoving"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Moving": {
+        "id": "Moving",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "movement"
         ],
         "styles": [],
         "textStyles": [],
@@ -249,19 +266,6 @@
         "textStyles": [],
         "start": false
       },
-      "Moving": {
-        "id": "Moving",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "movement"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
       "Crash": {
         "id": "Crash",
         "type": "default",
@@ -275,6 +279,17 @@
         "styles": [],
         "textStyles": [],
         "start": null
+      },
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
       }
     },
     "relations": [

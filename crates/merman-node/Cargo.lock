@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "dugong"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "dugong-graphlib",
  "rustc-hash",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "hashbrown",
  "rustc-hash",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "manatee"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "indexmap",
  "libm",
@@ -574,7 +574,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "merman"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-analysis",
  "merman-ascii",
@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "merman-analysis"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-core",
  "serde",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ascii"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "dugong",
  "merman-core",
@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "merman-bindings-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman",
  "merman-analysis",
@@ -622,7 +622,7 @@ dependencies = [
 
 [[package]]
 name = "merman-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "cssparser",
  "euclid",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "merman-editor-core"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-analysis",
  "merman-core",
@@ -655,14 +655,14 @@ dependencies = [
 
 [[package]]
 name = "merman-elk-layered"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "merman-layout-elk"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-elk-layered",
  "thiserror",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "merman-node-candidate"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "merman-bindings-core",
  "merman-core",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "merman-render"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 dependencies = [
  "base64",
  "cssparser",

@@ -324,7 +324,7 @@ postprocessing for editor-specific colors.
 }
 ```
 
-`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
+`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. An absent ELK loader resolves to Dagre for Flowchart, Class, and ER. In that lean build, `svg-plan-json` can report the profile's ELK aspect as `blocked` while the resolved operation is `ready`. A compiled ELK backend denied by host policy still blocks admission; backend failures and missing math support do not trigger fallback.
 
 `presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
 

@@ -248,7 +248,7 @@ const DEPENDENCY_FEATURE_CONTRACTS: &[DependencyFeatureContract] = &[
     DependencyFeatureContract {
         package: "merman-core",
         dependency: "serde_json",
-        expected_features: &["preserve_order"],
+        expected_features: &["float_roundtrip", "preserve_order"],
         expected_uses_default_features: None,
     },
     DependencyFeatureContract {
@@ -790,10 +790,10 @@ impl FeatureGraph {
         let facade = self.package("merman")?;
         let facade_defaults = direct_feature_members(facade, "default")?;
         let expected_defaults =
-            BTreeSet::from(["all-diagrams".to_string(), "complete-svg".to_string()]);
+            BTreeSet::from(["all-diagrams".to_string(), "complete-svg-elk".to_string()]);
         if facade_defaults != expected_defaults {
             return Err(matrix_error(format!(
-                "{}: merman default must equal `all-diagrams` and `complete-svg`; expected {expected_defaults:?}, found {facade_defaults:?}",
+                "{}: merman default must equal `all-diagrams` and `complete-svg-elk`; expected {expected_defaults:?}, found {facade_defaults:?}",
                 facade.manifest_path.display()
             )));
         }
@@ -826,10 +826,11 @@ impl FeatureGraph {
             "all-diagrams".to_string(),
             "svg".to_string(),
             "layout-cytoscape".to_string(),
+            "layout-elk".to_string(),
         ]);
         if rustdoc_defaults != expected_rustdoc_defaults {
             return Err(matrix_error(format!(
-                "{}: merman-rustdoc default must equal `all-diagrams`, `svg` and `layout-cytoscape`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
+                "{}: merman-rustdoc default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -872,11 +873,9 @@ impl FeatureGraph {
                 cli.manifest_path.display()
             )));
         }
-        let mut expected_cli_defaults = published_features.clone();
-        expected_cli_defaults.remove("layout-elk");
-        if cli_defaults != expected_cli_defaults {
+        if cli_defaults != published_features {
             return Err(matrix_error(format!(
-                "{}: CLI default must equal the published cargo-dist recipe minus explicit `layout-elk`; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
+                "{}: CLI default must equal the published cargo-dist recipe; expected {published_features:?}, found {cli_defaults:?}",
                 cli.manifest_path.display()
             )));
         }
@@ -1315,6 +1314,20 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ("none", "", "", "", ""),
         ("gantt", "merman-core/diagram-gantt", "gantt", "", ""),
         (
+            "agentflow",
+            "renderer,merman-render/diagram-agentflow",
+            "agentflow",
+            "agentflow",
+            "",
+        ),
+        (
+            "usecase",
+            "renderer,merman-render/diagram-usecase",
+            "usecase",
+            "usecase",
+            "",
+        ),
+        (
             "flowchart",
             "renderer,merman-render/diagram-flowchart",
             "flowchart",
@@ -1522,6 +1535,7 @@ mod tests {
         "icons",
         "jpeg",
         "layout-cytoscape",
+        "layout-elk",
         "markdown",
         "math",
         "network-icons",
@@ -1599,7 +1613,7 @@ mod tests {
             package(
                 "merman",
                 &[
-                    ("default", &["all-diagrams", "complete-svg"]),
+                    ("default", &["all-diagrams", "complete-svg-elk"]),
                     ("complete-svg", &["svg", "layout-cytoscape", "math"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
@@ -1607,7 +1621,10 @@ mod tests {
             package(
                 "merman-rustdoc",
                 &[
-                    ("default", &["all-diagrams", "svg", "layout-cytoscape"]),
+                    (
+                        "default",
+                        &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
+                    ),
                     ("complete-svg", &["svg", "layout-cytoscape", "math"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
@@ -1767,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn facade_default_must_be_exactly_complete_svg() {
+    fn facade_default_must_select_all_diagrams_and_complete_svg_elk() {
         let mut graph = product_contract_graph();
         graph
             .packages
@@ -1780,7 +1797,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("default must equal `all-diagrams` and `complete-svg`"),
+                .contains("default must equal `all-diagrams` and `complete-svg-elk`"),
             "{error}"
         );
     }
@@ -1807,10 +1824,10 @@ mod tests {
     }
 
     #[test]
-    fn rustdoc_default_keeps_cytoscape_without_implicit_math() {
+    fn rustdoc_default_keeps_all_diagrams_and_layouts_without_implicit_math() {
         for defaults in [
             vec!["svg".to_string()],
-            vec!["complete-svg".to_string()],
+            vec!["complete-svg-elk".to_string()],
             vec![
                 "svg".to_string(),
                 "layout-cytoscape".to_string(),
@@ -1828,7 +1845,7 @@ mod tests {
             let error = graph.validate_product_feature_contracts().unwrap_err();
             assert!(
                 error.to_string().contains(
-                    "merman-rustdoc default must equal `all-diagrams`, `svg` and `layout-cytoscape`"
+                    "merman-rustdoc default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`"
                 ),
                 "{error}"
             );

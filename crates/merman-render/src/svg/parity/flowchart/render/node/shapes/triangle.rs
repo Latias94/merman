@@ -27,7 +27,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     );
 
     let p = ctx.node_padding;
-    let w = metrics.width + p;
+    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
     let h = w + metrics.height;
     let tw = w + metrics.height;
     let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];

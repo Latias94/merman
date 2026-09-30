@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
+    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -44,7 +44,7 @@
   "fixtures": {
     "timeline_stress_accdescr_block_multiline": {
       "input_sha256": "464eb88f068b17b3c8253dd68b8260685f4c8574bd9ae16911c8260257041291",
-      "svg_sha256": "0ee2dda8ecfa92e85cc18cd30663f7e4a26d080487c7baf8b575cc22ff1f333e",
+      "svg_sha256": "7f9d78833bcb40265071326058ab4f0f982915f0328f372dfb15c2628a23fe0b",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_acctitle_accdescr_and_title": {
@@ -94,7 +94,7 @@
     },
     "timeline_stress_common_long_unbroken_words": {
       "input_sha256": "b037fc3ac6fd6a899deb763e40d45008b7cb865f16bfdbcd83a92c9e09100254",
-      "svg_sha256": "e0966a756d2bda332150a8b5a69889b8b53a286f4132223625447fa9f6fc4ef5",
+      "svg_sha256": "9663130b4ac411b5594025f0e46ce4efc1eacf51e9db897785604078f3a4b7a0",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_common_many_events_with_br": {
@@ -129,7 +129,7 @@
     },
     "timeline_stress_disable_multicolor_and_width": {
       "input_sha256": "273053e1c4564e065d4edcb18903386d683ec746fc9f94f262cfb1388e9954ae",
-      "svg_sha256": "b493ff1914eb0799fa9361545da03186112d5fb1427f7fc92da23c48cb837828",
+      "svg_sha256": "2a70ba7a8017e51cf2a800c6d49d393b3b78af25d0cc257701eab4d08bfc9d9b",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_duplicate_periods_across_sections": {
@@ -139,12 +139,12 @@
     },
     "timeline_stress_events_with_entities_and_ampersands": {
       "input_sha256": "f4cfc5fbdd073df0179bd0b5d64436a5e567419950568f57704429ed96a8d963",
-      "svg_sha256": "81ed8bcc2f4fa98b521f0704bbe78650b08957f2f989393794fe6dfa820bca1a",
+      "svg_sha256": "189e4782bf44274fa40e31a76749855bd494b3101f27b3f9e35003bed115ced1",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_font_size_precedence": {
       "input_sha256": "bc6c398093a97265e7082f693f8f7605920853113e4800b8a75ef3eaf3b9e9e9",
-      "svg_sha256": "bd1525feb0b485d6e8eab53a9d295ac233e1f45e40c8aa66e717a4fcf19284fe",
+      "svg_sha256": "386c164a2e1832b604a5c190d4f13cd26f58e2710f595458cea3ff578e27dc46",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_frontmatter_maxwidth_false_and_padding": {
@@ -159,7 +159,7 @@
     },
     "timeline_stress_inline_hashes_and_semicolons": {
       "input_sha256": "12e770968c9727eaf6506fd9fb883b50e73c8e570addfcde86fdabd601998634",
-      "svg_sha256": "33f6bc0fb3384c8d7172280e25d787c3eaa4b1afdfaea5b9ed29de51cf528bff",
+      "svg_sha256": "93a0f072ce934fff5969a38e96b33ddad56235953f2ea8af5adca2e6da12b272",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_leading_trailing_spaces_and_tabs": {
@@ -194,7 +194,7 @@
     },
     "timeline_stress_markdown_links_and_br": {
       "input_sha256": "5a6829557710efc6f687f6d0d2e80a53084c4c53d5c85384e97d40db5ccbc252",
-      "svg_sha256": "04da23779fd553022f9ec313c6964e989f21f95148c2e031fa3a32ec3151f15e",
+      "svg_sha256": "65cd8f887acd3e8bc3da6d9ae9c4206163d8738b20b68f3898692de40e1d0ad5",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_mixed_inline_and_continuation_events": {
@@ -249,7 +249,7 @@
     },
     "timeline_stress_unicode_cjk_and_emoji": {
       "input_sha256": "1b817aaaae186b79b61b132b0fc8a99711b17fc81a0eaba5b4af56d9e0fe4511",
-      "svg_sha256": "71c4aa0261aaa7ee207d037c0009bb03fe0866397b43c7e941dc509e51033d58",
+      "svg_sha256": "71ea948d20447f94fe8f72d65cba95e61b8bd67740f3dd2cc7a01db117ddd95e",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_unknown_xml_entity": {
@@ -259,12 +259,12 @@
     },
     "timeline_stress_very_long_unbroken_word": {
       "input_sha256": "33a593614560a6899a388fd9214efb4e1b1f54f1f5d7dcf30622aa970cc8eb54",
-      "svg_sha256": "d91c40add04b077bde1177232b0163f3ab5a5f96b4f915748277712760572a44",
+      "svg_sha256": "ebfbe5e96a183bfa54a5d6c66562adad2c9d2322cc2c9214ef1a6c0e816baf23",
       "renderer_profile": "mmdc-default"
     },
     "timeline_stress_width_large_and_long_labels": {
       "input_sha256": "6ca8667b42c48613df0607e7d5cb0b93b2570b3131590d7acabfacc7b3ed93b5",
-      "svg_sha256": "5dc54d2e5b1260a51a4226f7d8885e03cea4c31b8af63932e852964b19179f8c",
+      "svg_sha256": "424b772017235a460611439190ae21137404bd0ec9580c71a1e9127eda624a57",
       "renderer_profile": "mmdc-default"
     },
     "upstream_br_wrapping": {
@@ -284,7 +284,7 @@
     },
     "upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012": {
       "input_sha256": "913f05bbfa2bfba5177aeb5b34b64e40720bcd3e03617d0fd9d19aa9f8ed6bb9",
-      "svg_sha256": "19aafd20aff51ecf01fa5c33de090f316212997ebaf921171544780164e8455b",
+      "svg_sha256": "75d2c562ccc20d50e430afb785f0854383b821bfd36cf8b33c0ca433ac842d1a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_timeline_spec_13_should_render_a_simple_vertical_timeline_with_no_specific_sec_013": {
@@ -434,7 +434,7 @@
     },
     "upstream_long_word_wrap": {
       "input_sha256": "48288d0d195d64d0f544aaee5ea0059446f7456a9dde8690037a81f530d74b37",
-      "svg_sha256": "5d99cc1df24ba0e95734d6b96067a24cc2f6160083d7370b656b2842b6f65aaf",
+      "svg_sha256": "fc2a7411b739f059bc57b2b96bd2bfcf2c63ccc25215a621375802cf1299a6df",
       "renderer_profile": "mmdc-default"
     },
     "upstream_no_sections": {
@@ -469,7 +469,7 @@
     },
     "upstream_pkgtests_timeline_spec_005": {
       "input_sha256": "28f4c304b80b69d453025bf031034daf5ffc54ee1a06c0e62378e079fc1a9415",
-      "svg_sha256": "12570f9c091a125c052f08f829679affd787d959edb62cb893727aae6bfa05de",
+      "svg_sha256": "1f28c3dfd6c252d88f7d546b0cb787826b6696ffc41a916c73389422fca38b13",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_timeline_spec_006": {

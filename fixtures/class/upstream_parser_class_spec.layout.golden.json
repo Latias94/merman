@@ -5,34 +5,34 @@
       "nodes": [
         {
           "id": "A::B",
-          "x": 87.977,
-          "y": 77.0,
-          "width": 175.953,
-          "height": 154.0,
+          "x": 81.672,
+          "y": 89.5,
+          "width": 139.344,
+          "height": 155.0,
           "is_cluster": true
         },
         {
           "id": "__proto__",
-          "x": 255.156,
-          "y": 77.0,
-          "width": 58.406,
-          "height": 84.0,
+          "x": 218.391,
+          "y": 89.5,
+          "width": 54.094,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "constructor",
-          "x": 384.203,
-          "y": 77.0,
-          "width": 99.688,
-          "height": 84.0,
+          "x": 330.547,
+          "y": 89.5,
+          "width": 90.219,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "IPC::Sender",
-          "x": 87.977,
-          "y": 77.0,
-          "width": 100.953,
-          "height": 84.0,
+          "x": 81.672,
+          "y": 102.5,
+          "width": 91.344,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -40,18 +40,18 @@
       "clusters": [
         {
           "id": "A::B",
-          "x": 87.977,
-          "y": 77.0,
-          "width": 175.953,
-          "height": 154.0,
+          "x": 81.672,
+          "y": 89.5,
+          "width": 139.344,
+          "height": 155.0,
           "diff": -15.0,
-          "offset_y": 16.5,
+          "offset_y": 13.5,
           "title": "A::B",
           "title_label": {
-            "x": 87.977,
-            "y": 12.0,
-            "width": 28.16,
-            "height": 24.0
+            "x": 81.672,
+            "y": 22.5,
+            "width": 24.64,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -61,10 +61,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 434.047,
-        "max_y": 154.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 375.656,
+        "max_y": 167.0
       }
     }
   }

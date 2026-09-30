@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -56,8 +62,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -75,8 +84,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -94,8 +106,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": 0,
+        "wrappingWidth": 120,
+        "minWidth": null,
         "centerLabel": true
       },
       {
@@ -113,8 +128,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "State3",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": [
           "Just a test"
@@ -135,8 +153,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "State3",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -154,8 +175,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "State3",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -165,176 +189,176 @@
         "start": "root_start",
         "end": "State1",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "State1",
         "end": "State2",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Succeeded",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "State1",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Aborted",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "State2",
         "end": "State3",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Succeeded",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge4",
         "start": "State2",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Aborted",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge5",
         "start": "State3_start",
         "end": "long1",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge6",
         "start": "long1",
         "end": "long1",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "New Data",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge7",
         "start": "long1",
         "end": "ProcessData",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Enough Data",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge8",
         "start": "State3",
         "end": "State3",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Failed",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge9",
         "start": "State3",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Succeeded / Save Result",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge10",
         "start": "State3",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "Aborted",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -343,8 +367,8 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "root_start": {
-        "id": "root_start",
+      "root_end": {
+        "id": "root_end",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -352,7 +376,7 @@
         "classes": [],
         "styles": [],
         "textStyles": [],
-        "start": true
+        "start": false
       },
       "State1": {
         "id": "State1",
@@ -364,28 +388,6 @@
         "styles": [],
         "textStyles": [],
         "start": null
-      },
-      "State2": {
-        "id": "State2",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_end": {
-        "id": "root_end",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": false
       },
       "State3": {
         "id": "State3",
@@ -451,6 +453,28 @@
             "description": "Enough Data"
           }
         ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "State2": {
+        "id": "State2",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
         "note": null,
         "classes": [],
         "styles": [],

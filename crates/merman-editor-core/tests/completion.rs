@@ -1154,19 +1154,7 @@ fn directional_families_project_partial_values_from_recovery_facts() {
             &["TB", "BT", "LR", "RL"],
         ),
         (
-            "erDiagram\ndirection L",
-            1,
-            "direction L",
-            &["TB", "BT", "LR", "RL"],
-        ),
-        (
             "classDiagram\ndirection L",
-            1,
-            "direction L",
-            &["TB", "BT", "LR", "RL"],
-        ),
-        (
-            "stateDiagram-v2\ndirection L",
             1,
             "direction L",
             &["TB", "BT", "LR", "RL"],
@@ -1217,7 +1205,6 @@ fn directional_families_project_partial_values_from_recovery_facts() {
 fn directional_families_reject_prefixed_values_from_recovery_facts() {
     for (source, line) in [
         ("flowchart TD\nsubgraph group\ndirection LRfoo\nend\n", 2),
-        ("erDiagram\ndirection LRfoo", 1),
         ("classDiagram\ndirection LRfoo", 1),
     ] {
         let harness = SnapshotHarness::new();
@@ -1249,6 +1236,87 @@ fn directional_families_reject_prefixed_values_from_recovery_facts() {
         assert_eq!(edit.range.end.line, line, "{source}");
         assert_eq!(edit.range.end.character, line_text.len(), "{source}");
         assert_eq!(edit.new_text, "LR", "{source}");
+    }
+}
+
+#[test]
+fn er_and_state_partial_directions_are_entities_without_direction_completions() {
+    for header in ["erDiagram", "stateDiagram-v2"] {
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/example.mmd",
+                1,
+                format!("{header}\ndirection L"),
+                DocumentKind::Diagram,
+            )
+            .expect("entity declarations parse");
+        let index = snapshot.fences()[0].text_index();
+        assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+        assert_eq!(index.node_ids().collect::<Vec<_>>(), ["L", "direction"]);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, "direction L".len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserComplete)
+        );
+        assert!(completion.items.iter().all(|item| {
+            item.data
+                .as_ref()
+                .is_none_or(|data| data.kind != CompletionDataKind::Direction)
+        }));
+    }
+}
+
+#[test]
+fn er_and_state_direction_completions_edit_only_the_value_before_ignored_tail() {
+    for header in ["erDiagram", "stateDiagram-v2"] {
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/example.mmd",
+                1,
+                format!("{header}\ndirection LRfoo"),
+                DocumentKind::Diagram,
+            )
+            .expect("direction lexer accepts trailing text");
+        let index = snapshot.fences()[0].text_index();
+        assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+        assert_eq!(index.node_ids().count(), 0);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, "direction LR".len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserComplete)
+        );
+        let directions = completion
+            .items
+            .iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Direction)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            directions
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            ["TB", "BT", "LR", "RL"]
+        );
+        for item in directions {
+            let edit = item.text_edit.as_ref().expect("direction value edit");
+            assert_eq!(edit.range.start, Position::new(1, "direction ".len()));
+            assert_eq!(edit.range.end, Position::new(1, "direction LR".len()));
+            assert_eq!(edit.new_text, item.label);
+        }
+        let tail = completion_for_snapshot(&snapshot, Position::new(1, "direction LRfoo".len()));
+        assert!(tail.items.iter().all(|item| {
+            item.data
+                .as_ref()
+                .is_none_or(|data| data.kind != CompletionDataKind::Direction)
+        }));
     }
 }
 
@@ -1534,6 +1602,32 @@ fn completion_payload_contexts_return_no_body_items() {
                 .iter()
                 .map(|item| &item.label)
                 .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn completion_offers_agentflow_and_usecase_headers() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/new-families.mmd",
+            1,
+            String::new(),
+            DocumentKind::Diagram,
+        )
+        .expect("empty source should be accepted");
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
+
+    for label in ["agentflow-beta", "usecase-beta"] {
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| panic!("missing {label} header completion"));
+        assert_eq!(
+            item.data.as_ref().unwrap().kind,
+            CompletionDataKind::DiagramHeader
         );
     }
 }

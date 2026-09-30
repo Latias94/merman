@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
-use super::super::geom::{generate_circle_points, path_from_points};
+use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
@@ -24,28 +24,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
         common.node_styles,
     );
 
-    let p = ctx.node_padding;
-    let min_width = 15.0;
-    let min_height = 10.0;
-    let w = (metrics.width + 2.0 * p).max(min_width);
-    let h = (metrics.height + 2.0 * p).max(min_height);
-    let radius = h / 2.0;
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    points.push((-w / 2.0, -h / 2.0));
-    points.push((w / 2.0 - radius, -h / 2.0));
-    points.extend(generate_circle_points(
-        -w / 2.0 + radius,
-        0.0,
-        radius,
-        50,
-        90.0,
-        270.0,
-    ));
-    points.push((w / 2.0 - radius, h / 2.0));
-    points.push((-w / 2.0, h / 2.0));
-
-    let path_data = path_from_points(&points);
+    let geometry = crate::flowchart::DelayGeometry::from_label(
+        metrics.width,
+        metrics.height,
+        ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+    );
+    let path_data = path_from_points(&geometry.points);
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(

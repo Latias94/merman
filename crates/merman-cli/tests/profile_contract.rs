@@ -45,6 +45,7 @@ const DEFAULT_CAPABILITIES: &[&str] = &[
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-elk",
     "markdown",
     "math",
     "network-icons",

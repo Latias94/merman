@@ -1,8 +1,7 @@
 import type { Mermaid, MermaidConfig } from "mermaid";
 
 import {
-  buildMermaidConfig,
-  sourceWithMermaidConfig,
+  buildMermaidOperationInput,
 } from "../../../lib/mermaid-config.ts";
 import {
   MERMAID_JS_VERSION,
@@ -48,22 +47,22 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     }
 
     mark("initialize_start");
-    let config: ReturnType<typeof buildMermaidConfig>;
     let configuredSource: string;
     let version: string;
     try {
-      config = await runBenchmarkEngineStage("initialize", async () => {
-        const config = buildMermaidConfig(payload.configJson, payload.theme, {
-          diagramFont: payload.diagramFont,
-        });
+      const configured = await runBenchmarkEngineStage("initialize", async () => {
+        const configured = buildMermaidOperationInput(
+          payload.source, payload.theme, payload.configJson,
+          { diagramFont: payload.diagramFont },
+        );
         mermaid.initialize({
-          ...config,
+          ...configured.initializationConfig,
           startOnLoad: false,
-          securityLevel: config.securityLevel ?? "loose",
+          securityLevel: configured.initializationConfig.securityLevel ?? "loose",
         } as MermaidConfig);
-        return config;
+        return configured;
       });
-      configuredSource = sourceWithMermaidConfig(payload.source, config);
+      configuredSource = configured.configuredSource;
       assertRealmSourceBudget(configuredSource);
       version = MERMAID_JS_VERSION;
     } finally {

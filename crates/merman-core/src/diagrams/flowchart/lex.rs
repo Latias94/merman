@@ -2,7 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
     LinkStyleStmt, StyleStmt, TitleKind, ast::FlowchartClickEditorEvidence,
 };
-use crate::SourceSpan;
+use crate::{SourceSpan, diagrams::scan::is_ecmascript_whitespace};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let quoted = raw.starts_with('"') && raw.ends_with('"');
@@ -382,8 +382,14 @@ impl<'a> ClickParse<'a> {
     }
 
     fn skip_ws(&mut self) {
-        while self.i < self.s.len() && self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
+        while self.i < self.s.len() {
+            let Some(ch) = self.s[self.i..].chars().next() else {
+                break;
+            };
+            if !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            self.i += ch.len_utf8();
         }
     }
 
@@ -394,8 +400,14 @@ impl<'a> ClickParse<'a> {
     fn take_word(&mut self) -> Option<String> {
         self.skip_ws();
         let start = self.i;
-        while self.i < self.s.len() && !self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
+        while self.i < self.s.len() {
+            let Some(ch) = self.s[self.i..].chars().next() else {
+                break;
+            };
+            if is_ecmascript_whitespace(ch) {
+                break;
+            }
+            self.i += ch.len_utf8();
         }
         if self.i == start {
             return None;
@@ -431,10 +443,13 @@ impl<'a> ClickParse<'a> {
 
 fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<SourceSpan> {
     (parser.i > boundary_end).then(|| {
-        parser.source_span(
-            boundary_end.saturating_add(1).min(parser.s.len()),
-            parser.s.len(),
-        )
+        // Keep the completion slot after the first separator, including any
+        // remaining spaces, without placing a byte span inside a UTF-8 character.
+        let separator_len = parser.s[boundary_end..]
+            .chars()
+            .next()
+            .map_or(0, char::len_utf8);
+        parser.source_span(boundary_end + separator_len, parser.s.len())
     })
 }
 
@@ -442,11 +457,15 @@ fn click_action_prefix(word: &str) -> bool {
     !word.is_empty() && ("href".starts_with(word) || "call".starts_with(word))
 }
 
-fn invalid_click_statement(evidence: FlowchartClickEditorEvidence) -> LexError {
-    evidence.iter().fold(
-        LexError::new("Invalid click statement".to_string()),
-        |error, expected| error.expecting(expected.kind, expected.span),
-    )
+fn click_statement_error(
+    message: impl Into<String>,
+    evidence: FlowchartClickEditorEvidence,
+) -> LexError {
+    evidence
+        .iter()
+        .fold(LexError::new(message), |error, expected| {
+            error.expecting(expected.kind, expected.span)
+        })
 }
 
 pub(super) fn parse_click_stmt(
@@ -470,9 +489,9 @@ pub(super) fn parse_click_stmt(
 
     if p.rest().starts_with("href")
         && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let action_start = p.i;
         let _ = p.take_word();
@@ -484,15 +503,34 @@ pub(super) fn parse_click_stmt(
             click_following_span(&p, action_end),
         );
         let Some(link) = p.take_quoted() else {
-            return Err(invalid_click_statement(interaction_evidence));
+            return Err(click_statement_error(
+                "Invalid click statement",
+                interaction_evidence,
+            ));
         };
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err(click_statement_error(
+                "Invalid click target",
+                interaction_evidence,
+            ));
+        }
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
@@ -506,9 +544,9 @@ pub(super) fn parse_click_stmt(
 
     if p.rest().starts_with("call")
         && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get(4..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let action_start = p.i;
         let _ = p.take_word();
@@ -520,14 +558,19 @@ pub(super) fn parse_click_stmt(
         );
         let start = p.i;
         while p.i < p.s.len() {
-            let b = p.s.as_bytes()[p.i];
-            if b.is_ascii_whitespace() || b == b'(' {
+            let Some(ch) = p.s[p.i..].chars().next() else {
+                break;
+            };
+            if is_ecmascript_whitespace(ch) || ch == '(' {
                 break;
             }
-            p.i += 1;
+            p.i += ch.len_utf8();
         }
         if p.i == start {
-            return Err(invalid_click_statement(interaction_evidence));
+            return Err(click_statement_error(
+                "Invalid click statement",
+                interaction_evidence,
+            ));
         }
         p.skip_ws();
         if p.peek() == Some(b'(') {
@@ -535,13 +578,24 @@ pub(super) fn parse_click_stmt(
             while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
                 p.i += 1;
             }
-            if p.peek() == Some(b')') {
-                p.i += 1;
+            if p.peek() != Some(b')') {
+                return Err(click_statement_error(
+                    "Unterminated click callback arguments",
+                    interaction_evidence,
+                ));
             }
+            p.i += 1;
         }
 
         tooltip = p.take_quoted();
         action = ClickAction::Callback;
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
@@ -554,30 +608,47 @@ pub(super) fn parse_click_stmt(
     }
 
     if let Some(link) = p.take_quoted() {
+        let interaction_evidence = FlowchartClickEditorEvidence::new(None, after_target);
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p.take_word();
+        if maybe_target
+            .as_deref()
+            .is_some_and(|target| !matches!(target, "_self" | "_blank" | "_parent" | "_top"))
+        {
+            return Err(click_statement_error(
+                "Invalid click target",
+                interaction_evidence,
+            ));
+        }
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        p.skip_ws();
+        if p.i != p.s.len() {
+            return Err(click_statement_error(
+                "Unexpected content after click statement",
+                interaction_evidence,
+            ));
+        }
         return Ok(ClickStmt {
             ids,
             id_spans,
             tooltip,
             action,
             editor_evidence: Default::default(),
-            interaction_evidence: FlowchartClickEditorEvidence::new(None, after_target),
+            interaction_evidence,
             recovery_error: None,
         });
     }
 
     let function_start = p.i;
     let Some(function_name) = p.take_word() else {
-        return Err(invalid_click_statement(FlowchartClickEditorEvidence::new(
-            after_target,
-            None,
-        )));
+        return Err(click_statement_error(
+            "Invalid click statement",
+            FlowchartClickEditorEvidence::new(after_target, None),
+        ));
     };
     let function_span = p.source_span(function_start, p.i);
     let interaction_evidence = if click_action_prefix(&function_name) {
@@ -587,6 +658,13 @@ pub(super) fn parse_click_stmt(
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
+    p.skip_ws();
+    if p.i != p.s.len() {
+        return Err(click_statement_error(
+            "Unexpected content after click statement",
+            interaction_evidence,
+        ));
+    }
     Ok(ClickStmt {
         ids,
         id_spans,
@@ -627,9 +705,9 @@ pub(super) fn parse_link_style_stmt(
     let mut interpolate: Option<String> = None;
     if p.rest().starts_with("interpolate")
         && p.rest()
-            .as_bytes()
-            .get("interpolate".len())
-            .is_none_or(|b| b.is_ascii_whitespace())
+            .get("interpolate".len()..)
+            .and_then(|rest| rest.chars().next())
+            .is_none_or(is_ecmascript_whitespace)
     {
         let _ = p.take_word();
         interpolate = p.take_word();
@@ -694,6 +772,40 @@ mod tests {
             }
             _ => panic!("expected link action"),
         }
+    }
+
+    #[test]
+    fn parse_click_stmt_accepts_ecmascript_whitespace_without_corrupting_utf8_spans() {
+        for separator in [
+            "\u{0009}", "\u{000a}", "\u{000b}", "\u{000c}", "\u{000d}", "\u{0020}", "\u{00a0}",
+            "\u{1680}", "\u{2000}", "\u{2001}", "\u{2002}", "\u{2003}", "\u{2004}", "\u{2005}",
+            "\u{2006}", "\u{2007}", "\u{2008}", "\u{2009}", "\u{200a}", "\u{2028}", "\u{2029}",
+            "\u{202f}", "\u{205f}", "\u{3000}", "\u{feff}",
+        ] {
+            let source =
+                format!("A{separator}href{separator}\"url\"{separator}\"tip\"{separator}_blank");
+            let stmt = parse_click_stmt(&source, 11).unwrap();
+            assert_eq!(stmt.ids, vec!["A"]);
+            assert_eq!(stmt.tooltip.as_deref(), Some("tip"));
+            assert_eq!(stmt.id_spans[0], SourceSpan::new(11, 12));
+            let expected_payload = format!("\"url\"{separator}\"tip\"{separator}_blank");
+            for expected in stmt.interaction_evidence.iter() {
+                let span = expected.span;
+                let actual = source
+                    .get(span.start - 11..span.end - 11)
+                    .expect("interaction spans must stay on UTF-8 character boundaries");
+                match expected.kind {
+                    crate::EditorExpectedSyntaxKind::InteractionAction => {
+                        assert_eq!(actual, "href")
+                    }
+                    crate::EditorExpectedSyntaxKind::Payload => {
+                        assert_eq!(actual, expected_payload)
+                    }
+                    _ => panic!("unexpected click interaction evidence"),
+                }
+            }
+        }
+        assert!(parse_click_stmt("A\u{0085}href\u{0085}\"url\"", 0).is_err());
     }
 
     #[test]

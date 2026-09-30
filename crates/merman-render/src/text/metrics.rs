@@ -57,7 +57,10 @@ pub(crate) fn style_requests_bold_font_weight(style: &TextStyle) -> bool {
     if lower == "bold" || lower == "bolder" {
         return true;
     }
-    lower.parse::<i32>().ok().is_some_and(|n| n >= 600)
+    lower
+        .parse::<f64>()
+        .ok()
+        .is_some_and(|n| n.is_finite() && n >= 600.0)
 }
 
 pub(crate) fn style_requests_italic_font_style(style: &TextStyle) -> bool {

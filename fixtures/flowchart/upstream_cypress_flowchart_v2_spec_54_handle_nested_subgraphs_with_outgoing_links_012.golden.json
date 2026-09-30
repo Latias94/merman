@@ -1,16 +1,14 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
     "vertexCalls": [
       "subcontainer-child",
@@ -22,8 +20,8 @@
         "id": "subcontainer-child",
         "label": "subcontainer-child",
         "labelType": "text",
-        "shape": null,
         "layoutShape": "squareRect",
+        "shape": null,
         "icon": null,
         "form": null,
         "pos": null,
@@ -31,8 +29,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -41,8 +39,8 @@
         "id": "subcontainer-sibling",
         "label": "subcontainer-sibling",
         "labelType": "text",
-        "shape": null,
         "layoutShape": "squareRect",
+        "shape": null,
         "icon": null,
         "form": null,
         "pos": null,
@@ -50,8 +48,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -59,47 +57,49 @@
     ],
     "edges": [
       {
+        "id": "L_subcontainer-child_subcontainer-sibling_0",
         "from": "subcontainer-child",
         "to": "subcontainer-sibling",
-        "id": "L_subcontainer-child_subcontainer-sibling_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
+        "type": "arrow_point",
+        "arrow": "-->",
+        "length": 1,
+        "animation": null,
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "animate": null,
-        "animation": null
+        "style": [],
+        "interpolate": null,
+        "classes": []
       }
     ],
     "subgraphs": [
       {
         "id": "subcontainer",
-        "nodes": [
-          "subcontainer-child"
-        ],
         "title": "subcontainer",
+        "dir": null,
+        "labelType": "text",
         "classes": [],
         "styles": [],
-        "dir": null,
-        "labelType": "text"
+        "nodes": [
+          "subcontainer-child"
+        ]
       },
       {
-        "id": "subGraph1",
+        "id": "main",
+        "title": "main",
+        "dir": null,
+        "labelType": "text",
+        "classes": [],
+        "styles": [],
         "nodes": [
           "subcontainer",
           "subcontainer-sibling"
-        ],
-        "title": "main",
-        "classes": [],
-        "styles": [],
-        "dir": null,
-        "labelType": "text"
+        ]
       }
-    ]
+    ],
+    "tooltips": {},
+    "type": "flowchart-v2"
   }
 }

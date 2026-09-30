@@ -435,3 +435,150 @@ A["math $$x$$ label words"] --> B
     );
     assert_eq!(second_trace, first_trace, "complete SVG math-like trace");
 }
+
+#[test]
+fn node_minimum_width_matches_html_and_svg_labels_for_each_layout_backend() {
+    let backends = [
+        "dagre",
+        #[cfg(feature = "layout-elk")]
+        "elk",
+    ];
+    for backend in backends {
+        for html_labels in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  layout: {backend}\n  look: classic\n  theme: default\n  htmlLabels: {html_labels}\n  flowchart:\n    minNodeWidth: 120\n    wrappingWidth: 200\n    padding: 10\n---\nflowchart LR\nA[X]\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse minimum width fixture")
+                .expect("detect flowchart");
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap();
+            let nodes = projection["layout"]["FlowchartV2"]["nodes"]
+                .as_array()
+                .unwrap();
+            let node = nodes.iter().find(|node| node["id"] == "A").unwrap();
+            // A process rectangle adds horizontal padding four times to its label box.
+            assert_eq!(
+                node["width"].as_f64(),
+                Some(160.0),
+                "{backend}, HTML={html_labels}"
+            );
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            if html_labels {
+                let label = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                assert_eq!(label.attribute("width"), Some("120"));
+                let div = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("div"))
+                    .unwrap();
+                let style = div.attribute("style").unwrap();
+                assert!(style.contains("display: table;"), "{style}");
+                assert!(style.contains("width: 120px;"), "{style}");
+            } else {
+                let text = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node.descendants().any(|child| child.text() == Some("X"))
+                    })
+                    .unwrap();
+                let label = text
+                    .ancestors()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap();
+                assert!(
+                    label
+                        .attribute("transform")
+                        .unwrap()
+                        .starts_with("translate(0,")
+                );
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject"))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
+    struct BboxYOffset(f64);
+    impl HostTextMeasurer for BboxYOffset {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(
+                (request.operation == TextMeasurementOperation::CreateTextBBoxYOffset)
+                    .then_some(HostTextMeasurement::Length(self.0)),
+            )
+        }
+    }
+
+    for shape in ["st-rect", "lin-rect", "brace", "brace-r", "braces"] {
+        for html in [false, true] {
+            let render_y = |offset| {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nA@{{ shape: {shape}, label: 'First **bold** </br>second line' }}\n"
+                );
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let identity = TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.shape-label-bbox-y").unwrap(),
+                    "1",
+                )
+                .unwrap();
+                let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                    TextMeasurementPolicy::host_display(
+                        identity,
+                        Arc::new(BboxYOffset(offset)),
+                        TextMeasurementPhase::ALL,
+                    ),
+                );
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::default(),
+                    environment.begin_session().unwrap(),
+                )
+                .unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("label")
+                            && node.attribute("transform").is_some()
+                    })
+                    .unwrap();
+                let transform = label.attribute("transform").unwrap();
+                transform
+                    .strip_prefix("translate(")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap()
+                    .split([',', ' '])
+                    .filter(|value| !value.is_empty())
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            };
+            let delta = render_y(7.0) - render_y(0.0);
+            assert!(
+                (delta - if html { 0.0 } else { -7.0 }).abs() < 1e-6,
+                "{shape}, html={html}: label y delta={delta}"
+            );
+        }
+    }
+}

@@ -389,7 +389,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ascii", capabilities)
         self.assertTrue(inherits("web-full", "ascii-render"))
 
-    def test_cli_scopes_separate_default_and_release_elk_closures(self) -> None:
+    def test_cli_scopes_include_default_and_release_elk_closures(self) -> None:
         contract = json.loads(
             (REPOSITORY_ROOT / "docs/release/THIRD_PARTY_COMPONENTS.json").read_text(
                 encoding="utf-8"
@@ -403,8 +403,8 @@ class RepositoryContractTests(unittest.TestCase):
                 result.update(resolved(parent))
             return result
 
-        self.assertNotIn("eclipse-elk", resolved("cli-default"))
-        self.assertNotIn("elkjs", resolved("cli-default"))
+        self.assertIn("eclipse-elk", resolved("cli-default"))
+        self.assertIn("elkjs", resolved("cli-default"))
         self.assertIn("eclipse-elk", resolved("cli-release"))
         self.assertIn("elkjs", resolved("cli-release"))
         self.assertIn("katex-fonts", resolved("cli-default"))

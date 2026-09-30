@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 5e9393ec6721a802018731db2f49992a9c3cb4973153ec6170269d96b5f48299
+package-lock.json SHA-256: 43a3cff14819f9671e065f62c2815cf46aa66ad364cf71d4f454b2ffb1f5682f
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -36,8 +36,13 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
+ - @chevrotain/cst-dts-gen@11.1.2
+ - @chevrotain/gast@11.1.2
+ - @chevrotain/regexp-to-ast@11.1.2
  - @chevrotain/types@11.1.2
- - dompurify@3.4.13
+ - @chevrotain/utils@11.1.2
+ - chevrotain@11.1.2
+ - dompurify@3.4.15
 
 These packages each contain the following license:
 
@@ -3459,13 +3464,11 @@ THIS SOFTWARE.
 
 -----------
 
-The following npm packages may be included in this product:
+The following npm package may be included in this product:
 
- - fastdom@1.0.12
  - react-remove-scroll-bar@2.3.8
- - strictdom@1.0.1
 
-These packages each contain the following license:
+This package contains the following license:
 
 MIT
 
@@ -5032,10 +5035,9 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - @mermaid-js/layout-elk@0.2.3
- - @mermaid-js/layout-tidy-tree@0.2.2
- - @mermaid-js/mermaid-zenuml@0.2.3
- - mermaid@11.17.2
+ - @mermaid-js/layout-tidy-tree@1.0.1
+ - @mermaid-js/mermaid-zenuml@1.0.1
+ - mermaid@12.0.0
 
 These packages each contain the following license:
 
@@ -5335,7 +5337,7 @@ THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - @mermaid-js/parser@1.2.1
+ - @mermaid-js/parser@2.0.0
 
 This package contains the following license:
 
@@ -5503,7 +5505,7 @@ For more information, please refer to <http://unlicense.org>
 
 The following npm package may be included in this product:
 
- - @mermanjs/web@0.8.0-alpha.6
+ - @mermanjs/web@0.8.0-alpha.7
 
 This package contains the following license:
 

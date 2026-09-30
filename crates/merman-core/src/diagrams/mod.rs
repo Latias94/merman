@@ -1,7 +1,8 @@
 //! Public data models for Mermaid diagram families.
 //!
 //! Each family module requires its corresponding `diagram-*` feature. The `flowchart` module
-//! is shared by `diagram-flowchart` and `diagram-swimlane`; `error_diagram` is always available.
+//! is shared by `diagram-flowchart`, `diagram-swimlane`, and `diagram-agentflow`;
+//! `error_diagram` is always available.
 //!
 //! Built-in family constructors are intentionally crate-private. External callers must parse
 //! through [`crate::Engine`], which owns preprocessing, detection, configuration, and the closed
@@ -47,6 +48,8 @@ macro_rules! include_checked_in_lalrpop_parser {
     };
 }
 
+#[cfg(feature = "diagram-agentflow")]
+pub mod agentflow;
 #[cfg(feature = "diagram-architecture")]
 pub mod architecture;
 #[cfg(feature = "diagram-block")]
@@ -62,7 +65,11 @@ pub mod er;
 pub mod error_diagram;
 #[cfg(feature = "diagram-event-modeling")]
 pub mod eventmodeling;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub mod flowchart;
 #[cfg(feature = "diagram-gantt")]
 pub mod gantt;
@@ -75,7 +82,8 @@ pub mod ishikawa;
 #[cfg(any(
     feature = "diagram-class",
     feature = "diagram-flowchart",
-    feature = "diagram-swimlane"
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
 ))]
 mod jison_unicode;
 #[cfg(feature = "diagram-journey")]
@@ -119,30 +127,7 @@ pub mod railroad;
 pub mod requirement;
 #[cfg(feature = "diagram-sankey")]
 pub mod sankey;
-#[cfg(any(
-    test,
-    feature = "diagram-architecture",
-    feature = "diagram-c4",
-    feature = "diagram-class",
-    feature = "diagram-cynefin",
-    feature = "diagram-er",
-    feature = "diagram-event-modeling",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-gantt",
-    feature = "diagram-ishikawa",
-    feature = "diagram-journey",
-    feature = "diagram-kanban",
-    feature = "diagram-mindmap",
-    feature = "diagram-quadrant-chart",
-    feature = "diagram-requirement",
-    feature = "diagram-state",
-    feature = "diagram-timeline",
-    feature = "diagram-tree-view",
-    feature = "diagram-treemap",
-    feature = "diagram-wardley",
-    feature = "diagram-xychart"
-))]
+// Common metadata normalization also uses ECMAScript scanning without diagram features.
 #[allow(
     dead_code,
     reason = "Shared parser facilities have different consumers in each family selection."
@@ -150,6 +135,12 @@ pub mod sankey;
 pub(crate) mod scan;
 #[cfg(feature = "diagram-sequence")]
 pub mod sequence;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub(crate) mod shapes;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 #[cfg(feature = "diagram-timeline")]
@@ -158,6 +149,8 @@ pub mod timeline;
 pub mod tree_view;
 #[cfg(feature = "diagram-treemap")]
 pub mod treemap;
+#[cfg(feature = "diagram-usecase")]
+pub mod usecase;
 #[cfg(feature = "diagram-venn")]
 pub mod venn;
 #[cfg(feature = "diagram-wardley")]

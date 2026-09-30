@@ -572,7 +572,7 @@ mod tests {
         write_flowchart_svg_source_word_lines(&mut svg, &wrapped, false);
         assert_eq!(svg.matches("text-inner-tspan").count(), 3, "{svg}");
         assert!(
-            svg.contains(">&lt;span class=&#39;foo bar&#39;></tspan>"),
+            svg.contains(">&lt;span class=&#39;foo bar&#39;&gt;</tspan>"),
             "{svg}"
         );
     }

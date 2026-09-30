@@ -100,8 +100,8 @@ Dugong is a modified Rust translation of Dagre's directed graph layout pipeline.
 
 Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; the exact upstream Apache-2.0 license file is preserved.
 
-- Version: `3.4.13`
-- Source: https://github.com/cure53/DOMPurify.git @ `3067f774676975de12306effd6db6ad7a9a8c17f`
+- Version: `3.4.15`
+- Source: https://github.com/cure53/DOMPurify.git @ `1d7460c4f8a27be825c11b1c9d346d79db32c1e5`
 - Source path: `.`
 - Relationship: `generated`, `translated`
 - License: `(Apache-2.0 OR MPL-2.0)`
@@ -160,8 +160,8 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.17.2`
-- Source: https://github.com/mermaid-js/mermaid.git @ `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
+- Version: `12.0.0`
+- Source: https://github.com/mermaid-js/mermaid.git @ `98a0945418c76238f15df2afaddbba4272656c3b`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
@@ -242,11 +242,11 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 
 ### Eclipse Layout Kernel
 
-The merman-elk-layered crate contains a modified Rust source translation of Eclipse ELK layered algorithms under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0.
 
 - Version: `0.9.1`
 - Source: https://github.com/eclipse-elk/elk.git @ `62d5909f96fad541bc101ad52dabaece6b7eab7e`
-- Source path: `plugins/org.eclipse.elk.alg.layered`
+- Source path: `plugins`
 - Relationship: `modified`, `translated`
 - License: `EPL-2.0`
 - Local evidence: `crates/merman-elk-layered`, `crates/merman-layout-elk`

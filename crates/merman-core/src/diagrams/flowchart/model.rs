@@ -34,6 +34,7 @@ pub struct FlowchartModel {
 }
 
 impl FlowchartModel {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -81,14 +82,17 @@ impl FlowchartRenderLabelSources {
             .unwrap_or(subgraph.title.as_str())
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_node(&mut self, id: String, source: String) {
         self.nodes.insert(id, source);
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_edge(&mut self, id: String, source: String) {
         self.edges.insert(id, source);
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert_subgraph(
         &mut self,
         id: String,
@@ -104,6 +108,7 @@ impl FlowchartRenderLabelSources {
         }
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.nodes
             .iter()
@@ -156,6 +161,7 @@ impl FlowchartRenderStyleSources {
         self.subgraph_vertices.contains_key(id)
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn insert(
         &mut self,
         id: String,
@@ -171,6 +177,7 @@ impl FlowchartRenderStyleSources {
         );
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.subgraph_vertices
             .iter()
@@ -195,6 +202,8 @@ pub struct FlowchartRenderContext {
     styles: FlowchartRenderStyleSources,
     collapsed_subgraphs: FxHashSet<String>,
     collapsed_replacements: FxHashMap<String, String>,
+    subgraph_color_ordinals: FxHashMap<String, usize>,
+    node_dom_indices: FxHashMap<String, usize>,
 }
 
 impl FlowchartRenderContext {
@@ -210,7 +219,45 @@ impl FlowchartRenderContext {
             styles,
             collapsed_subgraphs,
             collapsed_replacements,
+            subgraph_color_ordinals: build_subgraph_color_ordinals(subgraphs),
+            node_dom_indices: FxHashMap::default(),
         }
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    pub(crate) fn set_node_dom_indices(
+        &mut self,
+        indices: impl IntoIterator<Item = (String, usize)>,
+    ) {
+        self.node_dom_indices = indices.into_iter().collect();
+    }
+
+    /// Returns a parser-assigned DOM ordinal when the family owns node registration.
+    #[doc(hidden)]
+    pub fn node_dom_index(&self, id: &str) -> Option<usize> {
+        self.node_dom_indices.get(id).copied()
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    pub(crate) fn set_collapsed_replacements(
+        &mut self,
+        replacements: impl IntoIterator<Item = (String, String)>,
+    ) {
+        self.collapsed_replacements = replacements.into_iter().collect();
+    }
+
+    #[cfg(feature = "diagram-agentflow")]
+    pub(crate) fn set_subgraph_color_ordinals(
+        &mut self,
+        ordinals: impl IntoIterator<Item = (String, usize)>,
+    ) {
+        self.subgraph_color_ordinals = ordinals.into_iter().collect();
+    }
+
+    /// Returns the container's palette ordinal, independent of model storage order.
+    #[doc(hidden)]
+    pub fn subgraph_color_ordinal(&self, id: &str) -> Option<usize> {
+        self.subgraph_color_ordinals.get(id).copied()
     }
 
     #[doc(hidden)]
@@ -261,6 +308,7 @@ impl FlowchartRenderContext {
         self.collapsed_replacements.get(id).map(String::as_str)
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.labels
             .retained_bytes()
@@ -279,7 +327,54 @@ impl FlowchartRenderContext {
                         .saturating_add(replacement.len())
                 },
             ))
+            .saturating_add(
+                self.subgraph_color_ordinals
+                    .keys()
+                    .chain(self.node_dom_indices.keys())
+                    .fold(0usize, |total, id| {
+                        total
+                            .saturating_add(id.len())
+                            .saturating_add(std::mem::size_of::<usize>())
+                    }),
+            )
     }
+}
+
+fn build_subgraph_color_ordinals(subgraphs: &[FlowSubgraph]) -> FxHashMap<String, usize> {
+    let ids: FxHashSet<&str> = subgraphs.iter().map(|graph| graph.id.as_str()).collect();
+    let mut parents = FxHashMap::default();
+    for graph in subgraphs {
+        for child in &graph.nodes {
+            if ids.contains(child.as_str()) {
+                parents.insert(child.as_str(), graph.id.as_str());
+            }
+        }
+    }
+    let mut children: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+    for graph in subgraphs {
+        if let Some(&parent) = parents.get(graph.id.as_str()) {
+            children.entry(parent).or_default().push(graph.id.as_str());
+        }
+    }
+    // Jison stores containers when they close. A containment preorder restores declaration
+    // order and keeps each slot stable when the same container is rendered collapsed.
+    let mut pending: Vec<_> = subgraphs
+        .iter()
+        .rev()
+        .filter(|graph| !parents.contains_key(graph.id.as_str()))
+        .map(|graph| graph.id.as_str())
+        .collect();
+    let mut ordinals = FxHashMap::default();
+    while let Some(id) = pending.pop() {
+        if ordinals.contains_key(id) {
+            continue;
+        }
+        ordinals.insert(id.to_owned(), ordinals.len());
+        if let Some(children) = children.get(id) {
+            pending.extend(children.iter().rev().copied());
+        }
+    }
+    ordinals
 }
 
 fn build_collapsed_replacements(
@@ -646,6 +741,9 @@ pub struct FlowSubgraph {
     #[serde(default)]
     pub styles: Vec<String>,
     pub nodes: Vec<String>,
+    /// Opaque subgraph metadata forwarded to layout engines, including `algorithm`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -661,6 +759,7 @@ struct FlowSubgraphVertexStyleSource {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct Node {
     pub id: String,
     pub provenance: FlowNodeProvenance,
@@ -687,12 +786,14 @@ pub(crate) struct Node {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) enum FlowNodeSyntax {
     BareReference,
     ExplicitDefinition,
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct Edge {
     pub from: String,
     pub to: String,
@@ -711,6 +812,13 @@ pub(crate) struct Edge {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")),
+    allow(
+        dead_code,
+        reason = "Agentflow shares presentation lexing but does not consume Flowchart grammar and recovery payloads."
+    )
+)]
 pub(crate) struct LinkToken {
     pub end: String,
     pub start_marker: FlowEdgeMarker,
@@ -720,6 +828,7 @@ pub(crate) struct LinkToken {
     pub length: usize,
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl LinkToken {
     pub(crate) const fn compatibility_edge_type(&self) -> &'static str {
         match (self.start_marker, self.end_marker) {
@@ -746,6 +855,7 @@ impl LinkToken {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) struct EdgeDefaults {
     pub style: Vec<String>,
     pub interpolate: Option<String>,

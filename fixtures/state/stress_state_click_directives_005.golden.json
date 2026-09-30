@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -56,8 +62,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -75,8 +84,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -94,8 +106,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       }
     ],
@@ -105,72 +120,68 @@
         "start": "root_start",
         "end": "Start",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "Start",
         "end": "Review",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "Review",
         "end": "Done",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "Done",
         "end": "root_end",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
     "links": {
-      "Done": {
-        "url": "https://example.com/done",
-        "tooltip": "Done docs"
-      },
       "Start": {
         "url": "https://example.com/start",
         "tooltip": "Start docs"
@@ -178,25 +189,18 @@
       "Review": {
         "url": "https://example.com/review",
         "tooltip": "Review docs"
+      },
+      "Done": {
+        "url": "https://example.com/done",
+        "tooltip": "Done docs"
       }
     },
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "Start": {
-        "id": "Start",
+      "Review": {
+        "id": "Review",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -206,8 +210,8 @@
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
+      "Start": {
+        "id": "Start",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -238,6 +242,17 @@
         "styles": [],
         "textStyles": [],
         "start": false
+      },
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
       }
     },
     "relations": [

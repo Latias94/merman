@@ -14,7 +14,7 @@ use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
-    SequenceSignalSemantics,
+    SequenceMessageStroke, SequenceSignalSemantics,
 };
 
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
@@ -131,9 +131,11 @@ fn message_horizontal_model_from_request(
 
     if req.is_neo {
         const NEO_MARKER_OFFSET: f64 = 3.0;
-        if req.semantics.target_marker != SequenceMessageMarker::None
-            || req.semantics.direction == SequenceMessageDirection::Reverse
-        {
+        // Mermaid exempts only SOLID_OPEN, not the headless dotted signal.
+        let is_solid_open = req.semantics.stroke == SequenceMessageStroke::Solid
+            && req.semantics.target_marker == SequenceMessageMarker::None
+            && req.semantics.direction == SequenceMessageDirection::Forward;
+        if !is_solid_open {
             stop_x += if is_arrow_to_right {
                 -NEO_MARKER_OFFSET
             } else {
@@ -596,7 +598,7 @@ fn message_vertical_geometry_from_measurement(
         text_width: 0.0,
         line_y,
         // drawMessage sets y=starty+10; drawText then centers the first line within wrapPadding.
-        label_y: req.cursor_y + 10.0 + req.wrap_padding / 2.0,
+        label_y: super::sequence_drawn_text_first_y(req.cursor_y + 10.0, req.wrap_padding),
         cursor_step: line_y + self_advance - req.cursor_y,
         inserted_bottom_y: line_y + if req.is_self { 60.0 } else { 0.0 },
     }
@@ -615,7 +617,7 @@ fn message_label(
         // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
         return Ok(Some(LayoutLabel {
             x: ((x1 + x2) / 2.0).round(),
-            y: label_y.round(),
+            y: label_y,
             width: 1.0,
             height: ctx.message_font_size.max(1.0),
         }));
@@ -640,12 +642,13 @@ fn message_label(
             effective_text,
             ctx.msg_text_style,
             SequenceDrawnTextNode::Direct,
+            ctx.math_config,
             ctx.checkpoints.text(),
         )?
     };
     Ok(Some(LayoutLabel {
         x: ((x1 + x2) / 2.0).round(),
-        y: label_y.round(),
+        y: label_y,
         width: w.max(1.0),
         height: h.max(1.0),
     }))
@@ -743,7 +746,7 @@ mod tests {
         );
         assert_eq!(
             (neo_dotted_headless.start_x, neo_dotted_headless.stop_x),
-            (101.0, 199.0)
+            (101.0, 196.0)
         );
     }
 
@@ -878,5 +881,22 @@ mod tests {
         assert_eq!(right_angled.line_y, 140.0);
         assert_eq!(right_angled.cursor_step, 70.0);
         assert_eq!(right_angled.inserted_bottom_y, 200.0);
+    }
+    #[test]
+    fn message_first_row_keeps_fractional_position_and_only_positive_margin_offset() {
+        for margin in [5.0, 0.0, -5.0] {
+            let geometry =
+                message_vertical_geometry_from_measurement(SequenceMessageVerticalRequest {
+                    cursor_y: 100.25,
+                    text_height: 30.8,
+                    line_count: 2,
+                    is_math_message: false,
+                    is_self: false,
+                    right_angles: false,
+                    box_margin: 10.0,
+                    wrap_padding: margin,
+                });
+            assert_eq!(geometry.label_y, if margin > 0.0 { 112.75 } else { 110.25 });
+        }
     }
 }

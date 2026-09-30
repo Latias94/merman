@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -56,8 +62,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -72,8 +81,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "left of"
+        "look": "neo",
+        "position": "left of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -84,12 +96,15 @@
         "cssCompiledStyles": [],
         "id": "Active----note-2",
         "domId": "state-Active----note-2",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "left of",
-        "parentId": "Active----parent"
+        "parentId": "Active----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       },
       {
         "labelStyle": "",
@@ -103,8 +118,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "right of"
+        "look": "neo",
+        "position": "right of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -115,12 +133,15 @@
         "cssCompiledStyles": [],
         "id": "Inactive----note-3",
         "domId": "state-Inactive----note-3",
-        "type": null,
+        "type": "node",
         "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "right of",
-        "parentId": "Inactive----parent"
+        "parentId": "Inactive----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -129,32 +150,32 @@
         "start": "root_start",
         "end": "Active",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "Active",
         "end": "Inactive",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "Active----note-2-Active",
@@ -169,7 +190,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "Inactive-Inactive----note-3",
@@ -184,7 +205,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -193,6 +214,20 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "Inactive": {
+        "id": "Inactive",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "A note can also\nbe defined on\nseveral lines"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "root_start": {
         "id": "root_start",
         "type": "default",
@@ -212,20 +247,6 @@
         "note": {
           "position": "left of",
           "text": "this is a short<br/>note"
-        },
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Inactive": {
-        "id": "Inactive",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": {
-          "position": "right of",
-          "text": "A note can also\nbe defined on\nseveral lines"
         },
         "classes": [],
         "styles": [],

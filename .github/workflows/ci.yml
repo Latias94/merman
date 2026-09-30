@@ -226,7 +226,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: nextest
 
@@ -264,7 +264,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.22.3
+        uses: DeterminateSystems/determinate-nix-action@v3.22.5
 
       - name: Build reusable Nix derivation
         run: |
@@ -402,7 +402,7 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: nextest
 
@@ -466,7 +466,7 @@ jobs:
 
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: cargo nextest run --locked --cargo-quiet
+        run: cargo nextest run --locked --no-fail-fast --cargo-quiet
 
       - name: Compile workspace on pull-request host runners
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -760,7 +760,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: wasm-tools
 
@@ -841,7 +841,7 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.9
+        uses: taiki-e/install-action@v2.87.22
         with:
           tool: wasm-tools
 
@@ -986,10 +986,10 @@ jobs:
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+        uses: gradle/actions/setup-gradle@v6.4.0
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
 

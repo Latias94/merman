@@ -134,7 +134,8 @@ fn print_help(topic: Option<&str>) {
     println!("  debug-svg-bbox");
     println!("  debug-svg-data-points");
     println!("  measure-text");
-    println!("  gen-theme-snapshot");
+    println!("  gen-default-config [--reference-bundle PATH --out PATH --shape-out PATH]");
+    println!("  gen-theme-snapshot [--reference-bundle PATH --out PATH --audit-out PATH]");
     println!("  gen-editor-language-contract");
     println!("  gen-binding-contract");
     println!("  gen-capability-surface");

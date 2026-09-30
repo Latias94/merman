@@ -1,4 +1,4 @@
-# Class Diagram Upstream Test Coverage (Mermaid@11.17.2)
+# Class Diagram Upstream Test Coverage (Mermaid@12.0.0)
 
 This document tracks which upstream Mermaid `classDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.17.2`.
+Scope: Mermaid tag `@12.0.0` at commit `98a0945418c76238f15df2afaddbba4272656c3b`.
 
 ## External regression cases
 
@@ -62,19 +62,19 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 
 Class ELK entry-point coverage:
 
-- Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
-  feature-gated Class ELK adapter under `layout-elk`. The renderer shares Class semantic,
-  node, edge, and namespace emitters while selecting the `@mermaid-js/layout-elk@0.2.3` artifact
-  from the Mermaid 11.17.2 npm graph. That package was published from its own 11.17.0-line tag and
-  emits the top-level DOM `root`, `clusters`, `edges edgePath`, `edgeLabels`, and `nodes`, rather
-  than the later host source's `edges edgePaths` spelling or the Dagre wrapper's edge group
-  contract.
+- Mermaid 12 defaults and explicit `layout: elk` / `class.defaultRenderer: elk` requests
+  dispatch through the feature-gated Class ELK adapter under `layout-elk`. The selected
+  standard Mermaid runtime owns ELK; no legacy external layout registration is installed.
+  The shared painter emits `root` containing `edgePaths edges`, `clusters`, `edgeLabels`,
+  and `nodes` in that order, with the common Mermaid 12 marker definitions.
   `render_model_dispatch_uses_elk_for_class_layout_config`,
   `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
-  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered Class
-  semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
-  `class_svg_elk_layout_uses_upstream_adapter_dom` locks the adapter-specific wrapper order and
-  classes against the pinned upstream renderer.
+  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered
+  namespaces, styles, links, notes, relation labels, and cardinality terminals.
+  `class_svg_elk_layout_uses_common_painter_dom` and
+  `class_svg_elk_layout_uses_shared_mermaid12_markers` lock the wrapper and marker contracts.
+  `class_svg_elk_paints_straightened_terminal_channels_without_moving_ports` verifies that
+  the painter consumes the prepared routes and honors the straightening opt-out.
 - The deferred upstream Cypress full-diagram ELK copy with stem
   `upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_using_elk_057`
   is treated as absorbed because its diagram body matches the active fixture
@@ -232,7 +232,7 @@ Imported (parity-gated with upstream SVG baselines):
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
 
-Rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.17.2` and still deferred
+Historical Mermaid 11 evidence: rechecked with `@mermaid-js/mermaid-cli@11.16.0` executing `mermaid@11.17.2` and still deferred
 because the upstream renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`

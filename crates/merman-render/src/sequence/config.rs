@@ -34,20 +34,59 @@ impl<'a> SequenceConfigView<'a> {
         self.sequence_json_number_or(key, default).max(min)
     }
 
-    pub(crate) fn root_json_number(&self, key: &str) -> Option<f64> {
-        self.effective_config.get(key).and_then(Value::as_f64)
-    }
-
     pub(crate) fn root_bool(&self, key: &str) -> Option<bool> {
         self.effective_config.get(key).and_then(Value::as_bool)
     }
 
-    pub(crate) fn root_string(&self, key: &str) -> Option<String> {
-        crate::config::config_string(self.effective_config, &[key])
-    }
-
     pub(crate) fn sequence_string(&self, key: &str) -> Option<String> {
         crate::config::config_string(self.sequence_config, &[key])
+    }
+
+    fn parse_font_weight(value: &Value) -> Option<String> {
+        use cssparser::ToCss;
+
+        let raw = match value {
+            Value::String(value) => value.clone(),
+            Value::Number(value) => value.to_string(),
+            _ => return None,
+        };
+        let mut input = cssparser::ParserInput::new(&raw);
+        let mut parser = cssparser::Parser::new(&mut input);
+        let token = parser.next().ok()?;
+        let css = match token {
+            cssparser::Token::Number { value, .. } if (1.0..=1000.0).contains(value) => {
+                token.to_css_string()
+            }
+            cssparser::Token::Ident(value)
+                if [
+                    "normal",
+                    "bold",
+                    "bolder",
+                    "lighter",
+                    "inherit",
+                    "initial",
+                    "unset",
+                    "revert",
+                    "revert-layer",
+                ]
+                .iter()
+                .any(|keyword| value.eq_ignore_ascii_case(keyword)) =>
+            {
+                value.to_ascii_lowercase()
+            }
+            _ => return None,
+        };
+        parser.is_exhausted().then_some(css)
+    }
+
+    pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
+        // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
+        // A rejected global value must not reveal the overridden family setting.
+        let selected = self.font_value("fontWeight", key);
+        match selected {
+            Some(value) => Self::parse_font_weight(value),
+            None => Some("400".to_string()),
+        }
     }
 
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
@@ -58,28 +97,31 @@ impl<'a> SequenceConfigView<'a> {
         self.sequence_compat_f64(key, default).max(min)
     }
 
-    fn root_compat_f64(&self, key: &str) -> Option<f64> {
-        crate::config::config_f64(self.effective_config, &[key])
+    fn font_value(&self, root_key: &str, sequence_key: &str) -> Option<&Value> {
+        // sequenceRenderer.setConf overrides each family only for a truthy global value.
+        self.effective_config
+            .get(root_key)
+            .filter(|value| crate::config::json_value_is_truthy(value))
+            .or_else(|| self.sequence_config.get(sequence_key))
     }
 
-    fn layout_text_style(
+    pub(crate) fn text_style(
         &self,
-        root_font_family: &Option<String>,
-        root_font_size: Option<f64>,
-        root_font_weight: &Option<String>,
         family_key: &str,
         size_key: &str,
         weight_key: &str,
     ) -> TextStyle {
-        let font_family = root_font_family
-            .clone()
-            .or_else(|| self.sequence_string(family_key));
-        let font_size = root_font_size
-            .or_else(|| crate::config::config_f64(self.sequence_config, &[size_key]))
+        let font_family = self
+            .font_value("fontFamily", family_key)
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        // svgDraw.parseFontSize accepts numeric strings and explicit px lengths as well
+        // as numbers. Resolve these identically for layout and SVG emission.
+        let font_size = self
+            .font_value("fontSize", size_key)
+            .and_then(crate::config::json_f64_css_px)
             .unwrap_or(16.0);
-        let font_weight = root_font_weight
-            .clone()
-            .or_else(|| self.sequence_string(weight_key));
+        let font_weight = self.font_weight(weight_key);
 
         TextStyle {
             font_family,
@@ -133,35 +175,11 @@ impl SequenceLayoutSettings {
         let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
         let activation_width = config.sequence_compat_f64_min("activationWidth", 10.0, 1.0);
 
-        // Mermaid's `sequenceRenderer.setConf(...)` overrides per-sequence font settings whenever
-        // the global `fontFamily` / `fontSize` / `fontWeight` are present.
-        let root_font_family = config.root_string("fontFamily");
-        let root_font_size = config.root_compat_f64("fontSize");
-        let root_font_weight = config.root_string("fontWeight");
-        let actor_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            &root_font_weight,
-            "actorFontFamily",
-            "actorFontSize",
-            "actorFontWeight",
-        );
-        let note_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            &root_font_weight,
-            "noteFontFamily",
-            "noteFontSize",
-            "noteFontWeight",
-        );
-        let msg_text_style = config.layout_text_style(
-            &root_font_family,
-            root_font_size,
-            &root_font_weight,
-            "messageFontFamily",
-            "messageFontSize",
-            "messageFontWeight",
-        );
+        let actor_text_style =
+            config.text_style("actorFontFamily", "actorFontSize", "actorFontWeight");
+        let note_text_style = config.text_style("noteFontFamily", "noteFontSize", "noteFontWeight");
+        let msg_text_style =
+            config.text_style("messageFontFamily", "messageFontSize", "messageFontWeight");
 
         Self {
             diagram_margin_x,
@@ -191,6 +209,115 @@ impl SequenceLayoutSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn note_weight_matches_source_numeric_string_and_global_precedence() {
+        for (config, expected) in [
+            (json!({}), Some("400")),
+            (json!({"sequence": {"noteFontWeight": 700}}), Some("700")),
+            (
+                json!({"sequence": {"noteFontWeight": "bold"}}),
+                Some("bold"),
+            ),
+            (
+                json!({"fontWeight": 500, "sequence": {"noteFontWeight": 700}}),
+                Some("500"),
+            ),
+            (
+                json!({"fontWeight": "600", "sequence": {"noteFontWeight": 700}}),
+                Some("600"),
+            ),
+            (
+                json!({"fontWeight": 0, "sequence": {"noteFontWeight": 700}}),
+                Some("700"),
+            ),
+            (
+                json!({"fontWeight": "", "sequence": {"noteFontWeight": 700}}),
+                Some("700"),
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": "700; font-style: italic"}}),
+                None,
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": "700 !important"}}),
+                None,
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": "bolder"}}),
+                Some("bolder"),
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": "inherit"}}),
+                Some("inherit"),
+            ),
+            (
+                json!({"sequence": {"noteFontWeight": 700.5}}),
+                Some("700.5"),
+            ),
+            (json!({"sequence": {"noteFontWeight": 0}}), None),
+        ] {
+            let settings = SequenceLayoutSettings::from_effective_config(&config);
+            assert_eq!(
+                settings.note_text_style.font_weight.as_deref(),
+                expected,
+                "{config}"
+            );
+        }
+    }
+
+    #[test]
+    fn actor_weight_uses_one_selected_value_for_layout_and_rendering() {
+        for (root, expected) in [
+            (json!("bogus"), None),
+            (json!(true), None),
+            (json!("700; font-style: italic"), None),
+            (json!("bolder"), Some("bolder")),
+            (json!("inherit"), Some("inherit")),
+            (json!(false), Some("700")),
+            (json!(0), Some("700")),
+            (json!(""), Some("700")),
+        ] {
+            let config = json!({
+                "fontWeight": root,
+                "sequence": {
+                    "actorFontWeight": 700,
+                    "noteFontWeight": 700,
+                    "messageFontWeight": 700
+                }
+            });
+            let view = SequenceConfigView::new(&config);
+            let settings = SequenceLayoutSettings::from_effective_config(&config);
+            for weight in [
+                view.font_weight("actorFontWeight"),
+                settings.actor_text_style.font_weight,
+                settings.note_text_style.font_weight,
+                settings.msg_text_style.font_weight,
+            ] {
+                assert_eq!(weight.as_deref(), expected, "{config}");
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_weights_preserve_static_css_keywords() {
+        for weight in [
+            "normal",
+            "bold",
+            "bolder",
+            "lighter",
+            "inherit",
+            "initial",
+            "unset",
+            "revert",
+            "revert-layer",
+        ] {
+            assert_eq!(
+                SequenceConfigView::parse_font_weight(&json!(weight.to_uppercase())).as_deref(),
+                Some(weight),
+            );
+        }
+    }
 
     #[test]
     fn sequence_layout_settings_preserve_layout_numeric_string_config() {

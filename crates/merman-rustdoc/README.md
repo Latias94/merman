@@ -9,9 +9,9 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 > This checkout is ahead of the published `0.8.0-alpha.6`. The dependency snippets below install
 > alpha.6 for the basic workflow. New options (`background`, `id_prefix`, and `inherit`), Markdown
 > container support, and the refactored behavior described here are available from this source
-> checkout and are planned for the next workspace release; alpha.6 does not include them. This
-> checkout also makes math opt-in. The quick-start recipe selects the same smaller feature set
-> explicitly because alpha.6 still enables math by default.
+> checkout and are planned for `0.8.0-alpha.7`; alpha.6 does not include them. This checkout also
+> makes math opt-in and enables ELK by default. The alpha.6 quick-start recipe below selects SVG
+> and Cytoscape explicitly; it includes neither math nor ELK.
 
 ## Quick Start
 
@@ -112,16 +112,21 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-This checkout defaults to `all-diagrams`, `svg`, and `layout-cytoscape`: all built-in families and
-deterministic SVG rendering with
-Cytoscape layout. Math is opt-in; add `math` to your dependency's features when diagrams contain
-math labels, or select `complete-svg` for SVG, Cytoscape, and math together. Existing users of
-alpha.6's math-enabled default must make that selection when upgrading to the next release.
+This checkout for `0.8.0-alpha.7` defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
+`layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
+Math is opt-in; add `math` when diagrams contain mathematical labels, or select `complete-svg-elk`
+for SVG, both layouts, and math together. Users of alpha.6's math-enabled default must enable
+math explicitly when upgrading.
 
-The default does not enable the optional EPL-2.0 ELK implementation or host clock, time-zone,
-random, or timing adapters. Use `complete-svg-elk` only when the published artifact is prepared
-with the corresponding ELK notices and source provenance. The separate `merman` facade retains
-its `all-diagrams + complete-svg` default.
+The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
+corresponding notices and source provenance. It does not enable host clock, time-zone, random,
+or timing adapters. The separate `merman` facade defaults to `all-diagrams + complete-svg-elk`,
+including math. To omit ELK, disable default features and select the required diagram families
+plus `complete-svg` for SVG, Cytoscape, and math, or choose narrower capability leaves. Selecting
+`complete-svg` without disabling defaults still includes ELK because Cargo features are additive.
+See the repository's
+[third-party notices](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for the
+source provenance and artifact obligations.
 
 Use a smaller closure when the documented diagrams need only the base SVG renderer:
 
@@ -422,9 +427,10 @@ select `complete-svg` for SVG with Cytoscape and math, or select `complete-svg-e
 
 ## License And Notices
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The default
-`complete-svg` closure does not compile ELK; `complete-svg-elk` and any artifact profile that lists
-`layout-elk` additionally carry the EPL-2.0 ELK source closure. Distribute the matching notices and
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. This checkout's
+default includes `layout-elk` and carries the EPL-2.0 ELK source closure. Disable default features
+and select the required diagram families plus `complete-svg` or narrower capability leaves to omit
+it. Distribute the matching notices and
 source provenance from [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
 with that artifact. Math-enabled builds may also include the OFL-1.1 RaTeX font closure.
 

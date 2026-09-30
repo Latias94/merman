@@ -44,6 +44,15 @@ pub(super) struct ClassNodeRenderState<'a> {
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
+pub(super) struct ClassNodeShellContext<'a> {
+    pub diagram_id: SvgDiagramId<'a>,
+    pub emit: ClassEmitCheckpoint<'a>,
+    pub look: &'a str,
+    pub security_level_loose: bool,
+    pub color_index: Option<usize>,
+    pub palette_size: usize,
+}
+
 pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
     pub node_style_attr: &'a str,
@@ -62,6 +71,7 @@ pub(super) struct ClassNodeDividerContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub timing: RenderTiming,
 }
 
@@ -131,6 +141,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub timing: RenderTiming,
@@ -147,17 +158,23 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
     pub look: &'a str,
+    pub use_gradient: bool,
     pub timing: RenderTiming,
+}
+
+fn write_class_color_slot(out: &mut String, color_index: Option<usize>, palette_size: usize) {
+    if palette_size > 0
+        && let Some(index) = color_index
+    {
+        let _ = write!(out, r#" data-color-id="color-{}""#, index % palette_size);
+    }
 }
 
 pub(super) fn render_class_node_shell_open(
     out: &mut String,
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
-    diagram_id: SvgDiagramId<'_>,
-    emit: ClassEmitCheckpoint<'_>,
-    look: &str,
-    security_level_loose: bool,
+    ctx: &ClassNodeShellContext<'_>,
 ) -> crate::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -166,21 +183,21 @@ pub(super) fn render_class_node_shell_open(
     let href = link.and_then(|href| {
         prepare_mermaid_navigation_href(
             href,
-            MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+            MermaidNavigationSecurity::from_security_level_loose(ctx.security_level_loose),
         )
     });
     let have_callback = node.have_callback;
 
     if link.is_some() {
         out.push_str(r#"<a data-look=""#);
-        super::super::util::escape_attr_into(out, look);
+        super::super::util::escape_attr_into(out, ctx.look);
         out.push('"');
         if let Some(href) = href.as_ref() {
             out.push_str(r#" xlink:href=""#);
             out.push_str(href.as_serialized_str());
             out.push('"');
         }
-        if security_level_loose
+        if ctx.security_level_loose
             && let Some(target) = node
                 .link_target
                 .as_deref()
@@ -202,23 +219,24 @@ pub(super) fn render_class_node_shell_open(
     }
 
     out.push_str(r#"<g class=""#);
-    if look == "handDrawn" {
+    if ctx.look == "handDrawn" {
         out.push_str("rough-node ");
     } else {
         out.push_str("node ");
     }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
-    let _ = write!(out, "{diagram_id}");
-    emit.checkpoint()?;
+    let _ = write!(out, "{}", ctx.diagram_id);
+    ctx.emit.checkpoint()?;
     out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
     if link.is_none() {
         out.push_str(r#" data-look=""#);
-        super::super::util::escape_attr_into(out, look);
+        super::super::util::escape_attr_into(out, ctx.look);
         out.push('"');
     }
+    write_class_color_slot(out, ctx.color_index, ctx.palette_size);
     if has_tooltip {
         out.push_str(r#" title=""#);
         super::super::util::escape_attr_into(out, tooltip);
@@ -317,7 +335,7 @@ pub(super) fn render_class_node_basic_container(
     if hand_drawn {
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/>"#,
+            r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
             escape_attr_display(&fill_d),
             escape_attr_display(ctx.node_fill),
         );
@@ -360,7 +378,12 @@ pub(super) fn render_class_node_dividers(
     for y in divider_ys {
         let _ = write!(
             out,
-            r#"<g class="divider" style="{}">"#,
+            r#"<g class="divider{}" style="{}">"#,
+            if ctx.look == "neo" && !ctx.use_gradient {
+                " neo-line"
+            } else {
+                ""
+            },
             escape_attr_display(ctx.node_style_attr)
         );
         let d = if ctx.look == "handDrawn" {
@@ -711,6 +734,7 @@ pub(super) fn render_class_html_node_body(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
+                use_gradient: ctx.use_gradient,
                 timing: ctx.timing,
             },
         )
@@ -839,7 +863,8 @@ pub(super) fn render_class_svg_node_body(
     {
         let mut y_offset = 0.0;
         for m in &node.members {
-            let mut text = decode_entities_minimal(m.display_text.trim());
+            let mut text =
+                decode_entities_minimal(crate::class::class_member_display_text(m).as_str());
             if text.starts_with('\\') {
                 text = text.trim_start_matches('\\').to_string();
             }
@@ -1082,6 +1107,7 @@ pub(super) fn render_class_svg_node_body(
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
                 look: ctx.look,
+                use_gradient: ctx.use_gradient,
                 timing: ctx.timing,
             },
         )
@@ -1299,4 +1325,18 @@ pub(super) fn render_class_svg_title_group(
         out.push_str("</tspan></tspan>");
     }
     out.push_str("</text></g></g></g>");
+}
+
+#[cfg(test)]
+mod palette_tests {
+    #[test]
+    fn class_palette_slots_wrap_and_leave_unassigned_containers_unstamped() {
+        let mut attributes = String::new();
+        super::write_class_color_slot(&mut attributes, Some(4), 3);
+        assert_eq!(attributes, r#" data-color-id="color-1""#);
+        attributes.clear();
+        super::write_class_color_slot(&mut attributes, None, 3);
+        super::write_class_color_slot(&mut attributes, Some(0), 0);
+        assert!(attributes.is_empty());
+    }
 }

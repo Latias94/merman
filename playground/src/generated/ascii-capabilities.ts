@@ -5,6 +5,29 @@ import type { AsciiCapability } from "@mermanjs/web";
 
 export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   {
+    "diagram_type": "agentflow",
+    "display_name": "agentflow",
+    "semantic_coverage": null,
+    "primary_projection": "none",
+    "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
+    "support_level": "unsupported",
+    "supported_semantics": [],
+    "limits": [
+      "no terminal projection is available"
+    ],
+    "evidence": [
+      {
+        "kind": "support_matrix",
+        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
+        "note": "the total capability matrix records this typed family as unsupported"
+      }
+    ]
+  },
+  {
     "diagram_type": "architecture",
     "display_name": "architecture",
     "semantic_coverage": null,
@@ -1110,6 +1133,29 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   {
     "diagram_type": "treemap",
     "display_name": "treemap",
+    "semantic_coverage": null,
+    "primary_projection": "none",
+    "structured_text_fallback": false,
+    "layout_profiles": [],
+    "width_profiles": [],
+    "encodings": [],
+    "fallback_encodings": [],
+    "support_level": "unsupported",
+    "supported_semantics": [],
+    "limits": [
+      "no terminal projection is available"
+    ],
+    "evidence": [
+      {
+        "kind": "support_matrix",
+        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
+        "note": "the total capability matrix records this typed family as unsupported"
+      }
+    ]
+  },
+  {
+    "diagram_type": "usecase",
+    "display_name": "usecase",
     "semantic_coverage": null,
     "primary_projection": "none",
     "structured_text_fallback": false,

@@ -1267,7 +1267,9 @@ fn compute_linear_ordering_marks(
         }
 
         let mut max_outflow = i32::MIN;
-        for segment in &unprocessed {
+        // ELK's TreeSet compares the initial marks (-1, -2, ...), so tied
+        // candidates reach the seeded random choice in reverse segment order.
+        for segment in unprocessed.iter().rev() {
             if !critical_only
                 && graph.segments[*segment].critical_out_dep_weight > 0
                 && graph.segments[*segment].critical_in_dep_weight <= 0
@@ -1919,6 +1921,49 @@ mod tests {
                 .any(|segment| segment.split_by.is_some())
         );
         assert!(detect_cycles(&mut graph, true, &mut JavaRandom::new(1)).is_empty());
+    }
+
+    #[test]
+    fn symmetric_critical_cycle_uses_elk_mark_order_for_seeded_split_choice() {
+        // Java Random selects index 1 for seed 1 and index 0 for seed 4096.
+        // ELK's mark-ordered candidates are [b, a]; the later-marked segment
+        // owns the backward dependency and must be split around the other one.
+        for (seed, expected_split) in [(1, 1), (4096, 0)] {
+            let mut graph = HyperEdgeGraph::default();
+            let a = graph.add_segment(segment(&[0.0], &[20.0]));
+            let b = graph.add_segment(segment(&[20.0], &[0.0]));
+            graph.add_critical_dependency(a, b);
+            graph.add_critical_dependency(b, a);
+            let thresholds = OrthogonalRoutingThresholds {
+                conflict_threshold: 5.0,
+                critical_conflict_threshold: 1.0,
+            };
+
+            break_critical_cycles(&mut graph, thresholds, &mut JavaRandom::new(seed));
+
+            let obstacle = 1 - expected_split;
+            assert_eq!(graph.segments.len(), 3, "seed={seed}");
+            assert_eq!(
+                graph.segments[expected_split].split_by,
+                Some(obstacle),
+                "seed={seed}"
+            );
+            assert_eq!(graph.segments[obstacle].split_by, None, "seed={seed}");
+            let partner = graph.segments[expected_split].split_partner.unwrap();
+            assert!(has_active_dependency(
+                &graph,
+                expected_split,
+                obstacle,
+                DependencyType::Critical
+            ));
+            assert!(has_active_dependency(
+                &graph,
+                obstacle,
+                partner,
+                DependencyType::Critical
+            ));
+            assert!(detect_cycles(&mut graph, true, &mut JavaRandom::new(seed)).is_empty());
+        }
     }
 
     #[test]

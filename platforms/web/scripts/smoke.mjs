@@ -495,7 +495,7 @@ assert.equal(
       capability.logical_family_kind === "flowchart" &&
       capability.metadata_id === "flowchart" &&
       capability.render_model_kind === "flowchart" &&
-      capability.has_detector &&
+      !capability.has_detector &&
       capability.has_semantic_parser &&
       capability.has_editor_parser &&
       capability.has_combined_parser &&
@@ -575,7 +575,7 @@ if (hasCapability("analysis")) {
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
-  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
+  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "elk");
   assert.equal(
     flowchartFacts.diagrams[0].syntax.semantic_items.some(
       (item) => item.name === "A" && item.span.document
@@ -588,7 +588,7 @@ if (hasCapability("analysis")) {
     validity: "valid",
     diagramType: "flowchart",
     syntaxId: "flowchart-v2",
-    effectiveLayoutId: "dagre",
+    effectiveLayoutId: "elk",
   });
   assert.deepEqual(
     api.detectDiagramFacts("classDiagram\nclass A\n", {
@@ -602,6 +602,13 @@ if (hasCapability("analysis")) {
       syntaxId: "classDiagram",
       effectiveLayoutId: "elk",
     }
+  );
+  assert.equal(
+    api.detectDiagramFacts("flowchart TD\nA-->B\n", {
+      ...deterministicTime,
+      site_config: { layout: "dagre" },
+    }).effectiveLayoutId,
+    "dagre",
   );
   const unavailableDetection = {
     status: "unavailable",
@@ -622,7 +629,7 @@ if (hasCapability("analysis")) {
       validity: "recoverable-invalid",
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
-      effectiveLayoutId: "dagre",
+      effectiveLayoutId: "elk",
     }
   );
   assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
@@ -1146,6 +1153,8 @@ const fixtureNames = {
 };
 
 const repositoryFixturePaths = {
+  agentflow: ["fixtures", "agentflow", "basic.mmd"],
+  usecase: ["fixtures", "usecase", "basic.mmd"],
   cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
   eventmodeling: ["fixtures", "eventmodeling", "upstream_docs_eventmodeling_minimum.mmd"],
   ishikawa: ["fixtures", "ishikawa", "upstream_docs_ishikawa_basic.mmd"],
@@ -1464,7 +1473,7 @@ function assertEditorLanguageSurface(enabled) {
       validity: "recoverable-invalid",
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
-      effectiveLayoutId: "dagre",
+      effectiveLayoutId: "elk",
     }
   );
 
@@ -1649,7 +1658,12 @@ async function runPureDistSmoke() {
     import(svgSafetySpecifier),
     import(textMeasurementAbiSpecifier),
   ]);
-  assert.equal(catalog.SUPPORTED_DIAGRAMS.length, 35);
+  assert.equal(
+    catalog.SUPPORTED_DIAGRAMS.length,
+    new Set(catalog.SUPPORTED_DIAGRAMS).size
+  );
+  assert.equal(catalog.isDiagramType("agentflow"), true);
+  assert.equal(catalog.isDiagramType("usecase"), true);
   assert.equal(catalog.isDiagramType("swimlane"), true);
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);

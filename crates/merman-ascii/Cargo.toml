@@ -20,6 +20,7 @@ fixed-capabilities = ["ascii"]
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -48,6 +49,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -60,6 +62,8 @@ diagram-class = ["merman-core/diagram-class"]
 diagram-cynefin = ["merman-core/diagram-cynefin"]
 diagram-er = ["merman-core/diagram-er"]
 diagram-event-modeling = ["merman-core/diagram-event-modeling"]
+diagram-agentflow = ["merman-core/diagram-agentflow"]
+diagram-usecase = ["merman-core/diagram-usecase"]
 diagram-flowchart = ["merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash"]
 diagram-gantt = ["merman-core/diagram-gantt"]
 diagram-git-graph = ["merman-core/diagram-git-graph"]

@@ -75,6 +75,9 @@ pub(super) fn render_sequence_interaction_overlays(
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
         label_box_width: ctx.settings.label_box_width,
+        label_box_height: ctx.settings.label_box_height,
+        box_margin: ctx.settings.box_margin,
+        box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
@@ -85,7 +88,7 @@ pub(super) fn render_sequence_interaction_overlays(
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,
         measurer: ctx.measurer,
-        actor_label_font_size: ctx.settings.actor_label_font_size,
+        note_margin: ctx.settings.note_margin,
         wrap_padding: ctx.settings.wrap_padding,
         note_text_style: &ctx.settings.note_text_style,
         sanitize_config: ctx.sanitize_config,
@@ -95,7 +98,7 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        render_sequence_activation_group(out, &activation_plan, &msg.id);
+        render_sequence_activation_group(out, &activation_plan, &msg.id, ctx.sanitize_config);
         render_sequence_note(out, msg, &note_ctx)?;
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {

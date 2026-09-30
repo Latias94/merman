@@ -1,5 +1,6 @@
 use super::*;
 use crate::graph_label::flowchart_label_metrics_for_layout;
+use crate::text::metrics::style_requests_bold_font_weight;
 
 fn assert_finite_positive_metrics(metrics: TextMetrics) {
     assert!(
@@ -23,6 +24,21 @@ fn assert_same_metrics_after_dom_rounding(actual: TextMetrics, expected: TextMet
     assert_eq!(actual.width, round_to_1_64_px(expected.width));
     assert_eq!(actual.height, expected.height);
     assert_eq!(actual.line_count, expected.line_count);
+}
+
+#[test]
+fn fractional_font_weights_use_the_browser_bold_threshold() {
+    for (weight, expected) in [("599.5", false), ("700.0", true), ("700.5", true)] {
+        let style = TextStyle {
+            font_weight: Some(weight.to_string()),
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            style_requests_bold_font_weight(&style),
+            expected,
+            "{weight}"
+        );
+    }
 }
 
 #[test]

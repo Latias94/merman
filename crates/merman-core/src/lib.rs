@@ -13,7 +13,11 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
-#[cfg(any(feature = "diagram-mindmap", feature = "diagram-state"))]
+#[cfg(any(
+    feature = "diagram-mindmap",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;
@@ -29,6 +33,7 @@ pub mod geom;
     test,
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
     feature = "diagram-kanban",
     feature = "diagram-sequence"
 ))]
@@ -52,9 +57,11 @@ mod yaml_config;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance,
-    CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramRegistry, DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
+    AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
+    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID,
+    BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance, CustomJsonRenderModel,
+    CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot, DiagramRegistry,
+    DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
@@ -137,6 +144,17 @@ fn build_default_effective_config(
 
 fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: MermaidConfig) {
     config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+    // initialize() normalizes an unknown global theme before it becomes a user layer.
+    // Scoped themes instead fall through during diagram appearance resolution.
+    if site_config.as_value().get("theme").is_some_and(|value| {
+        !value.is_null()
+            && !value
+                .as_str()
+                .is_some_and(|name| name == "null" || theme::SUPPORTED_THEME_NAMES.contains(&name))
+    }) && let Some(theme) = generated::upstream_default_config().as_value().get("theme")
+    {
+        site_config.set_value("theme", theme.clone());
+    }
     let explicit_secure_policy = site_config
         .as_value()
         .get("secure")
@@ -209,6 +227,7 @@ pub struct Engine {
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
+    site_config_delta: MermaidConfig,
     default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
     runtime_policy: runtime::RuntimePolicy,
 }
@@ -223,6 +242,7 @@ impl Default for Engine {
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
+            site_config_delta: MermaidConfig::empty_object(),
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -305,7 +325,9 @@ impl Engine {
         if site_config.is_empty_object() {
             return self;
         }
-        // Merge overrides onto Mermaid schema defaults so detectors keep working.
+        // Keep the user's layer separate: an explicit schema-default appearance still
+        // outranks a diagram-specific default.
+        merge_site_config_override(&mut self.site_config_delta, site_config.clone());
         merge_site_config_override(&mut self.site_config, site_config);
         self.default_effective_config = build_default_effective_config(&self.site_config);
         self
@@ -317,7 +339,9 @@ impl Engine {
     /// defaults without inheriting values from the engine's previous site config.
     pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
         self.site_config = generated::default_site_config();
+        self.site_config_delta = MermaidConfig::empty_object();
         if let Some(site_config) = site_config {
+            merge_site_config_override(&mut self.site_config_delta, site_config.clone());
             merge_site_config_override(&mut self.site_config, site_config);
         }
         self.default_effective_config = build_default_effective_config(&self.site_config);

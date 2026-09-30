@@ -134,7 +134,10 @@ fn render_sequence_diagram_svg_inner(
         model,
         &nodes_by_id,
         SequenceFrameRenderOptions {
-            actor_label_font_size: settings.actor_label_font_size,
+            actor_text_style: &settings.actor_text_style,
+            box_layouts: prepared.box_layouts(),
+            box_title_height: prepared.box_title_height(),
+            box_height: prepared.box_height(),
             box_margin: settings.box_margin,
             box_text_margin: settings.box_text_margin,
             rect_default_fill: &settings.rect_default_fill,
@@ -142,17 +145,19 @@ fn render_sequence_diagram_svg_inner(
         checkpoints,
     )?;
 
+    let actor_diagram_id = diagram_id.to_string();
     let actor_ctx = SequenceActorRenderContext {
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
+        diagram_id: &actor_diagram_id,
         sanitize_config,
         math_renderer: options.math_renderer(),
         actor_wrap_width: settings.actor_wrap_width,
         actor_height: settings.actor_height,
         label_box_height: settings.label_box_height,
         measurer,
-        loop_text_style: &settings.loop_text_style,
+        actor_text_style: &settings.actor_text_style,
         checkpoints,
     };
 
@@ -167,22 +172,27 @@ fn render_sequence_diagram_svg_inner(
     let _ = write!(
         &mut out,
         r#"<style>{}</style><g/>"#,
-        sequence_css(diagram_id, settings.actor_label_font_size, effective_config)
+        sequence_css(diagram_id, effective_config)
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     checkpoints.checkpoint()?;
     write_scoped_sequence_base_defs(&mut out, diagram_id);
+    if crate::config::config_diagram_look(effective_config).as_str() == "neo" {
+        let theme = effective_config
+            .get("theme")
+            .and_then(serde_json::Value::as_str);
+        let flood_color = if matches!(theme, Some("redux" | "redux-color")) {
+            "#000000"
+        } else {
+            "#FFFFFF"
+        };
+        let _ = write!(
+            out,
+            r#"<defs><filter id="{diagram_id}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{flood_color}"/></filter></defs>"#
+        );
+    }
     checkpoints.checkpoint()?;
-
-    render_sequence_actor_man_tops(
-        &mut out,
-        model,
-        &nodes_by_id,
-        settings.actor_height,
-        diagram_id,
-        checkpoints,
-    )?;
 
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
@@ -208,6 +218,9 @@ fn render_sequence_diagram_svg_inner(
     };
     render_sequence_interaction_overlays(&mut out, &interaction_ctx)?;
 
+    // Mermaid appends glyph actors after overlays, before drawing messages.
+    render_sequence_actor_man_tops(&mut out, &actor_ctx, diagram_id)?;
+
     let message_ctx = SequenceMessageRenderContext {
         model,
         nodes_by_id: &nodes_by_id,
@@ -218,7 +231,6 @@ fn render_sequence_diagram_svg_inner(
         message_align: settings.message_align.as_str(),
         diagram_id,
         actor_height: settings.actor_height,
-        actor_label_font_size: settings.actor_label_font_size,
         sequence_width: settings.sequence_width,
         activation_width: settings.activation_width,
         wrap_padding: settings.wrap_padding,
@@ -227,6 +239,10 @@ fn render_sequence_diagram_svg_inner(
         checkpoints,
     };
     render_sequence_messages(&mut out, &message_ctx)?;
+
+    if settings.mirror_actors {
+        render_sequence_actor_man_bottoms(&mut out, &actor_ctx, diagram_id)?;
+    }
 
     render_sequence_actor_popup_menus(
         &mut out,
@@ -237,21 +253,13 @@ fn render_sequence_diagram_svg_inner(
             force_menus: settings.force_menus,
             mirror_actors: settings.mirror_actors,
             actor_height: settings.actor_height,
+            wrap_padding: settings.wrap_padding,
+            box_margin: settings.box_margin,
+            actor_text_style: &settings.actor_text_style,
+            measurer,
         },
         checkpoints,
     )?;
-
-    if settings.mirror_actors {
-        render_sequence_actor_man_bottoms(
-            &mut out,
-            model,
-            &nodes_by_id,
-            settings.actor_height,
-            settings.label_box_height,
-            diagram_id,
-            checkpoints,
-        )?;
-    }
 
     if let Some(title) = effective_title {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.

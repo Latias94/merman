@@ -467,8 +467,8 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
         Some("dagre")
     );
     let svg = render_swimlane(&source, "swimlane-dagre");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]
@@ -479,9 +479,8 @@ fn loose_nodes_render_the_synthetic_default_lane() {
     );
 
     assert!(
-        svg.contains(
-            r#"<g class="cluster swimlane" id="__swimlane_default__" data-id="__swimlane_default__" data-et="cluster">"#
-        ),
+        svg.contains(r#"class="cluster swimlane" id="__swimlane_default__""#)
+            && svg.contains(r#"data-id="__swimlane_default__" data-et="cluster""#),
         "{svg}"
     );
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 1);
@@ -624,8 +623,8 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
         Some("elk")
     );
     let svg = render_swimlane(&source, "swimlane-elk");
-    assert!(!svg.contains("swimlane-title"), "{svg}");
-    assert!(!svg.contains("swimlane-body"), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-title""#), "{svg}");
+    assert!(!svg.contains(r#"class="swimlane-body""#), "{svg}");
 }
 
 #[test]

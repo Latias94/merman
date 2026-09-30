@@ -43,10 +43,12 @@ const FIRST_CLASS_LSP_DIAGRAM_TYPES: &[&str] = &[
     "wardley",
     "xychart",
     "zenuml",
+    "agentflow",
+    "usecase",
 ];
 
-// Keep public-but-not-yet-admitted types explicit. The current release has none, but retaining a
-// separate category forces every future public catalog addition through an LSP maturity decision.
+// Keep public-but-not-yet-admitted types explicit so every future catalog addition passes through
+// an LSP maturity decision.
 const NOT_YET_ADMITTED_PUBLIC_DIAGRAM_TYPES: &[&str] = &[];
 
 fn capability_matrix() -> String {

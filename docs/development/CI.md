@@ -95,10 +95,17 @@ deeper structural edge. The capture budget is expressed as both a maximum dimens
 pixel area, so tall or wide moderate-area diagrams can be measured without allowing unbounded
 screenshot memory.
 
-One reviewed out-of-domain XYChart extrapolation is admitted through
-`fixtures/_verification/root-viewport-residuals.json`. This is not a numeric tolerance: the receipt
-binds the exact local and upstream SVG SHA-256 values plus a closed reason. A changed or unused
-receipt blocks. Every other local-only, new, or worse structural result remains blocking.
+Reviewed residuals are recorded in `fixtures/_verification/root-viewport-residuals.json`.
+The out-of-domain XYChart extrapolation requires fully collected evidence and binds both SVG
+SHA-256 values. The Flowchart title 029 display-font residual additionally binds an exact paired
+audit fingerprint: both roots, geometry, painted and structural overflow, capture state, structural
+pixel hashes, and the browser environment. That admission requires `active-filter` to be the only
+indeterminate reason on both sides, with no paint reaching the capture boundary. Missing roots,
+capture limits, unbounded markers, and image failures cannot use this admission.
+
+Neither receipt is a numeric tolerance or a claim that clipping was repaired. The original
+containment classification and full paint evidence remain in the report. SVG or evidence drift,
+an unused receipt, and every other local-only, new, or worse structural result remain blocking.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry

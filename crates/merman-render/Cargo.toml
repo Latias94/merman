@@ -26,6 +26,7 @@ wasm-inputs = ["assets/zenuml"]
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -54,6 +55,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -66,6 +68,8 @@ diagram-class = ["merman-core/diagram-class"]
 diagram-cynefin = ["merman-core/diagram-cynefin"]
 diagram-er = ["merman-core/diagram-er"]
 diagram-event-modeling = ["merman-core/diagram-event-modeling"]
+diagram-agentflow = ["merman-core/diagram-agentflow"]
+diagram-usecase = ["merman-core/diagram-usecase"]
 diagram-flowchart = ["merman-core/diagram-flowchart"]
 diagram-gantt = ["merman-core/diagram-gantt"]
 diagram-git-graph = ["merman-core/diagram-git-graph"]
@@ -136,6 +140,8 @@ unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]
+# Browser geometry replays require the exact captured IEEE-754 values.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
 merman-core = { workspace = true, features = ["test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }

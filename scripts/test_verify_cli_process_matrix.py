@@ -91,7 +91,7 @@ class CliProcessMatrixTests(unittest.TestCase):
                 self.assertTrue(profile.name)
                 self.assertTrue(profile.workflow)
 
-    def test_cli_defaults_omit_only_the_explicit_elk_leaf(self) -> None:
+    def test_cli_defaults_include_all_public_leaves(self) -> None:
         cargo_toml = tomllib.loads(
             (matrix.REPO_ROOT / "crates/merman-cli/Cargo.toml").read_text(
                 encoding="utf-8"
@@ -102,13 +102,13 @@ class CliProcessMatrixTests(unittest.TestCase):
         diagram_selectors = {
             feature for feature in public_features if feature.startswith("diagram-")
         }
-        expected_defaults = public_features - {"layout-elk"} - diagram_selectors
+        expected_defaults = public_features - diagram_selectors
         self.assertSetEqual(
             set(features["default"]),
             expected_defaults,
-            "workspace defaults retain aggregate all-diagrams and omit explicit diagram selectors plus EPL-2.0 ELK",
+            "workspace defaults include all-diagrams and the complete CLI capability set",
         )
-        self.assertNotIn("layout-elk", features["default"])
+        self.assertIn("layout-elk", features["default"])
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

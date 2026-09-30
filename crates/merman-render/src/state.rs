@@ -1,6 +1,6 @@
 //! State diagram (stateDiagram-v2) layout.
 //!
-//! Source semantics: Mermaid 11.16.
+//! Source semantics: Mermaid 12.0.0.
 
 type StateDiagramModel = merman_core::diagrams::state::StateDiagramRenderModel;
 type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
@@ -54,6 +54,8 @@ impl RectWithTitleGeometry {
 }
 
 mod config;
+#[cfg(feature = "layout-elk")]
+mod elk;
 mod layout;
 
 pub(crate) use config::{StateConfigView, state_text_style};

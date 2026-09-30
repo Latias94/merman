@@ -1,3 +1,5 @@
+#[cfg(feature = "layout-elk")]
+use crate::elk_options::layout_options as er_elk_layout_options;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{
@@ -14,17 +16,15 @@ use std::sync::Arc;
 
 mod config;
 
+#[cfg(feature = "layout-elk")]
+use crate::layout_backend::GraphLayoutBackend;
+use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
-use config::{ErLayoutAlgorithm, ErLayoutSettings};
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 pub(crate) type ErSubgraph = merman_core::diagrams::er::ErSubgraphRenderModel;
-
-pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
-    ErConfigView::new(effective_config).is_elk_layout()
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErBoxLabel {
@@ -847,30 +847,23 @@ fn layout_er_diagram_typed_with_elk_authority(
     let adapter_work = er_layout_adapter_work(model, work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
+    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
 
-    if settings.algorithm == ErLayoutAlgorithm::Elk {
-        #[cfg(feature = "layout-elk")]
-        {
-            let operation_seed = match elk_authority {
-                ErElkAuthority::Operation(operation_seed) => Some(operation_seed),
-            };
-            return layout_er_diagram_elk_typed(
-                model,
-                effective_config,
-                measurer,
-                settings,
-                operation_seed,
-                work_control,
-            );
-        }
-        #[cfg(not(feature = "layout-elk"))]
-        {
-            let _ = elk_authority;
-            return Err(Error::MissingCapability {
-                capability: crate::RenderCapability::LayoutElk,
-                diagram_type: "er".to_string(),
-            });
-        }
+    #[cfg(not(feature = "layout-elk"))]
+    let _ = elk_authority;
+    #[cfg(feature = "layout-elk")]
+    if crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == GraphLayoutBackend::Elk
+    {
+        let ErElkAuthority::Operation(operation_seed) = elk_authority;
+        return layout_er_diagram_elk_typed(
+            model,
+            effective_config,
+            measurer,
+            settings,
+            Some(operation_seed),
+            work_control,
+        );
     }
 
     layout_er_diagram_dagre_typed(model, measurer, settings, work_control)
@@ -938,7 +931,6 @@ fn layout_er_diagram_dagre_typed(
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
-        algorithm: _,
         graph: graph_label,
         label_style,
         attr_style,
@@ -1680,7 +1672,6 @@ fn er_elk_graph(
     settings: &ErLayoutSettings,
 ) -> Result<elk::Graph> {
     let ErLayoutSettings {
-        algorithm: _,
         graph,
         label_style,
         attr_style,
@@ -1724,6 +1715,8 @@ fn er_elk_graph(
         nodes.push(elk::Node {
             id: subgraph.id.clone(),
             kind: elk::NodeKind::Group,
+            container: Default::default(),
+            label_text: Some(subgraph.title.clone()),
             width: 0.0,
             height: 0.0,
             parent: parent_by_member
@@ -1732,6 +1725,7 @@ fn er_elk_graph(
             direction: subgraph.dir.as_deref().and_then(er_elk_direction),
             hierarchy_handling: Some(elk::HierarchyHandling::IncludeChildren),
             layer_constraint: None,
+            port_alignment: None,
             label: has_children.then_some(elk::Label {
                 width: metrics.width.max(0.0),
                 height: metrics.height.max(0.0),
@@ -1762,6 +1756,8 @@ fn er_elk_graph(
         elk::Node {
             id: entity.id.clone(),
             kind: elk::NodeKind::Leaf,
+            container: Default::default(),
+            label_text: None,
             width,
             height,
             parent: parent_by_member
@@ -1770,6 +1766,7 @@ fn er_elk_graph(
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             label: None,
         }
     }));
@@ -1802,7 +1799,7 @@ fn er_elk_graph(
             id: format!("er-rel-{index}"),
             source: relationship.entity_a.clone(),
             target: relationship.entity_b.clone(),
-            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
+            label: (!relationship.role_a.is_empty()).then_some(elk::Label {
                 width: label_width,
                 height: label_height,
             }),
@@ -1946,91 +1943,6 @@ fn apply_er_cyclic_entry_constraints(
         if entries.contains(node.id.as_str()) {
             node.layer_constraint = Some(elk::LayerConstraint::First);
         }
-    }
-}
-
-#[cfg(feature = "layout-elk")]
-fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
-    use crate::config::{config_bool, config_string};
-
-    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "NONE" => elk::ModelOrderStrategy::None,
-                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
-                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
-                _ => elk::ModelOrderStrategy::NodesAndEdges,
-            },
-        )
-        .unwrap_or_default();
-    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
-                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
-                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
-                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
-                _ => elk::CycleBreakingStrategy::Greedy,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
-        .map(
-            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "SIMPLE" => elk::NodePlacementStrategy::Simple,
-                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
-                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
-                _ => elk::NodePlacementStrategy::BrandesKoepf,
-            },
-        )
-        .unwrap_or_default();
-    let node_placement_alignment =
-        config_string(effective_config, &["elk", "nodePlacementAlignment"])
-            .map(
-                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
-                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
-                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
-                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
-                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
-                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
-                    _ => elk::NodePlacementAlignment::None,
-                },
-            )
-            .unwrap_or_default();
-    let self_loop_ordering = config_string(
-        effective_config,
-        &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
-    )
-    .map(
-        |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-            "REVERSE_STACKED" => elk::SelfLoopOrderingStrategy::ReverseStacked,
-            "SEQUENCED" => elk::SelfLoopOrderingStrategy::Sequenced,
-            _ => elk::SelfLoopOrderingStrategy::Stacked,
-        },
-    )
-    .unwrap_or_default();
-
-    elk::LayoutOptions {
-        layered: elk::LayeredOptions {
-            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
-            merge_hierarchy_edges: true,
-            unnecessary_bendpoints: true,
-            inside_self_loops_activate: config_bool(
-                effective_config,
-                &["elk", "insideSelfLoops", "activate"],
-            )
-            .unwrap_or(false),
-            self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
-            self_loop_ordering,
-            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
-                .unwrap_or(false),
-            consider_model_order: model_order != elk::ModelOrderStrategy::None,
-            model_order,
-            cycle_breaking,
-            node_placement,
-            node_placement_alignment,
-            ..Default::default()
-        },
     }
 }
 

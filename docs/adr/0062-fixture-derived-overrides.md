@@ -6,11 +6,11 @@ Accepted
 
 ## Updated
 
-2026-08-31 for Mermaid `@11.17.2`
+2026-09-24 for Mermaid `@12.0.0`; Mermaid 11 references below are historical evidence
 
 ## Context
 
-Merman is a headless implementation of a pinned Mermaid release. Official SVG baselines are
+Merman is a headless implementation of the active pinned Mermaid release recorded in ADR-0090. Official SVG baselines are
 produced by a browser and therefore contain platform-dependent results from font fallback,
 shaping, hinting, `getBBox()`, `getComputedTextLength()`, and SVG serialization.
 

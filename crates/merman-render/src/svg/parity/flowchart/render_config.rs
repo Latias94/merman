@@ -24,7 +24,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub default_edge_style: Vec<String>,
     pub node_border_color: String,
     pub node_fill_color: String,
-    pub node_corner_radius: f64,
     pub edge_corner_radius: f64,
     pub edge_label_padding: f64,
     pub compact_edge_corners: bool,
@@ -33,7 +32,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config_value: &serde_json::Value,
-    diagram_type: &str,
+    is_elk_layout: bool,
     presentation_policy: Option<FlowchartPresentationPolicy>,
 ) -> FlowchartRenderConfig {
     let config = FlowchartConfigView::new(effective_config_value);
@@ -52,11 +51,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let text_style = config.render_text_style(&font_family, font_size);
     let html_label_text_style = config.html_label_measurement_base_style(&text_style);
 
-    let is_elk_layout = diagram_type == "flowchart-elk"
-        || effective_config_value
-            .get("layout")
-            .and_then(|value| value.as_str())
-            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
     let cfg_curve = if is_elk_layout {
         Some("rounded".to_string())
     } else {
@@ -80,11 +74,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
-    let presentation_policy = presentation_policy.unwrap_or_default();
+    // Mermaid's edge renderer passes a fixed radius of 5 to generateRoundedPath;
+    // the theme radius controls node corners. An explicit presentation may override it.
     let edge_corner_radius = presentation_policy
-        .edge_corner_radius
-        .unwrap_or(node_corner_radius)
+        .map(|policy| policy.edge_corner_radius.unwrap_or(node_corner_radius))
+        .unwrap_or(5.0)
         .max(0.0);
+    let presentation_policy = presentation_policy.unwrap_or_default();
     let edge_label_padding = presentation_policy.edge_label_padding.max(0.0);
     let compact_edge_corners = presentation_policy.compact_edge_corners;
 
@@ -107,7 +103,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         default_edge_style,
         node_border_color,
         node_fill_color,
-        node_corner_radius,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,

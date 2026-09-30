@@ -207,21 +207,21 @@ fn is_expected_source_corpus_rejection(report: &CapabilityReport) -> bool {
         return false;
     }
 
-    assert_eq!(report.diagram_type.as_deref(), Some("radar"));
+    assert_eq!(report.diagram_type, None);
     assert!(matches!(
-        report.stages[&CapabilityStage::Semantic],
+        report.stages[&CapabilityStage::Detected],
         StageStatus::Failed(ref reason) if reason.starts_with("Malformed YAML front-matter")
     ));
     assert_eq!(
         report.stages[&CapabilityStage::TypedLayout],
         StageStatus::Blocked {
-            by: CapabilityStage::Semantic
+            by: CapabilityStage::Detected
         }
     );
     assert_eq!(
         report.stages[&CapabilityStage::LocalSvg],
         StageStatus::Blocked {
-            by: CapabilityStage::Semantic
+            by: CapabilityStage::Detected
         }
     );
     true
@@ -422,7 +422,6 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
             ("flowchart-v2".to_string(), 76),
             ("kanban".to_string(), 3),
             ("mindmap".to_string(), 1),
-            ("radar".to_string(), 1),
             ("requirement".to_string(), 1),
             ("sequence".to_string(), 1),
             ("stateDiagram".to_string(), 1),

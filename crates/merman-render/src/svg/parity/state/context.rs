@@ -217,7 +217,8 @@ pub(super) fn state_is_shadowed_self_loop_edge(
     edge: &StateSvgEdge,
     root: Option<&str>,
 ) -> bool {
-    if edge.start != edge.end {
+    // Only Dagre replaces parallel self loops with shared dummy-node segments.
+    if ctx.uses_elk_adapter_dom || edge.start != edge.end {
         return false;
     }
     if state_edge_context(ctx, edge) != root {

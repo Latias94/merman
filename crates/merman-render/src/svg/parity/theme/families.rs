@@ -513,6 +513,8 @@ impl<'a> PresentationTheme<'a> {
     }
 
     #[cfg(any(
+        feature = "diagram-agentflow",
+        feature = "diagram-mindmap",
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",
         feature = "diagram-block"
@@ -535,8 +537,6 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .color("arrowheadColor", self.common.line_color.as_str()),
             stroke_width: self.raw.css_value("strokeWidth", "1"),
-            radius: self.raw.css_value("radius", "5"),
-            drop_shadow: self.raw.css_value("dropShadow", "none"),
             edge_label_background: self
                 .raw
                 .color("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
@@ -602,11 +602,6 @@ impl<'a> PresentationTheme<'a> {
             activation_fill: self.raw.color("activationBkgColor", "#f4f4f4"),
             activation_border: self.raw.color("activationBorderColor", "#666"),
             node_border: self.raw.color("nodeBorder", actor_border.as_str()),
-            note_font_weight: self
-                .raw
-                .optional_value("noteFontWeight")
-                .map(|font_weight| format!("font-weight:{};", font_weight))
-                .unwrap_or_default(),
             label_box_filter: if self.common.is_neo() {
                 self.raw.css_value("dropShadow", "none")
             } else {
@@ -645,17 +640,6 @@ impl<'a> PresentationTheme<'a> {
             .raw
             .color("specialStateColor", self.common.line_color.as_str());
         let inner_end_background = self.raw.color("innerEndBackground", node_border.as_str());
-        let end_outer_fill = if special_state_color.eq_ignore_ascii_case("#333333") {
-            "#ECECFF".to_string()
-        } else {
-            special_state_color.clone()
-        };
-        let end_outer_stroke = special_state_color.clone();
-        let end_inner_stroke = if background.eq_ignore_ascii_case("white") {
-            inner_end_background.clone()
-        } else {
-            background.clone()
-        };
 
         StateDiagramTheme {
             common: self.common.clone(),
@@ -681,9 +665,6 @@ impl<'a> PresentationTheme<'a> {
                 .unwrap_or_else(|| self.common.text_color.clone()),
             special_state_color,
             inner_end_background,
-            end_outer_fill,
-            end_outer_stroke,
-            end_inner_stroke,
             composite_background: self
                 .raw
                 .optional_color("compositeBackground")

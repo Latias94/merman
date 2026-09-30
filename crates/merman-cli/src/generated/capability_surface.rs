@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:f36a4518be6e5ad041629d3e5b117f2931703ac29b50c5de1e12c066620586ed";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",

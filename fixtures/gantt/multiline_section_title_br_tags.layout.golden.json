@@ -45,11 +45,12 @@
           "index": 0.0,
           "x": 10.0,
           "y": 62.0,
-          "dy_em": -1.5,
+          "dy_em": -2.0,
           "lines": [
             "Line1",
             "Line2",
-            "Line3</br />Line4",
+            "Line3",
+            "Line4",
             "Line5"
           ],
           "class": "sectionTitle sectionTitle0"

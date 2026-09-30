@@ -1,5 +1,38 @@
 //! Unicode line-breaking primitives for browser-like HTML labels.
 
+/// Replaces tags matched by Mermaid's `common.lineBreakRegex` (`/<\/?br\s*\/?>/gi`).
+/// ELK applies this before Markdown parsing, including for State and Class edge labels.
+pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_, str> {
+    let mut output: Option<String> = None;
+    let mut copied_until = 0;
+    for (start, _) in text.match_indices('<') {
+        let rest = &text[start + 1..];
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        if !rest
+            .get(..2)
+            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+        {
+            continue;
+        }
+        let rest = rest[2..].trim_start_matches(super::is_ecmascript_whitespace);
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let Some(after_tag) = rest.strip_prefix('>') else {
+            continue;
+        };
+        let output = output.get_or_insert_with(|| String::with_capacity(text.len()));
+        output.push_str(&text[copied_until..start]);
+        output.push('\n');
+        copied_until = text.len() - after_tag.len();
+    }
+    match output {
+        Some(mut output) => {
+            output.push_str(&text[copied_until..]);
+            std::borrow::Cow::Owned(output)
+        }
+        None => std::borrow::Cow::Borrowed(text),
+    }
+}
+
 /// Returns the atomic line-box segments for Mermaid's wrapped HTML labels.
 ///
 /// `unicode_linebreak` supplies the UAX #14 soft and mandatory opportunities. Chromium's CSS
@@ -72,7 +105,26 @@ fn push_break_spaces_segments<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{html_break_spaces_segments, html_has_soft_break_opportunity};
+    use super::{
+        html_break_spaces_segments, html_has_soft_break_opportunity,
+        mermaid_html_breaks_to_newlines,
+    };
+
+    #[test]
+    fn mermaid_html_breaks_match_source_tags_and_javascript_whitespace() {
+        assert_eq!(
+            mermaid_html_breaks_to_newlines("a<BR />b</br>c<br\u{feff}/>d"),
+            "a\nb\nc\nd"
+        );
+        let unchanged = "a<br class=x>b<br\u{0085}>c<br / >d<break>e\\n";
+        assert!(
+            matches!(mermaid_html_breaks_to_newlines(unchanged), std::borrow::Cow::Borrowed(value) if value == unchanged)
+        );
+        assert_eq!(
+            mermaid_html_breaks_to_newlines("<broken<br/>中文</BR >"),
+            "<broken\n中文\n"
+        );
+    }
 
     #[test]
     fn follows_browser_line_breaking_for_prose_cjk_and_url_boundaries() {

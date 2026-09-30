@@ -85,7 +85,7 @@ fn recovered_flowchart_keeps_available_detection_in_the_shared_analysis_bundle()
     );
     assert_eq!(detection.diagram_type, "flowchart");
     assert_eq!(detection.syntax_id, "flowchart-v2");
-    assert_eq!(detection.effective_layout_id, "dagre");
+    assert_eq!(detection.effective_layout_id, "elk");
 }
 
 #[test]

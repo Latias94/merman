@@ -1,4 +1,8 @@
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 use merman_core::diagrams::flowchart::FlowchartModel;
 #[cfg(feature = "diagram-mindmap")]
 use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
@@ -597,7 +601,11 @@ impl RenderResourcePolicy {
         )
     }
 
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     pub fn check_flowchart_complexity(
         &self,
         model: &FlowchartModel,
@@ -1858,6 +1866,7 @@ mod tests {
                 length: 1,
             }],
             subgraphs: vec![FlowSubgraph {
+                metadata: None,
                 id: "cluster".to_string(),
                 title: "Cluster".to_string(),
                 dir: None,
@@ -1882,7 +1891,11 @@ mod tests {
 #[cfg(feature = "diagram-class")]
 pub use merman_core::resources::ClassComplexity;
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub use merman_core::resources::FlowchartComplexity;
 
 #[cfg(feature = "diagram-mindmap")]

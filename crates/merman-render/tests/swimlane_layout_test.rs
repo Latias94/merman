@@ -374,7 +374,7 @@ A -->|"&nbsp;Edge&nbsp;"| B
 
     let node = node_by_id(&layout, "A");
     assert_eq!(node.label, "\u{00a0}Node\u{00a0}");
-    assert_eq!(node.label_width, source_width("&nbsp;Node&nbsp;"));
+    assert_eq!(node.label_width, 120.0);
 
     let edge_label = layout
         .nodes
@@ -382,7 +382,7 @@ A -->|"&nbsp;Edge&nbsp;"| B
         .find(|node| node.is_edge_label)
         .expect("edge label node");
     assert_eq!(edge_label.label, "\u{00a0}Edge\u{00a0}");
-    assert_eq!(edge_label.label_width, source_width("&nbsp;Edge&nbsp;"));
+    assert_eq!(edge_label.label_width, 136.0);
 }
 
 #[test]

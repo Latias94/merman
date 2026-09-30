@@ -147,6 +147,15 @@ pub struct StateDiagramRenderNode {
     pub shape: String,
     #[serde(default)]
     pub position: Option<String>,
+    /// Palette slot assigned to composite state containers by Mermaid's depth-first data fetcher.
+    #[serde(default, rename = "colorIndex")]
+    pub color_index: Option<usize>,
+    /// Width at which state labels wrap; populated from `state.wrappingWidth`.
+    #[serde(default, rename = "wrappingWidth")]
+    pub wrapping_width: Option<f64>,
+    /// Minimum label width for non-container state nodes; populated from `state.minNodeWidth`.
+    #[serde(default, rename = "minWidth")]
+    pub min_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -273,6 +282,9 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
             "padding": option_number_value(node.padding),
             "look": look,
             "position": node.position,
+            "colorIndex": node.color_index,
+            "wrappingWidth": option_number_value(node.wrapping_width),
+            "minWidth": option_number_value(node.min_width),
         });
     }
 
@@ -292,6 +304,9 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
             "look": look,
             "position": node.position,
             "parentId": node.parent_id,
+            "colorIndex": node.color_index,
+            "wrappingWidth": option_number_value(node.wrapping_width),
+            "minWidth": option_number_value(node.min_width),
         });
     }
 
@@ -321,6 +336,12 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
     out.insert("ry".to_string(), option_number_value(node.ry));
     out.insert("look".to_string(), look.clone());
     out.insert("parentId".to_string(), json!(&node.parent_id));
+    out.insert("colorIndex".to_string(), json!(&node.color_index));
+    out.insert(
+        "wrappingWidth".to_string(),
+        option_number_value(node.wrapping_width),
+    );
+    out.insert("minWidth".to_string(), option_number_value(node.min_width));
     out.insert("centerLabel".to_string(), Value::Bool(true));
     if let Some(description) = &node.description {
         out.insert("description".to_string(), json!(description));

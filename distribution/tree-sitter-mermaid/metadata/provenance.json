@@ -46,9 +46,20 @@
       "repository": "https://github.com/mermaid-js/mermaid.git",
       "ref": "mermaid@11.16.1",
       "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-      "usage": "Accepted source syntax and source-backed grammar translation",
+      "usage": "Accepted source syntax and source-backed grammar translation for the original 35 diagram families",
       "license": "MIT",
       "legalComponentId": "tree-sitter-mermaid-mermaid-baseline"
+    },
+    {
+      "id": "mermaid-12-new-families",
+      "kind": "syntax-authority",
+      "version": "12.0.0",
+      "repository": "https://github.com/mermaid-js/mermaid.git",
+      "ref": "mermaid@12.0.0",
+      "commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+      "usage": "Agentflow and Usecase syntax additions; the original 35-family syntax baseline remains Mermaid 11.16.1",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-mermaid-12-new-families"
     },
     {
       "id": "zenuml-core",

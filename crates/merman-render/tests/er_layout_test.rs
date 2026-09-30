@@ -90,6 +90,7 @@ fn er_dagre_recursive_relationship_keeps_internal_helper_ranks() {
             "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002.mmd",
         );
     let text = std::fs::read_to_string(&path).expect("fixture");
+    let text = text.replacen("  logLevel: 1.0", "  layout: dagre\n  logLevel: 1.0", 1);
 
     let layout = layout_er(&text);
     let node = |id: &str| {
@@ -166,7 +167,11 @@ erDiagram
   ORDER ||--|{ LINE-ITEM : contains
   CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
 "#;
-    let dagre_source = r#"erDiagram
+    let dagre_source = r#"---
+config:
+  layout: dagre
+---
+erDiagram
   CUSTOMER ||--o{ ORDER : places
   ORDER ||--|{ LINE-ITEM : contains
   CUSTOMER }|..|{ DELIVERY-ADDRESS : uses

@@ -9,28 +9,22 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
 const FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     out: &mut String,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let f = if common.look_is_neo() { 3.5 } else { 4.0 };
-    let m = h / f;
-
-    let pts: Vec<(f64, f64)> = vec![
-        (m, 0.0),
-        (w - m, 0.0),
-        (w, -h / 2.0),
-        (w - m, -h),
-        (m, -h),
-        (0.0, -h / 2.0),
-    ];
-    let path_data = path_from_points(&pts);
+    let geometry = crate::flowchart::HexagonGeometry::from_bounds(
+        common.layout_node.width,
+        common.layout_node.height,
+        common.look_is_neo(),
+    );
+    let w = geometry.width;
+    let h = geometry.height;
+    let path_data = path_from_points(&geometry.points);
 
     let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -79,18 +73,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
         let _ = write!(
             out,
             r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({},{})"{} />"#,
-            fmt_display(m),
-            fmt_display(0.0),
-            fmt_display(w - m),
-            fmt_display(0.0),
-            fmt_display(w),
-            fmt_display(-h / 2.0),
-            fmt_display(w - m),
-            fmt_display(-h),
-            fmt_display(m),
-            fmt_display(-h),
-            fmt_display(0.0),
-            fmt_display(-h / 2.0),
+            fmt_display(geometry.points[0].0),
+            fmt_display(geometry.points[0].1),
+            fmt_display(geometry.points[1].0),
+            fmt_display(geometry.points[1].1),
+            fmt_display(geometry.points[2].0),
+            fmt_display(geometry.points[2].1),
+            fmt_display(geometry.points[3].0),
+            fmt_display(geometry.points[3].1),
+            fmt_display(geometry.points[4].0),
+            fmt_display(geometry.points[4].1),
+            fmt_display(geometry.points[5].0),
+            fmt_display(geometry.points[5].1),
             fmt_display(-w / 2.0),
             fmt_display(h / 2.0),
             OptionalStyleAttr(common.style)

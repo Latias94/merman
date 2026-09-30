@@ -41,7 +41,7 @@ must migrate the descriptor path and required field together. Exact parser avail
 in the built target through its family catalog, not inferred from the verifier's own feature set.
 This field does not imply local renderer, ASCII, or editor support. `feature-surface-v1.json` and
 its runtime capability namespace are unchanged. See
-[ADR-0089](../docs/adr/0089-selectable-diagram-families.md).
+[ADR-0091](../docs/adr/0091-selectable-diagram-families.md).
 
 ## Contract Boundaries
 

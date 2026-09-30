@@ -137,7 +137,7 @@ class CliInstallationContractTests(unittest.TestCase):
             ):
                 contract.validate_repository_contract(root)
 
-    def test_default_features_must_be_release_features_without_elk(self) -> None:
+    def test_default_features_must_equal_release_features(self) -> None:
         with self.mutated_repository(
             "crates/merman-cli/Cargo.toml",
             'default = [\n    "all-diagrams",\n    "analysis",',
@@ -145,7 +145,23 @@ class CliInstallationContractTests(unittest.TestCase):
         ) as root:
             with self.assertRaisesRegex(
                 contract.InstallationContractError,
-                "minus explicit layout-elk",
+                "CLI defaults must equal cli-release features",
+            ):
+                contract.validate_repository_contract(root)
+
+    def test_default_features_must_include_elk(self) -> None:
+        manifest = (ROOT / contract.CLI_MANIFEST).read_text(encoding="utf-8")
+        default_start = manifest.index("default = [", manifest.index("[features]"))
+        default_end = manifest.index("]", default_start) + 1
+        defaults = manifest[default_start:default_end]
+        with self.mutated_repository(
+            "crates/merman-cli/Cargo.toml",
+            defaults,
+            defaults.replace('    "layout-elk",\n', ""),
+        ) as root:
+            with self.assertRaisesRegex(
+                contract.InstallationContractError,
+                "CLI defaults must equal cli-release features",
             ):
                 contract.validate_repository_contract(root)
 

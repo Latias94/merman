@@ -143,7 +143,11 @@ fn selected_gantt_preserves_typed_and_json_projections() {
     );
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 #[test]
 fn shared_flowchart_model_does_not_enable_the_other_language() {
     let engine = Engine::new();
@@ -157,12 +161,58 @@ fn shared_flowchart_model_does_not_enable_the_other_language() {
     ] {
         let result = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
         if enabled {
-            assert!(matches!(
-                result.unwrap().unwrap().model(),
-                RenderSemanticModel::Flowchart(_)
-            ));
+            let parsed = result.unwrap().unwrap();
+            assert_eq!(parsed.model().kind(), "flowchart");
         } else {
             assert!(matches!(result, Err(Error::UnsupportedDiagram { .. })));
+        }
+    }
+}
+
+#[test]
+fn mermaid_12_families_preserve_identity_and_select_only_their_implementation() {
+    let engine = Engine::new();
+    for (family, source, enabled) in [
+        (
+            "agentflow",
+            "agentflow-beta\nA --> B\n",
+            cfg!(feature = "diagram-agentflow"),
+        ),
+        (
+            "usecase",
+            "usecase-beta\nactor User\nUser --> Login\n",
+            cfg!(feature = "diagram-usecase"),
+        ),
+    ] {
+        assert_eq!(
+            engine.parse_metadata_sync(source).unwrap().diagram_type,
+            family
+        );
+        let capability = merman_core::diagram_family_capabilities()
+            .iter()
+            .find(|fact| fact.diagram_type == family)
+            .expect("known Mermaid 12 family");
+        assert!(capability.has_detector && capability.has_header);
+        assert_eq!(capability.has_semantic_parser, enabled);
+        assert_eq!(capability.has_render_parser, enabled);
+        assert_eq!(capability.has_editor_parser, enabled);
+        let semantic = engine.parse_diagram_sync(source, ParseOptions::strict());
+        let typed = engine.parse_diagram_for_render_model_sync(source, ParseOptions::strict());
+        if enabled {
+            let semantic = semantic.unwrap().unwrap();
+            let typed = typed.unwrap().unwrap();
+            assert_eq!(typed.model().kind(), family);
+            assert_eq!(
+                typed.model().compatibility_json(typed.metadata()).unwrap(),
+                semantic.model
+            );
+        } else {
+            assert!(
+                matches!(semantic, Err(Error::UnsupportedDiagram { diagram_type }) if diagram_type == family)
+            );
+            assert!(
+                matches!(typed, Err(Error::UnsupportedDiagram { diagram_type }) if diagram_type == family)
+            );
         }
     }
 }

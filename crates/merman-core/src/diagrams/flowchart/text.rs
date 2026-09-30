@@ -1,5 +1,6 @@
 use super::TitleKind;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) fn title_kind_str(kind: &TitleKind) -> &'static str {
     match kind {
         TitleKind::Text => "text",

@@ -470,7 +470,7 @@ B -->|No| D[Debug]";
                 "theme": { "preset": "one-dark" }
             },
             "site_config": {
-                "flowchart": { "defaultRenderer": "dagre-wrapper" }
+                "flowchart": { "layout": "dagre" }
             },
             "svg": { "diagram_id": "presentation equivalence" }
         }"##;
@@ -486,7 +486,7 @@ B -->|No| D[Debug]";
         let engine = presentation
             .materialize_engine(merman::Engine::new())
             .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
-                "flowchart": { "defaultRenderer": "dagre-wrapper" },
+                "flowchart": { "layout": "dagre" },
             })));
         let svg_request = merman::SvgRequest {
             options: merman::svg::SvgRenderOptions {
@@ -560,7 +560,7 @@ B -->|No| D[Debug]";
             br##"{
                 "presentation": { "profile": "merman-modern" },
                 "site_config": {
-                    "flowchart": { "defaultRenderer": "dagre-wrapper" }
+                    "flowchart": { "layout": "dagre" }
                 }
             }"##,
         );
@@ -570,14 +570,10 @@ B -->|No| D[Debug]";
         );
 
         let default_flowchart = render_svg(b"flowchart TD\nA --> B", profile);
-        if cfg!(feature = "layout-elk") {
-            assert!(default_flowchart.is_ok());
-        } else {
-            let error = default_flowchart.expect_err("missing ELK should block admission");
-            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-            assert_eq!(error.capability_id(), Some("layout-elk"));
-        }
+        assert!(
+            default_flowchart.is_ok(),
+            "an absent ELK loader resolves to Dagre before admission"
+        );
     }
 
     #[cfg(feature = "layout-elk")]
@@ -596,7 +592,6 @@ B -->|No| D[Debug]";
         .unwrap();
 
         assert!(svg.contains(r#"data-look="neo""#), "{svg}");
-        assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
         assert!(
             svg.contains("fill:#F8FAFC;stroke:#64748B;stroke-width:2px;"),
             "{svg}"
@@ -606,7 +601,6 @@ B -->|No| D[Debug]";
             svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
             "{svg}"
         );
-        assert!(svg.contains(".edgeLabel rect{opacity:1;}"), "{svg}");
         assert!(svg.contains(r#"rx="4" ry="4""#), "{svg}");
         assert!(svg.contains("bindings-merman-modern-drop-shadow"), "{svg}");
     }

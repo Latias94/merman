@@ -9,6 +9,12 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+pub const AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID: &str = "merman.semantic.agentflow.shape_removed";
+pub const AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID: &str =
+    "merman.semantic.agentflow.shape_unsupported";
+pub const AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID: &str =
+    "merman.semantic.agentflow.containment_violation";
+
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
     "merman.authoring.flowchart.explicit_direction";
@@ -501,6 +507,10 @@ pub enum RenderSemanticModel {
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
     #[cfg(feature = "diagram-wardley")]
     Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
+    #[cfg(feature = "diagram-usecase")]
+    Usecase(crate::diagrams::usecase::UsecaseDiagramRenderModel),
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow(crate::diagrams::agentflow::AgentflowDiagramRenderModel),
 }
 
 /// Parser-owned data needed only while rendering a typed semantic model.
@@ -816,6 +826,16 @@ impl_builtin_render_semantic_controlled!(
     crate::diagrams::wardley::render_model_to_compat_json,
     crate::diagrams::wardley::render_model_to_compat_json_controlled
 );
+#[cfg(feature = "diagram-usecase")]
+impl_builtin_render_semantic!(
+    crate::diagrams::usecase::UsecaseDiagramRenderModel,
+    crate::diagrams::usecase::render_model_to_compat_json
+);
+#[cfg(feature = "diagram-agentflow")]
+impl_builtin_render_semantic!(
+    crate::diagrams::agentflow::AgentflowDiagramRenderModel,
+    crate::diagrams::agentflow::render_model_to_compat_json
+);
 
 impl RenderSemanticModel {
     /// Applies Mermaid common DB sanitization to family-owned typed fields.
@@ -887,6 +907,23 @@ impl RenderSemanticModel {
             Self::Venn(v) => v.sanitize_common_db_fields(config),
             #[cfg(feature = "diagram-wardley")]
             Self::Wardley(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(v) => v.sanitize_common_db_fields(config),
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(v) => v.sanitize_common_db_fields(config),
+        }
+    }
+
+    pub(crate) fn offset_parser_diagnostic_positions(
+        &mut self,
+        line_offset: usize,
+        column_offset: usize,
+    ) {
+        #[cfg(not(feature = "diagram-agentflow"))]
+        let _ = (line_offset, column_offset);
+        #[cfg(feature = "diagram-agentflow")]
+        if let Self::Agentflow(model) = self {
+            model.offset_diagnostic_positions(line_offset, column_offset);
         }
     }
 
@@ -898,6 +935,8 @@ impl RenderSemanticModel {
             Self::CustomJson(v) => {
                 Self::remap_json_warning_fact_spans(&mut v.value, &mut remap);
             }
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             #[cfg(feature = "diagram-block")]
@@ -1001,6 +1040,10 @@ impl RenderSemanticModel {
             Self::Venn(_) => "venn",
             #[cfg(feature = "diagram-wardley")]
             Self::Wardley(_) => "wardley",
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(_) => "usecase",
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(_) => "agentflow",
         }
     }
 
@@ -1090,6 +1133,10 @@ impl RenderSemanticModel {
             Self::Venn(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-wardley")]
             Self::Wardley(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(model) => model.compatibility_json_controlled(meta, &control),
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => model.compatibility_json_controlled(meta, &control),
         }?;
         control.checkpoint()?;
         Ok(projected)

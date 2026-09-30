@@ -8,6 +8,20 @@
 
 use std::collections::VecDeque;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum NetworkSimplexError {
+    #[error("network simplex coordinate is outside the supported i32 range")]
+    CoordinateOutOfRange,
+    #[error("network simplex cannot allocate layer counts")]
+    LayerCountAllocation,
+}
+
+type SimplexResult<T> = Result<T, NetworkSimplexError>;
+
+pub(crate) fn coordinate(value: i64) -> SimplexResult<i32> {
+    i32::try_from(value).map_err(|_| NetworkSimplexError::CoordinateOutOfRange)
+}
+
 const REMOVE_SUBTREES_THRESH: usize = 40;
 const FUZZY_ST_ZERO: f64 = -1e-10;
 
@@ -174,9 +188,9 @@ impl<'a> NetworkSimplex<'a> {
         self
     }
 
-    pub fn execute(mut self) {
+    pub fn execute(mut self) -> SimplexResult<()> {
         if self.graph.node_order.is_empty() {
-            return;
+            return Ok(());
         }
 
         for node in self.graph.node_order.iter().copied() {
@@ -189,7 +203,7 @@ impl<'a> NetworkSimplex<'a> {
         }
 
         self.initialize();
-        self.feasible_tree();
+        self.feasible_tree()?;
 
         let mut leave = self.leave_edge();
         let mut iteration = 0usize;
@@ -198,7 +212,7 @@ impl<'a> NetworkSimplex<'a> {
                 break;
             }
             if let Some(enter_edge) = self.enter_edge(leave_edge) {
-                self.exchange(leave_edge, enter_edge);
+                self.exchange(leave_edge, enter_edge)?;
             } else {
                 break;
             }
@@ -207,13 +221,15 @@ impl<'a> NetworkSimplex<'a> {
         }
 
         if remove_subtrees {
-            self.reattach_subtrees();
+            self.reattach_subtrees()?;
         }
 
-        let filling = self.normalize();
+        self.normalize()?;
         if self.balance {
+            let filling = self.layer_counts()?;
             self.balance(filling);
         }
+        Ok(())
     }
 
     fn initialize(&mut self) {
@@ -284,7 +300,7 @@ impl<'a> NetworkSimplex<'a> {
         }
     }
 
-    fn reattach_subtrees(&mut self) {
+    fn reattach_subtrees(&mut self) -> SimplexResult<()> {
         while let Some((node, edge)) = self.subtree_nodes_stack.pop() {
             let Some(placed) = self.graph.edges[edge].other(node) else {
                 continue;
@@ -292,23 +308,28 @@ impl<'a> NetworkSimplex<'a> {
 
             if self.graph.edges[edge].target == node {
                 self.graph.nodes[placed].outgoing_edges.push(edge);
-                self.graph.nodes[node].layer =
-                    self.graph.nodes[placed].layer + self.graph.edges[edge].delta;
+                self.graph.nodes[node].layer = coordinate(
+                    i64::from(self.graph.nodes[placed].layer)
+                        + i64::from(self.graph.edges[edge].delta),
+                )?;
             } else {
                 self.graph.nodes[placed].incoming_edges.push(edge);
-                self.graph.nodes[node].layer =
-                    self.graph.nodes[placed].layer - self.graph.edges[edge].delta;
+                self.graph.nodes[node].layer = coordinate(
+                    i64::from(self.graph.nodes[placed].layer)
+                        - i64::from(self.graph.edges[edge].delta),
+                )?;
             }
 
             self.graph.add_active_node(node);
         }
+        Ok(())
     }
 
-    fn feasible_tree(&mut self) {
-        self.layering_topological_numbering();
+    fn feasible_tree(&mut self) -> SimplexResult<()> {
+        self.layering_topological_numbering()?;
 
         if self.edges.is_empty() {
-            return;
+            return Ok(());
         }
 
         self.edge_visited.fill(false);
@@ -318,14 +339,15 @@ impl<'a> NetworkSimplex<'a> {
             };
             let mut slack = self.graph.edges[edge].target_layer(self.graph)
                 - self.graph.edges[edge].source_layer(self.graph)
-                - self.graph.edges[edge].delta;
+                - i64::from(self.graph.edges[edge].delta);
             if self.graph.nodes[self.graph.edges[edge].target].tree_node {
                 slack = -slack;
             }
 
             for node in self.graph.node_order.iter().copied() {
                 if self.graph.nodes[node].tree_node {
-                    self.graph.nodes[node].layer += slack;
+                    self.graph.nodes[node].layer =
+                        coordinate(i64::from(self.graph.nodes[node].layer) + slack)?;
                 }
             }
             self.edge_visited.fill(false);
@@ -334,9 +356,10 @@ impl<'a> NetworkSimplex<'a> {
         self.edge_visited.fill(false);
         self.postorder_traversal(self.graph.node_order[0]);
         self.cutvalues();
+        Ok(())
     }
 
-    fn layering_topological_numbering(&mut self) {
+    fn layering_topological_numbering(&mut self) -> SimplexResult<()> {
         let mut incident = vec![0usize; self.graph.node_order.len()];
         for node in self.graph.node_order.iter().copied() {
             incident[self.graph.nodes[node].internal_id] +=
@@ -348,9 +371,10 @@ impl<'a> NetworkSimplex<'a> {
             let outgoing_edges = self.graph.nodes[node].outgoing_edges.clone();
             for edge in outgoing_edges {
                 let target = self.graph.edges[edge].target;
-                self.graph.nodes[target].layer = self.graph.nodes[target]
-                    .layer
-                    .max(self.graph.nodes[node].layer + self.graph.edges[edge].delta);
+                self.graph.nodes[target].layer = self.graph.nodes[target].layer.max(coordinate(
+                    i64::from(self.graph.nodes[node].layer)
+                        + i64::from(self.graph.edges[edge].delta),
+                )?);
                 let target_id = self.graph.nodes[target].internal_id;
                 incident[target_id] = incident[target_id].saturating_sub(1);
                 if incident[target_id] == 0 {
@@ -358,6 +382,7 @@ impl<'a> NetworkSimplex<'a> {
                 }
             }
         }
+        Ok(())
     }
 
     fn tight_tree_dfs(&mut self, node: usize) -> usize {
@@ -377,7 +402,7 @@ impl<'a> NetworkSimplex<'a> {
             if self.graph.edges[edge].tree_edge {
                 node_count += self.tight_tree_dfs(opposite);
             } else if !self.graph.nodes[opposite].tree_node
-                && self.graph.edges[edge].delta
+                && i64::from(self.graph.edges[edge].delta)
                     == self.graph.edges[edge].target_layer(self.graph)
                         - self.graph.edges[edge].source_layer(self.graph)
             {
@@ -391,16 +416,16 @@ impl<'a> NetworkSimplex<'a> {
     }
 
     fn minimal_slack(&self) -> Option<usize> {
-        let mut min_slack = i32::MAX;
+        let mut min_slack = i64::MAX;
         let mut min_slack_edge = None;
 
         for edge in &self.edges {
             let source = self.graph.edges[*edge].source;
             let target = self.graph.edges[*edge].target;
             if self.graph.nodes[source].tree_node ^ self.graph.nodes[target].tree_node {
-                let slack = self.graph.nodes[target].layer
-                    - self.graph.nodes[source].layer
-                    - self.graph.edges[*edge].delta;
+                let slack = i64::from(self.graph.nodes[target].layer)
+                    - i64::from(self.graph.nodes[source].layer)
+                    - i64::from(self.graph.edges[*edge].delta);
                 if slack < min_slack {
                     min_slack = slack;
                     min_slack_edge = Some(*edge);
@@ -531,15 +556,15 @@ impl<'a> NetworkSimplex<'a> {
         }
 
         let mut replacement = None;
-        let mut replacement_slack = i32::MAX;
+        let mut replacement_slack = i64::MAX;
 
         for edge in &self.edges {
             let source = self.graph.edges[*edge].source;
             let target = self.graph.edges[*edge].target;
             if self.is_in_head(source, leave) && !self.is_in_head(target, leave) {
-                let slack = self.graph.nodes[target].layer
-                    - self.graph.nodes[source].layer
-                    - self.graph.edges[*edge].delta;
+                let slack = i64::from(self.graph.nodes[target].layer)
+                    - i64::from(self.graph.nodes[source].layer)
+                    - i64::from(self.graph.edges[*edge].delta);
                 if slack < replacement_slack {
                     replacement_slack = slack;
                     replacement = Some(*edge);
@@ -550,9 +575,9 @@ impl<'a> NetworkSimplex<'a> {
         replacement
     }
 
-    fn exchange(&mut self, leave: usize, enter: usize) {
+    fn exchange(&mut self, leave: usize, enter: usize) -> SimplexResult<()> {
         if !self.graph.edges[leave].tree_edge || self.graph.edges[enter].tree_edge {
-            return;
+            return Ok(());
         }
 
         self.graph.edges[leave].tree_edge = false;
@@ -562,14 +587,15 @@ impl<'a> NetworkSimplex<'a> {
 
         let mut delta = self.graph.edges[enter].target_layer(self.graph)
             - self.graph.edges[enter].source_layer(self.graph)
-            - self.graph.edges[enter].delta;
+            - i64::from(self.graph.edges[enter].delta);
         if !self.is_in_head(self.graph.edges[enter].target, leave) {
             delta = -delta;
         }
 
         for node in self.graph.node_order.clone() {
             if !self.is_in_head(node, leave) {
-                self.graph.nodes[node].layer += delta;
+                self.graph.nodes[node].layer =
+                    coordinate(i64::from(self.graph.nodes[node].layer) + delta)?;
             }
         }
 
@@ -577,37 +603,53 @@ impl<'a> NetworkSimplex<'a> {
         self.edge_visited.fill(false);
         self.postorder_traversal(self.graph.node_order[0]);
         self.cutvalues();
+        Ok(())
     }
 
-    fn normalize(&mut self) -> Vec<usize> {
-        let mut highest = i32::MIN;
-        let mut lowest = i32::MAX;
+    // Node placement uses layers as coordinates, not ordinal layer indices. Its
+    // memory use must depend on graph size, never on the coordinate span.
+    fn normalize(&mut self) -> SimplexResult<()> {
+        let lowest = self
+            .graph
+            .node_order
+            .iter()
+            .map(|&node| self.graph.nodes[node].layer)
+            .min()
+            .unwrap_or(0);
         for node in self.graph.node_order.iter().copied() {
-            lowest = lowest.min(self.graph.nodes[node].layer);
-            highest = highest.max(self.graph.nodes[node].layer);
+            self.graph.nodes[node].layer =
+                coordinate(i64::from(self.graph.nodes[node].layer) - i64::from(lowest))?;
         }
+        Ok(())
+    }
 
-        let mut filling = vec![0usize; (highest - lowest + 1) as usize];
+    fn layer_counts(&self) -> SimplexResult<Vec<usize>> {
+        let highest = self
+            .graph
+            .node_order
+            .iter()
+            .map(|&node| self.graph.nodes[node].layer as usize)
+            .max()
+            .unwrap_or(0);
+        let count = highest
+            .checked_add(1)
+            .ok_or(NetworkSimplexError::LayerCountAllocation)?;
+        let mut filling = Vec::new();
+        filling
+            .try_reserve_exact(count)
+            .map_err(|_| NetworkSimplexError::LayerCountAllocation)?;
+        filling.resize(count, 0usize);
         for node in self.graph.node_order.iter().copied() {
-            self.graph.nodes[node].layer -= lowest;
             filling[self.graph.nodes[node].layer as usize] += 1;
         }
-
         if let Some(previous) = self.previous_layering_node_counts.as_ref() {
-            let mut layer_id = 0usize;
-            for node_count in previous {
-                if layer_id >= filling.len() {
-                    break;
-                }
-                filling[layer_id] += *node_count;
-                layer_id += 1;
-                if filling.len() == layer_id {
-                    break;
-                }
+            for (count, previous) in filling.iter_mut().zip(previous) {
+                *count = count
+                    .checked_add(*previous)
+                    .ok_or(NetworkSimplexError::LayerCountAllocation)?;
             }
         }
-
-        filling
+        Ok(filling)
     }
 
     fn balance(&mut self, mut filling: Vec<usize>) {
@@ -620,12 +662,9 @@ impl<'a> NetworkSimplex<'a> {
 
             let mut new_layer = self.graph.nodes[node].layer;
             let (min_span_in, min_span_out) = self.minimal_span(node);
-            let start = self.graph.nodes[node].layer - min_span_in + 1;
-            let end = self.graph.nodes[node].layer + min_span_out;
-            for layer in start..end {
-                if layer < 0 {
-                    continue;
-                }
+            let start = i64::from(self.graph.nodes[node].layer) - min_span_in + 1;
+            let end = i64::from(self.graph.nodes[node].layer) + min_span_out;
+            for layer in start.max(0)..end.min(filling.len() as i64) {
                 let layer = layer as usize;
                 let current = new_layer as usize;
                 if layer < filling.len() && filling[layer] < filling[current] {
@@ -643,9 +682,9 @@ impl<'a> NetworkSimplex<'a> {
         }
     }
 
-    fn minimal_span(&self, node: usize) -> (i32, i32) {
-        let mut min_span_out = i32::MAX;
-        let mut min_span_in = i32::MAX;
+    fn minimal_span(&self, node: usize) -> (i64, i64) {
+        let mut min_span_out = i64::MAX;
+        let mut min_span_in = i64::MAX;
 
         for edge in self.graph.connected_edges(node) {
             let span = self.graph.edges[edge].target_layer(self.graph)
@@ -657,10 +696,10 @@ impl<'a> NetworkSimplex<'a> {
             }
         }
 
-        if min_span_in == i32::MAX {
+        if min_span_in == i64::MAX {
             min_span_in = -1;
         }
-        if min_span_out == i32::MAX {
+        if min_span_out == i64::MAX {
             min_span_out = -1;
         }
         (min_span_in, min_span_out)
@@ -668,12 +707,12 @@ impl<'a> NetworkSimplex<'a> {
 }
 
 impl NEdge {
-    fn source_layer(&self, graph: &NGraph) -> i32 {
-        graph.nodes[self.source].layer
+    fn source_layer(&self, graph: &NGraph) -> i64 {
+        i64::from(graph.nodes[self.source].layer)
     }
 
-    fn target_layer(&self, graph: &NGraph) -> i32 {
-        graph.nodes[self.target].layer
+    fn target_layer(&self, graph: &NGraph) -> i64 {
+        i64::from(graph.nodes[self.target].layer)
     }
 }
 
@@ -694,6 +733,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn node_coordinates_do_not_allocate_a_dense_layer_count() {
+        let mut graph = NGraph::new();
+        let top = graph.add_node(None);
+        let bottom = graph.add_node(None);
+        graph
+            .add_edge(None, top, bottom, 10_000.0, i32::MAX)
+            .unwrap();
+
+        NetworkSimplex::for_graph(&mut graph)
+            .with_balancing(false)
+            .execute()
+            .unwrap();
+
+        assert_eq!(graph.nodes[top].layer, 0);
+        assert_eq!(graph.nodes[bottom].layer, i32::MAX);
+    }
+
+    #[test]
+    fn coordinate_overflow_is_an_error_instead_of_wrapped_geometry() {
+        let mut graph = NGraph::new();
+        let a = graph.add_node(None);
+        let b = graph.add_node(None);
+        let c = graph.add_node(None);
+        graph.add_edge(None, a, b, 1.0, i32::MAX).unwrap();
+        graph.add_edge(None, b, c, 1.0, 1).unwrap();
+
+        assert_eq!(
+            NetworkSimplex::for_graph(&mut graph).execute(),
+            Err(NetworkSimplexError::CoordinateOutOfRange),
+        );
+    }
+
+    #[test]
     fn network_simplex_assigns_layers_to_dag() {
         let mut graph = NGraph::new();
         let a = graph.add_node(Some(0));
@@ -705,7 +777,8 @@ mod tests {
         NetworkSimplex::for_graph(&mut graph)
             .with_iteration_limit(28)
             .with_balancing(true)
-            .execute();
+            .execute()
+            .unwrap();
 
         assert_eq!(graph.nodes[a].layer, 0);
         assert!(graph.nodes[b].layer > graph.nodes[a].layer);
@@ -724,7 +797,8 @@ mod tests {
         NetworkSimplex::for_graph(&mut graph)
             .with_iteration_limit(28)
             .with_balancing(true)
-            .execute();
+            .execute()
+            .unwrap();
 
         assert_eq!(graph.nodes[a].layer, 0);
         assert_eq!(graph.nodes[b].layer, 0);
@@ -747,7 +821,8 @@ mod tests {
         NetworkSimplex::for_graph(&mut graph)
             .with_iteration_limit(28)
             .with_balancing(true)
-            .execute();
+            .execute()
+            .unwrap();
 
         assert_eq!(graph.active_nodes().len(), 41);
         for edge in &graph.edges {

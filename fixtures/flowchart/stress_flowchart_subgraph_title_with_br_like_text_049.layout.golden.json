@@ -4,28 +4,28 @@
     "FlowchartV2": {
       "nodes": [
         {
+          "id": "sg",
+          "x": 112.0,
+          "y": 126.0,
+          "width": 200.0,
+          "height": 228.0,
+          "is_cluster": true
+        },
+        {
           "id": "a",
-          "x": 81.523,
-          "y": 72.5,
-          "width": 69.6,
-          "height": 54.0,
+          "x": 112.0,
+          "y": 124.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
         },
         {
           "id": "b",
-          "x": 81.523,
-          "y": 201.5,
-          "width": 69.6,
-          "height": 54.0,
+          "x": 112.0,
+          "y": 193.5,
+          "width": 152.0,
+          "height": 45.0,
           "is_cluster": false
-        },
-        {
-          "id": "sg",
-          "x": 81.523,
-          "y": 137.0,
-          "width": 147.047,
-          "height": 258.0,
-          "is_cluster": true
         }
       ],
       "edges": [
@@ -37,16 +37,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 81.523,
-              "y": 99.5
+              "x": 112.0,
+              "y": 147.0
             },
             {
-              "x": 81.523,
-              "y": 137.0
-            },
-            {
-              "x": 81.523,
-              "y": 174.5
+              "x": 112.0,
+              "y": 171.0
             }
           ],
           "label": null,
@@ -62,18 +58,18 @@
       "clusters": [
         {
           "id": "sg",
-          "x": 81.523,
-          "y": 137.0,
-          "width": 147.047,
-          "height": 258.0,
+          "x": 112.0,
+          "y": 126.0,
+          "width": 200.0,
+          "height": 228.0,
           "diff": -4.0,
-          "offset_y": 44.0,
+          "offset_y": 57.0,
           "title": "title contains literal <br/> sequence",
           "title_label": {
-            "x": 81.523,
-            "y": 32.0,
-            "width": 139.047,
-            "height": 48.0
+            "x": 112.0,
+            "y": 42.5,
+            "width": 120.0,
+            "height": 61.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -83,10 +79,10 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 155.047,
-        "max_y": 266.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 212.0,
+        "max_y": 240.0
       }
     }
   }

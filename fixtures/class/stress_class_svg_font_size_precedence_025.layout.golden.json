@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "FontSizeSvgProbe",
-          "x": 156.921,
-          "y": 65.4,
+          "x": 168.921,
+          "y": 77.4,
           "width": 313.843,
           "height": 130.8,
           "is_cluster": false
@@ -15,10 +15,10 @@
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 313.843,
-        "max_y": 130.8
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 325.843,
+        "max_y": 142.8
       }
     }
   }

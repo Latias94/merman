@@ -25,7 +25,11 @@ impl PresentationProfile {
             .ok_or_else(|| PresentationError::UnknownPresentationProfile(id.to_string()))
     }
 
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     const fn flowchart_policy(self) -> FlowchartPresentationPolicy {
         match self {
             Self::MermanModern => FlowchartPresentationPolicy {
@@ -117,7 +121,11 @@ impl PresentationRenderPolicy {
         self.profile
     }
 
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     pub(crate) const fn flowchart(self) -> Option<FlowchartPresentationPolicy> {
         match self.profile {
             Some(profile) => Some(profile.flowchart_policy()),
@@ -207,7 +215,11 @@ impl PresentationAspectResolution {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) struct FlowchartPresentationPolicy {
     pub(crate) edge_corner_radius: Option<f64>,
     pub(crate) edge_label_padding: f64,
@@ -236,7 +248,7 @@ fn profile_defaults(profile: PresentationProfile) -> MermaidConfig {
             MermaidConfig::from_value(serde_json::json!({
                 "theme": "redux",
                 "look": "neo",
-                "flowchart": { "defaultRenderer": "elk" },
+                "flowchart": { "layout": "elk" },
                 "themeVariables": Value::Object(theme_variables),
             }))
         }

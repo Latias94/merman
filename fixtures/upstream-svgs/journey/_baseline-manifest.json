@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.17.2",
-    "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.17.2",
-    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
-    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
-    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
+    "mermaid_version": "12.0.0",
+    "mermaid_cli_version": "11.17.0",
+    "mermaid_source_tag": "mermaid@12.0.0",
+    "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
+    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
+    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -14,29 +14,29 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Edg",
+        "version": "153.0.4234.48",
+        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
         "version": "25.6.0"
       },
       "operating_system": {
-        "platform": "darwin",
-        "arch": "arm64",
-        "release": "25.6.0"
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "11.17.2",
-        "iife_version": "11.17.2",
-        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
-        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+        "esm_version": "12.0.0",
+        "iife_version": "12.0.0",
+        "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
+        "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "df16e5d02be72139eddf67ff954b0b112aeabe403e927a42717d8b9efec3d800"
       }
     }
   },
@@ -79,7 +79,7 @@
     },
     "upstream_cypress_journey_spec_should_maintain_sufficient_space_between_legend_and_diagram_when_007": {
       "input_sha256": "2948b23c1d2e0369d9d1e88992b960410dae551c17a1f7b194dc73f70ab66500",
-      "svg_sha256": "bd8aece1d95913ae61ba42df2f1e78576a2ec7345b167f02d342dc16805561e1",
+      "svg_sha256": "5dd3caaf5894da88dff9ecd9409dbd6fe3b277d177cf07c34a42cff32efe7850",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_journey_spec_should_render_a_user_journey_chart_002": {
@@ -94,17 +94,17 @@
     },
     "upstream_cypress_journey_spec_should_wrap_a_single_long_word_with_hyphenation_008": {
       "input_sha256": "cd9cece2dd6f41249501103313d5f045d8495dc1c4cedc7100cf4dd405ef207d",
-      "svg_sha256": "4e1a0c1d2f39d9369a0f0ca48754b62794258214c81551ad60d23d6696f1c9a0",
+      "svg_sha256": "8abcea603d5aa0f5017dbb9372492fdb87506a05d984120978b34461960ed95e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010": {
       "input_sha256": "fcf4ef949317bb5aaed77c32f865c6a2b54aa18ad7e7f529762a8bc5aae5235f",
-      "svg_sha256": "26a086ef5347393f2326230af0961911e948d02532b99784fbb8a62824037ead",
+      "svg_sha256": "ea32a3daea4622f6fb1f1c193613d9746d22767c480e9f004ba7e5b1e3493211",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_journey_spec_should_wrap_text_on_whitespace_without_adding_hyphens_009": {
       "input_sha256": "318b3adc38c690d88e9d521938bc49a77618ca8c078c33ba7c899680e93b5c3e",
-      "svg_sha256": "c40fb065714e650be5a804a772717698cc64f98e75ef048e5973d6861968cf74",
+      "svg_sha256": "ff0a3773c0df0ea9c7b067f920f10f164e8a0b46761ee5642a756bdcab7698e0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_db_tasks_and_actors": {

@@ -4,12 +4,16 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 #[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"
 ))]
 use merman_render::family::RenderFamilyKind;
 #[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"
@@ -18,6 +22,8 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{Error, LayoutOptions};
 
 #[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"
@@ -30,6 +36,8 @@ fn parse(source: &str) -> merman_core::ParsedDiagramRender {
 }
 
 #[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"
@@ -51,6 +59,8 @@ fn render(source: &str) -> (RenderFamilyKind, String) {
 #[test]
 fn local_handler_projection_preserves_logical_language_ownership() {
     for (id, enabled) in [
+        ("agentflow", cfg!(feature = "diagram-agentflow")),
+        ("usecase", cfg!(feature = "diagram-usecase")),
         ("flowchart-v2", cfg!(feature = "diagram-flowchart")),
         ("flowchart-elk", cfg!(feature = "diagram-flowchart")),
         ("swimlane", cfg!(feature = "diagram-swimlane")),
@@ -67,6 +77,8 @@ fn local_handler_projection_preserves_logical_language_ownership() {
 #[test]
 fn widened_core_cannot_bypass_local_handlers_or_precedence() {
     for source in [
+        "agentflow-beta TB\nA[Alpha] --> B[Beta]",
+        "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
         "flowchart TD\nA --> B",
         "swimlane-beta LR\nA --> B",
         "sequenceDiagram\nA->>B: message",
@@ -101,7 +113,8 @@ fn widened_core_cannot_bypass_local_handlers_or_precedence() {
 #[cfg(all(feature = "diagram-flowchart", feature = "diagram-gantt"))]
 #[test]
 fn selected_embedding_renders_flowchart_and_gantt() {
-    let (kind, svg) = render("flowchart TD\nA[Alpha] --> B[Beta]");
+    let (kind, svg) =
+        render("---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA[Alpha] --> B[Beta]");
     assert_eq!(kind, RenderFamilyKind::Flowchart);
     assert!(svg.contains("Alpha"));
     assert!(svg.contains("Beta"));
@@ -127,22 +140,15 @@ fn swimlane_preserves_dagre_and_elk_routes() {
     let parsed = parse("---\nconfig:\n  layout: elk\n---\nswimlane-beta LR\nA --> B");
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let plan = family::plan_render(&parsed, &session).unwrap();
-    assert_eq!(
-        plan.required_capabilities(),
+    let expected: &[merman_render::RenderCapability] = if cfg!(feature = "layout-elk") {
         &[merman_render::RenderCapability::LayoutElk]
-    );
-    assert_eq!(plan.is_ready(), cfg!(feature = "layout-elk"));
-    let result = family::prepare(parsed, &LayoutOptions::default(), session);
-    #[cfg(feature = "layout-elk")]
-    assert_eq!(result.unwrap().family_kind(), RenderFamilyKind::Flowchart);
-    #[cfg(not(feature = "layout-elk"))]
-    assert!(matches!(
-        result,
-        Err(Error::MissingCapability {
-            capability: merman_render::RenderCapability::LayoutElk,
-            ..
-        })
-    ));
+    } else {
+        &[]
+    };
+    assert_eq!(plan.required_capabilities(), expected);
+    assert!(plan.is_ready());
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
 }
 
 #[cfg(feature = "diagram-mindmap")]
@@ -221,5 +227,38 @@ fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
         nodes
             .iter()
             .all(|node| node["width"].as_f64().unwrap() > 0.0)
+    );
+}
+
+#[cfg(feature = "diagram-agentflow")]
+#[test]
+fn agentflow_renders_with_independent_family_selection() {
+    let (kind, svg) =
+        render("---\nconfig:\n  layout: dagre\n---\nagentflow-beta TB\nA[Alpha] --> B[Beta]");
+    assert_eq!(kind, RenderFamilyKind::Agentflow);
+    assert!(svg.contains("Alpha"));
+    assert!(svg.contains("Beta"));
+    assert_eq!(
+        family::supports_diagram_type("flowchart-v2"),
+        cfg!(feature = "diagram-flowchart")
+    );
+    assert_eq!(
+        family::supports_diagram_type("swimlane"),
+        cfg!(feature = "diagram-swimlane")
+    );
+}
+
+#[cfg(feature = "diagram-usecase")]
+#[test]
+fn usecase_renders_with_independent_family_selection() {
+    let (kind, svg) = render(
+        "---\nconfig:\n  layout: dagre\n---\nusecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
+    );
+    assert_eq!(kind, RenderFamilyKind::Usecase);
+    assert!(svg.contains("Customer"));
+    assert!(svg.contains("Place order"));
+    assert_eq!(
+        family::supports_diagram_type("flowchart-v2"),
+        cfg!(feature = "diagram-flowchart")
     );
 }

@@ -1,17 +1,17 @@
 use super::*;
-use crate::model::{
-    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
-};
+use crate::model::SwimlaneLayout;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::model::{FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode};
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
 mod cluster;
-pub(super) mod line_hops;
 
 pub(super) use cluster::render_swimlane_cluster;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
@@ -36,6 +36,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     )
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn adapt_swimlane_layout(
     model: &crate::flowchart::FlowchartModel,
     layout: &SwimlaneLayout,
@@ -165,12 +166,17 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     render_edges: &[Cow<'_, crate::flowchart::FlowEdge>],
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
+    uses_elk_adapter_dom: bool,
 ) -> Result<()> {
-    use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+    use crate::svg::parity::line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
     let line_hops_value = effective_config
         .as_value()
-        .get("swimlane")
+        .get(if uses_elk_adapter_dom {
+            "elk"
+        } else {
+            "swimlane"
+        })
         .and_then(|value| value.get("lineHops"));
     if line_hops_value.and_then(serde_json::Value::as_bool) == Some(false) {
         return Ok(());
@@ -218,13 +224,17 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .map(|edge| LineHopEdge {
             id: edge.semantic.id.as_str(),
             points: &edge.points,
-            curve: edge.semantic.interpolate.as_deref(),
+            curve: if uses_elk_adapter_dom {
+                Some("rounded")
+            } else {
+                edge.semantic.interpolate.as_deref()
+            },
             arrow_type_start: edge.arrow_type_start,
             arrow_type_end: edge.arrow_type_end,
         })
         .collect();
 
-    let paths = line_hops::process_edges_with_line_hops(
+    let paths = crate::svg::parity::line_hops::process_edges_with_line_hops(
         &edges,
         LineHopConfig {
             enabled: true,
@@ -239,7 +249,9 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             || !edges
                 .iter()
                 .find(|edge| edge.id == path.edge_id)
-                .is_some_and(|edge| line_hops::curve_supports_line_hops(edge.curve))
+                .is_some_and(|edge| {
+                    crate::svg::parity::line_hops::curve_supports_line_hops(edge.curve)
+                })
         {
             continue;
         }
@@ -366,6 +378,7 @@ mod tests {
             &render_edges,
             &merman_core::MermaidConfig::default(),
             &work_meter,
+            false,
         )
         .expect("apply line hops");
         assert_eq!(work_meter.used(), 17);
@@ -424,7 +437,7 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
 
-        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter)
+        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter, false)
             .expect("disabled line hops");
 
         assert_eq!(cache["horizontal"].geom.d, "M-10,0L10,0");

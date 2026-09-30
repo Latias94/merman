@@ -15,6 +15,31 @@ fn canonical_catalog_detects_mindmap() {
 }
 
 #[test]
+fn usecase_header_requires_whitespace_or_end() {
+    let registry = crate::detect::DetectorRegistry::pinned_mermaid_baseline();
+    for source in [
+        "usecase-beta",
+        "  usecase-beta\nactor A",
+        "usecase-beta\tLR",
+    ] {
+        let detected = registry.detect_type(source, &mut MermaidConfig::empty_object());
+        assert_eq!(detected.expect("Usecase header"), "usecase");
+    }
+    for source in [
+        "usecase-betaExtra",
+        "usecase-beta;",
+        "usecase-beta_LR",
+        "Usecase-beta",
+    ] {
+        assert!(
+            registry
+                .detect_type(source, &mut MermaidConfig::empty_object())
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
@@ -25,7 +50,8 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
 #[test]
 fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
     let expected = json!({
-        "defaultRenderer": "dagre-wrapper",
+        "theme": "redux-color",
+        "look": "neo",
         "hideEmptyMembersBox": false,
         "hierarchicalNamespaces": true
     });
@@ -34,82 +60,8 @@ fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
             .as_value()
             .get("class"),
         Some(&expected),
-        "Mermaid 11.17 defaultConfig.ts replaces rather than spreads the schema Class object"
+        "Mermaid 12 defaultConfig.ts carries appearance defaults into the replacement Class object"
     );
-}
-
-#[test]
-fn class_diagram_detection_uses_mermaid_11_17_runtime_default_when_site_config_is_merged() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("securityLevel", json!("sandbox"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "classDiagram");
-}
-
-#[test]
-fn class_diagram_detection_respects_explicit_wrapper_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("dagre-wrapper"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "classDiagram");
-}
-
-#[test]
-fn class_diagram_detection_respects_explicit_dagre_d3_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("dagre-d3"));
-        cfg
-    });
-
-    let text = r#"classDiagram
-class Class1
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "class");
-}
-
-#[test]
-fn class_diagram_detection_does_not_treat_renderer_as_root_layout() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("class.defaultRenderer", json!("elk"));
-        cfg
-    });
-
-    let res = block_on(engine.parse_metadata("classDiagram\nclass Class1\n")).unwrap();
-
-    assert_eq!(res.diagram_type, "class");
-    assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
-}
-
-#[test]
-fn state_diagram_detection_respects_non_default_renderer() {
-    let engine = Engine::new().with_site_config({
-        let mut cfg = MermaidConfig::empty_object();
-        cfg.set_value("state.defaultRenderer", json!("dagre-d3"));
-        cfg
-    });
-
-    let text = r#"stateDiagram
-[*] --> Still
-"#;
-    let res = block_on(engine.parse_metadata(text)).unwrap();
-    assert_eq!(res.diagram_type, "state");
 }
 
 #[test]

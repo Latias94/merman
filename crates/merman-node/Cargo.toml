@@ -1,6 +1,6 @@
 [package]
 name = "merman-node-candidate"
-version = "0.8.0-alpha.6"
+version = "0.8.0-alpha.7"
 edition = "2024"
 rust-version = "1.95"
 publish = false
@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -42,6 +43,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -60,6 +62,8 @@ diagram-event-modeling = [
     "merman-bindings-core/diagram-event-modeling",
     "merman-core/diagram-event-modeling",
 ]
+diagram-agentflow = ["merman-bindings-core/diagram-agentflow", "merman-core/diagram-agentflow"]
+diagram-usecase = ["merman-bindings-core/diagram-usecase", "merman-core/diagram-usecase"]
 diagram-flowchart = ["merman-bindings-core/diagram-flowchart", "merman-core/diagram-flowchart"]
 diagram-gantt = ["merman-bindings-core/diagram-gantt", "merman-core/diagram-gantt"]
 diagram-git-graph = ["merman-bindings-core/diagram-git-graph", "merman-core/diagram-git-graph"]

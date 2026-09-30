@@ -1,9 +1,8 @@
 use crate::XtaskError;
 use crate::cmd::{
     PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
-    ensure_content_addressed_js_script, ensure_upstream_svg_puppeteer_config,
-    spawn_timeout_managed_child, upstream_svg_package_tree_sha256, wait_with_bounded_output,
-    wait_with_timeout,
+    ensure_content_addressed_js_script, spawn_timeout_managed_child,
+    upstream_svg_package_tree_sha256, wait_with_bounded_output, wait_with_timeout,
 };
 use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_frozen_string_array};
@@ -21,6 +20,8 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
+    "agentflow",
+    "usecase",
     "er",
     "flowchart",
     "state",
@@ -61,16 +62,37 @@ pub(crate) const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
 static UPSTREAM_SVG_CHECK_RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
 static UPSTREAM_SVG_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn uses_seeded_upstream_svg_renderer(diagram: &str) -> bool {
-    matches!(diagram, "architecture" | "gitgraph" | "sequence")
-}
-
-fn uses_fixed_clock_upstream_svg_renderer(diagram: &str) -> bool {
-    diagram == "gantt"
-}
-
 fn captures_parse_error_svg(diagram: &str) -> bool {
     diagram == "error"
+}
+
+// These imported negative fixtures already had Error SVG baselines before Mermaid 12.
+// Packet and Radar retain documentation placeholders (Radar's restaurant example also has a
+// trailing axis comma); the Treemap case uses a one-character classDef name, rejected by
+// the upstream CLASS_DEF token. Sources: repo-ref/mermaid/packages/mermaid/src/docs/syntax/
+// {packet,radar}.md and packages/parser/src/language/treemap/treemap.langium. The corresponding
+// fixtures/upstream-svgs/{packet,radar,treemap} SVGs were Error diagrams in 11.17.2.
+// Keep this explicit:
+// neither a local parser result nor a newly failing upstream render authorizes an Error SVG.
+fn fixture_captures_parse_error_svg(diagram: &str, stem: &str) -> bool {
+    captures_parse_error_svg(diagram)
+        || matches!(
+            (diagram, stem),
+            (
+                "packet",
+                "upstream_docs_packet_bits_syntax_v11_7_0_002" | "upstream_docs_packet_syntax_001"
+            ) | (
+                "radar",
+                "upstream_docs_radar_axis_007"
+                    | "upstream_docs_radar_curve_008"
+                    | "upstream_docs_radar_examples_005"
+                    | "upstream_docs_radar_options_009"
+                    | "upstream_docs_radar_title_006"
+            ) | (
+                "treemap",
+                "upstream_treemap_classdef_and_css_compiled_styles_db"
+            )
+        )
 }
 
 fn scripted_renderer_background_color(diagram: &str) -> &'static str {
@@ -79,12 +101,6 @@ fn scripted_renderer_background_color(diagram: &str) -> &'static str {
     } else {
         "white"
     }
-}
-
-fn uses_scripted_upstream_svg_renderer(diagram: &str) -> bool {
-    uses_seeded_upstream_svg_renderer(diagram)
-        || uses_fixed_clock_upstream_svg_renderer(diagram)
-        || captures_parse_error_svg(diagram)
 }
 
 fn scripted_renderer_page_viewport_width(diagram: &str) -> u32 {
@@ -101,6 +117,30 @@ fn scripted_renderer_container_width(diagram: &str) -> u32 {
     } else {
         scripted_renderer_page_viewport_width(diagram)
     }
+}
+
+pub(super) fn upstream_svg_render_input(
+    diagram: &str,
+    input_path: &Path,
+    output_path: &Path,
+    config_path: &Path,
+    svg_id: &str,
+    browser_executable: &Path,
+) -> JsonValue {
+    serde_json::json!({
+        "input_path": input_path.display().to_string(),
+        "output_path": output_path.display().to_string(),
+        "config_path": config_path.display().to_string(),
+        "svg_id": svg_id,
+        "seed": 1,
+        "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
+        "container_width": scripted_renderer_container_width(diagram),
+        "height": 600,
+        "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
+        "background_color": scripted_renderer_background_color(diagram),
+        "browser_executable": browser_executable.display().to_string(),
+        "capture_parse_error_svg": captures_parse_error_svg(diagram),
+    })
 }
 
 fn upstream_svg_supported_diagrams_message() -> String {
@@ -380,6 +420,12 @@ fn probe_upstream_svg_render_environment(
         ))
     })?;
     validate_upstream_svg_render_probe(probe, &installed_mermaid_version(tools_root)?)
+}
+
+pub(super) fn probe_upstream_svg_browser_executable(
+    tools_root: &Path,
+) -> Result<PathBuf, XtaskError> {
+    Ok(probe_upstream_svg_render_environment(tools_root)?.browser_executable)
 }
 
 #[derive(Debug)]
@@ -1221,6 +1267,8 @@ fn gen_upstream_svgs_impl(
             cmd.arg(npm_cmd);
             cmd
         };
+        // Browser installation is the separately reviewed action in the reference install policy.
+        cmd.arg("--ignore-scripts");
         let status = cmd.current_dir(&tools_root).status().map_err(|err| {
             XtaskError::UpstreamSvgFailed(format!(
                 "failed to run `npm {npm_cmd}` in {}: {err}",
@@ -1235,8 +1283,7 @@ fn gen_upstream_svgs_impl(
         }
     }
 
-    let mmdc = validate_mermaid_cli_install(&tools_root)?;
-    let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
+    validate_mermaid_cli_install(&tools_root)?;
     let render_probe = probe_upstream_svg_render_environment(&tools_root)?;
     let pinned_mermaid_config_path = tools_root.join("mermaid-config.json");
     let pinned_mermaid_config = read_package_manifest(&pinned_mermaid_config_path)?;
@@ -1257,8 +1304,6 @@ fn gen_upstream_svgs_impl(
         workspace_root: &'a Path,
         fixtures_root: &'a Path,
         out_root: &'a Path,
-        mmdc: &'a Path,
-        puppeteer_config: &'a Path,
         render_probe: &'a UpstreamSvgRenderProbe,
         pinned_mermaid_config_path: &'a Path,
         pinned_mermaid_config: &'a JsonValue,
@@ -1276,8 +1321,6 @@ fn gen_upstream_svgs_impl(
         let workspace_root = context.workspace_root;
         let fixtures_root = context.fixtures_root;
         let out_root = context.out_root;
-        let mmdc = context.mmdc;
-        let puppeteer_config = context.puppeteer_config;
         let render_probe = context.render_probe;
         let pinned_mermaid_config_path = context.pinned_mermaid_config_path;
         let pinned_mermaid_config = context.pinned_mermaid_config;
@@ -1298,12 +1341,7 @@ fn gen_upstream_svgs_impl(
             )));
         }
         let node_cwd = crate::cmd::mermaid_cli_root();
-        let use_scripted_renderer = uses_scripted_upstream_svg_renderer(diagram);
-        let scripted_renderer = if use_scripted_renderer {
-            Some(ensure_seeded_upstream_svg_renderer_script()?)
-        } else {
-            None
-        };
+        let scripted_renderer = ensure_seeded_upstream_svg_renderer_script()?;
         let per_chart_timeout = Duration::from_secs(60);
 
         fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
@@ -1476,46 +1514,31 @@ fn gen_upstream_svgs_impl(
                 }
             };
 
-            let status = if use_scripted_renderer {
+            let status = {
                 use std::process::Stdio;
 
-                // Architecture and GitGraph need deterministic randomness. Gantt needs a fixed wall
-                // clock for its today marker. Sequence also uses this wrapper so deferred participant
-                // MathML is complete before SVG serialization. Error uses it to retain Mermaid's
-                // rendered fallback SVG when render() rethrows the originating parse error.
-                let seed: u64 = 1;
+                // Use the standard Mermaid bundle directly. The CLI registers its own external
+                // ELK plugin and supplies an explicit theme, overriding Mermaid 12 defaults.
                 let output_abs = if temp_out_path.is_absolute() {
                     temp_out_path.clone()
                 } else {
                     workspace_root.join(&temp_out_path)
                 };
 
-                let input_json = serde_json::json!({
-                    "input_path": snapshot_path.display().to_string(),
-                    "output_path": output_abs.display().to_string(),
-                    "config_path": mermaid_config.path().display().to_string(),
-                    "theme": "default",
-                    "svg_id": svg_id,
-                    "seed": seed,
-                    "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
-                    "container_width": scripted_renderer_container_width(diagram),
-                    "height": 600,
-                    "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
-                    "background_color": scripted_renderer_background_color(diagram),
-                    "browser_executable": render_probe.browser_executable.display().to_string(),
-                    "capture_parse_error_svg": captures_parse_error_svg(diagram),
-                })
-                .to_string();
-
-                let Some(script_path) = scripted_renderer.as_ref() else {
-                    return Err(upstream_svg_failure_with_cleanup(
-                        &temp_out_path,
-                        "scripted renderer not available".to_string(),
-                    ));
-                };
+                let mut input_json = upstream_svg_render_input(
+                    diagram,
+                    snapshot_path,
+                    &output_abs,
+                    mermaid_config.path(),
+                    &svg_id,
+                    &render_probe.browser_executable,
+                );
+                input_json["capture_parse_error_svg"] =
+                    JsonValue::Bool(fixture_captures_parse_error_svg(diagram, stem));
+                let input_json = input_json.to_string();
 
                 let mut cmd = Command::new("node");
-                cmd.arg(script_path)
+                cmd.arg(&scripted_renderer)
                     .current_dir(&node_cwd)
                     .env(
                         "PUPPETEER_EXECUTABLE_PATH",
@@ -1541,46 +1564,6 @@ fn gen_upstream_svgs_impl(
                     let _ = stdin.write_all(input_json.as_bytes());
                 }
                 wait_with_timeout(&mut child, per_chart_timeout)
-            } else {
-                let mut cmd = Command::new("node");
-                cmd.arg(mmdc)
-                    .arg("-i")
-                    .arg(snapshot_path)
-                    .arg("-o")
-                    .arg(&temp_out_path)
-                    .arg("-t")
-                    .arg("default")
-                    .arg("-p")
-                    .arg(puppeteer_config)
-                    .env(
-                        "PUPPETEER_EXECUTABLE_PATH",
-                        &render_probe.browser_executable,
-                    )
-                    .env("PUPPETEER_BROWSER", "chrome");
-
-                // Stabilize Rough.js output across runs. Mermaid uses Rough.js for many "classic look"
-                // shapes too (often with `roughness: 0`), but the stroke control points still depend on
-                // `random()` via `divergePoint`. Pin `handDrawnSeed` for reproducible upstream SVG
-                // baselines.
-                cmd.arg("-c").arg(mermaid_config.path());
-
-                // Gantt rendering depends on the page width (`parentElement.offsetWidth`). In a
-                // headless Rust context we default to the Mermaid fallback width (1200) when no DOM
-                // width is available. Use the same page width for upstream baselines so parity diffs
-                // remain meaningful.
-                if diagram == "gantt" {
-                    cmd.arg("-w").arg("1200");
-                }
-
-                cmd.arg("--svgId").arg(svg_id);
-                cmd.stdout(std::process::Stdio::inherit())
-                    .stderr(std::process::Stdio::inherit());
-
-                let child = spawn_timeout_managed_child(&mut cmd);
-                match child {
-                    Ok(mut child) => wait_with_timeout(&mut child, per_chart_timeout),
-                    Err(err) => Err(err),
-                }
             };
 
             let rendered = match status {
@@ -1593,7 +1576,7 @@ fn gen_upstream_svgs_impl(
                         upstream_svg_failure_with_cleanup(
                             &temp_out_path,
                             format!(
-                                "mmdc output validation failed for {}: {err}",
+                                "upstream SVG output validation failed for {}: {err}",
                                 mmd_path.display()
                             ),
                         )
@@ -1601,14 +1584,17 @@ fn gen_upstream_svgs_impl(
                 Ok(status) => Err(upstream_svg_failure_with_cleanup(
                     &temp_out_path,
                     format!(
-                        "mmdc failed for {} (exit={})",
+                        "upstream SVG renderer failed for {} (exit={})",
                         mmd_path.display(),
                         status.code().unwrap_or(-1)
                     ),
                 )),
                 Err(err) => Err(upstream_svg_failure_with_cleanup(
                     &temp_out_path,
-                    format!("mmdc failed for {}: {err}", mmd_path.display()),
+                    format!(
+                        "upstream SVG renderer failed for {}: {err}",
+                        mmd_path.display()
+                    ),
                 )),
             };
             match mermaid_config.cleanup() {
@@ -1762,8 +1748,6 @@ fn gen_upstream_svgs_impl(
         workspace_root: &workspace_root,
         fixtures_root: &fixtures_root,
         out_root: &out_root,
-        mmdc: &mmdc,
-        puppeteer_config: &puppeteer_config,
         render_probe: &render_probe,
         pinned_mermaid_config_path: &pinned_mermaid_config_path,
         pinned_mermaid_config: &pinned_mermaid_config,
@@ -2415,7 +2399,6 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const inputPath = String(input.input_path || '');
 const outputPath = String(input.output_path || '');
 const configPath = String(input.config_path || '');
-const theme = String(input.theme || 'default');
 const svgId = String(input.svg_id || 'diagram');
 const seedStr = String((input.seed ?? 1));
 const fixedWallClockMs = Number(input.fixed_wall_clock_ms);
@@ -2437,6 +2420,13 @@ if (!inputPath || !outputPath || !configPath || !browserExecutable) {
 const mermaidHtmlPath = path.join(mermaidCliRoot, 'dist', 'index.html');
 const mermaidIifePath = path.join(mermaidRoot, 'dist', 'mermaid.js');
 const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
+const referenceManifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+// Mermaid 12 owns ELK; the legacy plugin would replace its marker registry.
+const selectedLayoutUrls = ['tidy-tree']
+  .filter((name) => referenceManifest.devDependencies?.[`@mermaid-js/layout-${name}`])
+  .map((name) => url.pathToFileURL(path.join(process.cwd(), 'node_modules', '@mermaid-js',
+    `layout-${name}`, 'dist', `mermaid-layout-${name}.esm.mjs`)).href);
+
 
 (async () => {
   const code = fs.readFileSync(inputPath, 'utf8');
@@ -2532,7 +2522,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     page.addScriptTag({ path: zenumlIifePath }),
   ]);
 
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug }) => {
+  const svg = await page.evaluate(async ({ code, cfg, svgId, containerWidth, captureParseErrorSvg, debug, selectedLayoutUrls }) => {
     const mermaid = globalThis.mermaid;
     if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
 
@@ -2540,36 +2530,31 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       await Promise.all(Array.from(document.fonts, (font) => font.load()));
     }
 
-    // Match mermaid-cli behavior: register external diagrams and layout loaders.
+    // Register only the companions explicitly selected by this reference workspace.
+    // Standard Mermaid 12 already owns ELK; the CLI's transitive plugin must not replace it.
     const zenuml = globalThis['mermaid-zenuml'];
     if (zenuml && typeof mermaid.registerExternalDiagrams === 'function') {
       await mermaid.registerExternalDiagrams([zenuml]);
     }
-    const elkLayouts = globalThis.elkLayouts;
-    if (elkLayouts && typeof mermaid.registerLayoutLoaders === 'function') {
-      mermaid.registerLayoutLoaders(elkLayouts);
+    for (const moduleUrl of selectedLayoutUrls) {
+      const { default: layouts } = await import(moduleUrl);
+      mermaid.registerLayoutLoaders(layouts);
     }
 
-    mermaid.initialize(Object.assign({ startOnLoad: false, theme }, cfg));
+    mermaid.initialize(Object.assign({ startOnLoad: false }, cfg));
 
     const container = document.getElementById('container') || document.body;
     container.innerHTML = '';
     container.style.width = `${Math.max(1, Number(containerWidth) || 1)}px`;
 
-    // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
-    if (!captureParseErrorSvg && typeof mermaid.parse === 'function') {
-      try {
-        await mermaid.parse(code);
-      } catch (err) {
-        if (!debug) throw err;
-        return {
-          ok: false,
-          stage: 'parse',
-          error: String(err && err.message ? err.message : err),
-          stack: String(err && err.stack ? err.stack : ''),
-        };
-      }
+    // Langium's MermaidParseError carries a cyclic parser result. Chromium cannot transfer
+    // that exception through the protocol reliably; preserve its diagnostic in a plain Error.
+    function transferableError(error) {
+      return new Error(String(error && error.message ? error.message : error));
     }
+
+    // Render performs parsing itself. A separate parse mutates family state (including the
+    // Class database's global DOM-id counter), changing the SVG produced by the same input.
 
     function participantActorRects(svg) {
       return Array.from(
@@ -2599,7 +2584,11 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
 
     async function completeDeferredSequenceActorMath(renderedSvgText) {
-      if (!code.includes('$$')) return renderedSvgText;
+      // Sequence actors still start asynchronous KaTeX rendering in Mermaid 12.
+      // Other diagrams can contain HTML entities that are not valid in XML.
+      if (!code.includes('$$') || !/aria-roledescription\s*=\s*(["'])sequence\1/.test(renderedSvgText)) {
+        return renderedSvgText;
+      }
 
       const parsed = new DOMParser().parseFromString(renderedSvgText, 'image/svg+xml');
       if (parsed.querySelector('parsererror')) {
@@ -2681,7 +2670,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
         try {
           rendered = await mermaid.render(svgId, code, container);
         } catch (err) {
-          if (!captureParseErrorSvg) throw err;
+          if (!captureParseErrorSvg) throw transferableError(err);
           const errorSvg = container.querySelector && container.querySelector('svg');
           if (!errorSvg || errorSvg.getAttribute('aria-roledescription') !== 'error') {
             throw new Error(
@@ -2725,7 +2714,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
         try {
           api.render(svgId, code, (svgCode) => resolve(svgCode), container);
         } catch (err) {
-          reject(err);
+          reject(transferableError(err));
         }
       });
     }
@@ -2760,7 +2749,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
     }
     return xml;
-  }, { code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug });
+  }, { code, cfg, svgId, containerWidth, captureParseErrorSvg, debug, selectedLayoutUrls });
 
   if (debug) {
     if (typeof svg !== 'string') {
@@ -2776,19 +2765,18 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       throw new Error(`expected svg string from mermaid.render, got ${typeof svgText}`);
     }
     if (!bg) return svgText;
-    if (svgText.includes('background-color:')) return svgText;
-    const m = svgText.match(/<svg\b[^>]*\bstyle="([^"]*)"/);
-    if (m) {
-      const raw = m[1] || '';
-      let next = raw.trim();
-      if (next.length > 0 && !next.trim().endsWith(';')) {
-        next += ';';
+    // The CLI background belongs to the root element. Theme CSS and nested SVG styles do
+    // not set that background and must not suppress the explicit output projection.
+    return svgText.replace(/<svg\b[^>]*>/, (root) => {
+      const style = root.match(/\sstyle="([^"]*)"/);
+      if (!style) {
+        return root.replace('<svg', `<svg style="background-color: ${bg};"`);
       }
-      next += ` background-color: ${bg};`;
-      return svgText.replace(m[0], m[0].replace(raw, next));
-    }
-    // Fallback: inject a style attr into the root <svg>.
-    return svgText.replace(/<svg\b/, `<svg style="background-color: ${bg};"`);
+      const raw = style[1];
+      if (/(?:^|;)\s*background-color\s*:/i.test(raw)) return root;
+      const separator = raw.trim().length > 0 && !raw.trimEnd().endsWith(';') ? ';' : '';
+      return root.replace(style[0], ` style="${raw}${separator} background-color: ${bg};"`);
+    });
   }
 
   const svgWithBg = ensureSvgBackgroundColor(svg, backgroundColor);
@@ -3256,11 +3244,9 @@ mod tests {
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
         upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
-        use_or_acquire_upstream_svg_family_lock, uses_fixed_clock_upstream_svg_renderer,
-        uses_scripted_upstream_svg_renderer, uses_seeded_upstream_svg_renderer,
-        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
-        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
-        validate_upstream_svg_render_probe,
+        use_or_acquire_upstream_svg_family_lock, validate_and_promote_upstream_svg_temp,
+        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
+        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
     };
     use crate::XtaskError;
     use crate::cmd::{
@@ -3449,8 +3435,10 @@ mod tests {
     }
 
     #[test]
-    fn mermaid_11_16_new_families_are_available_to_upstream_svg_tools() {
+    fn added_families_are_available_to_upstream_svg_tools() {
         for diagram in [
+            "agentflow",
+            "usecase",
             "swimlane",
             "cynefin",
             "wardley",
@@ -3872,20 +3860,9 @@ mod tests {
     }
 
     #[test]
-    fn sequence_uses_the_seeded_renderer_that_settles_actor_math() {
-        assert!(uses_seeded_upstream_svg_renderer("sequence"));
-        assert!(uses_seeded_upstream_svg_renderer("architecture"));
-        assert!(uses_seeded_upstream_svg_renderer("gitgraph"));
-        assert!(!uses_seeded_upstream_svg_renderer("flowchart"));
-    }
-
-    #[test]
-    fn gantt_uses_the_fixed_clock_renderer_at_the_mmdc_page_and_container_widths() {
-        assert!(uses_fixed_clock_upstream_svg_renderer("gantt"));
-        assert!(uses_scripted_upstream_svg_renderer("gantt"));
+    fn gantt_uses_the_upstream_page_and_container_widths() {
         assert_eq!(scripted_renderer_page_viewport_width("gantt"), 1_200);
         assert_eq!(scripted_renderer_container_width("gantt"), 1_184);
-        assert!(!uses_fixed_clock_upstream_svg_renderer("timeline"));
         assert_eq!(scripted_renderer_page_viewport_width("timeline"), 800);
         assert_eq!(scripted_renderer_container_width("timeline"), 800);
     }
@@ -3893,11 +3870,41 @@ mod tests {
     #[test]
     fn error_uses_the_scripted_renderer_to_capture_the_upstream_fallback_svg() {
         assert!(captures_parse_error_svg("error"));
-        assert!(uses_scripted_upstream_svg_renderer("error"));
         assert_eq!(scripted_renderer_background_color("error"), "");
         assert!(!captures_parse_error_svg("state"));
-        assert!(!uses_scripted_upstream_svg_renderer("state"));
         assert_eq!(scripted_renderer_background_color("sequence"), "white");
+    }
+
+    #[test]
+    fn imported_negative_fixtures_require_an_exact_family_and_stem() {
+        for (diagram, stem) in [
+            ("packet", "upstream_docs_packet_bits_syntax_v11_7_0_002"),
+            ("packet", "upstream_docs_packet_syntax_001"),
+            ("radar", "upstream_docs_radar_axis_007"),
+            ("radar", "upstream_docs_radar_curve_008"),
+            ("radar", "upstream_docs_radar_examples_005"),
+            ("radar", "upstream_docs_radar_options_009"),
+            ("radar", "upstream_docs_radar_title_006"),
+            (
+                "treemap",
+                "upstream_treemap_classdef_and_css_compiled_styles_db",
+            ),
+        ] {
+            assert!(super::fixture_captures_parse_error_svg(diagram, stem));
+            assert!(!super::fixture_captures_parse_error_svg("sequence", stem));
+            assert!(
+                !captures_parse_error_svg(diagram),
+                "audits must reject errors"
+            );
+        }
+        assert!(!super::fixture_captures_parse_error_svg(
+            "packet",
+            "new_invalid_fixture"
+        ));
+        assert!(!super::fixture_captures_parse_error_svg(
+            "radar",
+            "upstream_docs_radar_axis_007_new"
+        ));
     }
 
     #[test]

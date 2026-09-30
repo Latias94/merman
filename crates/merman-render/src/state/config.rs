@@ -15,6 +15,8 @@ const DEFAULT_STATE_NODE_SPACING: f64 = 50.0;
 const DEFAULT_STATE_RANK_SPACING: f64 = 50.0;
 const DEFAULT_STATE_PADDING: f64 = 8.0;
 const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
+// Mermaid state defaults set minNodeWidth to 120 in config.schema.yaml.
+const DEFAULT_STATE_LABEL_MIN_WIDTH: f64 = 120.0;
 const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
 const DEFAULT_STATE_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
 
@@ -147,6 +149,7 @@ impl<'a> StateConfigView<'a> {
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
+            label_min_width: self.state_label_min_width(),
             text_style: self.text_style(),
         }
     }
@@ -165,6 +168,7 @@ impl<'a> StateConfigView<'a> {
                 .unwrap_or(0.0),
             html_labels,
             html_label_wrapping_width: self.html_label_wrapping_width(),
+            label_min_width: self.state_label_min_width(),
             state_padding: self.state_padding(),
             security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
             text_style: self.text_style(),
@@ -202,8 +206,16 @@ impl<'a> StateConfigView<'a> {
         }
     }
 
+    pub(crate) fn state_label_min_width(&self) -> f64 {
+        self.state_compat_f64("minNodeWidth")
+            .unwrap_or(DEFAULT_STATE_LABEL_MIN_WIDTH)
+            .max(0.0)
+    }
+
     pub(crate) fn html_label_wrapping_width(&self) -> f64 {
-        config_f64_css_px(self.flowchart_config, &["wrappingWidth"])
+        config_f64_css_px(self.state_config, &["wrappingWidth"])
+            .filter(|width| *width != 0.0)
+            .or_else(|| config_f64_css_px(self.flowchart_config, &["wrappingWidth"]))
             .unwrap_or(DEFAULT_HTML_LABEL_WRAPPING_WIDTH)
             .max(0.0)
     }
@@ -253,6 +265,7 @@ pub(super) struct StateLayoutSettings {
     pub(super) wrap_mode: WrapMode,
     pub(super) wrapping_width: f64,
     pub(super) state_padding: f64,
+    pub(super) label_min_width: f64,
     pub(super) text_style: TextStyle,
 }
 
@@ -262,6 +275,7 @@ pub(crate) struct StateRenderSettings {
     pub(crate) hand_drawn_seed: f64,
     pub(crate) html_labels: bool,
     pub(crate) html_label_wrapping_width: f64,
+    pub(crate) label_min_width: f64,
     pub(crate) state_padding: f64,
     pub(crate) security_level_loose: bool,
     pub(crate) text_style: TextStyle,
@@ -282,6 +296,13 @@ mod tests {
 
     #[test]
     fn state_html_label_wrapping_width_honors_number_and_px_string() {
+        let state_override =
+            json!({"state": {"wrappingWidth": 120}, "flowchart": {"wrappingWidth": 320}});
+        assert_eq!(
+            StateConfigView::new(&state_override).html_label_wrapping_width(),
+            120.0
+        );
+
         let numeric = json!({
             "flowchart": {
                 "wrappingWidth": 320
@@ -387,6 +408,22 @@ mod tests {
             Some("Root Sans")
         );
         assert_eq!(settings.text_style.font_size, 24.0);
+    }
+
+    #[test]
+    fn state_min_node_width_uses_mermaid_default_but_preserves_explicit_zero() {
+        assert_eq!(
+            StateConfigView::new(&json!({})).state_label_min_width(),
+            120.0
+        );
+        assert_eq!(
+            StateConfigView::new(&json!({"state": {"minNodeWidth": 0}})).state_label_min_width(),
+            0.0
+        );
+        assert_eq!(
+            StateConfigView::new(&json!({"state": {"minNodeWidth": 132}})).state_label_min_width(),
+            132.0
+        );
     }
 
     #[test]

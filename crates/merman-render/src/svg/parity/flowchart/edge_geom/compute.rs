@@ -2,19 +2,31 @@
 
 use super::*;
 
-pub(super) fn flowchart_compute_edge_path_geom(
+pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Option<FlowchartEdgePathGeom> {
+) -> Option<ClippedEdgeRoute> {
     let FlowchartEdgePathGeomRequest {
         ctx,
         edge,
         origin_x,
         origin_y,
-        trace_enabled,
+        trace_enabled: _,
     } = request;
 
     let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    if ctx.uses_elk_adapter_dom && le.points.is_empty() {
+        // Mermaid 12 renders providers without sections as clipped straight lines. Keep the
+        // raw layout empty so a real two-point section still follows the routed-edge path.
+        let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
+        return Some(ClippedEdgeRoute {
+            base_points: points.clone(),
+            points,
+            origin_x,
+            origin_y,
+            elk_endpoint_adapters: super::ElkEndpointAdapterCorners::default(),
+        });
+    }
     if le.points.len() < 2 {
         return None;
     }
@@ -29,23 +41,13 @@ pub(super) fn flowchart_compute_edge_path_geom(
     }
     let local_points = scratch.local_points.as_slice();
 
-    use super::{
-        FlowchartEdgeTraceInput, align_elk_endpoint_adapters_to_route,
-        apply_flowchart_elk_endpoint_cutter, boundary_for_cluster, boundary_for_node,
-        collapse_short_terminal_marker_stub, curve_path_d_and_bounds, cut_path_at_intersect_into,
-        dedup_consecutive_points_into, force_intersect_for_layout_shape,
-        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
-        line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_remove_redundant_cluster_run_point, record_flowchart_edge_trace,
-        rounded_line_with_marker_offsets_for_edge_type,
-    };
-
-    let is_elk_layout = ctx.diagram_type == "flowchart-elk"
-        || ctx
-            .config
-            .get_str("layout")
-            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
-    dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    let is_elk_layout = ctx.uses_elk_adapter_dom;
+    if is_elk_layout {
+        scratch.tmp_points_a.clear();
+        scratch.tmp_points_a.extend_from_slice(local_points);
+    } else {
+        dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    }
     let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
 
     scratch.tmp_points_b.clear();
@@ -62,16 +64,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
             base_points,
             points_after_intersect,
         );
-        if ctx.compact_edge_corners {
-            align_elk_endpoint_adapters_to_route(
-                ctx,
-                edge,
-                origin_x,
-                origin_y,
-                &mut elk_endpoint_adapters,
-                points_after_intersect,
-            );
-        }
     } else if base_points.len() >= 3 {
         // The semantic edge keeps its original source/target, while explicit-direction cluster
         // extraction can rebind the Graphlib layout edge to a surviving cluster node. Mermaid
@@ -150,8 +142,45 @@ pub(super) fn flowchart_compute_edge_path_geom(
         }
     }
 
+    Some(ClippedEdgeRoute {
+        base_points: std::mem::take(&mut scratch.tmp_points_a),
+        points: std::mem::take(&mut scratch.tmp_points_b),
+        origin_x,
+        origin_y,
+        elk_endpoint_adapters,
+    })
+}
+
+pub(in crate::svg::parity::flowchart) fn finish_edge_route(
+    request: FlowchartEdgePathGeomRequest<'_>,
+    route: ClippedEdgeRoute,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+) -> Option<FlowchartEdgePathGeom> {
+    let FlowchartEdgePathGeomRequest {
+        ctx,
+        edge,
+        origin_x,
+        origin_y,
+        trace_enabled,
+    } = request;
+    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let is_elk_layout = ctx.uses_elk_adapter_dom;
+    let ClippedEdgeRoute {
+        base_points,
+        points,
+        elk_endpoint_adapters,
+        ..
+    } = route;
+    let missing_section = is_elk_layout && le.points.is_empty();
+    scratch.tmp_points_a = base_points;
+    scratch.tmp_points_b = points;
+    let base_points = &scratch.tmp_points_a;
+    let points_after_intersect = &scratch.tmp_points_b;
+
     scratch.tmp_points_c.clear();
-    if let Some(tc) = le.to_cluster.as_deref() {
+    // ELK groups were clipped by sanitizeElkEdgePoints. The local cluster metadata is
+    // not Dagre's toCluster/fromCluster rewrite; clipping again would discard that route.
+    if !is_elk_layout && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
         } else {
@@ -164,7 +193,8 @@ pub(super) fn flowchart_compute_edge_path_geom(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if let Some(fc) = le.from_cluster.as_deref()
+    if !is_elk_layout
+        && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
         scratch.tmp_points_rev.clear();
@@ -187,7 +217,9 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
     let points_for_data_points = &scratch.tmp_points_b;
 
-    let interpolate = if is_elk_layout {
+    let interpolate = if missing_section {
+        "linear"
+    } else if is_elk_layout {
         "rounded"
     } else {
         edge.interpolate
@@ -199,6 +231,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         interpolate,
         "linear"
             | "natural"
+            | "bumpX"
             | "bumpY"
             | "catmullRom"
             | "step"
@@ -210,7 +243,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
             | "rounded"
     );
 
-    let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
+    let is_cluster_edge = !is_elk_layout && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
     let label_path_points = if ctx
@@ -227,27 +260,13 @@ pub(super) fn flowchart_compute_edge_path_geom(
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if points_for_render.len() == 1 {
+    if !is_elk_layout && points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
-        points_for_render.extend(scratch.local_points.iter().cloned());
-    }
-
-    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
-    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
-    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
-    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
-    // after clipping (but keep cluster-adjacent edges as-is: Mermaid uses straight segments there).
-    if is_basis && points_for_render.len() == 2 && interpolate != "linear" && !is_cluster_edge {
-        let a = &points_for_render[0];
-        let b = &points_for_render[1];
-        points_for_render.insert(
-            1,
-            crate::model::LayoutPoint {
-                x: (a.x + b.x) / 2.0,
-                y: (a.y + b.y) / 2.0,
-            },
-        );
+        points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
+            x: point.x + ctx.tx - origin_x,
+            y: point.y + ctx.ty - origin_y,
+        }));
     }
 
     let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
@@ -294,18 +313,11 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let rounded_corner_mask =
         (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
 
-    let mut line_data = if is_rounded {
+    let line_data = if is_rounded {
         rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
     } else {
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
-    maybe_collapse_degenerate_subgraph_edge_route(
-        ctx,
-        edge,
-        points_for_data_points,
-        &mut line_data,
-    );
-
     let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,

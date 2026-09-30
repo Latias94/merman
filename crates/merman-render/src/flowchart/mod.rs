@@ -65,6 +65,11 @@ impl<'a> FlowchartRenderModelRef<'a> {
         self.render_context.collapsed_replacement(id)
     }
 
+    pub(crate) fn subgraph_color_ordinal(&self, id: &str) -> Option<usize> {
+        self.render_context.subgraph_color_ordinal(id)
+    }
+
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(crate) fn requires_math(&self) -> bool {
         self.nodes
             .iter()
@@ -120,20 +125,34 @@ impl Deref for FlowchartRenderModelRef<'_> {
 
 pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar;
 
-pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
+pub(crate) use config::FlowchartConfigView;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) use config::FlowchartLayoutSettings;
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
-    flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
+    flowchart_label_text_is_empty_for_mode, flowchart_node_label_min_width,
+    flowchart_node_svg_width_mode, flowchart_non_markdown_label_for_html,
+    flowchart_trim_html_collapsible_whitespace,
 };
-#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
 pub(crate) use label::{
     flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
 pub(crate) use node::{
-    NodeLayoutDimensionsRequest, flowchart_node_render_dimensions, node_layout_dimensions,
+    CROSSED_CIRCLE_RADIUS, DelayGeometry, DisplayGeometry, DoubleCircleGeometry, HexagonGeometry,
+    LeanGeometry, LeanKind, OddGeometry, StadiumGeometry, flowchart_brace_content_dimensions,
+    flowchart_node_render_dimensions, flowchart_stacked_document_geometry,
 };
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+pub(crate) use node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 pub(crate) use self_loop::flowchart_self_loop_helper_edges;
 pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,

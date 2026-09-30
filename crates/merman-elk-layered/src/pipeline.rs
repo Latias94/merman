@@ -11,9 +11,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalNodeResizingProcessor.java
 
 use super::options::{
-    CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
-    GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
-    PortConstraints, WrappingStrategy,
+    ContentAlignment, CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting,
+    ElkDirection, GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy,
+    OrderingStrategy, PortConstraints, WrappingStrategy,
 };
 use crate::RandomSeedError;
 use crate::compound::{
@@ -22,7 +22,7 @@ use crate::compound::{
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{
     LGraph, LNode, LNodeKind, LPoint, LSize, LayeredEdge, PortRef, PortSide, PortType,
-    collector_port_id_suffix,
+    ReorderNodePortsWorkContext, collector_port_id_suffix,
 };
 #[cfg(test)]
 use crate::intermediate::edge_and_layer_constraint_reversal_may_mutate;
@@ -42,13 +42,13 @@ use crate::p1cycles::{
     break_cycles_interactive, break_cycles_model_order, depth_first_cycle_breaker_may_mutate,
     interactive_cycle_breaker_may_mutate, visit_model_order_feedback_edges,
 };
-use crate::p2layers::layer_network_simplex;
+use crate::p2layers::{LayeringError, layer_network_simplex, layer_with_strategy};
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
     sweep::{
         CrossMinType, HierarchySweepDebugTrace, debug_crossings_layer_sweep_hierarchical_with_type,
-        minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_hierarchical_with_type,
-        minimize_crossings_layer_sweep_with_type,
+        minimize_crossings_layer_sweep_hierarchical_with_type,
+        minimize_crossings_layer_sweep_with_type, minimize_crossings_layer_sweep_with_work_control,
     },
 };
 use crate::p4nodes::{
@@ -68,6 +68,12 @@ use crate::work::{
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
     #[error(transparent)]
+    Component(#[from] crate::components::ComponentError),
+    #[error(transparent)]
+    NodeSize(#[from] crate::options::NodeSizeError),
+    #[error(transparent)]
+    NetworkSimplex(#[from] crate::common::networksimplex::NetworkSimplexError),
+    #[error(transparent)]
     RandomSeed(#[from] RandomSeedError),
     #[error("layered processor `{kind:?}` is not ported yet")]
     UnsupportedProcessor { kind: ProcessorKind },
@@ -77,6 +83,17 @@ pub enum PipelineError {
     Intermediate(#[from] IntermediateError),
     #[error(transparent)]
     Work(#[from] WorkError),
+    #[error(transparent)]
+    Layering(LayeringError),
+}
+
+impl From<LayeringError> for PipelineError {
+    fn from(error: LayeringError) -> Self {
+        match error {
+            LayeringError::Work(error) => Self::Work(error),
+            other => Self::Layering(other),
+        }
+    }
 }
 
 pub type PipelineResult<T> = Result<T, PipelineError>;
@@ -500,6 +517,12 @@ fn is_source_ported_processor(kind: ProcessorKind) -> bool {
             | ProcessorKind::GreedyModelOrderCycleBreaker
             | ProcessorKind::LayerConstraintPreprocessor
             | ProcessorKind::NetworkSimplexLayerer
+            | ProcessorKind::LongestPathLayerer
+            | ProcessorKind::LongestPathSourceLayerer
+            | ProcessorKind::CoffmanGrahamLayerer
+            | ProcessorKind::InteractiveLayerer
+            | ProcessorKind::StretchWidthLayerer
+            | ProcessorKind::MinWidthLayerer
             | ProcessorKind::LabelDummyInserter
             | ProcessorKind::SelfLoopPreProcessor
             | ProcessorKind::LayerConstraintPostprocessor
@@ -658,11 +681,38 @@ pub fn execute_ported_processors_with_work_control(
     let mut validation_graph = graph.clone();
     configure_graph_properties(&mut validation_graph)?;
     validate_ported_processors(&assemble_processors_for_graph(&validation_graph))?;
+    drop(validation_graph);
     let processors = prepare_single_graph_processors(graph, work_control)?;
 
-    for slot in processors {
-        execute_processor_with_work_control(graph, slot.kind, work_control)?;
-        executed.push(slot.kind);
+    if let Some(mut components) = crate::components::split(graph, work_control)? {
+        // ComponentsProcessor copies the configured properties shallowly. Its Java Random
+        // is one shared object, so later components continue the previous component's stream.
+        let mut random = graph.random.clone();
+        for component in &mut components {
+            component.graph.random = random;
+            for slot in &processors {
+                execute_processor_with_work_control(&mut component.graph, slot.kind, work_control)?;
+            }
+            random = component.graph.random.clone();
+            charge_hierarchy_work(&component.graph, work_control)?;
+        }
+        crate::components::combine(graph, components, work_control)?;
+        graph.random = random;
+        executed.extend(processors.iter().map(|slot| slot.kind));
+    } else {
+        for slot in processors {
+            execute_processor_with_work_control(graph, slot.kind, work_control)?;
+            executed.push(slot.kind);
+        }
+    }
+
+    // Compound layout resizes through its scheduled HierarchicalNodeResizer. Flat layout
+    // applies ElkLayered.resizeGraph after direction postprocessing and component combination.
+    if graph.options.hierarchy_handling != super::options::HierarchyHandling::IncludeChildren
+        && graph.options.node_size_minimum.is_some()
+    {
+        work_control.charge(checked_add(graph.layerless_nodes.len(), 1)?)?;
+        resize_graph_to_minimum(graph)?;
     }
 
     Ok(executed)
@@ -676,8 +726,23 @@ fn prepare_single_graph_processors(
     // nested graph to resolve options and random seeds. Charge that complete hierarchy atomically
     // before configuration mutates any graph; a root-only preflight would under-account this API.
     charge_hierarchy_work(graph, work_control)?;
+    validate_node_size_minima(graph)?;
     configure_graph_properties(graph)?;
     Ok(assemble_processors_for_graph(graph))
+}
+
+fn validate_node_size_minima(graph: &LGraph) -> PipelineResult<()> {
+    let mut pending = vec![graph];
+    while let Some(graph) = pending.pop() {
+        graph.options.validate_node_size_minimum()?;
+        pending.extend(
+            graph
+                .layerless_nodes
+                .iter()
+                .filter_map(|node| node.nested_graph.as_deref()),
+        );
+    }
+    Ok(())
 }
 
 /// Execute the source-backed layered pipeline for a compound graph hierarchy.
@@ -798,6 +863,7 @@ fn execute_ported_compound_processors_to(
     if stop.is_none() {
         validate_ported_graph_processors(graph)?;
     }
+    validate_node_size_minima(graph)?;
     charge_compound_preprocess_work(graph, work_control)?;
     preprocess_source_ported_compound_graph(graph);
     charge_hierarchy_work(graph, work_control)?;
@@ -893,8 +959,24 @@ fn execute_compound_algorithm_until_pause(
         }
 
         let size = if hierarchy_aware {
-            charge_hierarchy_processor_work(graph, kind, work_control)?;
-            execute_hierarchy_aware_processor(graph, kind)?;
+            if kind == ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+                && graph
+                    .layerless_nodes
+                    .iter()
+                    .all(|node| node.nested_graph.is_none())
+                && graph
+                    .options
+                    .consider_model_order_crossing_counter_node_influence
+                    == 0.0
+            {
+                charge_hierarchy_work(graph, work_control)?;
+                crate::p3order::sweep::minimize_single_graph_hierarchical_barycenter_with_work_control(
+                    graph, work_control,
+                )?;
+            } else {
+                charge_hierarchy_processor_work(graph, kind, work_control)?;
+                execute_hierarchy_aware_processor(graph, kind)?;
+            }
             actual_graph_size(graph)
         } else {
             execute_processor_with_work_control(graph, kind, work_control)?;
@@ -1312,7 +1394,25 @@ fn execute_processor_with_work_control(
         ProcessorKind::GreedyModelOrderCycleBreaker => break_cycles_greedy_model_order(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
         ProcessorKind::LabelDummyInserter => insert_label_dummies(graph),
-        ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
+        ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph)?,
+        ProcessorKind::LongestPathLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::LongestPath, work_control)?
+        }
+        ProcessorKind::LongestPathSourceLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::LongestPathSource, work_control)?
+        }
+        ProcessorKind::CoffmanGrahamLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::CoffmanGraham, work_control)?
+        }
+        ProcessorKind::InteractiveLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::Interactive, work_control)?
+        }
+        ProcessorKind::StretchWidthLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::StretchWidth, work_control)?
+        }
+        ProcessorKind::MinWidthLayerer => {
+            layer_with_strategy(graph, LayeringStrategy::MinWidth, work_control)?
+        }
         ProcessorKind::LayerConstraintPostprocessor => postprocess_layer_constraints(graph)?,
         ProcessorKind::HierarchicalPortConstraintProcessor => {
             process_hierarchical_port_constraints(graph);
@@ -1321,9 +1421,9 @@ fn execute_processor_with_work_control(
         ProcessorKind::PortSideProcessor => process_port_sides(graph),
         ProcessorKind::InvertedPortProcessor => process_inverted_ports(graph),
         ProcessorKind::PortListSorter => sort_port_lists(graph),
-        ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph),
+        ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph, work_control)?,
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
-            minimize_crossings_layer_sweep(graph);
+            minimize_crossings_layer_sweep_with_work_control(graph, work_control)?;
         }
         ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch => {
             minimize_crossings_layer_sweep_with_type(graph, CrossMinType::OneSidedGreedySwitch);
@@ -1343,7 +1443,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::SimpleNodePlacer => place_nodes_simple(graph),
         ProcessorKind::LinearSegmentsNodePlacer => place_nodes_linear_segments(graph),
-        ProcessorKind::NetworkSimplexPlacer => place_nodes_network_simplex(graph),
+        ProcessorKind::NetworkSimplexPlacer => place_nodes_network_simplex(graph)?,
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
         }
@@ -1363,7 +1463,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::EndLabelSorter => sort_end_labels(graph),
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
         ProcessorKind::EndLabelPostprocessor => postprocess_end_labels(graph),
-        ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph),
+        ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph)?,
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -1423,11 +1523,17 @@ fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, Wo
             )?
         }
         ProcessorKind::NetworkSimplexPlacer => {
-            let auxiliary_nodes = checked_sum([graph.layerless_nodes.len(), graph.edges.len(), 1])?;
+            // Flexible nodes have two corners and one auxiliary vertex per port.
+            let ports = checked_sum(graph.layerless_nodes.iter().map(|node| node.ports.len()))?;
+            let auxiliary_nodes = checked_sum([
+                checked_mul(graph.layerless_nodes.len(), 2)?,
+                ports,
+                graph.edges.len(),
+                1,
+            ])?;
             checked_mul(graph.options.thoroughness, auxiliary_nodes.max(1))?
         }
-        ProcessorKind::LayerSweepCrossingMinimizerBarycenter
-        | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+        ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
         | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
             checked_mul(graph.options.thoroughness.max(1), graph.edges.len().max(1))?
         }
@@ -1695,19 +1801,8 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
 }
 
 fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let max_ports = graph
-        .layerless_nodes
-        .iter()
-        .map(|node| node.ports.len())
-        .max()
-        .unwrap_or(0);
-    let chain_bound = checked_mul(
-        checked_add(graph.edges.len(), 1)?,
-        checked_add(max_ports, 2)?,
-    )?;
     let mut layer_copy_work = 0usize;
     let mut preprocessing_work = 0usize;
-    let mut relation_sort_work = 0usize;
     let mut reference_rewrites = 0usize;
     let mut reorder_context = None;
 
@@ -1724,13 +1819,6 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
             layer.nodes.len(),
         ])?;
 
-        let node_context =
-            checked_sum([previous_layer.nodes.len(), checked_mul(max_ports, 4)?, 1])?;
-        relation_sort_work = checked_add(
-            relation_sort_work,
-            stateful_relation_sort_work_units(layer.nodes.len(), node_context)?,
-        )?;
-
         for &node_index in &layer.nodes {
             let node = &graph.layerless_nodes[node_index];
             if matches!(
@@ -1741,23 +1829,7 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
             }
 
             let port_count = node.ports.len();
-            let outgoing_ports = node
-                .ports
-                .iter()
-                .filter(|port| !port.outgoing_edges.is_empty())
-                .count();
-            preprocessing_work = checked_sum([
-                preprocessing_work,
-                checked_mul(port_count, 2)?,
-                checked_mul(outgoing_ports, chain_bound)?,
-            ])?;
-            relation_sort_work = checked_add(
-                relation_sort_work,
-                stateful_relation_sort_work_units(
-                    port_count,
-                    checked_add(previous_layer.nodes.len(), 1)?,
-                )?,
-            )?;
+            preprocessing_work = checked_add(preprocessing_work, checked_mul(port_count, 2)?)?;
             reference_rewrites = checked_add(
                 reference_rewrites,
                 prepared_reorder_node_ports_work_units(graph, node_index, &mut reorder_context)?,
@@ -1765,93 +1837,15 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
         }
     }
 
-    // The stateful ELK comparator must keep its stable-sort call order. Model its owner-local layer
-    // and port widths plus the references each resulting permutation actually rewrites; taking the
-    // fourth power of total hierarchy payload rejected ordinary official Mermaid fixtures.
+    // Admit the fixed scans and reference rewrites before mutating the graph. Long-edge target
+    // walks and stateful comparisons charge their actual visited chains and current relation
+    // sets inside the processor; whole-graph bounds charged ordinary sparse DAGs as dense sorts.
     checked_sum([
         local_graph_work_units(graph)?,
         layer_copy_work,
         preprocessing_work,
-        relation_sort_work,
         reference_rewrites,
     ])
-}
-
-fn stateful_relation_sort_work_units(
-    item_count: usize,
-    contextual_scan: usize,
-) -> Result<usize, WorkError> {
-    let comparisons = checked_n_log_n(item_count)?;
-    let squared = checked_mul(item_count, item_count)?;
-    // The official stateful comparator clones two relation sets and can clone/extend another set
-    // inside each side of the transitive-closure update. Keep this local to the sorted owner set.
-    let relation_closure =
-        checked_sum([checked_mul(squared, 4)?, checked_mul(item_count, 8)?, 16])?;
-    checked_mul(comparisons, checked_add(relation_closure, contextual_scan)?)
-}
-
-struct ReorderNodePortsWorkContext {
-    shared_reference_work: usize,
-    self_loop_holder_scan_work: usize,
-    self_loop_payload_by_node: Vec<usize>,
-}
-
-impl ReorderNodePortsWorkContext {
-    fn new(graph: &LGraph) -> Result<Self, WorkError> {
-        let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
-        for holder in &graph.self_loop_holders {
-            let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
-                continue;
-            };
-            for hyper_loop in &holder.hyper_loops {
-                *payload = checked_sum([
-                    *payload,
-                    hyper_loop.ports.len(),
-                    checked_mul(hyper_loop.edges.len(), 2)?,
-                ])?;
-            }
-        }
-
-        let mut descendant_nodes = 0usize;
-        let mut stack = graph
-            .layerless_nodes
-            .iter()
-            .filter_map(|node| node.nested_graph.as_deref())
-            .collect::<Vec<_>>();
-        while let Some(current) = stack.pop() {
-            descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
-            stack.extend(
-                current
-                    .layerless_nodes
-                    .iter()
-                    .filter_map(|node| node.nested_graph.as_deref()),
-            );
-        }
-
-        Ok(Self {
-            shared_reference_work: checked_sum([
-                checked_mul(graph.edges.len(), 3)?,
-                checked_mul(graph.layerless_nodes.len(), 3)?,
-                descendant_nodes,
-                graph.id.len(),
-            ])?,
-            self_loop_holder_scan_work: graph.self_loop_holders.len(),
-            self_loop_payload_by_node,
-        })
-    }
-
-    fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
-        let port_count = graph.layerless_nodes[node_index].ports.len();
-        checked_sum([
-            checked_mul(port_count, 4)?,
-            self.shared_reference_work,
-            self.self_loop_holder_scan_work,
-            self.self_loop_payload_by_node
-                .get(node_index)
-                .copied()
-                .unwrap_or(0),
-        ])
-    }
 }
 
 fn prepared_reorder_node_ports_work_units(
@@ -2616,7 +2610,10 @@ fn compound_preprocess_work_units_with_preflight(
     preflight_hierarchy_work_units(graph, work_control, local_compound_preprocess_work_units)
 }
 
-fn charge_hierarchy_work(graph: &LGraph, work_control: &mut dyn WorkControl) -> PipelineResult<()> {
+pub(crate) fn charge_hierarchy_work(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
     let work_units = hierarchy_work_units_with_preflight(graph, work_control)?;
     work_control.charge(work_units)?;
     Ok(())
@@ -2702,7 +2699,7 @@ fn charge_compound_preprocess_work(
     Ok(())
 }
 
-fn resize_hierarchical_node_graph(graph: &mut LGraph) {
+fn resize_hierarchical_node_graph(graph: &mut LGraph) -> PipelineResult<()> {
     let layered_nodes = graph
         .layers
         .iter()
@@ -2712,15 +2709,42 @@ fn resize_hierarchical_node_graph(graph: &mut LGraph) {
         graph.layerless_nodes[node].layer_index = None;
     }
     graph.layers.clear();
+    resize_graph_to_minimum(graph)
+}
+
+fn resize_graph_to_minimum(graph: &mut LGraph) -> PipelineResult<()> {
+    graph.options.validate_node_size_minimum()?;
     let old_size = actual_graph_size(graph);
-    let new_size = LSize {
-        width: old_size.width.max(0.0),
-        height: old_size.height.max(0.0),
-    };
+    let mut new_size = old_size;
+    if let Some(minimum) = graph.options.effective_node_size_minimum() {
+        new_size.width = new_size.width.max(minimum.width);
+        new_size.height = new_size.height.max(minimum.height);
+    }
     resize_graph_no_really_i_mean_it(graph, old_size, new_size);
+    Ok(())
 }
 
 fn resize_graph_no_really_i_mean_it(graph: &mut LGraph, old_size: LSize, new_size: LSize) {
+    fn alignment_offset(alignment: ContentAlignment, old: f64, new: f64) -> f64 {
+        if new <= old {
+            return 0.0;
+        }
+        match alignment {
+            ContentAlignment::Start => 0.0,
+            ContentAlignment::Center => (new - old) / 2.0,
+            ContentAlignment::End => new - old,
+        }
+    }
+    graph.offset.x += alignment_offset(
+        graph.options.horizontal_content_alignment,
+        old_size.width,
+        new_size.width,
+    );
+    graph.offset.y += alignment_offset(
+        graph.options.vertical_content_alignment,
+        old_size.height,
+        new_size.height,
+    );
     if graph.graph_properties.external_ports
         && (new_size.width > old_size.width || new_size.height > old_size.height)
     {
@@ -3012,11 +3036,15 @@ fn layering_processor(strategy: LayeringStrategy) -> ProcessorKind {
     }
 }
 
-fn layering_dependencies(_processor: ProcessorKind) -> Config {
+fn layering_dependencies(processor: ProcessorKind) -> Config {
     let mut config = Config::default();
     config.add_before(
         LayeredPhase::P1CycleBreaking,
-        ProcessorKind::EdgeAndLayerConstraintEdgeReverser,
+        if processor == ProcessorKind::InteractiveLayerer {
+            ProcessorKind::InteractiveExternalPortPositioner
+        } else {
+            ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+        },
     );
     config.add_before(
         LayeredPhase::P2Layering,
@@ -3222,9 +3250,12 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -3628,6 +3659,18 @@ mod tests {
     }
 
     #[test]
+    fn flexible_node_placement_rejects_insufficient_work_before_mutation() {
+        let mut graph = high_thoroughness_diagnostic_graph();
+        graph.options.node_placement_strategy = NodePlacementStrategy::NetworkSimplex;
+        execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap();
+        for node in &mut graph.layerless_nodes {
+            node.node_flexibility = crate::NodeFlexibility::PortPosition;
+            node.size.height = 160.0;
+        }
+        assert_processor_budget_boundaries(&graph, ProcessorKind::NetworkSimplexPlacer);
+    }
+
+    #[test]
     fn long_edge_joiner_work_is_linear_in_disjoint_segment_count() {
         for edge_count in [1usize, 8, 32, 128] {
             let mut graph = disjoint_long_edge_graph(edge_count, 2);
@@ -3738,19 +3781,16 @@ mod tests {
 
         // Free ports make PortListSorter visit the owner node without sorting or rewriting it.
         assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1));
-        // SortByInputModel copies the one-node layer three times, scans two ports twice, charges
-        // one two-item stateful relation sort, and performs one exact owner reference rewrite.
-        assert_eq!(
-            sort_by_input_model_work_units(&graph),
-            Ok(4 + 3 + 4 + 100 + 15)
-        );
+        // SortByInputModel's initial tranche covers three layer copies, two port scans and
+        // the owner reference rewrite. Stateful comparisons are charged during the actual sort.
+        assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 3 + 4 + 15));
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::PortListSorter),
             Ok(5)
         );
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::SortByInputModelProcessor),
-            Ok(126)
+            Ok(26)
         );
 
         graph.layerless_nodes[0].port_constraints = PortConstraints::FixedOrder;
@@ -3758,6 +3798,163 @@ mod tests {
         // rewrite. SortByInputModel now skips the node after the layer-copy work.
         assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1 + 2 + 2 + 15));
         assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 3));
+    }
+
+    #[test]
+    fn model_order_sort_dynamic_budget_preserves_order_and_stops_before_failed_permutation() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("node", 10.0, 10.0, Some(0));
+        node.ports.push(LPort::new("west", 0, PortType::Input));
+        node.ports.push(LPort::new("east", 0, PortType::Output));
+        node.ports[0].side = PortSide::West;
+        node.ports[1].side = PortSide::East;
+        graph.layerless_nodes.push(node);
+        graph.layers.push(Layer {
+            nodes: vec![0],
+            ..Layer::default()
+        });
+        let kind = ProcessorKind::SortByInputModelProcessor;
+        let floor = processor_work_units(&graph, kind).unwrap();
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut expected = graph.clone();
+        execute_processor_with_work_control(&mut expected, kind, &mut measured).unwrap();
+        assert!(measured.charged > floor);
+        assert_eq!(expected.layerless_nodes[0].ports[0].id, "east");
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        let mut interrupted = graph.clone();
+        assert_eq!(
+            execute_processor_with_work_control(&mut interrupted, kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(
+            interrupted, graph,
+            "a rejected comparison must not install its port permutation"
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, expected);
+        assert_eq!(exact.remaining, 0);
+    }
+
+    #[test]
+    fn barycenter_budget_tracks_executed_sweeps_and_preserves_seeded_order() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right),
+            nodes: vec![node("a"), node("b"), node("c"), node("d")],
+            edges: vec![edge("ad", "a", "d"), edge("bc", "b", "c")],
+        })
+        .unwrap();
+        layer_network_simplex(&mut graph).unwrap();
+        process_port_sides(&mut graph);
+        sort_port_lists(&mut graph);
+        graph.layers[0].nodes = vec![0, 1];
+        graph.layers[1].nodes = vec![2, 3];
+        let kind = ProcessorKind::LayerSweepCrossingMinimizerBarycenter;
+        let floor = processor_work_units(&graph, kind).unwrap();
+        let mut denied = graph.clone();
+        let mut below_floor = BudgetWorkControl::new(floor - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut denied, kind, &mut below_floor),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(
+            denied, graph,
+            "the scan floor must reject before port-ID initialization"
+        );
+
+        let mut expected = graph.clone();
+        execute_processor(&mut expected, kind).unwrap();
+        assert_eq!(
+            crate::p3order::counting::CrossingsCounter::new().count_all_crossings(&expected),
+            0
+        );
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut actual = graph.clone();
+        execute_processor_with_work_control(&mut actual, kind, &mut measured).unwrap();
+        assert_eq!(
+            actual, expected,
+            "work control must preserve node/port orders and RNG state"
+        );
+        assert!(measured.charged > floor);
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut graph.clone(), kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, expected);
+        assert_eq!(exact.remaining, 0);
+
+        // An initially crossing-free model order stops after its first try regardless of
+        // thoroughness. No unexecuted attempts or sweeps should consume a work budget.
+        let mut low = expected.clone();
+        low.options.thoroughness = 1;
+        let mut high = low.clone();
+        high.options.thoroughness = 100;
+        let mut low_budget = BudgetWorkControl::new(usize::MAX);
+        let mut high_budget = BudgetWorkControl::new(usize::MAX);
+        execute_processor_with_work_control(&mut low, kind, &mut low_budget).unwrap();
+        execute_processor_with_work_control(&mut high, kind, &mut high_budget).unwrap();
+        assert_eq!(low_budget.charged, high_budget.charged);
+        high.options.thoroughness = 1;
+        assert_eq!(low, high);
+    }
+
+    #[test]
+    fn barycenter_high_degree_early_return_charges_linear_port_restore() {
+        const DEGREE: usize = 1024;
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: false,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right)
+            },
+            nodes: vec![node("a"), node("b")],
+            edges: (0..DEGREE)
+                .map(|index| edge(&format!("ab-{index}"), "a", "b"))
+                .collect(),
+        })
+        .unwrap();
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+        process_port_sides(&mut graph);
+        sort_port_lists(&mut graph);
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .all(|node| node.ports.len() == DEGREE)
+        );
+        // Establish a crossing-free fixture independently of PortListSorter:
+        // west ports run bottom-to-top, opposite the east source-port order.
+        let mut target_order = (0..DEGREE).collect::<Vec<_>>();
+        target_order.sort_by_key(|&port| {
+            std::cmp::Reverse(graph.layerless_nodes[1].ports[port].incoming_edges[0])
+        });
+        graph.reorder_node_ports(1, target_order);
+        assert_eq!(CrossingsCounter::new().count_all_crossings(&graph), 0);
+        let context = ReorderNodePortsWorkContext::new(&graph).unwrap();
+        let minimum_restore_work = 8 * DEGREE * 2
+            + context.node_work(&graph, 0).unwrap()
+            + context.node_work(&graph, 1).unwrap();
+        let kind = ProcessorKind::LayerSweepCrossingMinimizerBarycenter;
+        let mut measured = BudgetWorkControl::new(usize::MAX);
+        let mut result = graph.clone();
+        execute_processor_with_work_control(&mut result, kind, &mut measured).unwrap();
+        assert!(measured.checks.last().copied().unwrap() >= minimum_restore_work);
+        assert_eq!(CrossingsCounter::new().count_all_crossings(&result), 0);
+        assert_eq!(graph.edges, result.edges);
+        let mut insufficient = BudgetWorkControl::new(measured.charged - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut graph.clone(), kind, &mut insufficient),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        let mut exact = BudgetWorkControl::new(measured.charged);
+        execute_processor_with_work_control(&mut graph, kind, &mut exact).unwrap();
+        assert_eq!(graph, result);
+        assert_eq!(exact.remaining, 0);
     }
 
     #[test]
@@ -4910,10 +5107,10 @@ mod tests {
         let cases = [
             (
                 LayeredOptions {
-                    layering_strategy: LayeringStrategy::LongestPath,
+                    layering_strategy: LayeringStrategy::BreadthFirstModelOrder,
                     ..LayeredOptions::default()
                 },
-                ProcessorKind::LongestPathLayerer,
+                ProcessorKind::BreadthFirstModelOrderLayerer,
             ),
             (
                 LayeredOptions {
@@ -4973,7 +5170,7 @@ mod tests {
         let graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {
-                layering_strategy: LayeringStrategy::LongestPath,
+                layering_strategy: LayeringStrategy::BreadthFirstModelOrder,
                 ..LayeredOptions::default()
             },
             nodes: vec![node("A"), node("B")],
@@ -4996,7 +5193,7 @@ mod tests {
         assert_eq!(
             execute_ported_processors_with_work_control(&mut exact_graph, &mut exact),
             Err(PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::LongestPathLayerer,
+                kind: ProcessorKind::BreadthFirstModelOrderLayerer,
             })
         );
         assert_eq!(exact_graph, graph);
@@ -5012,13 +5209,13 @@ mod tests {
             .as_deref_mut()
             .expect("the fixture should contain one child graph")
             .options
-            .layering_strategy = LayeringStrategy::LongestPath;
+            .layering_strategy = LayeringStrategy::BreadthFirstModelOrder;
         let before = graph.clone();
 
         assert_eq!(
             execute_ported_compound_processors(&mut graph),
             Err(PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::LongestPathLayerer,
+                kind: ProcessorKind::BreadthFirstModelOrderLayerer,
             })
         );
         assert_eq!(graph, before);
@@ -5029,7 +5226,7 @@ mod tests {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {
-                layering_strategy: LayeringStrategy::LongestPath,
+                layering_strategy: LayeringStrategy::BreadthFirstModelOrder,
                 node_placement_strategy: NodePlacementStrategy::Interactive,
                 edge_routing: EdgeRouting::Splines,
                 wrapping_strategy: WrappingStrategy::MultiEdge,
@@ -5043,7 +5240,7 @@ mod tests {
         assert_eq!(
             execute_ported_processors(&mut graph),
             Err(PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::LongestPathLayerer,
+                kind: ProcessorKind::BreadthFirstModelOrderLayerer,
             })
         );
     }
@@ -5064,13 +5261,13 @@ mod tests {
                         .as_deref_mut()
                         .expect("the deep compound fixture should retain every child graph");
                 }
-                leaf.options.layering_strategy = LayeringStrategy::LongestPath;
+                leaf.options.layering_strategy = LayeringStrategy::BreadthFirstModelOrder;
 
                 let graph = std::mem::ManuallyDrop::new(graph);
                 assert_eq!(
                     validate_ported_graph_processors(&graph),
                     Err(PipelineError::UnsupportedProcessor {
-                        kind: ProcessorKind::LongestPathLayerer,
+                        kind: ProcessorKind::BreadthFirstModelOrderLayerer,
                     })
                 );
             })
@@ -5395,9 +5592,12 @@ mod tests {
                     direction: None,
                     hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
                     layer_constraint: None,
+                    port_alignment: None,
                     port_constraints: None,
                     node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-                    nested_spacing_base: None,
+                    node_flexibility: crate::options::NodeFlexibility::None,
+                    ports_surrounding: None,
+                    nested_options: None,
                     label: None,
                 },
                 ElkInputNode {
@@ -5408,9 +5608,12 @@ mod tests {
                     direction: None,
                     hierarchy_handling: None,
                     layer_constraint: None,
+                    port_alignment: None,
                     port_constraints: None,
                     node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-                    nested_spacing_base: None,
+                    node_flexibility: crate::options::NodeFlexibility::None,
+                    ports_surrounding: None,
+                    nested_options: None,
                     label: None,
                 },
             ],
@@ -5471,9 +5674,12 @@ mod tests {
                 direction: None,
                 hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
                 layer_constraint: None,
+                port_alignment: None,
                 port_constraints: None,
                 node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-                nested_spacing_base: None,
+                node_flexibility: crate::options::NodeFlexibility::None,
+                ports_surrounding: None,
+                nested_options: None,
                 label: None,
             }],
             edges: vec![ElkInputEdge {
@@ -5594,7 +5800,7 @@ mod tests {
         };
         let mut before_graph = import_graph(&input).unwrap();
 
-        layer_network_simplex(&mut before_graph);
+        layer_network_simplex(&mut before_graph).unwrap();
         process_port_sides(&mut before_graph);
         sort_port_lists(&mut before_graph);
         let top = before_graph
@@ -5926,6 +6132,368 @@ mod tests {
     }
 
     #[test]
+    fn single_graph_hierarchy_work_preserves_layout_randomness_and_budget_boundaries() {
+        for (nodes, edges) in [
+            (vec![node("A")], vec![]),
+            (
+                vec![node("A"), node("B"), node("C"), node("D")],
+                vec![
+                    edge("AD", "A", "D"),
+                    edge("BC", "B", "C"),
+                    edge("AC", "A", "C"),
+                    edge("BD", "B", "D"),
+                ],
+            ),
+            (
+                vec![node("A"), node("B"), node("C")],
+                vec![
+                    edge("AB", "A", "B"),
+                    edge("BC", "B", "C"),
+                    edge("AC", "A", "C"),
+                    edge("BB", "B", "B"),
+                ],
+            ),
+        ] {
+            for ordering in [OrderingStrategy::None, OrderingStrategy::NodesAndEdges] {
+                let options = LayeredOptions {
+                    direction: ElkDirection::Right,
+                    hierarchy_handling: crate::HierarchyHandling::IncludeChildren,
+                    consider_model_order_strategy: ordering,
+                    thoroughness: 7,
+                    random_seed: 31,
+                    ..Default::default()
+                };
+                let mut graph = import_graph(&ElkInputGraph {
+                    id: "root".into(),
+                    options,
+                    nodes: nodes.clone(),
+                    edges: edges.clone(),
+                })
+                .unwrap();
+                execute_ported_compound_processors_until_processor(
+                    &mut graph,
+                    ProcessorKind::PortListSorter,
+                )
+                .unwrap();
+                let mut expected = graph.clone();
+                minimize_crossings_layer_sweep_hierarchical_with_type(
+                    &mut expected,
+                    CrossMinType::Barycenter,
+                );
+                let mut actual = graph.clone();
+                let mut measured = BudgetWorkControl::new(usize::MAX);
+                crate::p3order::sweep::minimize_single_graph_hierarchical_barycenter_with_work_control(&mut actual, &mut measured).unwrap();
+                assert_eq!(
+                    actual, expected,
+                    "all graph state and random streams, {ordering:?}"
+                );
+                assert!(measured.charged > 0);
+                for budget in [0, measured.charged / 2, measured.charged - 1] {
+                    let mut limited = BudgetWorkControl::new(budget);
+                    assert_eq!(crate::p3order::sweep::minimize_single_graph_hierarchical_barycenter_with_work_control(
+                        &mut graph.clone(), &mut limited), Err(WorkError::Interrupted));
+                }
+                let mut exact = BudgetWorkControl::new(measured.charged);
+                crate::p3order::sweep::minimize_single_graph_hierarchical_barycenter_with_work_control(&mut graph, &mut exact).unwrap();
+                assert_eq!(graph, expected);
+                assert_eq!(exact.remaining, 0);
+            }
+        }
+    }
+
+    // Reference: pinned elkjs 0.9.3, layered, DOWN, base spacing 40, padding 12.
+    #[test]
+    fn connected_components_pack_isolated_nodes_but_not_include_children() {
+        for (separate, hierarchy, expected) in [
+            (
+                true,
+                crate::HierarchyHandling::SeparateChildren,
+                (160.0, 215.0),
+            ),
+            (
+                false,
+                crate::HierarchyHandling::SeparateChildren,
+                (512.0, 61.0),
+            ),
+            (
+                true,
+                crate::HierarchyHandling::IncludeChildren,
+                (512.0, 61.0),
+            ),
+        ] {
+            let options = LayeredOptions {
+                direction: ElkDirection::Down,
+                spacing: crate::SpacingOptions::layered_base_value(40.0),
+                separate_connected_components: separate,
+                hierarchy_handling: hierarchy,
+                padding: crate::ElkPadding::uniform(12.0),
+                ..Default::default()
+            };
+            let nodes = ["A", "B", "C"]
+                .into_iter()
+                .map(|id| {
+                    let mut node = node(id);
+                    node.width = 136.0;
+                    node.height = 37.0;
+                    node
+                })
+                .collect();
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "root".into(),
+                options,
+                nodes,
+                edges: vec![],
+            })
+            .unwrap();
+            execute_ported_processors(&mut graph).unwrap();
+            let size = graph.exported_root_size();
+            assert_eq!(
+                (size.width, size.height),
+                expected,
+                "{separate}/{hierarchy:?}"
+            );
+            if separate && hierarchy == crate::HierarchyHandling::SeparateChildren {
+                for (index, node) in graph.layerless_nodes.iter().enumerate() {
+                    assert_eq!(
+                        node.id,
+                        ["A", "B", "C"][index],
+                        "stable input arena indices"
+                    );
+                    assert_eq!(
+                        (
+                            node.position.x + graph.offset.x,
+                            node.position.y + graph.offset.y
+                        ),
+                        (0.0, index as f64 * 77.0)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn connected_components_translate_nodes_and_edges_together() {
+        let options = LayeredOptions {
+            direction: ElkDirection::Down,
+            spacing: crate::SpacingOptions::layered_base_value(40.0),
+            padding: crate::ElkPadding::uniform(12.0),
+            ..Default::default()
+        };
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        for index in 0..3 {
+            let mut start = node(&format!("start{index}"));
+            start.width = 14.0;
+            start.height = 14.0;
+            let mut end = node(&format!("end{index}"));
+            end.width = 115.0;
+            end.height = 37.0;
+            edges.push(edge(&format!("e{index}"), &start.id, &end.id));
+            nodes.extend([start, end]);
+        }
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".into(),
+            options,
+            nodes,
+            edges,
+        })
+        .unwrap();
+        execute_ported_processors(&mut graph).unwrap();
+        assert_eq!(
+            graph.exported_root_size(),
+            crate::LSize {
+                width: 294.0,
+                height: 246.0
+            }
+        );
+        for (index, expected) in [(12.0, 66.0), (167.0, 66.0), (12.0, 197.0)]
+            .into_iter()
+            .enumerate()
+        {
+            let node = &graph.layerless_nodes[index * 2 + 1];
+            assert_eq!(
+                (
+                    node.position.x + graph.padding.left + graph.offset.x,
+                    node.position.y + graph.padding.top + graph.offset.y
+                ),
+                expected
+            );
+        }
+        let edge = &graph.edges[2];
+        for (port_ref, expected) in [(edge.source, (69.5, 157.0)), (edge.target, (69.5, 197.0))] {
+            let node = &graph.layerless_nodes[port_ref.node];
+            let port = &node.ports[port_ref.port];
+            assert_eq!(
+                (
+                    node.position.x
+                        + port.position.x
+                        + port.anchor.x
+                        + graph.padding.left
+                        + graph.offset.x,
+                    node.position.y
+                        + port.position.y
+                        + port.anchor.y
+                        + graph.padding.top
+                        + graph.offset.y
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn connected_components_keep_root_minimum_and_restore_label_and_dummy_references() {
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        for component in 0..2 {
+            let ids = [
+                format!("c{component}A"),
+                format!("c{component}B"),
+                format!("c{component}C"),
+            ];
+            nodes.extend(ids.iter().map(|id| node(id)));
+            edges.push(edge(&format!("c{component}AB"), &ids[0], &ids[1]));
+            edges.push(edge(&format!("c{component}BC"), &ids[1], &ids[2]));
+            let mut long = edge(&format!("c{component}AC"), &ids[0], &ids[2]);
+            long.label = Some(ElkInputLabel::center(
+                format!("center{component}"),
+                50.0,
+                18.0,
+            ));
+            edges.push(long);
+            let mut loop_edge = edge(&format!("c{component}BB"), &ids[1], &ids[1]);
+            loop_edge.label = Some(ElkInputLabel::center(
+                format!("loop{component}"),
+                32.0,
+                12.0,
+            ));
+            edges.push(loop_edge);
+        }
+        let ids = nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>();
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".into(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                ..Default::default()
+            },
+            nodes,
+            edges,
+        })
+        .unwrap();
+        let mut with_minimum = graph.clone();
+        let minimum = crate::LSize {
+            width: 900.0,
+            height: 800.0,
+        };
+        with_minimum.options.node_size_minimum = Some(minimum);
+        execute_ported_processors(&mut graph).unwrap();
+        execute_ported_processors(&mut with_minimum).unwrap();
+        assert_eq!(with_minimum.options.node_size_minimum, Some(minimum));
+        assert_eq!(with_minimum.exported_root_size(), minimum);
+        for (index, id) in ids.iter().enumerate() {
+            assert_eq!(&graph.layerless_nodes[index].id, id);
+            assert_eq!(
+                graph.layerless_nodes[index].position, with_minimum.layerless_nodes[index].position,
+                "root minimum is applied after packing, through the root offset"
+            );
+        }
+        for (index, node) in graph.layerless_nodes.iter().enumerate() {
+            for (port_index, port) in node.ports.iter().enumerate() {
+                assert_eq!(port.node, index);
+                for &edge in &port.incoming_edges {
+                    assert_eq!(
+                        graph.edges[edge].target,
+                        crate::PortRef {
+                            node: index,
+                            port: port_index
+                        }
+                    );
+                }
+                for &edge in &port.outgoing_edges {
+                    assert_eq!(
+                        graph.edges[edge].source,
+                        crate::PortRef {
+                            node: index,
+                            port: port_index
+                        }
+                    );
+                }
+            }
+        }
+        for edge in &graph.edges {
+            for endpoint in [edge.source, edge.target] {
+                assert!(endpoint.port < graph.layerless_nodes[endpoint.node].ports.len());
+            }
+            for label in &edge.labels {
+                assert!(
+                    label
+                        .end_label_edge
+                        .is_none_or(|index| index < graph.edges.len())
+                );
+            }
+        }
+        for component in 0..2 {
+            for suffix in ["AC", "BB"] {
+                let edge = &graph.edges[component * 4 + if suffix == "AC" { 2 } else { 3 }];
+                assert_eq!(edge.id, format!("c{component}{suffix}"));
+                assert_eq!(
+                    edge.labels.len(),
+                    1,
+                    "label must return from its dummy to the original edge"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn connected_components_share_random_stream_instead_of_replaying_seed() {
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        for component in 0..2 {
+            for index in 0..3 {
+                let id = format!("c{component}n{index}");
+                let mut n = node(&id);
+                n.width = 30.0;
+                n.height = 20.0;
+                nodes.push(n);
+                edges.push(edge(
+                    &format!("c{component}e{index}"),
+                    &id,
+                    &format!("c{component}n{}", (index + 1) % 3),
+                ));
+            }
+        }
+        let options = LayeredOptions {
+            direction: ElkDirection::Right,
+            random_seed: 1,
+            ..Default::default()
+        };
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".into(),
+            options,
+            nodes,
+            edges,
+        })
+        .unwrap();
+        execute_ported_processors(&mut graph).unwrap();
+        for (component, expected) in [[0.0, 50.0, 100.0], [100.0, 0.0, 50.0]]
+            .into_iter()
+            .enumerate()
+        {
+            let nodes = &graph.layerless_nodes[component * 3..component * 3 + 3];
+            let left = nodes
+                .iter()
+                .map(|node| node.position.x)
+                .fold(f64::INFINITY, f64::min);
+            let actual = nodes
+                .iter()
+                .map(|node| node.position.x - left)
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "component {component}");
+        }
+    }
+
+    #[test]
     fn source_ported_mermaid_defaults_run_through_hierarchical_resizer_for_flat_graph() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
@@ -6076,6 +6644,187 @@ mod tests {
         );
         assert!(graph.size.width > 0.0);
         assert!(graph.size.height > 0.0);
+    }
+
+    #[test]
+    fn minimum_size_and_content_alignment_match_elkjs_provider_results() {
+        use crate::options::{ElkPadding, HierarchyHandling};
+
+        // Captured from pinned elkjs 0.9.3. INCLUDE_CHILDREN applies its resizer before
+        // direction postprocessing; its DOWN behavior is intentionally not normalized.
+        for (direction, handling, expected_size, expected_position) in [
+            (
+                ElkDirection::Right,
+                HierarchyHandling::SeparateChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Down,
+                HierarchyHandling::SeparateChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Right,
+                HierarchyHandling::IncludeChildren,
+                (120.0, 80.0),
+                (40.0, 0.0),
+            ),
+            (
+                ElkDirection::Down,
+                HierarchyHandling::IncludeChildren,
+                (120.0, 120.0),
+                (0.0, 50.0),
+            ),
+        ] {
+            let mut child = node("a");
+            child.width = 40.0;
+            child.height = 20.0;
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "r".into(),
+                options: LayeredOptions {
+                    direction,
+                    hierarchy_handling: handling,
+                    padding: ElkPadding::uniform(0.0),
+                    node_size_minimum: Some(LSize {
+                        width: 120.0,
+                        height: 80.0,
+                    }),
+                    horizontal_content_alignment: ContentAlignment::Center,
+                    ..Default::default()
+                },
+                nodes: vec![child],
+                edges: vec![],
+            })
+            .unwrap();
+            execute_ported_processors(&mut graph).unwrap();
+            let size = graph.exported_root_size();
+            let child = &graph.layerless_nodes[0];
+            assert_eq!(
+                (size.width, size.height),
+                expected_size,
+                "{direction:?} {handling:?}"
+            );
+            assert_eq!(
+                (
+                    child.position.x + graph.offset.x + graph.padding.left,
+                    child.position.y + graph.offset.y + graph.padding.top
+                ),
+                expected_position,
+                "{direction:?} {handling:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn compound_title_minimum_matches_elkjs_symmetric_label_grid() {
+        use crate::options::{ElkPadding, HierarchyHandling, NodeLabelPlacement};
+
+        let mut group = node("g");
+        group.width = 0.0;
+        group.height = 0.0;
+        group.node_label_placement = NodeLabelPlacement::InsideTopCenter;
+        group.label = Some(ElkInputLabel::center("label", 100.0, 10.0));
+        group.nested_options = Some(Box::new(LayeredOptions {
+            padding: ElkPadding::uniform(0.0),
+            node_size_minimum: Some(LSize::default()),
+            node_size_include_labels: true,
+            ..Default::default()
+        }));
+        let mut child = node("a");
+        child.width = 1.0;
+        child.height = 1.0;
+        child.parent = Some("g".into());
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "r".into(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                hierarchy_handling: HierarchyHandling::IncludeChildren,
+                ..Default::default()
+            },
+            nodes: vec![group, child],
+            edges: vec![],
+        })
+        .unwrap();
+        execute_ported_compound_processors(&mut graph).unwrap();
+        let group = &graph.layerless_nodes[0];
+        let nested = group.nested_graph.as_ref().unwrap();
+        assert_eq!(
+            group.size,
+            LSize {
+                width: 110.0,
+                height: 30.0
+            }
+        );
+        assert_eq!(
+            graph.exported_root_size(),
+            LSize {
+                width: 134.0,
+                height: 54.0
+            }
+        );
+        assert_eq!(
+            nested.layerless_nodes[0].position.y + nested.offset.y + nested.padding.top,
+            15.0
+        );
+    }
+
+    #[test]
+    fn non_finite_minimum_and_overflowing_title_are_rejected() {
+        for width in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "root".into(),
+                options: LayeredOptions {
+                    node_size_minimum: Some(LSize {
+                        width,
+                        height: 80.0,
+                    }),
+                    horizontal_content_alignment: ContentAlignment::Center,
+                    ..Default::default()
+                },
+                nodes: vec![node("child")],
+                edges: vec![],
+            })
+            .unwrap();
+            assert!(matches!(
+                execute_ported_processors(&mut graph),
+                Err(PipelineError::NodeSize(_))
+            ));
+            assert_eq!(graph.offset, LPoint::default());
+        }
+        let mut options = LayeredOptions {
+            node_size_include_labels: true,
+            ..Default::default()
+        };
+        assert!(
+            options
+                .include_inside_top_center_label_minimum(LSize {
+                    width: 40.0,
+                    height: f64::MAX
+                })
+                .is_err()
+        );
+        assert_eq!(options.node_size_minimum, None);
+    }
+
+    #[test]
+    fn minimum_size_defaults_only_apply_when_constraint_is_enabled() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        resize_graph_to_minimum(&mut graph).unwrap();
+        assert_eq!(actual_graph_size(&graph), LSize::default());
+        graph.options.node_size_minimum = Some(LSize {
+            width: 0.0,
+            height: -1.0,
+        });
+        resize_graph_to_minimum(&mut graph).unwrap();
+        assert_eq!(
+            actual_graph_size(&graph),
+            LSize {
+                width: 20.0,
+                height: 20.0
+            }
+        );
     }
 
     #[test]

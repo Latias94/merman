@@ -7,7 +7,7 @@ use crate::model::{SwimlaneDirection, SwimlaneLaneLayout};
 
 const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
-const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
     let mut out = String::new();
@@ -209,12 +209,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         escape_xml_display(&lane.id),
         escape_xml_display(&lane.id),
     );
-    if subgraph.is_some() {
-        let _ = write!(
-            out,
-            r#" data-look="{}""#,
-            escape_xml_display(flowchart_config_look(ctx.config)),
-        );
+    let data_look = flowchart_config_look(ctx.config);
+    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
+        (subgraph.is_none()
+            && super::super::agentflow::flowchart_palette_len(ctx.config.as_value()) > 0)
+            .then_some(0)
+    });
+    let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
+    if let Some(color_slot) = color_slot {
+        let _ = write!(out, r#" data-color-id="color-{color_slot}""#);
     }
     out.push('>');
 

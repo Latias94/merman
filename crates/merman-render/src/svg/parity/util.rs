@@ -532,14 +532,33 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
 }
 
 pub(super) fn escape_xml_raw_into(out: &mut String, text: &str) {
-    if xml_raw_text_is_plain_ascii(text) {
+    escape_xml_raw_into_mode(out, text, false);
+}
+
+/// Serialize a text node with the same conservative escaping used by browser XMLSerializer.
+/// Chromium emits `&gt;` for every literal greater-than character in text content, even though
+/// XML only requires that escape when it would close a CDATA section.
+pub(super) fn escape_xml_serialized_text_into(out: &mut String, text: &str) {
+    escape_xml_raw_into_mode(out, text, true);
+}
+
+fn escape_xml_raw_into_mode(out: &mut String, text: &str, escape_greater_than: bool) {
+    let plain_ascii = if escape_greater_than {
+        text.bytes().all(|b| {
+            matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
+                && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'>')
+        })
+    } else {
+        xml_raw_text_is_plain_ascii(text)
+    };
+    if plain_ascii && !text.contains("]]>") {
         out.push_str(text);
         return;
     }
 
     let mut start = 0usize;
     for (i, ch) in text.char_indices() {
-        let replacement = if ch == '>' && text[..i].ends_with("]]") {
+        let replacement = if ch == '>' && (escape_greater_than || text[..i].ends_with("]]")) {
             Some("&gt;")
         } else {
             xml_text_replacement(ch)
@@ -726,6 +745,13 @@ mod tests {
             assert_eq!(escape_xml_display(src).to_string(), expected);
             assert_eq!(escape_xml(src), expected);
         }
+    }
+
+    #[test]
+    fn serialized_xml_escape_matches_browser_text_node_serialization() {
+        let mut out = String::new();
+        escape_xml_serialized_text_into(&mut out, "x > y < z & 'quoted'");
+        assert_eq!(out, "x &gt; y &lt; z &amp; &#39;quoted&#39;");
     }
 
     #[test]

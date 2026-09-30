@@ -98,6 +98,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
 
 pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) diagram_id: crate::svg::parity::SvgDiagramId<'a>,
+    pub(super) diagram_type: &'a str,
     pub(super) node_id: &'a str,
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'a str,
@@ -110,11 +111,13 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) tooltip_enabled: bool,
     pub(super) tooltip: &'a str,
     pub(super) look: &'a str,
+    pub(super) color_slot: Option<usize>,
 }
 
 pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     let NodeWrapperAttrs {
         diagram_id,
+        diagram_type,
         node_id,
         dom_idx,
         class_attr_base,
@@ -127,7 +130,15 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         tooltip_enabled,
         tooltip,
         look,
+        color_slot,
     } = attrs;
+    // Mermaid uses the stable `flowchart` DOM namespace for ordinary flowcharts,
+    // even when the internal parser type is `flowchart-v2` or another variant.
+    let dom_diagram_type = if diagram_type == "agentflow" {
+        "agentflow"
+    } else {
+        "flowchart"
+    };
 
     if wrapped_in_a {
         if let Some(href) = href {
@@ -160,7 +171,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             let _ = write!(out, "{diagram_id}");
-            out.push_str(r#"-flowchart-"#);
+            out.push('-');
+            escape_xml_into(out, dom_diagram_type);
+            out.push('-');
             escape_xml_into(out, node_id);
             let _ = write!(out, "-{dom_idx}\"");
         } else {
@@ -176,7 +189,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             let _ = write!(out, "{diagram_id}");
-            out.push_str(r#"-flowchart-"#);
+            out.push('-');
+            escape_xml_into(out, dom_diagram_type);
+            out.push('-');
             escape_xml_into(out, node_id);
             let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
@@ -201,6 +216,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     }
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+    }
+    if let Some(slot) = color_slot {
+        let _ = write!(out, r#" data-color-id="color-{slot}""#);
     }
     out.push('>');
 }
@@ -467,7 +485,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         metrics.height = 0.0;
     }
 
-    metrics
+    let min_width = layout_node
+        .filter(|node| !ctx.subgraphs_by_id.contains_key(node.id.as_str()))
+        .and_then(|node| ctx.nodes_by_id.get(node.id.as_str()))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    metrics.with_label_min_width(label_text, min_width, None)
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metrics(
@@ -478,7 +506,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
 ) -> Option<crate::text::TextMetrics> {
     let sidecar = ctx.svg_label_sidecar?;
     let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
-    sidecar.prepared_metrics(
+    let metrics = sidecar.prepared_metrics(
         owner,
         label_text,
         ctx.measurer,
@@ -486,5 +514,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
         Some(ctx.wrapping_width),
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
-    )
+    )?;
+    let min_width = ctx
+        .nodes_by_id
+        .get(node_id)
+        .filter(|_| !ctx.subgraphs_by_id.contains_key(node_id))
+        .map_or(0.0, |node| {
+            crate::flowchart::flowchart_node_label_min_width(
+                label_text,
+                node.layout_shape.as_deref(),
+                ctx.config,
+            )
+        });
+    Some(metrics.with_label_min_width(label_text, min_width, None))
 }

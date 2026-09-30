@@ -98,7 +98,12 @@ export function StatusBar() {
           {charCount} {t("status.chars")}
         </span>
       </div>
-      <div className="scrollbar-thin flex min-w-0 items-center gap-3 overflow-x-auto sm:gap-4">
+      <div
+        role="region"
+        aria-label={t("status.renderingStatus")}
+        tabIndex={0}
+        className="scrollbar-thin flex min-w-0 items-center gap-3 overflow-x-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:gap-4"
+      >
         <span className="shrink-0 whitespace-nowrap" aria-live="polite">
           {t("status.wasm")}: {runtimeLabel}
         </span>

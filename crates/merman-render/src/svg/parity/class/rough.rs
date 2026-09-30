@@ -47,8 +47,9 @@ pub(super) fn class_rough_hachure_rect_paths(
         .roughness(0.7)
         .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
-        .fill_weight(4.0)
-        .hachure_gap(5.2)
+        // Mermaid userNodeOverrides sets fill weight and hachure gap independently of outline width.
+        .fill_weight(1.5)
+        .hachure_gap(1.5)
         .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])

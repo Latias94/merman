@@ -13,6 +13,71 @@ use super::options::{
 use crate::random::{
     GraphSeedScope, JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase,
 };
+use crate::work::{WorkError, checked_add, checked_mul, checked_sum};
+
+pub(crate) struct ReorderNodePortsWorkContext {
+    shared_reference_work: usize,
+    self_loop_holder_scan_work: usize,
+    self_loop_payload_by_node: Vec<usize>,
+}
+
+impl ReorderNodePortsWorkContext {
+    pub(crate) fn new(graph: &LGraph) -> Result<Self, WorkError> {
+        let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
+        for holder in &graph.self_loop_holders {
+            let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
+                continue;
+            };
+            for hyper_loop in &holder.hyper_loops {
+                *payload = checked_sum([
+                    *payload,
+                    hyper_loop.ports.len(),
+                    checked_mul(hyper_loop.edges.len(), 2)?,
+                ])?;
+            }
+        }
+
+        let mut descendant_nodes = 0usize;
+        let mut stack = graph
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref())
+            .collect::<Vec<_>>();
+        while let Some(current) = stack.pop() {
+            descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
+            stack.extend(
+                current
+                    .layerless_nodes
+                    .iter()
+                    .filter_map(|node| node.nested_graph.as_deref()),
+            );
+        }
+
+        Ok(Self {
+            shared_reference_work: checked_sum([
+                checked_mul(graph.edges.len(), 3)?,
+                checked_mul(graph.layerless_nodes.len(), 3)?,
+                descendant_nodes,
+                graph.id.len(),
+            ])?,
+            self_loop_holder_scan_work: graph.self_loop_holders.len(),
+            self_loop_payload_by_node,
+        })
+    }
+
+    pub(crate) fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
+        let port_count = graph.layerless_nodes[node_index].ports.len();
+        checked_sum([
+            checked_mul(port_count, 4)?,
+            self.shared_reference_work,
+            self.self_loop_holder_scan_work,
+            self.self_loop_payload_by_node
+                .get(node_index)
+                .copied()
+                .unwrap_or(0),
+        ])
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {
@@ -45,6 +110,21 @@ struct GraphRandomSeedContext {
 }
 
 impl LGraph {
+    /// Size returned for a completed provider invocation's root by
+    /// `ElkGraphLayoutTransferrer.applyParentNodeLayout` and `ElkUtil.resizeNode`.
+    /// This final minimum-size clamp does not realign the graph contents a second time.
+    pub fn exported_root_size(&self) -> LSize {
+        let mut size = LSize {
+            width: self.size.width + self.padding.left + self.padding.right,
+            height: self.size.height + self.padding.top + self.padding.bottom,
+        };
+        if let Some(minimum) = self.options.effective_node_size_minimum() {
+            size.width = size.width.max(minimum.width);
+            size.height = size.height.max(minimum.height);
+        }
+        size
+    }
+
     pub fn new(id: impl Into<String>, options: LayeredOptions) -> Self {
         let id = id.into();
         Self::new_with_random_seed_authority(
@@ -105,6 +185,26 @@ impl LGraph {
                 configuration_invocations: 0,
             },
         }
+    }
+
+    /// Copies configured properties without copying the graph's dense arenas.
+    /// Components use the already-resolved random stream through their serial executor.
+    pub(crate) fn component_shell(&self) -> Self {
+        let mut graph = Self::new_with_random_seed_authority_at_scope(
+            self.id.clone(),
+            self.options.clone(),
+            self.random_seed_context.authority,
+            self.random_seed_context.graph_scope.clone(),
+        );
+        graph.options.node_size_minimum = None;
+        graph.padding = self.padding;
+        graph.graph_properties = self.graph_properties.clone();
+        graph.parent_node_id = self.parent_node_id.clone();
+        graph.random = self.random.clone();
+        graph.random_seed_context = self.random_seed_context.clone();
+        graph.in_layer_successor_constraints_between_non_dummies =
+            self.in_layer_successor_constraints_between_non_dummies;
+        graph
     }
 
     pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
@@ -246,11 +346,14 @@ pub struct LNode {
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
     pub model_order: Option<usize>,
+    pub component_priority: i32,
     pub layer_index: Option<usize>,
     pub layer_constraint: super::options::LayerConstraint,
     pub node_alignment: Alignment,
     pub port_constraints: PortConstraints,
     pub port_alignment: Option<PortAlignment>,
+    pub node_flexibility: super::options::NodeFlexibility,
+    pub ports_surrounding: Option<super::options::SpacingMargin>,
     pub external_port_side: PortSide,
     pub external_port_size: LSize,
     pub port_ratio_or_position: f64,
@@ -287,11 +390,14 @@ impl LNode {
             ports: Vec::new(),
             nested_graph: None,
             model_order,
+            component_priority: 0,
             layer_index: None,
             layer_constraint: super::options::LayerConstraint::None,
             node_alignment: Alignment::Automatic,
             port_constraints: PortConstraints::Undefined,
             port_alignment: None,
+            node_flexibility: super::options::NodeFlexibility::None,
+            ports_surrounding: None,
             external_port_side: PortSide::Undefined,
             external_port_size: LSize::default(),
             port_ratio_or_position: 0.0,

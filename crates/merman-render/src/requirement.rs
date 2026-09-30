@@ -1,4 +1,5 @@
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
@@ -15,24 +16,19 @@ use merman_core::diagrams::requirement::{
 use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 mod config;
+#[cfg(feature = "layout-elk")]
+mod elk;
 
 pub(crate) use config::RequirementConfigView;
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
     let source_node_count = model
         .requirements
-        .iter()
-        .filter(|node| node.name != "__proto__")
-        .count()
-        .saturating_add(
-            model
-                .elements
-                .iter()
-                .filter(|node| node.name != "__proto__")
-                .count(),
-        );
+        .len()
+        .saturating_add(model.elements.len());
     let source_edge_count = model.relationships.len();
     let self_loop_count = model
         .relationships
@@ -127,6 +123,7 @@ impl RequirementLabelMeasurementBinding {
 #[derive(Debug)]
 pub(crate) struct RequirementPreparedArtifact {
     layout: RequirementDiagramLayout,
+    render_layout: Option<RequirementDiagramLayout>,
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
@@ -137,6 +134,10 @@ impl RequirementPreparedArtifact {
         &self.layout
     }
 
+    pub(crate) fn uses_elk(&self) -> bool {
+        self.render_layout.is_some()
+    }
+
     pub(crate) fn render_parts(
         &self,
     ) -> (
@@ -144,7 +145,11 @@ impl RequirementPreparedArtifact {
         &HashMap<String, RequirementNodeRenderPlan>,
         &HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     ) {
-        (&self.layout, &self.nodes, &self.edges)
+        (
+            self.render_layout.as_ref().unwrap_or(&self.layout),
+            &self.nodes,
+            &self.edges,
+        )
     }
 
     pub(crate) fn label_measurements_for_render<'a>(
@@ -642,12 +647,14 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
-    let work_meter = OperationWorkMeter::new(resource_limits);
+    let work_meter = Arc::new(OperationWorkMeter::new(resource_limits));
     layout_requirement_diagram_typed_with_work_meter(
         model,
         effective_config,
         text_measurer,
-        &work_meter,
+        work_meter,
+        #[cfg(feature = "layout-elk")]
+        merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
     )
 }
 
@@ -656,12 +663,17 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    work_meter: &OperationWorkMeter,
+    work_meter: Arc<OperationWorkMeter>,
+    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
     work_meter.charge(requirement_layout_work_units(model))?;
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    selection.validate_rootless_graph()?;
+    let backend = selection.backend;
     let direction = if model.direction.trim().is_empty() {
         normalize_dir("TB")
     } else {
@@ -694,12 +706,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     });
 
     for r in &model.requirements {
-        // Mermaid's underlying graph data structures historically used plain JS objects in a few
-        // places. The `__proto__` id can still trigger prototype pollution safeguards, effectively
-        // dropping the node from the rendered graph. Mirror the upstream SVG baselines.
-        if r.name == "__proto__" {
-            continue;
-        }
         if r.name.trim().is_empty() {
             return Err(Error::InvalidModel {
                 message: format!("missing requirement name label for {}", r.name),
@@ -728,9 +734,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     }
 
     for e in &model.elements {
-        if e.name == "__proto__" {
-            continue;
-        }
         if e.name.trim().is_empty() {
             return Err(Error::InvalidModel {
                 message: format!("missing element name label for {}", e.name),
@@ -791,7 +794,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         })?;
 
         let is_contains = rel.rel_type == "contains";
-        if rel.src == rel.dst {
+        if rel.src == rel.dst && backend == crate::layout_backend::GraphLayoutBackend::Dagre {
             // The pinned Dagre renderer replaces a self-loop with two measured labelRect nodes and
             // three named edges. Requirement intentionally keeps those segments separate in SVG.
             let first_anchor = format!("{}---{}---1", rel.src, rel.src);
@@ -884,7 +887,14 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         }
     }
 
-    dugong::layout(&mut g)?;
+    match backend {
+        #[cfg(feature = "layout-elk")]
+        crate::layout_backend::GraphLayoutBackend::Elk => {
+            elk::layout(&mut g, effective_config, operation_seed, &mut work_control)?;
+        }
+        _ => dugong::layout_controlled(&mut g, &mut work_control)
+            .map_err(|error| work_control.map_dugong_error(error))?,
+    }
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for v in g.nodes() {
@@ -1030,8 +1040,22 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         edges: out_edges,
         bounds,
     };
+    #[cfg(feature = "layout-elk")]
+    let render_layout = if backend == crate::layout_backend::GraphLayoutBackend::Elk {
+        Some(elk::render_layout(
+            &layout,
+            &g,
+            effective_config,
+            &mut work_control,
+        )?)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "layout-elk"))]
+    let render_layout = None;
     Ok(RequirementPreparedArtifact {
         layout,
+        render_layout,
         nodes: prepared_node_labels,
         edges: prepared_edge_labels,
         measurement_binding,
@@ -1102,6 +1126,29 @@ mod tests {
                 metrics.height += 12.0;
             }
             metrics
+        }
+    }
+
+    #[test]
+    fn requirement_layout_work_counts_prototype_named_requirements_and_elements() {
+        for (requirement_name, element_name) in
+            [("__proto__", "constructor"), ("constructor", "__proto__")]
+        {
+            let mut model: RequirementDiagramRenderModel =
+                serde_json::from_value(serde_json::json!({
+                    "requirements": [{ "name": requirement_name, "type": "Requirement" }],
+                    "elements": [{ "name": element_name, "type": "System" }],
+                }))
+                .expect("valid Requirement model");
+            assert_eq!(requirement_layout_work_units(&model), 2);
+            model.relationships.push(
+                merman_core::diagrams::requirement::RequirementRenderRelationship {
+                    rel_type: "satisfies".to_string(),
+                    src: element_name.to_string(),
+                    dst: requirement_name.to_string(),
+                },
+            );
+            assert_eq!(requirement_layout_work_units(&model), 5);
         }
     }
 

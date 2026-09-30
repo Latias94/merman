@@ -50,8 +50,10 @@ pub(super) use browser::render_browser;
 pub(super) use bucket::render_bucket;
 pub(super) use collapsed_group::{render_collapsed_group_body, render_collapsed_group_indicators};
 pub(super) use console::render_console;
-pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
 pub(super) use curly_braces::render_curly_brace_comment;
+pub(in crate::svg::parity::flowchart) use curly_braces::{
+    curly_brace_comment_geometry, curly_brace_comment_intersection_points,
+};
 pub(super) use curved_trapezoid::render_curved_trapezoid;
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
 pub(super) use datastore::render_datastore;

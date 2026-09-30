@@ -10,7 +10,7 @@ import {
 
 test("fallback uses the complete generated binding capability projection", () => {
   assert.equal(FALLBACK_ASCII_CAPABILITIES, GENERATED_ASCII_CAPABILITIES);
-  assert.equal(FALLBACK_ASCII_CAPABILITIES.length, 32);
+  assert.equal(FALLBACK_ASCII_CAPABILITIES.length, 34);
   assert.equal(
     new Set(FALLBACK_ASCII_CAPABILITIES.map(({ diagram_type }) => diagram_type))
       .size,
@@ -38,6 +38,13 @@ test("fallback uses the complete generated binding capability projection", () =>
   ]);
   assert.deepEqual(flowchart?.fallback_encodings, ["plain"]);
 
+  for (const diagramType of ["agentflow", "usecase"]) {
+    const capability = FALLBACK_ASCII_CAPABILITIES.find(
+      ({ diagram_type }) => diagram_type === diagramType
+    );
+    assert.ok(capability, `${diagramType} is included in the total matrix`);
+    assert.equal(asciiSupportLabelKey(capability), "asciiSupport.unsupported");
+  }
   const swimlane = FALLBACK_ASCII_CAPABILITIES.find(
     ({ diagram_type }) => diagram_type === "swimlane"
   );

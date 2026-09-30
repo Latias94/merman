@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::mem::size_of;
 use std::sync::Arc;
 
+mod appearance;
 mod source_presentation;
+pub(crate) use appearance::resolve_appearance;
 pub(crate) use source_presentation::is_presentation_field;
 
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[

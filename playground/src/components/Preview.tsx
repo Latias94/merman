@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { diagramFamilyCapabilities } from "@mermanjs/web";
 import {
   selectMermanFailure,
   selectMermanLoadStage,
@@ -180,18 +181,28 @@ export function Preview({ active = true, className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
-  const canvasOperation =
-    previewMode === "compare"
-      ? visibleBatch?.snapshot.operation
-      : currentBatch?.snapshot.operation;
+  const canvasBatch = previewMode === "compare" ? visibleBatch : currentBatch;
+  const canvasOperation = canvasBatch?.snapshot.operation;
+  const canvasSyntaxId = canvasBatch?.detection.status === "available"
+    ? canvasBatch.detection.syntaxId
+    : null;
+  const canvasConfigNamespace = useMemo(
+    () => ready && canvasSyntaxId
+      ? diagramFamilyCapabilities().find(
+          (family) => family.diagram_type === canvasSyntaxId,
+        )?.config_namespace
+      : undefined,
+    [ready, canvasSyntaxId],
+  );
   const canvasTone = useMemo(
     () =>
       resolveMermaidCanvasTone(
         canvasOperation?.configJson ?? mermaidConfig,
         canvasOperation?.theme ?? diagramTheme,
         canvasOperation?.source ?? code,
+        canvasConfigNamespace,
       ),
-    [canvasOperation, code, diagramTheme, mermaidConfig],
+    [canvasOperation, canvasConfigNamespace, code, diagramTheme, mermaidConfig],
   );
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 

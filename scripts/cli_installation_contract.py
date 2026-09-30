@@ -242,10 +242,9 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
         raise InstallationContractError(
             "cli-release must retain explicit layout-elk for the complete release artifact"
         )
-    expected_default_features = release_features - {"layout-elk"}
-    if default_feature_set != expected_default_features:
+    if default_feature_set != release_features:
         raise InstallationContractError(
-            "CLI defaults must equal cli-release features minus explicit layout-elk"
+            "CLI defaults must equal cli-release features including layout-elk"
         )
 
     dist_table = dist_config.get("dist", {})

@@ -69,6 +69,8 @@ const {
   xyChartConflicts,
   xyChartRules,
 } = require('./grammar/families/xy-chart');
+const { agentflowConflicts, agentflowRules } = require('./grammar/families/agentflow');
+const { usecaseConflicts, usecaseRules } = require('./grammar/families/usecase');
 const { indentationExternals } = require('./grammar/shared/indentation');
 
 module.exports = grammar({
@@ -86,6 +88,8 @@ module.exports = grammar({
 
   conflicts: ($) => [
     ...commonConflicts($),
+    ...agentflowConflicts($),
+    ...usecaseConflicts($),
     ...langiumConflicts($),
     ...architectureConflicts($),
     ...blockConflicts($),
@@ -142,6 +146,8 @@ module.exports = grammar({
         $.timeline_diagram,
         $.wardley_diagram,
         $.xy_chart_diagram,
+        $.usecase_diagram,
+        $.agentflow_diagram,
       )),
     ),
 
@@ -184,5 +190,7 @@ module.exports = grammar({
     ...kanbanRules,
     ...treemapRules,
     ...treeViewRules,
+    ...agentflowRules,
+    ...usecaseRules,
   },
 });

@@ -10,6 +10,27 @@ use super::super::roughjs::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
 };
 
+// stateStart.ts/stateEnd.ts apply the small filter independently of the general node filter.
+fn write_small_state_shadow_attr(
+    out: &mut String,
+    diagram_id: impl crate::svg::parity::SvgDiagramIdValue,
+    width: f64,
+    look: &str,
+    node_shadow: bool,
+) {
+    if width < 25.0 && node_shadow && look != "handDrawn" {
+        if diagram_id.semantic_value().is_empty() {
+            out.push_str(r#" style="filter:url(#drop-shadow-small)""#);
+        } else {
+            let _ = write!(
+                out,
+                r#" style="filter:{}""#,
+                crate::svg::parity::util::scoped_svg_url(diagram_id, "drop-shadow-small")
+            );
+        }
+    }
+}
+
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
@@ -34,7 +55,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
         "sm-circ" | "small-circle" | "start" => {
-            out.push_str(r#"<circle class="state-start" r="7" width="14" height="14"/>"#);
+            out.push_str(r#"<circle class="state-start" r="7" width="14" height="14""#);
+            write_small_state_shadow_attr(
+                out,
+                ctx.diagram_id,
+                common.layout_node.width,
+                common.look,
+                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
+                    .is_some_and(crate::config::json_value_is_truthy),
+            );
+            out.push_str("/>");
             true
         }
         "fr-circ" | "framed-circle" | "stop" => {
@@ -52,9 +82,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             })
             .unwrap_or_else(|| "M0,0".to_string());
 
+            out.push_str(r#"<g class="outer-path""#);
+            write_small_state_shadow_attr(
+                out,
+                ctx.diagram_id,
+                common.layout_node.width,
+                common.look,
+                crate::config::value_at(ctx.config.as_value(), &["themeVariables", "nodeShadow"])
+                    .is_some_and(crate::config::json_value_is_truthy),
+            );
+            out.push('>');
             let _ = write!(
                 out,
-                r##"<g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
+                r##"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 outer_d,
                 escape_attr(common.fill_color),
                 escape_attr(common.style),
@@ -213,9 +253,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
         "cross-circ" | "summary" | "crossed-circle" => {
-            // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
-            // practice `node.width` is usually unset here, so radius=30.
-            let radius = 30.0;
+            let radius = crate::flowchart::CROSSED_CIRCLE_RADIUS;
 
             let circle_d =
                 super::super::helpers::timed_node_roughjs(common.timing, details, || {
@@ -277,5 +315,37 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
             true
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod small_state_shadow_tests {
+    use super::write_small_state_shadow_attr;
+
+    #[test]
+    fn small_state_shadow_uses_source_width_theme_and_look_conditions() {
+        for (width, look, enabled, expected) in [
+            (14.0, "neo", true, true),
+            (24.999, "classic", true, true),
+            (25.0, "neo", true, false),
+            (40.0, "neo", true, false),
+            (14.0, "neo", false, false),
+            (14.0, "handDrawn", true, false),
+        ] {
+            let mut out = String::new();
+            write_small_state_shadow_attr(&mut out, "diagram", width, look, enabled);
+            assert_eq!(
+                out,
+                if expected {
+                    r#" style="filter:url(#diagram-drop-shadow-small)""#
+                } else {
+                    ""
+                },
+                "width={width}, look={look}, enabled={enabled}"
+            );
+        }
+        let mut out = String::new();
+        write_small_state_shadow_attr(&mut out, "", 14.0, "classic", true);
+        assert_eq!(out, r#" style="filter:url(#drop-shadow-small)""#);
     }
 }

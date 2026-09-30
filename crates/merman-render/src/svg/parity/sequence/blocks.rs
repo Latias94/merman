@@ -7,7 +7,9 @@ use super::block_text::{
     write_section_title_lines,
 };
 use crate::model::SequenceBlockLayout;
-use crate::sequence::sequence_block_label_wrap_width;
+use crate::sequence::{
+    sequence_block_label_wrap_width, sequence_drawn_text_first_y, sequence_drawn_text_y,
+};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
@@ -16,6 +18,9 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_width: f64,
+    pub(super) label_box_height: f64,
+    pub(super) box_margin: f64,
+    pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
@@ -40,6 +45,7 @@ impl<'a> SequenceBlockRenderContext<'a> {
             self.loop_text_style,
             self.sanitize_config,
             self.math_renderer,
+            self.box_text_margin,
             self.checkpoints,
         )
     }
@@ -101,14 +107,27 @@ pub(super) fn write_block_label_box(
     out: &mut String,
     frame_x1: f64,
     frame_y1: f64,
-    label_box_width: f64,
+    ctx: &SequenceBlockRenderContext<'_>,
     label: &str,
 ) {
+    let label_box_width = ctx.label_box_width;
+    let neo_height = if crate::config::mermaid_config_diagram_look(ctx.sanitize_config).is_neo() {
+        15.0
+    } else {
+        0.0
+    };
+    // Mermaid drawLoop applies the fallback after adding the Neo appearance offset.
+    let label_box_height = ctx.label_box_height + neo_height;
+    let label_box_height = if label_box_height == 0.0 {
+        20.0
+    } else {
+        label_box_height
+    };
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
-    let y2 = y1 + 13.0;
-    let y3 = y1 + 20.0;
+    let y2 = y1 + label_box_height - 7.0;
+    let y3 = y1 + label_box_height;
     let x3 = x2 - 8.4;
     let _ = write!(
         out,
@@ -121,12 +140,19 @@ pub(super) fn write_block_label_box(
         y3 = fmt(y3)
     );
     let label_cx = (x1 + label_box_width / 2.0).round();
-    let label_cy = y1 + 13.0;
+    let label_cy = sequence_drawn_text_y(
+        sequence_drawn_text_first_y(y1 + label_box_height / 2.0, ctx.box_text_margin),
+        ctx.box_text_margin,
+        0.0,
+    );
     let _ = write!(
         out,
-        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">{label}</text>"#,
+        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}">{label}</text>"#,
         x = fmt(label_cx),
         y = fmt(label_cy),
+        style = escape_attr(&super::settings::sequence_text_style_attribute(
+            ctx.loop_text_style
+        )),
         label = escape_xml(label)
     );
 }
@@ -157,16 +183,10 @@ pub(super) fn render_simple_sequence_block(
 
     write_control_structure_group_open(out, block.control_id);
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
-    write_block_label_box(
-        out,
-        frame_x1,
-        frame_y1,
-        ctx.label_box_width,
-        block.block_label,
-    );
+    write_block_label_box(out, frame_x1, frame_y1, ctx, block.block_label);
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
-    let text_y = frame_y1 + 18.0;
+    let text_y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
     let label =
         display_block_label(block.raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let max_w = ctx.label_wrap_width(block.label_id, Some((frame_x2 - label_box_right).max(0.0)));
@@ -272,7 +292,7 @@ pub(super) fn render_sectioned_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, block_label);
+    write_block_label_box(out, frame_x1, frame_y1, ctx, block_label);
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;
@@ -284,7 +304,7 @@ pub(super) fn render_sectioned_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -302,7 +322,8 @@ pub(super) fn render_sectioned_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,
@@ -377,7 +398,7 @@ pub(super) fn render_critical_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, "critical");
+    write_block_label_box(out, frame_x1, frame_y1, ctx, "critical");
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;
@@ -389,7 +410,7 @@ pub(super) fn render_critical_sequence_block(
             continue;
         };
         if i == 0 {
-            let y = frame_y1 + 18.0;
+            let y = frame_y1 + ctx.box_margin + ctx.box_text_margin;
             let max_w =
                 ctx.label_wrap_width(sec.label_id, Some((frame_x2 - label_box_right).max(0.0)));
             let loop_text_ctx = ctx.loop_text_context();
@@ -407,7 +428,8 @@ pub(super) fn render_critical_sequence_block(
             )?;
             continue;
         }
-        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let y =
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + ctx.box_margin + ctx.box_text_margin;
         let loop_text_ctx = ctx.loop_text_context();
         write_section_title_lines(
             out,

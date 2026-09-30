@@ -5,28 +5,28 @@
       "nodes": [
         {
           "id": "angular_velocity",
-          "x": 138.0,
-          "y": 83.0,
-          "width": 260.0,
-          "height": 150.0,
+          "x": 89.11,
+          "y": 76.5,
+          "width": 154.22,
+          "height": 129.0,
           "is_cluster": false
         },
         {
           "id": "frequency",
-          "x": 414.078,
-          "y": 83.0,
-          "width": 192.156,
-          "height": 102.0,
+          "x": 282.22,
+          "y": 76.5,
+          "width": 152.0,
+          "height": 87.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 8.0,
-        "min_y": 8.0,
-        "max_x": 510.156,
-        "max_y": 158.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 358.22,
+        "max_y": 141.0
       }
     }
   }

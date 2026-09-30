@@ -124,7 +124,9 @@ where
             &mut lca_scratch,
         );
         let y_off = y_offset_for_root(root);
-        for lbl in [
+        let missing_section_label =
+            edge_geom::missing_section_label_position(ctx, e, ctx.tx, ctx.ty);
+        for (label_index, lbl) in [
             e.label.as_ref(),
             e.start_label_left.as_ref(),
             e.start_label_right.as_ref(),
@@ -132,7 +134,8 @@ where
             e.end_label_right.as_ref(),
         ]
         .into_iter()
-        .flatten()
+        .enumerate()
+        .filter_map(|(index, label)| label.map(|label| (index, label)))
         {
             let edge_label_padding = if ctx.edge_html_labels && lbl.width > 0.0 && lbl.height > 0.0
             {
@@ -152,12 +155,14 @@ where
                 lbl.height
             };
             let hh = label_height / 2.0;
-            include_rect(
-                lbl.x - hw,
-                lbl.y + y_off - hh,
-                lbl.x + hw,
-                lbl.y + y_off + hh,
-            );
+            let (x, y) = if label_index == 0
+                && let Some(point) = &missing_section_label
+            {
+                (point.x, point.y)
+            } else {
+                (lbl.x, lbl.y)
+            };
+            include_rect(x - hw, y + y_off - hh, x + hw, y + y_off + hh);
         }
     }
 
@@ -233,9 +238,23 @@ where
                 abs_top_transform: 0.0,
             },
         );
+        let mut prepared_routes = Vec::new();
+        let mut prepared_edges = Vec::new();
+        if ctx.uses_elk_adapter_dom {
+            let route_work = render_edges
+                .iter()
+                .filter_map(|edge| ctx.layout_edges_by_id.get(edge.as_ref().id.as_str()))
+                .fold(0usize, |sum, edge| {
+                    sum.saturating_add(edge.points.len().max(2).saturating_mul(2).saturating_add(1))
+                });
+            ctx.work_meter.charge(route_work)?;
+        }
         for e in render_edges {
             let e = e.as_ref();
-            let root_id = {
+            // ELK edges are emitted in the root edge group, including compound edges.
+            let root_id = if ctx.uses_elk_adapter_dom {
+                ""
+            } else {
                 let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_lca);
                 lca_for_ids(
                     e.from.as_str(),
@@ -256,20 +275,23 @@ where
                 })
             };
 
-            let Some(geom) = ({
-                detail.viewbox_edge_curve_geom_calls += 1;
-                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
-                flowchart_compute_edge_path_geom(
-                    FlowchartEdgePathGeomRequest {
-                        ctx,
-                        edge: e,
-                        origin_x: off.origin_x,
-                        origin_y: off.origin_y,
-                        trace_enabled: false,
-                    },
-                    &mut scratch,
-                )
-            }) else {
+            let request = FlowchartEdgePathGeomRequest {
+                ctx,
+                edge: e,
+                origin_x: off.origin_x,
+                origin_y: off.origin_y,
+                trace_enabled: false,
+            };
+            if ctx.uses_elk_adapter_dom {
+                if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
+                    prepared_routes.push(route);
+                    prepared_edges.push((e, off));
+                }
+                continue;
+            }
+            detail.viewbox_edge_curve_geom_calls += 1;
+            let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
+            let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch) else {
                 continue;
             };
             if geom.bounds_skipped_for_viewbox {
@@ -297,12 +319,58 @@ where
             }
         }
 
-        if ctx.swimlane_direction.is_some() {
+        if ctx.uses_elk_adapter_dom {
+            if ctx
+                .config
+                .as_value()
+                .get("elk")
+                .and_then(|elk| elk.get("straightenEdges"))
+                .and_then(serde_json::Value::as_bool)
+                != Some(false)
+            {
+                edge_geom::straighten_edge_terminals(&mut prepared_routes, ctx.work_meter)?;
+            }
+            for ((edge, off), route) in prepared_edges.into_iter().zip(prepared_routes) {
+                detail.viewbox_edge_curve_geom_calls += 1;
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
+                let Some(geom) = edge_geom::finish_edge_route(
+                    FlowchartEdgePathGeomRequest {
+                        ctx,
+                        edge,
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        trace_enabled: false,
+                    },
+                    route,
+                    &mut scratch,
+                ) else {
+                    continue;
+                };
+                if let Some(pb) = geom.pb {
+                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform);
+                }
+                edge_path_cache.insert(
+                    edge.id.as_str(),
+                    FlowchartEdgePathCacheEntry {
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
+                        geom,
+                    },
+                );
+            }
+        }
+
+        if ctx.swimlane_direction.is_some() || ctx.uses_elk_adapter_dom {
             super::swimlane::apply_line_hops_to_edge_geometries(
                 edge_path_cache,
                 render_edges,
                 ctx.config,
                 ctx.work_meter,
+                ctx.uses_elk_adapter_dom,
             )?;
 
             // Line hops are a render-time replacement of the original path. Rebuild edge bounds

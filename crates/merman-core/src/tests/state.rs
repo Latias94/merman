@@ -1467,3 +1467,274 @@ fn assert_expected_syntax_covers(
         "missing {label}"
     );
 }
+
+#[test]
+fn parse_diagram_state_direction_name_is_not_a_direction_statement() {
+    let engine = Engine::new();
+    for source in [
+        "stateDiagram-v2\ndirection\n",
+        "stateDiagram-v2\ndirection --> Done\n",
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert!(
+            parsed.model["states"].get("direction").is_some(),
+            "{source}"
+        );
+    }
+    for (statement, expected) in [
+        ("direction lrignored", "LR"),
+        ("prefixdirection BT", "BT"),
+        ("direction LR direction TB", "TB"),
+    ] {
+        let source = format!("stateDiagram-v2\n{statement}\nA --> B\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["direction"], expected, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_state_direction_does_not_hide_prior_initial_tokens() {
+    let engine = Engine::new();
+    for statement in [
+        r#"click A href "https://example.test/direction LR""#,
+        r#"click A "https://example.test" "direction LR""#,
+        r#""direction LR" as A"#,
+        r#"href "direction LR""#,
+        "default direction LR",
+    ] {
+        let source = format!("stateDiagram-v2\nA\n{statement}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .is_err(),
+            "{source}"
+        );
+    }
+    // The STATE introducer has lower lexer priority than a whole-line direction.
+    let source = "stateDiagram-v2\nstate \"direction LR\" as A\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "LR");
+    assert!(parsed.model["states"].get("A").is_none());
+}
+
+#[test]
+fn parse_diagram_state_struct_directives_precede_greedy_direction_rules() {
+    let engine = Engine::new();
+    for (statement, kind, id, field, value) in [
+        (
+            r#"state "direction LR" as Inner"#,
+            "state",
+            "Inner",
+            "description",
+            "direction LR",
+        ),
+        (
+            "classDef custom fill:direction LR",
+            "classDef",
+            "custom",
+            "classes",
+            "fill:direction LR",
+        ),
+        (
+            "style Inner fill:direction LR",
+            "style",
+            "Inner",
+            "styleClass",
+            "fill:direction LR",
+        ),
+        (
+            "class Inner direction LR",
+            "applyClass",
+            "Inner",
+            "styleClass",
+            "direction LR",
+        ),
+    ] {
+        let source = format!("stateDiagram-v2\nstate Outer {{\n{statement}\n}}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let statement = &parsed.model["states"]["Outer"]["doc"][0];
+        assert_eq!(statement["stmt"], kind, "{source}");
+        assert_eq!(statement["id"], id, "{source}");
+        assert_eq!(statement[field], value, "{source}");
+    }
+    // NOTE remains lower priority than directions in the upstream struct lexer.
+    let source = "stateDiagram-v2\nstate Outer {\nnote \"direction LR\" as N\n}\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.model["states"]["Outer"]["doc"][0],
+        json!({"stmt": "dir", "value": "LR"})
+    );
+}
+
+#[test]
+fn parse_state_editor_struct_state_label_preserves_entity_selection() {
+    let engine = Engine::new();
+    let source = "stateDiagram-v2\nstate Outer {\nstate \"direction LR\" as Inner\n}\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let start = source.find("Inner").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Inner"
+        && symbol.selection == SourceSpan::new(start, start + "Inner".len())));
+    assert!(
+        !facts
+            .expected_syntax
+            .iter()
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::CardinalDirectionValue)
+    );
+}
+
+#[test]
+fn parse_diagram_state_initial_direction_uses_raw_cursor() {
+    let engine = Engine::new();
+    for prefix in ["  ", "\t", "\u{00a0}", "\u{feff}"] {
+        for statement in [
+            r#"click A href "direction LR""#,
+            "default direction LR",
+            r#""direction LR" as Hidden"#,
+            "# direction LR",
+            "accTitle: direction LR",
+        ] {
+            let source = format!("stateDiagram-v2\nA\n{prefix}{statement}\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model["direction"], "LR", "{source}");
+            assert!(parsed.model["states"].get("A").is_some(), "{source}");
+            assert!(parsed.model["states"].get("Hidden").is_none(), "{source}");
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("stateDiagram", &source)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                facts.completeness,
+                EditorSemanticCompleteness::Complete,
+                "{source}"
+            );
+            assert!(
+                !facts.symbols.iter().any(|symbol| symbol.name == "Hidden"),
+                "{source}"
+            );
+            let selected = facts
+                .expected_syntax
+                .iter()
+                .find(|item| item.kind == EditorExpectedSyntaxKind::CardinalDirectionValue)
+                .unwrap();
+            let start = source.rfind("LR").unwrap();
+            assert_eq!(selected.span, SourceSpan::new(start, start + 2), "{source}");
+        }
+    }
+    // The header owns its whitespace suffix, including the first declaration's indent.
+    assert!(
+        engine
+            .parse_diagram_sync(
+                "stateDiagram-v2\n  default direction LR\n",
+                ParseOptions::default()
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn parse_diagram_state_struct_whitespace_and_comments_precede_direction() {
+    let engine = Engine::new();
+    let source =
+        "stateDiagram-v2\nstate Outer {\n  # direction LR\n  state \"direction LR\" as Inner\n}\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "TB");
+    assert_eq!(parsed.model["states"]["Outer"]["doc"][0]["id"], "Inner");
+}
+
+#[test]
+fn parse_diagram_state_accessibility_requires_complete_prefix() {
+    let engine = Engine::new();
+    for name in ["accTitle", "accDescr"] {
+        let source = format!("stateDiagram-v2\n{name}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert!(parsed.model["states"].get(name).is_some(), "{source}");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("stateDiagram", &source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            facts.completeness,
+            EditorSemanticCompleteness::Complete,
+            "{source}"
+        );
+        let start = source.find(name).unwrap();
+        assert!(
+            facts.symbols.iter().any(|symbol| symbol.name == name
+                && symbol.selection == SourceSpan::new(start, start + name.len())),
+            "{source}"
+        );
+    }
+    let source = "stateDiagram-v2\naccDescr nonsense direction LR: label\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["direction"], "LR");
+    assert!(parsed.model["accDescr"].is_null());
+    for (keyword, field) in [("accTitle", "accTitle"), ("accDescr", "accDescr")] {
+        for (before_colon, after_colon) in [("\u{feff}", "\u{feff}"), ("", "\n"), ("\n", " ")] {
+            let source = format!("stateDiagram-v2\n{keyword}{before_colon}:{after_colon}Heading\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model[field], "Heading", "{source}");
+            assert!(parsed.model["states"].get("Heading").is_none(), "{source}");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_accessibility_multiline_uses_ecmascript_trim() {
+    let engine = Engine::new();
+    for (body, expected) in [
+        ("\u{feff}Heading\u{feff}", "Heading"),
+        ("\u{0085}Heading\u{0085}", "\u{0085}Heading\u{0085}"),
+    ] {
+        let source = format!("stateDiagram-v2\naccDescr {{{body}}}\nA\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["accDescr"], expected, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_state_unterminated_accessibility_block_keeps_eof_assignment() {
+    let engine = Engine::new();
+    let source = "stateDiagram-v2\naccDescr: previous\naccDescr { unclosed\n";
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["accDescr"], "");
+}

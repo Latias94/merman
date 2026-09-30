@@ -1,14 +1,53 @@
 //! ELK edge point post-processing for flowchart SVG parity.
 //!
 //! Source port boundary:
-//! - Mermaid `packages/mermaid-layout-elk/src/render.ts` center-point injection, `cutter2`,
+//! - Mermaid `packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts` center-point injection, `cutter2`,
 //!   endpoint replacement, invalid-point fallback, consecutive deduplication, and rounded curve
 //!   selection.
-//! - Mermaid `packages/mermaid-layout-elk/src/geometry.ts` `outsideNode` / `replaceEndpoint`
+//! - Mermaid `packages/mermaid/src/rendering-util/layout-algorithms/elk/geometry.ts` `outsideNode` / `replaceEndpoint`
 //!   endpoint semantics.
 
 use super::super::*;
 use super::{BoundaryNode, boundary_for_node, intersect_for_layout_shape};
+
+pub(in crate::svg::parity::flowchart) fn missing_section_points(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    origin_x: f64,
+    origin_y: f64,
+) -> Option<Vec<crate::model::LayoutPoint>> {
+    let start = boundary_for_node(ctx, &edge.from, origin_x, origin_y)?;
+    let end = boundary_for_node(ctx, &edge.to, origin_x, origin_y)?;
+    let centers = [
+        crate::model::LayoutPoint {
+            x: start.x,
+            y: start.y,
+        },
+        crate::model::LayoutPoint { x: end.x, y: end.y },
+    ];
+    let mut clipped = Vec::new();
+    sanitize_flowchart_elk_points(ctx, edge, origin_x, origin_y, &centers, false, &mut clipped);
+    Some(clipped)
+}
+
+pub(in crate::svg::parity::flowchart) fn missing_section_label_position(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::model::LayoutEdge,
+    origin_x: f64,
+    origin_y: f64,
+) -> Option<crate::model::LayoutPoint> {
+    if !ctx.uses_elk_adapter_dom || !edge.points.is_empty() {
+        return None;
+    }
+    let source = ctx.edges_by_id.get(edge.id.as_str())?;
+    let points = missing_section_points(ctx, source, origin_x, origin_y)?;
+    let first = points.first()?;
+    let last = points.last()?;
+    Some(crate::model::LayoutPoint {
+        x: (first.x + last.x) / 2.0,
+        y: (first.y + last.y) / 2.0,
+    })
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::svg::parity::flowchart) struct ElkEndpointAdapterCorners {
@@ -24,19 +63,41 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     base_points: &[crate::model::LayoutPoint],
     out: &mut Vec<crate::model::LayoutPoint>,
 ) -> ElkEndpointAdapterCorners {
+    sanitize_flowchart_elk_points(ctx, edge, origin_x, origin_y, base_points, true, out)
+}
+
+// Adapt family-owned outlines to the shared source port; no provider points are mutated.
+#[allow(clippy::too_many_arguments)]
+fn sanitize_flowchart_elk_points(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    origin_x: f64,
+    origin_y: f64,
+    base_points: &[crate::model::LayoutPoint],
+    has_section: bool,
+    out: &mut Vec<crate::model::LayoutPoint>,
+) -> ElkEndpointAdapterCorners {
+    use crate::elk_edge_geometry::{self as geometry, Outline, Shape};
     out.clear();
     out.extend_from_slice(base_points);
-    if base_points.len() < 2 {
-        return ElkEndpointAdapterCorners::default();
-    }
-
-    let Some(start_bounds) = boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y) else {
+    let Some(start_bounds) = boundary_for_node(ctx, &edge.from, origin_x, origin_y) else {
         return ElkEndpointAdapterCorners::default();
     };
-    let Some(end_bounds) = boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y) else {
+    let Some(end_bounds) = boundary_for_node(ctx, &edge.to, origin_x, origin_y) else {
         return ElkEndpointAdapterCorners::default();
     };
-
+    let layout_node = |id: &str, bounds: &BoundaryNode| crate::model::LayoutNode {
+        id: id.to_owned(),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        is_cluster: ctx.layout_clusters_by_id.contains_key(id),
+        label_width: None,
+        label_height: None,
+    };
+    let start_node = layout_node(&edge.from, &start_bounds);
+    let end_node = layout_node(&edge.to, &end_bounds);
     let start_shape = ctx
         .nodes_by_id
         .get(edge.from.as_str())
@@ -45,75 +106,110 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         .nodes_by_id
         .get(edge.to.as_str())
         .and_then(|node| node.layout_shape.as_deref());
-    let start_center = crate::model::LayoutPoint {
-        x: start_bounds.x,
-        y: start_bounds.y,
+    let start_intersection = |point: &crate::model::LayoutPoint| {
+        intersect_for_layout_shape(ctx, &edge.from, &start_bounds, start_shape, point)
     };
-    let end_center = crate::model::LayoutPoint {
-        x: end_bounds.x,
-        y: end_bounds.y,
+    let end_intersection = |point: &crate::model::LayoutPoint| {
+        intersect_for_layout_shape(ctx, &edge.to, &end_bounds, end_shape, point)
     };
-
-    let inserted_start_center = !point_close(
-        base_points.first().unwrap_or(&start_center),
-        &start_center,
-        1e-6,
-    );
-    let inserted_end_center =
-        !point_close(base_points.last().unwrap_or(&end_center), &end_center, 1e-6);
-
-    out.clear();
-    if inserted_start_center {
-        out.push(start_center.clone());
+    let start = Shape {
+        node: &start_node,
+        outline: Outline::Rect,
+        intersection: Some(&start_intersection),
+    };
+    let end = Shape {
+        node: &end_node,
+        outline: Outline::Rect,
+        intersection: Some(&end_intersection),
+    };
+    let mut input = Vec::with_capacity(base_points.len() + 2);
+    if has_section && start_shape != Some("rect33") {
+        input.push(crate::model::LayoutPoint {
+            x: start_bounds.x,
+            y: start_bounds.y,
+        });
     }
-    out.extend_from_slice(base_points);
-    if inserted_end_center {
-        out.push(end_center.clone());
+    input.extend_from_slice(base_points);
+    if has_section && end_shape != Some("rect33") {
+        input.push(crate::model::LayoutPoint {
+            x: end_bounds.x,
+            y: end_bounds.y,
+        });
     }
-
-    let prev_points = out.clone();
-    apply_start_intersection(ctx, edge.from.as_str(), start_shape, &start_bounds, out);
-    apply_end_intersection(ctx, edge.to.as_str(), end_shape, &end_bounds, out);
-    trim_too_close_tail(out);
-    dedup_consecutive_points_in_place(out);
-
-    if out.len() < 2 || out.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
-        out.clear();
-        out.extend(prev_points);
-        dedup_consecutive_points_in_place(out);
-        return ElkEndpointAdapterCorners::default();
-    }
-
-    ElkEndpointAdapterCorners {
-        source: inserted_start_center
+    *out = geometry::sanitize(&input, start, end);
+    let same_point = |a: &crate::model::LayoutPoint, b: &crate::model::LayoutPoint| {
+        (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
+    };
+    let adapters = ElkEndpointAdapterCorners {
+        source: has_section
+            && !start_node.is_cluster
+            && start_shape != Some("rect33")
             && out.len() > 2
-            && point_close(&out[1], &base_points[0], 1e-6),
-        target: inserted_end_center
+            && base_points.first().is_some_and(|p| same_point(&out[1], p)),
+        target: has_section
+            && !end_node.is_cluster
+            && end_shape != Some("rect33")
             && out.len() > 2
-            && point_close(
-                &out[out.len() - 2],
-                &base_points[base_points.len() - 1],
-                1e-6,
-            ),
+            && base_points
+                .last()
+                .is_some_and(|p| same_point(&out[out.len() - 2], p)),
+    };
+    if has_section {
+        finish_endpoint_adapters(
+            out,
+            start,
+            end,
+            adapters,
+            edge.edge_type.as_deref(),
+            ctx.compact_edge_corners,
+        )
+    } else {
+        adapters
     }
 }
 
-pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-    origin_x: f64,
-    origin_y: f64,
+fn finish_endpoint_adapters(
+    points: &mut Vec<crate::model::LayoutPoint>,
+    start: crate::elk_edge_geometry::Shape<'_>,
+    end: crate::elk_edge_geometry::Shape<'_>,
+    mut adapters: ElkEndpointAdapterCorners,
+    edge_type: Option<&str>,
+    compact: bool,
+) -> ElkEndpointAdapterCorners {
+    // Compact corners are a product projection of the sanitized provider route. Align
+    // them before marker shortening can discard the port that defines the route axis.
+    if compact {
+        align_elk_endpoint_adapters_to_route(start, end, &mut adapters, points);
+    }
+    let source_port = adapters.source.then(|| points[1].clone());
+    let target_port = adapters.target.then(|| points[points.len() - 2].clone());
+    let (start_marker, end_marker) = super::arrow_types_for_edge(edge_type);
+    // Mermaid applies the end adjustment before the start adjustment.
+    crate::elk_edge_geometry::marker_segment(points, end, end_marker, false);
+    crate::elk_edge_geometry::marker_segment(points, start, start_marker, true);
+    // Removing either terminal port can also exhaust the opposite adapter's segment.
+    let same_port = |port: Option<&crate::model::LayoutPoint>, index: usize| {
+        port.zip(points.get(index))
+            .is_some_and(|(a, b)| a.x == b.x && a.y == b.y)
+    };
+    adapters.source = points.len() > 2 && same_port(source_port.as_ref(), 1);
+    adapters.target =
+        points.len() > 2 && same_port(target_port.as_ref(), points.len().saturating_sub(2));
+    adapters
+}
+
+fn align_elk_endpoint_adapters_to_route(
+    start: crate::elk_edge_geometry::Shape<'_>,
+    end: crate::elk_edge_geometry::Shape<'_>,
     adapters: &mut ElkEndpointAdapterCorners,
     points: &mut Vec<crate::model::LayoutPoint>,
 ) {
     fn route_intersection(
-        ctx: &FlowchartRenderCtx<'_>,
-        node_id: &str,
-        shape: Option<&str>,
-        bounds: &BoundaryNode,
+        shape: crate::elk_edge_geometry::Shape<'_>,
         port: &crate::model::LayoutPoint,
         route_neighbor: &crate::model::LayoutPoint,
     ) -> Option<crate::model::LayoutPoint> {
+        let bounds = shape.node;
         let mut dx = route_neighbor.x - port.x;
         let mut dy = route_neighbor.y - port.y;
         let len = dx.hypot(dy);
@@ -126,7 +222,7 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
         let inward = -1.0;
 
         let is_inside = |point: &crate::model::LayoutPoint| {
-            let boundary = intersect_for_layout_shape(ctx, node_id, bounds, shape, point);
+            let boundary = shape.intersect(point);
             let point_distance = (point.x - bounds.x).hypot(point.y - bounds.y);
             let boundary_distance = (boundary.x - bounds.x).hypot(boundary.y - bounds.y);
             if boundary_distance <= 1e-9 {
@@ -172,45 +268,18 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
         None
     }
 
-    if adapters.source && points.len() >= 3 {
-        let bounds = boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y);
-        let shape = ctx
-            .nodes_by_id
-            .get(edge.from.as_str())
-            .and_then(|node| node.layout_shape.as_deref());
-        if let Some(bounds) = bounds
-            && let Some(intersection) = route_intersection(
-                ctx,
-                edge.from.as_str(),
-                shape,
-                &bounds,
-                &points[1],
-                &points[2],
-            )
-        {
-            points[0] = intersection;
-            points.remove(1);
-            adapters.source = false;
-        }
+    if adapters.source
+        && points.len() >= 3
+        && let Some(intersection) = route_intersection(start, &points[1], &points[2])
+    {
+        points[0] = intersection;
+        points.remove(1);
+        adapters.source = false;
     }
 
     if adapters.target && points.len() >= 3 {
-        let bounds = boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y);
-        let shape = ctx
-            .nodes_by_id
-            .get(edge.to.as_str())
-            .and_then(|node| node.layout_shape.as_deref());
         let n = points.len();
-        if let Some(bounds) = bounds
-            && let Some(intersection) = route_intersection(
-                ctx,
-                edge.to.as_str(),
-                shape,
-                &bounds,
-                &points[n - 2],
-                &points[n - 3],
-            )
-        {
+        if let Some(intersection) = route_intersection(end, &points[n - 2], &points[n - 3]) {
             points[n - 1] = intersection;
             points.remove(n - 2);
             adapters.target = false;
@@ -218,269 +287,119 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
     }
 }
 
-fn apply_start_intersection(
-    ctx: &FlowchartRenderCtx<'_>,
-    node_id: &str,
-    shape: Option<&str>,
-    bounds: &BoundaryNode,
-    points: &mut Vec<crate::model::LayoutPoint>,
-) {
-    let Some(first_outside) = points.iter().position(|point| outside_node(bounds, point)) else {
-        return;
-    };
-    let outside = points[first_outside].clone();
-    let center = points[0].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
-    replace_endpoint(points, Endpoint::Start, value);
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elk_edge_geometry::{Outline, Shape, sanitize};
+    use crate::model::{LayoutNode, LayoutPoint as P};
 
-fn apply_end_intersection(
-    ctx: &FlowchartRenderCtx<'_>,
-    node_id: &str,
-    shape: Option<&str>,
-    bounds: &BoundaryNode,
-    points: &mut Vec<crate::model::LayoutPoint>,
-) {
-    let outside = points
-        .iter()
-        .rposition(|point| outside_node(bounds, point))
-        .or_else(|| (points.len() > 1).then_some(points.len() - 2));
-    let Some(outside) = outside else {
-        return;
-    };
-    let outside = points[outside].clone();
-    let center = points[points.len() - 1].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
-    replace_endpoint(points, Endpoint::End, value);
-}
-
-fn node_intersection(
-    ctx: &FlowchartRenderCtx<'_>,
-    node_id: &str,
-    shape: Option<&str>,
-    bounds: &BoundaryNode,
-    outside: &crate::model::LayoutPoint,
-    center: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
-    let outside = ensure_truly_outside(bounds, outside);
-    let candidate = intersect_for_layout_shape(ctx, node_id, bounds, shape, &outside);
-    if node_intersection_is_usable(bounds, &outside, &candidate) {
-        candidate
-    } else {
-        fallback_intersection(bounds, &outside, center)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Endpoint {
-    Start,
-    End,
-}
-
-fn replace_endpoint(
-    points: &mut Vec<crate::model::LayoutPoint>,
-    endpoint: Endpoint,
-    value: crate::model::LayoutPoint,
-) {
-    if points.is_empty() {
-        return;
-    }
-
-    match endpoint {
-        Endpoint::Start => {
-            if point_close(&points[0], &value, 0.1) {
-                points.remove(0);
-            } else {
-                points[0] = value;
-            }
-        }
-        Endpoint::End => {
-            let last = points.len() - 1;
-            if point_close(&points[last], &value, 0.1) {
-                points.pop();
-            } else {
-                points[last] = value;
-            }
+    fn circle(x: f64) -> LayoutNode {
+        LayoutNode {
+            id: "circle".into(),
+            x,
+            y: 0.0,
+            width: 20.0,
+            height: 20.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
         }
     }
-}
 
-fn outside_node(bounds: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
-    let dx = (point.x - bounds.x).abs();
-    let dy = (point.y - bounds.y).abs();
-    dx >= bounds.width / 2.0 || dy >= bounds.height / 2.0
-}
-
-fn ensure_truly_outside(
-    bounds: &BoundaryNode,
-    point: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
-    const EPS: f64 = 1.0;
-    const PUSH_OUT: f64 = 10.0;
-
-    let dx = (point.x - bounds.x).abs();
-    let dy = (point.y - bounds.y).abs();
-    let w = bounds.width / 2.0;
-    let h = bounds.height / 2.0;
-    if (dx - w).abs() < EPS || (dy - h).abs() < EPS {
-        let dir_x = point.x - bounds.x;
-        let dir_y = point.y - bounds.y;
-        let len = (dir_x * dir_x + dir_y * dir_y).sqrt();
-        if len > 0.0 {
-            return crate::model::LayoutPoint {
-                x: bounds.x + (dir_x / len) * (len + PUSH_OUT),
-                y: bounds.y + (dir_y / len) * (len + PUSH_OUT),
+    #[test]
+    fn compact_route_alignment_precedes_short_marker_port_removal() {
+        let source_node = circle(0.0);
+        let target_node = circle(60.0);
+        let source = Shape {
+            node: &source_node,
+            outline: Outline::Ellipse,
+            intersection: None,
+        };
+        let target = Shape {
+            node: &target_node,
+            outline: Outline::Ellipse,
+            intersection: None,
+        };
+        let provider = vec![
+            P { x: 0.0, y: 0.0 },
+            P { x: 10.0, y: 3.0 },
+            P { x: 20.0, y: 8.0 },
+            P { x: 40.0, y: 8.0 },
+            P { x: 50.0, y: 3.0 },
+            P { x: 60.0, y: 0.0 },
+        ];
+        for compact in [false, true] {
+            let mut points = sanitize(&provider, source, target);
+            // Mermaid cutter2 pops the final intersection when its distance to the
+            // target port is below 2. The surviving port is an endpoint, not an adapter.
+            assert_eq!(points.len(), 5);
+            let same_point = |a: &P, b: &P| (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6;
+            let adapters = ElkEndpointAdapterCorners {
+                source: same_point(&points[1], &provider[1]),
+                target: same_point(&points[points.len() - 2], &provider[4]),
             };
-        }
-    }
-    point.clone()
-}
-
-fn node_intersection_is_usable(
-    bounds: &BoundaryNode,
-    outside: &crate::model::LayoutPoint,
-    candidate: &crate::model::LayoutPoint,
-) -> bool {
-    const EPS: f64 = 1.0;
-
-    let wrong_side = (outside.x < bounds.x && candidate.x > bounds.x)
-        || (outside.x > bounds.x && candidate.x < bounds.x);
-    if wrong_side {
-        return false;
-    }
-
-    let dx = outside.x - candidate.x;
-    let dy = outside.y - candidate.y;
-    (dx * dx + dy * dy).sqrt() > EPS
-}
-
-fn fallback_intersection(
-    bounds: &BoundaryNode,
-    outside: &crate::model::LayoutPoint,
-    center: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
-    let inside = make_inside_point(bounds, outside, center);
-    rect_intersection(bounds, outside, &inside)
-}
-
-fn make_inside_point(
-    bounds: &BoundaryNode,
-    outside: &crate::model::LayoutPoint,
-    center: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
-    const EPS: f64 = 1.0;
-
-    let is_vertical = (outside.x - bounds.x).abs() < EPS;
-    let is_horizontal = (outside.y - bounds.y).abs() < EPS;
-    crate::model::LayoutPoint {
-        x: if is_vertical {
-            outside.x
-        } else if outside.x < bounds.x {
-            bounds.x - bounds.width / 4.0
-        } else {
-            bounds.x + bounds.width / 4.0
-        },
-        y: if is_horizontal { outside.y } else { center.y },
-    }
-}
-
-fn rect_intersection(
-    bounds: &BoundaryNode,
-    outside: &crate::model::LayoutPoint,
-    inside: &crate::model::LayoutPoint,
-) -> crate::model::LayoutPoint {
-    let x = bounds.x;
-    let y = bounds.y;
-    let w = bounds.width / 2.0;
-    let h = bounds.height / 2.0;
-
-    let q_total = (outside.y - inside.y).abs();
-    let r_total = (outside.x - inside.x).abs();
-
-    if (y - outside.y).abs() * w > (x - outside.x).abs() * h {
-        let q = if inside.y < outside.y {
-            outside.y - h - y
-        } else {
-            y - h - outside.y
-        };
-        let r = (r_total * q) / q_total;
-        let mut res = crate::model::LayoutPoint {
-            x: if inside.x < outside.x {
-                inside.x + r
+            assert!(adapters.source);
+            assert!(!adapters.target);
+            let adapters = finish_endpoint_adapters(
+                &mut points,
+                source,
+                target,
+                adapters,
+                Some("double_arrow_point"),
+                compact,
+            );
+            let (x, y) = if compact {
+                (9.6, 2.8)
             } else {
-                inside.x - r_total + r
-            },
-            y: if inside.y < outside.y {
-                inside.y + q_total - q
-            } else {
-                inside.y - q_total + q
-            },
+                let radius_scale = 10.0 / 109.0_f64.sqrt();
+                (10.0 * radius_scale, 3.0 * radius_scale)
+            };
+            assert_eq!(points.len(), 4);
+            assert!((points[0].x - x).abs() < 2e-6, "{points:?}");
+            assert!((points[0].y - y).abs() < 2e-6, "{points:?}");
+            assert_eq!((points[3].x, points[3].y), (50.0, 3.0));
+            assert_eq!((points[1].x, points[1].y), (20.0, 8.0));
+            assert_eq!((points[2].x, points[2].y), (40.0, 8.0));
+            assert!(!adapters.source && !adapters.target);
+        }
+        assert_eq!(provider.len(), 6);
+        assert_eq!((provider[1].x, provider[1].y), (10.0, 3.0));
+    }
+
+    #[test]
+    fn marker_removal_rechecks_adapter_indices_after_each_end_changes() {
+        let source_node = circle(0.0);
+        let target_node = circle(40.0);
+        let source = Shape {
+            node: &source_node,
+            outline: Outline::Ellipse,
+            intersection: None,
         };
-        if r_total == 0.0 {
-            res.x = outside.x;
-        }
-        if q_total == 0.0 {
-            res.y = outside.y;
-        }
-        res
-    } else {
-        let r = if inside.x < outside.x {
-            outside.x - w - x
-        } else {
-            x - w - outside.x
+        let target = Shape {
+            node: &target_node,
+            outline: Outline::Ellipse,
+            intersection: None,
         };
-        let q = (q_total * r) / r_total;
-        let mut res = crate::model::LayoutPoint {
-            x: if inside.x < outside.x {
-                inside.x + r_total - r
-            } else {
-                inside.x - r_total + r
+        let mut points = vec![
+            P { x: 9.6, y: 2.8 },
+            P { x: 10.0, y: 3.0 },
+            P { x: 30.0, y: 3.0 },
+            P { x: 30.4, y: 2.8 },
+        ];
+        let adapters = finish_endpoint_adapters(
+            &mut points,
+            source,
+            target,
+            ElkEndpointAdapterCorners {
+                source: true,
+                target: true,
             },
-            y: if inside.y < outside.y {
-                inside.y + q
-            } else {
-                inside.y - q
-            },
-        };
-        if r_total == 0.0 {
-            res.x = outside.x;
-        }
-        if q_total == 0.0 {
-            res.y = outside.y;
-        }
-        res
+            Some("double_arrow_point"),
+            false,
+        );
+        assert_eq!(points.len(), 2);
+        assert_eq!((points[0].x, points[0].y), (9.6, 2.8));
+        assert_eq!((points[1].x, points[1].y), (30.4, 2.8));
+        assert!(!adapters.source && !adapters.target);
     }
-}
-
-fn trim_too_close_tail(points: &mut Vec<crate::model::LayoutPoint>) {
-    if points.len() <= 1 {
-        return;
-    }
-    let last = points[points.len() - 1].clone();
-    let prev = points[points.len() - 2].clone();
-    if (last.x - prev.x).hypot(last.y - prev.y) < 2.0 {
-        points.pop();
-    }
-}
-
-fn dedup_consecutive_points_in_place(points: &mut Vec<crate::model::LayoutPoint>) {
-    if points.len() < 2 {
-        return;
-    }
-
-    let mut write = 1usize;
-    for read in 1..points.len() {
-        if point_close(&points[read], &points[write - 1], 1e-6) {
-            continue;
-        }
-        if write != read {
-            points[write] = points[read].clone();
-        }
-        write += 1;
-    }
-    points.truncate(write);
-}
-
-fn point_close(a: &crate::model::LayoutPoint, b: &crate::model::LayoutPoint, eps: f64) -> bool {
-    (a.x - b.x).abs() <= eps && (a.y - b.y).abs() <= eps
 }

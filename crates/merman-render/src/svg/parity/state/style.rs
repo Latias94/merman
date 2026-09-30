@@ -3,17 +3,17 @@ use super::*;
 #[derive(Debug, Clone)]
 pub(super) struct StateThemeDefaults {
     pub(super) background: String,
+    pub(super) line_color: String,
     pub(super) main_bkg: String,
     pub(super) state_bkg: String,
     pub(super) state_border: String,
+    pub(super) rect_radius: f64,
+    pub(super) node_shadow: bool,
     pub(super) stroke_width: String,
     pub(super) stroke_width_px: String,
     pub(super) rough_stroke_width_value: f64,
     pub(super) special_state_color: String,
     pub(super) inner_end_background: String,
-    pub(super) end_outer_fill: String,
-    pub(super) end_outer_stroke: String,
-    pub(super) end_inner_stroke: String,
     pub(super) note_bkg: String,
     pub(super) note_border: String,
 }
@@ -21,20 +21,36 @@ pub(super) struct StateThemeDefaults {
 impl StateThemeDefaults {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
         let theme = PresentationTheme::new(effective_config).state_diagram();
+        // Mermaid 12 roundedRect uses theme radius ?? 5. drawRect only applies a
+        // truthy override, so numeric zero preserves State dataFetcher's rx/ry=10;
+        // a numeric string such as "0" still overrides those defaults.
+        let numeric_zero = effective_config
+            .get("themeVariables")
+            .and_then(|theme| theme.get("radius"))
+            .and_then(serde_json::Value::as_f64)
+            == Some(0.0);
+        let rect_radius = if numeric_zero {
+            10.0
+        } else {
+            config_f64(effective_config, &["themeVariables", "radius"]).unwrap_or(5.0)
+        };
 
         Self {
             background: theme.background,
+            line_color: theme.common.line_color,
             main_bkg: theme.main_bkg,
             state_bkg: theme.state_bkg,
             state_border: theme.state_border,
+            rect_radius,
+            node_shadow: effective_config
+                .get("themeVariables")
+                .and_then(|theme| theme.get("nodeShadow"))
+                .is_some_and(crate::config::json_value_is_truthy),
             stroke_width: theme.stroke_width,
             stroke_width_px: theme.stroke_width_px,
             rough_stroke_width_value: theme.rough_stroke_width_value,
             special_state_color: theme.special_state_color,
             inner_end_background: theme.inner_end_background,
-            end_outer_fill: theme.end_outer_fill,
-            end_outer_stroke: theme.end_outer_stroke,
-            end_inner_stroke: theme.end_inner_stroke,
             note_bkg: theme.note_bkg,
             note_border: theme.note_border,
         }
@@ -142,6 +158,90 @@ pub(super) fn state_root_defs(
 ) {
     state_shadow_defs(out, diagram_id, effective_config);
     state_gradient_defs(out, diagram_id, effective_config);
+}
+
+// colorThemeGate.ts uses the same palette length for CSS and container slots.
+pub(super) fn state_palette_size(config: &serde_json::Value) -> usize {
+    if !matches!(
+        config.get("theme").and_then(serde_json::Value::as_str),
+        Some("redux-color" | "redux-dark-color")
+    ) {
+        return 0;
+    }
+    config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn write_state_palette_css<I: Copy + std::fmt::Display>(
+    out: &mut String,
+    id: I,
+    config: &serde_json::Value,
+) {
+    if state_palette_size(config) == 0 {
+        return;
+    }
+    let Some(borders) = config
+        .pointer("/themeVariables/borderColorArray")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return;
+    };
+    let backgrounds = config
+        .pointer("/themeVariables/bkgColorArray")
+        .and_then(serde_json::Value::as_array)
+        .filter(|colors| !colors.is_empty());
+    let look = config
+        .get("look")
+        .and_then(|value| match value {
+            serde_json::Value::String(value) => Some(value.clone()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        })
+        .filter(|look| {
+            !look.is_empty()
+                && look
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+        .unwrap_or_else(|| "classic".into());
+    let css_color = |value: &serde_json::Value| {
+        value
+            .as_str()
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| value.to_string())
+    };
+    for (index, border) in borders.iter().enumerate() {
+        let border = css_color(border);
+        let tint = backgrounds.map(|colors| css_color(&colors[index % colors.len()]));
+        // Keep the source order and leave the body fill (including rough hatching) unchanged.
+        for (selector, stroke, fill) in [
+            ("rect.outer", true, true),
+            ("rect.inner", true, false),
+            ("rect.divider", true, true),
+            (".outer path[stroke='none']", false, true),
+            (".outer path[fill='none']", true, false),
+            (".divider path[stroke='none']", false, true),
+            (".divider path[fill='none']", true, false),
+        ] {
+            // Stylis removes empty rules when an outline-only palette has no tint.
+            if !stroke && tint.is_none() {
+                continue;
+            }
+            let _ = write!(
+                out,
+                r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].statediagram-cluster {selector}{{"#
+            );
+            if stroke {
+                let _ = write!(out, "stroke:{border};");
+            }
+            if fill && let Some(tint) = &tint {
+                let _ = write!(out, "fill:{tint};");
+            }
+            out.push('}');
+        }
+    }
 }
 
 pub(super) fn state_css<I>(
@@ -266,8 +366,8 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}"#,
-        id
+        r#"#{} .edge-thickness-normal{{stroke-width:{};}}"#,
+        id, stroke_width_px
     );
     let _ = write!(
         &mut css,
@@ -310,6 +410,7 @@ where
         id, ff, font_size_s
     );
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
+    write_state_palette_css(&mut css, id, effective_config);
     let _ = write!(
         &mut css,
         r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
@@ -516,10 +617,20 @@ where
         r#"#{} .statediagram .edgeLabel{{color:red;}}"#,
         id
     );
+    // State's dependency rule uses `strokeWidth || 1`; the shared edge rule uses `?? 1`.
+    let dependency_stroke_width = if effective_config
+        .pointer("/themeVariables/strokeWidth")
+        .and_then(serde_json::Value::as_f64)
+        == Some(0.0)
+    {
+        "1"
+    } else {
+        stroke_width.as_str()
+    };
     let _ = write!(
         &mut css,
-        r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:1;}}"#,
-        id, id, line_color, line_color
+        r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, id, line_color, line_color, dependency_stroke_width
     );
     let _ = write!(
         &mut css,
@@ -589,10 +700,10 @@ where
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
         id, state_border, neo_drop_shadow
     );
-    let _ = write!(
+    let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
         &mut css,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, ff
+        id,
+        &crate::config::config_root_font_family_css(effective_config),
     );
 
     if !model.style_classes.is_empty() {
@@ -850,6 +961,32 @@ mod tests {
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
 
+    #[test]
+    fn state_rect_radius_preserves_source_fallback_and_zero_override() {
+        for (config, expected) in [
+            (json!({}), 5.0),
+            (json!({"themeVariables": {"radius": null}}), 5.0),
+            (
+                json!({"look": "neo", "themeVariables": {"radius": 12}}),
+                12.0,
+            ),
+            (
+                json!({"look": "classic", "themeVariables": {"radius": 7.5}}),
+                7.5,
+            ),
+            (json!({"themeVariables": {"radius": 0}}), 10.0),
+            (json!({"themeVariables": {"radius": "0"}}), 0.0),
+            (json!({"themeVariables": {"radius": "7.5"}}), 7.5),
+            // Invalid values retain the existing numeric configuration contract.
+            (json!({"themeVariables": {"radius": "invalid"}}), 5.0),
+        ] {
+            assert_eq!(
+                StateThemeDefaults::from_config(&config).rect_radius,
+                expected
+            );
+        }
+    }
+
     fn model_with_hot_class() -> StateSvgModel {
         let mut model = StateSvgModel::default();
         model.style_classes.insert(
@@ -914,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn state_css_honors_mermaid_11_16_theme_options() {
+    fn state_css_honors_mermaid_12_theme_options() {
         let cfg = json!({
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
@@ -956,6 +1093,7 @@ mod tests {
         assert!(css.contains(r#"#st defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#));
         assert!(css.contains(r#"#st g.stateGroup rect{fill:#606060;stroke:#404040;}"#));
         assert!(css.contains(r#"#st .transition{stroke:#202020;stroke-width:4;fill:none;}"#));
+        assert!(css.contains(r#"#st .edge-thickness-normal{stroke-width:4px;}"#));
         assert!(css.contains(r#"#st .state-note{stroke:#909090;fill:#a0a0a0;}"#));
         assert!(css.contains(r#"#st .edgeLabel .label rect{fill:#c0c0c0;opacity:0.5;}"#));
         assert!(css.contains(r#"#st .edgeLabel{background-color:#d0d0d0;text-align:center;}"#));
@@ -976,8 +1114,29 @@ mod tests {
             r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
         ));
         assert!(css.contains(
-            r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##
+            r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:4;}"##
         ));
+    }
+
+    #[test]
+    fn state_css_preserves_nullish_and_truthy_stroke_width_fallbacks() {
+        for (stroke_width, edge_width, dependency_width) in [
+            (json!(0), "0px", "1"),
+            (json!("0"), "0px", "0"),
+            (json!(null), "1px", "1"),
+        ] {
+            let css = state_css(
+                "st",
+                &StateSvgModel::default(),
+                &json!({"themeVariables": {"strokeWidth": stroke_width}}),
+            );
+            assert!(css.contains(&format!(
+                "#st .edge-thickness-normal{{stroke-width:{edge_width};}}"
+            )));
+            assert!(css.contains(&format!(
+                r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{{fill:#333333;stroke:#333333;stroke-width:{dependency_width};}}"##
+            )));
+        }
     }
 
     #[test]

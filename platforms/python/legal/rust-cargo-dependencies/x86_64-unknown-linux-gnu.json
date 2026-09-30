@@ -7,6 +7,7 @@
         "id": "python-uniffi-native",
         "semantic_target": "native",
         "diagram_families": [
+          "agentflow",
           "architecture",
           "block",
           "c4",
@@ -35,6 +36,7 @@
           "timeline",
           "treeView",
           "treemap",
+          "usecase",
           "venn",
           "wardley",
           "xychart",
@@ -90,9 +92,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
+    "cargo_lock_sha256": "463fc173ca572c039759744224b9425adbf9ae4e16e11da2229015d5224d9eab",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "f3d62f4b5bc9a8d3b04e7320ba8069071a4511459052b04dbe8b3e9c154be21a"
+    "artifact_bundle_sha256": "42a5cd6bc426fe1dea13e269e8fd0f8db3115d21408900cd4b48166bf9d9542d"
   },
   "target_dependency_closures": [
     {

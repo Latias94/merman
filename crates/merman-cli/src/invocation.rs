@@ -986,6 +986,12 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         ));
     }
     validate_mmdc_output_options(format, &args)?;
+    #[cfg(any(
+        feature = "markdown",
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf"
+    ))]
     let output_is_stdout = matches!(destination, ResolvedDestination::Stdout);
     let output = resolved_mmdc_output(format, destination, &args)?;
     #[cfg(feature = "parallel-markdown")]

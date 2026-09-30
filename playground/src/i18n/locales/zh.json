@@ -327,6 +327,7 @@
     "svgBounds": "显示 SVG 边界"
   },
   "status": {
+    "renderingStatus": "渲染状态",
     "diagramType": "类型",
     "lines": "行数",
     "chars": "字符",
@@ -348,6 +349,7 @@
     "syntaxIssues": "语法有误"
   },
   "themes": {
+    "auto": "自动（图表默认）",
     "default": "默认",
     "dark": "深色",
     "forest": "森林",

@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-vscode
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 77096a46d6da94adf4a3be439f361c8532ba21a0c9dccf732329e5abccf2c512
+package-lock.json SHA-256: eb324925795f803e2b426d1cda1330a4604c5cc209d50cf333a307779791f8c0
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -128,7 +128,7 @@ THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 The following npm package may be included in this product:
 
- - brace-expansion@5.0.9
+ - brace-expansion@5.0.12
 
 This package contains the following license:
 

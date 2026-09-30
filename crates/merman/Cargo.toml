@@ -46,6 +46,7 @@ artifact-profile-required = true
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -74,6 +75,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -127,6 +129,20 @@ diagram-event-modeling = [
     "merman-ascii?/diagram-event-modeling",
     "merman-editor-core?/diagram-event-modeling",
     "merman-render?/diagram-event-modeling",
+]
+diagram-agentflow = [
+    "merman-core/diagram-agentflow",
+    "merman-analysis?/diagram-agentflow",
+    "merman-ascii?/diagram-agentflow",
+    "merman-editor-core?/diagram-agentflow",
+    "merman-render?/diagram-agentflow",
+]
+diagram-usecase = [
+    "merman-core/diagram-usecase",
+    "merman-analysis?/diagram-usecase",
+    "merman-ascii?/diagram-usecase",
+    "merman-editor-core?/diagram-usecase",
+    "merman-render?/diagram-usecase",
 ]
 diagram-flowchart = [
     "merman-core/diagram-flowchart",
@@ -305,7 +321,7 @@ diagram-zenuml = [
 ]
 # The facade is the ergonomic Rust entry point. Low-level implementation crates stay
 # default-empty; this product default intentionally provides a complete deterministic SVG path.
-default = ["all-diagrams", "complete-svg"]
+default = ["all-diagrams", "complete-svg-elk"]
 system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]

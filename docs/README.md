@@ -9,7 +9,7 @@ owners rather than being duplicated across Markdown files.
 | Task | Start here |
 | --- | --- |
 | Evaluate Merman or run a first example | [Project overview](../README.md) |
-| Choose Rust families, features, outputs, or artifact profiles | [Capability guide](FEATURES.md) and [family selection ADR](adr/0089-selectable-diagram-families.md) |
+| Choose Rust families, features, outputs, or artifact profiles | [Capability guide](FEATURES.md) and [family selection ADR](adr/0091-selectable-diagram-families.md) |
 | Choose a registry package or delivery channel | [Package surface guide](release/PACKAGE_SURFACES.md) |
 | Integrate a browser, Node.js, editor, linter, or Rust host | [Integration guide](integrations/README.md) |
 | Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |

@@ -12,9 +12,11 @@ The complete CLI release is defined by the `cli-release` entry in
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
-The CLI's default feature list intentionally contains the same release capabilities except for
-`layout-elk`. This keeps `cargo install merman-cli` useful without silently adding the EPL-2.0 ELK
-closure; users who need ELK should select it explicitly or use the published release archive.
+The current source for `0.8.0-alpha.7` uses the same capabilities for the CLI's default feature
+list, including `layout-elk`. Default source builds therefore include the EPL-2.0 ELK closure and
+its notice/source obligations. The published `0.8.0-alpha.6` source default excludes ELK, while its
+release archives include it. Custom source builds can omit ELK by disabling defaults and selecting
+the required individual features.
 
 Both cargo-dist and `cli-release` use Cargo's `dist` profile and disable Cargo default features
 before selecting that explicit list. Run the installation contract before changing a target,
@@ -52,7 +54,7 @@ document and no mixed diagnostic text.
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Default capabilities without ELK; custom features supported |
+| `cargo install merman-cli` | crates.io source | No | Version-specific defaults: alpha.6 excludes ELK; planned alpha.7 includes it. Custom features supported. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |

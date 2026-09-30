@@ -9,8 +9,8 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
 const FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     out: &mut String,
@@ -102,17 +102,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     out: &mut String,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
-    let w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let r = (w.min(h) / 2.0).max(0.5);
-    let inner = (r - 5.0).max(0.5);
+    let geometry = crate::flowchart::DoubleCircleGeometry::from_outer_diameter(
+        common.layout_node.width.min(common.layout_node.height),
+        common.look_is_neo(),
+    );
     let _ = write!(
         out,
         r#"<g class="basic label-container" style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
         escape_attr(common.style),
-        fmt(r),
+        fmt(geometry.outer_radius),
         escape_attr(common.style),
-        fmt(inner),
+        fmt(geometry.inner_radius),
         escape_attr(common.style),
     );
 }

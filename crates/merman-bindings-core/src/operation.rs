@@ -2277,7 +2277,7 @@ mod tests {
         let engine = BindingEngine::new(
             br#"{
                 "presentation": { "profile": "merman-modern" },
-                "site_config": { "flowchart": { "defaultRenderer": "dagre-wrapper" } }
+                "site_config": { "flowchart": { "layout": "dagre" } }
             }"#,
         )
         .unwrap();

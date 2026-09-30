@@ -9,8 +9,8 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
 const FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+const FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
+const FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 fn render_polygon_shape(
     out: &mut String,
@@ -77,13 +77,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_right(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid `leanRight.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-    let total_w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let w = (total_w - h).max(1.0);
-    let dx = (3.0 * h) / 6.0;
-    let pts = [(-dx, 0.0), (w, 0.0), (w + dx, -h), (0.0, -h)];
-    render_polygon_shape(out, common, details, &pts, -w / 2.0, h / 2.0);
+    let geometry = crate::flowchart::LeanGeometry::from_bounds(
+        crate::flowchart::LeanKind::Right,
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    render_polygon_shape(
+        out,
+        common,
+        details,
+        &geometry.points,
+        geometry.translate_x,
+        geometry.translate_y,
+    );
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
@@ -91,13 +97,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid `leanLeft.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-    let total_w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let w = (total_w - h).max(1.0);
-    let dx = (3.0 * h) / 6.0;
-    let pts = [(0.0, 0.0), (w + dx, 0.0), (w, -h), (-dx, -h)];
-    render_polygon_shape(out, common, details, &pts, -w / 2.0, h / 2.0);
+    let geometry = crate::flowchart::LeanGeometry::from_bounds(
+        crate::flowchart::LeanKind::Left,
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    render_polygon_shape(
+        out,
+        common,
+        details,
+        &geometry.points,
+        geometry.translate_x,
+        geometry.translate_y,
+    );
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
@@ -105,13 +117,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid `trapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-    let total_w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let w = (total_w - h).max(1.0);
-    let dx = (3.0 * h) / 6.0;
-    let pts = [(-dx, 0.0), (w + dx, 0.0), (w, -h), (0.0, -h)];
-    render_polygon_shape(out, common, details, &pts, -w / 2.0, h / 2.0);
+    let geometry = crate::flowchart::LeanGeometry::from_bounds(
+        crate::flowchart::LeanKind::Trapezoid,
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    render_polygon_shape(
+        out,
+        common,
+        details,
+        &geometry.points,
+        geometry.translate_x,
+        geometry.translate_y,
+    );
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
@@ -119,11 +137,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    // Mermaid `invertedTrapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-    let total_w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
-    let w = (total_w - h).max(1.0);
-    let dx = (3.0 * h) / 6.0;
-    let pts = [(0.0, 0.0), (w, 0.0), (w + dx, -h), (-dx, -h)];
-    render_polygon_shape(out, common, details, &pts, -w / 2.0, h / 2.0);
+    let geometry = crate::flowchart::LeanGeometry::from_bounds(
+        crate::flowchart::LeanKind::InvertedTrapezoid,
+        common.layout_node.width,
+        common.layout_node.height,
+    );
+    render_polygon_shape(
+        out,
+        common,
+        details,
+        &geometry.points,
+        geometry.translate_x,
+        geometry.translate_y,
+    );
 }

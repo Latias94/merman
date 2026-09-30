@@ -1,96 +1,72 @@
 use super::super::*;
-use super::SequenceEmitCheckpoints;
-use super::actor_man_glyphs::{
-    ActorManBottomGlyphMetrics, write_actor_man_bottom_glyph, write_actor_man_top_glyph,
-};
-use super::actor_shapes::is_actor_man_variant;
-use super::model::SequenceSvgModel;
-use rustc_hash::FxHashMap;
+use super::actor_man_glyphs::{ActorManGlyphPlacement, write_actor_man_glyph};
+use super::actor_shapes::{ActorLabelContext, is_actor_man_variant};
+use super::actors::SequenceActorRenderContext;
 
 pub(super) fn render_sequence_actor_man_tops(
     out: &mut String,
-    model: &SequenceSvgModel,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    actor_height: f64,
+    ctx: &SequenceActorRenderContext<'_>,
     diagram_id: SvgDiagramId<'_>,
-    checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
-    // Actor-man variants (actor/boundary/control/entity) are emitted after `<defs>`.
-    for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
-        checkpoints.checkpoint_loop(actor_idx)?;
-        let Some(actor) = model.actors.get(actor_id) else {
-            continue;
-        };
-        let actor_type = actor.actor_type.as_str();
-        if !is_actor_man_variant(actor_type) {
-            continue;
-        }
-        let node_id = format!("actor-top-{actor_id}");
-        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-            continue;
-        };
-        write_actor_man_top_glyph(
-            out,
-            actor_type,
-            actor_id,
-            &actor.description,
-            n,
-            actor_idx,
-            actor_height,
-            diagram_id,
-        );
-        checkpoints.checkpoint()?;
-    }
-    checkpoints.checkpoint()
+    render_sequence_actor_man(out, ctx, diagram_id, false)
 }
 
 pub(super) fn render_sequence_actor_man_bottoms(
     out: &mut String,
-    model: &SequenceSvgModel,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    actor_height: f64,
-    label_box_height: f64,
+    ctx: &SequenceActorRenderContext<'_>,
     diagram_id: SvgDiagramId<'_>,
-    checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
-    // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
-    let last_idx = model.actor_order.len().saturating_sub(1);
-    let mut footer_actors = Vec::with_capacity(model.actor_order.len());
-    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
-        checkpoints.checkpoint_loop(actor_index)?;
-        let Some(actor) = model.actors.get(actor_id) else {
+    render_sequence_actor_man(out, ctx, diagram_id, true)
+}
+
+fn render_sequence_actor_man(
+    out: &mut String,
+    ctx: &SequenceActorRenderContext<'_>,
+    diagram_id: SvgDiagramId<'_>,
+    footer: bool,
+) -> Result<()> {
+    let label_ctx = ActorLabelContext::new(
+        ctx.actor_wrap_width,
+        ctx.diagram_id,
+        ctx.measurer,
+        ctx.actor_text_style,
+        ctx.sanitize_config,
+        ctx.math_renderer,
+        ctx.checkpoints,
+    );
+    // These groups are appended by drawActor, unlike the box groups that are lowered.
+    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_index)?;
+        let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
-        let actor_type = actor.actor_type.as_str();
-        if !is_actor_man_variant(actor_type) {
+        if !is_actor_man_variant(&actor.actor_type) {
             continue;
         }
-        let node_id = format!("actor-bottom-{actor_id}");
-        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+        let placement = if footer { "bottom" } else { "top" };
+        let node_id = format!("actor-{placement}-{actor_id}");
+        let Some(node) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
             continue;
         };
-        footer_actors.push((actor_id, actor_type, actor.description.as_str(), n));
-    }
-    checkpoints.checkpoint()?;
-    footer_actors.sort_by(|a, b| b.3.x.total_cmp(&a.3.x));
-
-    checkpoints.checkpoint()?;
-    for (actor_index, (actor_id, actor_type, label, n)) in footer_actors.into_iter().enumerate() {
-        checkpoints.checkpoint_loop(actor_index)?;
-        write_actor_man_bottom_glyph(
+        write_actor_man_glyph(
             out,
-            actor_type,
             actor_id,
-            label,
-            n,
-            last_idx,
-            ActorManBottomGlyphMetrics {
-                actor_height,
-                label_box_height,
+            actor,
+            node,
+            ActorManGlyphPlacement {
+                footer,
+                line_index: if footer {
+                    ctx.model.actor_order.len().saturating_sub(1)
+                } else {
+                    actor_index
+                },
+                actor_index,
+                actor_height: ctx.actor_height,
+                label_box_height: ctx.label_box_height,
+                diagram_id,
             },
-            diagram_id,
-        );
-        checkpoints.checkpoint()?;
+            &label_ctx,
+        )?;
     }
-    checkpoints.checkpoint()
+    ctx.checkpoints.checkpoint()
 }

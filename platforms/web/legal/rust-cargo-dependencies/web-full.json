@@ -4,6 +4,7 @@
     "id": "web-full",
     "semantic_target": "web",
     "diagram_families": [
+      "agentflow",
       "architecture",
       "block",
       "c4",
@@ -32,6 +33,7 @@
       "timeline",
       "treeView",
       "treemap",
+      "usecase",
       "venn",
       "wardley",
       "xychart",
@@ -77,9 +79,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
+    "cargo_lock_sha256": "463fc173ca572c039759744224b9425adbf9ae4e16e11da2229015d5224d9eab",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "561f661ae27fa29434cd14dfceee9aa3b27004254f00688f2b6f015b9272b550"
+    "artifact_profile_sha256": "2276e0699a50ff89eb11bb35a4dd3f7a882e43e9863a379186a5db11a524f7c6"
   },
   "dependency_closure": {
     "package_count": 168,

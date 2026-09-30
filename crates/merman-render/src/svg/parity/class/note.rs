@@ -181,7 +181,7 @@ pub(super) fn render_class_note_node(
     if hand_drawn {
         let _ = write!(
             &mut note_shape,
-            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
+            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
             escape_attr_display(&note_fill_d),
             escape_attr_display(&note_fill),
             escape_attr_display(&note_stroke_d),

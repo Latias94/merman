@@ -1,4 +1,18 @@
 use super::*;
+
+fn state_leaf_label_width(
+    node: &StateSvgNode,
+    ctx: &StateRenderCtx<'_>,
+    label: &str,
+    measured_width: f64,
+) -> f64 {
+    let width = measured_width.max(0.0);
+    if matches!(node.shape.as_str(), "rect" | "note") && !label.is_empty() {
+        width.max(node.min_width.unwrap_or(ctx.label_min_width).max(0.0))
+    } else {
+        width
+    }
+}
 use merman_core::svg_security::{
     MermaidNavigationSecurity, normalize_mermaid_tooltip_attribute, prepare_mermaid_navigation_href,
 };
@@ -72,16 +86,30 @@ pub(super) fn render_state_node_svg(
         details.leaf_nodes_style_parse += s.elapsed();
     }
 
+    let small_shadow_attr = if matches!(node.shape.as_str(), "stateStart" | "stateEnd")
+        && w < 25.0
+        && ctx.theme_defaults.node_shadow
+        && data_look != "handDrawn"
+    {
+        format!(
+            r#" style="filter:url(#{}-drop-shadow-small)""#,
+            ctx.diagram_id
+        )
+    } else {
+        String::new()
+    };
+
     match node.shape.as_str() {
         "stateStart" => {
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
+                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"{}/></g>"#,
                 node_dom_id,
                 escape_xml_display(data_look),
                 fmt_display(cx),
-                fmt_display(cy)
+                fmt_display(cy),
+                small_shadow_attr
             );
             drop(_g_emit);
         }
@@ -127,18 +155,21 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
             let shape_style_escaped = escape_attr(&shape_style_attr);
-            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.end_outer_fill.as_str());
-            let outer_stroke = ctx.theme_defaults.end_outer_stroke.as_str();
-            let inner_fill = ctx.theme_defaults.inner_end_background.as_str();
-            let inner_stroke = ctx.theme_defaults.end_inner_stroke.as_str();
+            // stateEnd overrides RoughJS options with lineColor for the outer outline and
+            // stateBorder (falling back to nodeBorder) for both paints of the inner circle.
+            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
+            let outer_stroke = ctx.theme_defaults.line_color.as_str();
+            let inner_fill = ctx.theme_defaults.state_border.as_str();
+            let inner_stroke = inner_fill;
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
+                small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
                 shape_style_escaped,
@@ -147,8 +178,10 @@ pub(super) fn render_state_node_svg(
                 shape_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_fill),
+                shape_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_stroke),
+                shape_style_escaped,
             );
             drop(_g_emit);
         }
@@ -234,9 +267,7 @@ pub(super) fn render_state_node_svg(
 
             let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
             let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
-            let stroke_width_attr = stroke_width_override
-                .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
-                .max(0.0);
+            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
             let shape_style_escaped = escape_attr(&shape_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
@@ -276,7 +307,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
             let rough_start = timing.start();
             let key = StateRoughCacheKey {
@@ -321,6 +352,12 @@ pub(super) fn render_state_node_svg(
                         "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
                         fmt(ctx.html_label_wrapping_width),
                         fmt(ctx.html_label_wrapping_width),
+                    )
+                } else if lw > metrics.width {
+                    format!(
+                        "display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        fmt(ctx.html_label_wrapping_width),
+                        fmt(lw),
                     )
                 } else {
                     format!(
@@ -527,7 +564,7 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            let lw = metrics.width.max(0.0);
+            let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
 
             let mut link_open = String::new();
@@ -610,6 +647,13 @@ pub(super) fn render_state_node_svg(
                     fmt(ctx.html_label_wrapping_width),
                     fmt(ctx.html_label_wrapping_width),
                 )
+            } else if lw > metrics.width {
+                format!(
+                    r#"{}display: table; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
+                    div_style_prefix,
+                    fmt(ctx.html_label_wrapping_width),
+                    fmt(lw),
+                )
             } else {
                 format!(
                     r#"{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"#,
@@ -619,7 +663,7 @@ pub(super) fn render_state_node_svg(
             };
 
             if data_look != "handDrawn" {
-                let rect_radius = if data_look == "neo" { 3.0 } else { 5.0 };
+                let rect_radius = ctx.theme_defaults.rect_radius;
                 let rect_style = escape_xml_display(&shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {

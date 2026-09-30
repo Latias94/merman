@@ -67,7 +67,7 @@
   },
   "expected": {
     "diagram_families": [
-      "architecture",
+      "agentflow", "architecture",
       "block",
       "c4",
       "class",
@@ -95,7 +95,7 @@
       "timeline",
       "treeView",
       "treemap",
-      "venn",
+      "usecase", "venn",
       "wardley",
       "xychart",
       "zenuml"

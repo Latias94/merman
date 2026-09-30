@@ -466,6 +466,15 @@ impl<'a> ParsePipeline<'a> {
         } else {
             false
         };
+        #[cfg(feature = "diagram-agentflow")]
+        if matches!(owner, Some(RegistryOwner::BuiltIn)) {
+            let (line_offset, column_offset) = code.parser_position_offset();
+            crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
+                &mut model,
+                line_offset,
+                column_offset,
+            );
+        }
         Self::remap_warning_facts_controlled(&mut warning_facts, &source_map, control)?;
         if matches!(owner, Some(RegistryOwner::BuiltIn)) || custom_warning_adapter_succeeded {
             Self::sync_compatibility_warning_facts(&mut model, &warning_facts);
@@ -533,6 +542,10 @@ impl<'a> ParsePipeline<'a> {
             error_diagram::suppressed_error_render_diagram,
             ParsedDiagramRender::from_parse_output,
             |output, source_map| {
+                let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                output
+                    .model_mut()
+                    .offset_parser_diagnostic_positions(line_offset, column_offset);
                 output.model_mut().remap_warning_fact_spans(|fact| {
                     Self::remap_warning_fact_spans(fact, source_map);
                 });
@@ -622,6 +635,10 @@ impl<'a> ParsePipeline<'a> {
                 .sanitize_common_db_fields(&meta.effective_config);
             let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
+            let (line_offset, column_offset) = code.parser_position_offset();
+            output
+                .model_mut()
+                .offset_parser_diagnostic_positions(line_offset, column_offset);
             output.model_mut().remap_warning_fact_spans(|fact| {
                 Self::remap_warning_fact_spans(fact, &source_map);
             });
@@ -770,6 +787,15 @@ impl<'a> ParsePipeline<'a> {
     ) {
         match &mut parsed.warnings {
             CompatibilityWarnings::Typed(warning_facts) => {
+                #[cfg(feature = "diagram-agentflow")]
+                {
+                    let (line_offset, column_offset) = source_map.source.parser_position_offset();
+                    crate::diagrams::agentflow::offset_compatibility_diagnostic_positions(
+                        &mut parsed.model,
+                        line_offset,
+                        column_offset,
+                    );
+                }
                 for fact in warning_facts.iter_mut() {
                     Self::remap_warning_fact_spans(fact, source_map);
                 }
@@ -1028,7 +1054,7 @@ impl<'a> ParsePipeline<'a> {
         let outcome = match captured.outcome {
             crate::preprocess::PreprocessCaptureResult::Ready(preprocessed) => {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    self.finish_preprocessed_controlled(preprocessed, known_type, control)
+                    self.finish_preprocessed_controlled(*preprocessed, known_type, control)
                 })) {
                     Ok(result) => match result? {
                         Ok((source, metadata)) => {
@@ -1093,7 +1119,7 @@ impl<'a> ParsePipeline<'a> {
 
     fn finish_preprocessed_controlled(
         &self,
-        pre: crate::PreprocessResult,
+        mut pre: crate::PreprocessResult,
         known_type: Option<&str>,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
@@ -1103,7 +1129,8 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config, control)?;
+        let (mut effective_config, source_config) =
+            self.effective_config_before_detect(&pre.config, control)?;
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
@@ -1117,12 +1144,33 @@ impl<'a> ParsePipeline<'a> {
             },
         };
         control.checkpoint()?;
-        family::apply_diagram_type_config_effects(
+        crate::config::resolve_appearance(
             &diagram_type,
-            &pre.config,
+            &source_config,
+            &self.engine.site_config_delta,
+            &crate::generated::upstream_default_config(),
             &mut effective_config,
         );
-        if has_config_overrides {
+        // The explicit keyword is the only detector-level layout selection retained in
+        // Mermaid 12. Apply it after appearance resolution for known-type entrypoints too.
+        if diagram_type == "flowchart-elk" {
+            effective_config.set_value("layout", serde_json::Value::String("elk".to_owned()));
+        }
+        if effective_config.get_str("theme") == Some("null") {
+            // The sentinel disables theme selection. Upstream retains the initialized
+            // variables and merges source overrides without running another theme program.
+            let mut initialized = match self.engine.default_effective_config() {
+                Ok(config) => config,
+                Err(error) => return Ok(Err(error)),
+            };
+            initialized.deep_merge(source_config.as_value());
+            if let Some(variables) = initialized.as_value().get("themeVariables") {
+                effective_config.set_value(
+                    "themeVariables",
+                    crate::config::clone_value_nonrecursive(variables),
+                );
+            }
+        } else if has_config_overrides {
             if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
                 return Ok(Err(error.into()));
             }
@@ -1141,6 +1189,20 @@ impl<'a> ParsePipeline<'a> {
         control.checkpoint()?;
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
         control.checkpoint()?;
+
+        if diagram_type == "agentflow"
+            && let Some(with_comments) = pre.with_comments.take()
+        {
+            let max_text_size = effective_config
+                .as_value()
+                .get("maxTextSize")
+                .and_then(Value::as_u64)
+                .unwrap_or(50_000);
+            if with_comments.text().encode_utf16().count() as u64 <= max_text_size {
+                pre.source =
+                    crate::preprocess::prepare_parser_text_controlled(with_comments, control)?;
+            }
+        }
 
         Ok(Ok((
             pre.source,
@@ -1255,15 +1317,15 @@ impl<'a> ParsePipeline<'a> {
         &self,
         overrides: &MermaidConfig,
         control: &OperationControl,
-    ) -> OperationControlResult<MermaidConfig> {
+    ) -> OperationControlResult<(MermaidConfig, MermaidConfig)> {
         if overrides.is_empty_object() {
-            return Ok(self.engine.site_config.clone());
+            return Ok((self.engine.site_config.clone(), overrides.clone()));
         }
 
         let mut effective_config = self.engine.site_config.clone();
         let effective_overrides = effective_config.source_filtered_overrides(overrides, control)?;
         effective_config.deep_merge(effective_overrides.as_value());
-        Ok(effective_config)
+        Ok((effective_config, effective_overrides))
     }
 }
 
@@ -1671,7 +1733,7 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
-    fn render_preprocessing_does_not_repeat_frontmatter_extraction() {
+    fn public_and_render_preprocessing_share_one_frontmatter_pass() {
         let input = concat!(
             "   ---\n",
             "title: only-visible-after-trimming\n",
@@ -1690,7 +1752,7 @@ mod editor_parse_source_map_tests {
             .expect("public parse preprocess");
 
         assert!(render.code().starts_with("---"));
-        assert!(public_parse.code().starts_with("flowchart TD"));
+        assert_eq!(public_parse.code(), render.code());
     }
 
     #[test]

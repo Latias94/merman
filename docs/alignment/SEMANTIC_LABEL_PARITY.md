@@ -2,7 +2,7 @@
 
 Status: Active
 
-Baseline: Mermaid `11.17.2` at `dcb694ddb58dc5ad3502e7e903cac05fd812eac3`
+Baseline: Mermaid `12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
 
 Comparator: `semantic-label-v3`
 

@@ -4,6 +4,7 @@
     "id": "web-analysis",
     "semantic_target": "web",
     "diagram_families": [
+      "agentflow",
       "architecture",
       "block",
       "c4",
@@ -32,6 +33,7 @@
       "timeline",
       "treeView",
       "treemap",
+      "usecase",
       "venn",
       "wardley",
       "xychart",
@@ -71,9 +73,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "3b160e034d0d3724227d06fe0aec95fc59e853255939aba2615a0a8eb06cd4e8",
+    "cargo_lock_sha256": "463fc173ca572c039759744224b9425adbf9ae4e16e11da2229015d5224d9eab",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "2948e671ee965b761205ca44340040338c538e81d4c946e417c6f1178861dbf8"
+    "artifact_profile_sha256": "6df7e0c7cbf10d0517c21bdb69af517bf6ecdbda75043d1f1ef2e86992b6a15c"
   },
   "dependency_closure": {
     "package_count": 101,

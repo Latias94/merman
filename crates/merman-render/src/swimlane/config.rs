@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::config::{config_bool, value_at};
 
 pub(super) const DEFAULT_LANE_ID: &str = "__swimlane_default__";
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) const GROUP_PADDING: f64 = 8.0;
 pub(super) const DEFAULT_LANE_PADDING: f64 = 20.0;
 pub(super) const TOP_LANE_TITLE_BAND_HEIGHT: f64 = 21.0;

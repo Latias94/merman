@@ -200,6 +200,7 @@ pub(crate) fn render_block_diagram_svg_model(
 
     #[derive(Clone)]
     struct RenderNode {
+        color_index: Option<usize>,
         label: String,
         block_type: String,
         classes: Vec<String>,
@@ -214,6 +215,9 @@ pub(crate) fn render_block_diagram_svg_model(
         let mut stack = vec![root];
         while let Some(n) = stack.pop() {
             if let Some(existing) = out.get_mut(&n.id) {
+                if n.color_index.is_some() {
+                    existing.color_index = n.color_index;
+                }
                 if !n.label.is_empty() {
                     existing.label = n.label.clone();
                 }
@@ -233,6 +237,7 @@ pub(crate) fn render_block_diagram_svg_model(
                 out.insert(
                     n.id.clone(),
                     RenderNode {
+                        color_index: n.color_index,
                         label: n.label.clone(),
                         block_type: n.block_type.clone(),
                         classes: n.classes.clone(),
@@ -479,6 +484,7 @@ pub(crate) fn render_block_diagram_svg_model(
             r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
             diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
+        super::palette::write_palette_css(&mut out, diagram_id, effective_config, options)?;
         let _ = write!(
             &mut out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
@@ -537,7 +543,7 @@ pub(crate) fn render_block_diagram_svg_model(
         );
         let _ = write!(
             &mut out,
-            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
+            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
             diagram_id,
             cluster_bkg,
             cluster_border,
@@ -548,14 +554,19 @@ pub(crate) fn render_block_diagram_svg_model(
             title_color,
             diagram_id,
             text_color,
+        );
+        let _ = crate::svg::parity::css::write_mermaid_base_css_root_rule_to(
+            &mut out,
             diagram_id,
-            font_family
+            &crate::config::config_root_font_family_css(effective_config),
         );
         out.push_str(&block_class_css(diagram_id, class_defs, options)?);
         Ok(out)
     }
 
     let diagram_id = options.diagram_id_or("merman");
+    let palette_size = super::palette::palette_size(effective_config);
+    let look = crate::config::config_diagram_look(effective_config);
     let hand_drawn_seed = options.rough_randomness(
         effective_config
             .get("handDrawnSeed")
@@ -631,6 +642,11 @@ pub(crate) fn render_block_diagram_svg_model(
     out.push_str("</style><g/>");
     options.checkpoint_emit()?;
 
+    // Block owns its render loop and invokes insertLookDefs before inserting markers.
+    super::super::look_defs::push_look_shadow_defs(&mut out, diagram_id, effective_config);
+    super::super::look_defs::push_look_gradient(&mut out, diagram_id, effective_config);
+    options.checkpoint_emit()?;
+
     super::super::markers::push_base_edge_markers(&mut out, diagram_id, "block");
     options.checkpoint_emit()?;
 
@@ -659,12 +675,19 @@ pub(crate) fn render_block_diagram_svg_model(
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
-            r#"<g class="node {}"{} transform="translate({}, {})">"#,
+            r#"<g class="node {}"{} transform="translate({}, {})" data-look="{}""#,
             escape_attr(&class_str),
             id_attr,
             fmt(geometry.allocated.x),
-            fmt(geometry.allocated.y)
+            fmt(geometry.allocated.y),
+            escape_attr(look.as_str())
         );
+        if palette_size > 0
+            && let Some(index) = node.color_index
+        {
+            let _ = write!(out, r#" data-color-id="color-{}""#, index % palette_size);
+        }
+        out.push('>');
 
         match &geometry.boundary {
             BlockShapeBoundary::Rectangle {

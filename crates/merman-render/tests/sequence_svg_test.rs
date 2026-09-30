@@ -5,14 +5,14 @@ use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, Rend
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementRoute,
     TextMeasurementSource,
 };
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, WrapMode};
 use merman_render::{
     Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     ResourceLimitPhase,
@@ -54,6 +54,7 @@ enum SequenceHostResponse {
     #[default]
     Missing,
     StatefulMetrics,
+    WeightSensitiveMetrics,
     Error,
 }
 
@@ -102,6 +103,18 @@ impl HostTextMeasurer for RecordingSequenceHost {
                 let response_index = self.response_index.fetch_add(1, Ordering::Relaxed);
                 Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
                     width: 320.0 + response_index as f64,
+                    height: 24.0,
+                    line_count: 1,
+                })))
+            }
+            SequenceHostResponse::WeightSensitiveMetrics if request.text.starts_with("probe-") => {
+                let advance = if request.style.font_weight.as_deref() == Some("700") {
+                    20.0
+                } else {
+                    8.0
+                };
+                Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: request.text.len() as f64 * advance,
                     height: 24.0,
                     line_count: 1,
                 })))
@@ -1327,7 +1340,7 @@ fn sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15()
 }
 
 #[test]
-fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15() {
+fn sequence_layout_nested_activation_bounds_include_full_stack_with_neo_marker_spacing() {
     let layout = layout_sequence_from_text(
         r#"sequenceDiagram
     participant C as Caller
@@ -1355,7 +1368,12 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 
     let nested_call = c_to_a_edges[1];
     let outer_call = c_to_a_edges[2];
-    let expected_left_target = a_center - 5.0 - 3.0;
+    // Mermaid 12 applies Neo spacing before shortening the line for its arrowhead.
+    let activation_half_width = 5.0;
+    let neo_marker_spacing = 3.0;
+    let arrowhead_shortening = 3.0;
+    let expected_left_target =
+        a_center - activation_half_width - neo_marker_spacing - arrowhead_shortening;
 
     assert!(
         (nested_call.points[1].x - expected_left_target).abs() <= 0.0001,
@@ -1445,6 +1463,177 @@ sequenceDiagram
 }
 
 #[test]
+fn sequence_control_labels_follow_look_height_margin_and_font() {
+    let source = r#"sequenceDiagram
+    Alice->>Bob: Start
+    loop Retry
+        Alice->>Bob: Again
+    end
+    alt Accepted
+        Alice->>Bob: Continue
+    else Rejected
+        Bob-->>Alice: Stop
+    end
+    critical Establish connection
+        Alice->>Bob: Connect
+    option Retry later
+        Bob-->>Alice: Retry
+    end
+"#;
+    // Mermaid 12 drawLoop adds Neo height before applying the zero-height fallback.
+    for (look, configured_height, margin, expected_height) in [
+        ("neo", 20.0, 5.0, 35.0),
+        ("classic", 20.0, 5.0, 20.0),
+        ("neo", 42.0, 0.0, 57.0),
+        ("classic", 42.0, -5.0, 42.0),
+        ("neo", 0.0, 5.5, 15.0),
+        ("classic", 0.0, 5.5, 20.0),
+        ("neo", -15.0, 5.0, 20.0),
+        ("neo", -5.0, 5.0, 10.0),
+        ("classic", -5.0, 5.0, -5.0),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "fontSize": 22,
+            "sequence": {
+                "labelBoxHeight": configured_height,
+                "labelBoxWidth": 96,
+                "boxTextMargin": margin
+            }
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(engine, source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let controls = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g") && node.attribute("data-et") == Some("control-structure")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(controls.len(), 3);
+        for control in controls {
+            let polygon = control
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("polygon") && node.attribute("class") == Some("labelBox")
+                })
+                .expect("control label box");
+            let points = polygon
+                .attribute("points")
+                .expect("label box points")
+                .split_whitespace()
+                .map(|point| {
+                    let (x, y) = point.split_once(',').expect("coordinate pair");
+                    (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(points.len(), 5);
+            assert!(
+                (points[3].1 - points[0].1 - expected_height).abs() <= 1e-6,
+                "{look} control label height: configured={configured_height}, points={points:?}"
+            );
+            assert!((points[2].1 - points[3].1 + 7.0).abs() <= 1e-6);
+            assert!((points[1].0 - points[0].0 - 96.0).abs() <= 1e-6);
+            assert!((points[2].0 - points[3].0 - 8.4).abs() <= 1e-6);
+            let label = control
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("labelText")
+                })
+                .expect("control label text");
+            let label_y = label
+                .attribute("y")
+                .expect("label y")
+                .parse::<f64>()
+                .unwrap();
+            let center_y = points[0].1 + expected_height / 2.0;
+            let expected_y = if margin > 0.0 {
+                (center_y + margin / 2.0 + 0.5).floor()
+            } else {
+                center_y
+            };
+            assert!(
+                (label_y - expected_y).abs() <= 1e-6,
+                "{look} label baseline"
+            );
+            assert!(
+                label
+                    .attribute("style")
+                    .expect("label style")
+                    .contains("font-size: 22px;")
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_control_titles_use_resolved_message_font_weight() {
+    let source = r#"sequenceDiagram
+    alt Accepted
+        A->>B: Continue
+    else Rejected
+        B-->>A: Stop
+    end
+"#;
+    for (config, expected_weight) in [
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": 700}}),
+            Some("700"),
+        ),
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": "bold"}}),
+            Some("bold"),
+        ),
+        (
+            serde_json::json!({"fontWeight": 500, "sequence": {"messageFontWeight": 700}}),
+            Some("500"),
+        ),
+        (
+            serde_json::json!({"fontWeight": "600", "sequence": {"messageFontWeight": 700}}),
+            Some("600"),
+        ),
+        (
+            serde_json::json!({"fontWeight": 0, "sequence": {"messageFontWeight": 700}}),
+            Some("700"),
+        ),
+        (
+            serde_json::json!({"sequence": {"messageFontWeight": "700; font-style: italic"}}),
+            None,
+        ),
+    ] {
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            source,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let titles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && matches!(
+                        node.attribute("class"),
+                        Some("labelText" | "loopText" | "sectionTitle")
+                    )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(titles.len(), 3, "control keyword, title and section");
+        for title in titles {
+            let style = title.attribute("style").expect("title style");
+            match expected_weight {
+                Some(weight) => assert!(
+                    style.contains(&format!("font-weight: {weight};")),
+                    "{config}: {style}"
+                ),
+                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
+            }
+            assert!(
+                !style.contains("font-style"),
+                "invalid CSS weight must not add declarations"
+            );
+        }
+    }
+}
+
+#[test]
 fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
     let cases = [
         "activation_explicit.mmd",
@@ -1488,12 +1677,23 @@ fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() 
 }
 
 #[test]
-fn sequence_block_root_width_replays_upstream_bounds_insert_lifecycle() {
+fn sequence_classic_block_root_width_replays_upstream_bounds_insert_lifecycle() {
     for (fixture, expected_min_x, expected_width) in [
         ("stress_create_destroy_inside_alt_030.mmd", -50.0, 734.0),
         ("stress_critical_break_007.mmd", -50.0, 650.0),
     ] {
-        let svg = render_sequence_svg_from_fixture(fixture);
+        let text = std::fs::read_to_string(
+            workspace_root()
+                .join("fixtures")
+                .join("sequence")
+                .join(fixture),
+        )
+        .expect("fixture");
+        // Keep this bounds-insertion regression independent of Neo marker spacing.
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "sequence": { "look": "classic" }
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(engine, &text);
         let (view_box, max_width) = root_view_box_and_max_width(&svg);
         assert_eq!(
             view_box[0], expected_min_x,
@@ -1832,6 +2032,43 @@ fn sequence_wrap_true_splits_the_first_message_without_losing_text() {
 }
 
 #[test]
+fn sequence_critical_wrap_responds_to_controlled_width_boundaries() {
+    let source = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join("upstream_critical_without_options_spec.mmd"),
+    )
+    .expect("critical fixture");
+    let measurer =
+        DeterministicTextMeasurer::default().with_width_callback(|text, style| match text {
+            "[Establish a" => 90.0,
+            "[Establish a connection" => 160.0,
+            "connection to the" => 125.0,
+            "connection to the DB]" => 170.0,
+            "DB]" => 26.0,
+            _ => {
+                DeterministicTextMeasurer::default()
+                    .measure(text, style)
+                    .width
+            }
+        });
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.sequence-critical-browser-bounds").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        measurer,
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let svg = render_sequence_with_environment(&source, &environment).svg;
+    let lines = text_rows_by_class(&svg, "loopText");
+    assert_eq!(lines, vec!["[Establish a", "connection to the", "DB]"]);
+}
+
+#[test]
 fn sequence_fallback_wraps_block_candidates_without_losing_text() {
     let svg = render_sequence_svg_from_fixture_with_options(
         "upstream_critical_without_options_spec.mmd",
@@ -1848,9 +2085,21 @@ fn sequence_fallback_wraps_block_candidates_without_losing_text() {
 }
 
 #[test]
-fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
+fn sequence_classic_nested_opt_wraps_from_source_block_width() {
     let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
-    let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join(fixture),
+    )
+    .expect("fixture");
+    // Classic retains the source block width used by this deterministic wrapping oracle.
+    // Neo shortens message bounds before calculateLoopBounds derives that width.
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "sequence": { "look": "classic" }
+    })));
+    let svg = render_sequence_svg_from_text_with_engine(engine, &text);
     let group_start = svg
         .find(r#"<g data-et="control-structure" data-id="i17">"#)
         .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
@@ -1866,7 +2115,7 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
     assert_eq!(
         loop_lines.len(),
         3,
-        "nested opt title should use three Mermaid 11.16 lines"
+        "classic nested opt title should use three deterministic lines"
     );
     for (line, expected) in loop_lines.iter().zip([
         "[this is a nested opt",
@@ -2042,42 +2291,56 @@ A->>B: Filled"#,
 }
 
 #[test]
-fn sequence_neo_headless_strokes_share_typed_endpoint_geometry() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "look": "neo"
-    })));
-    let svg = render_sequence_svg_from_text_with_engine(
-        engine,
-        r#"sequenceDiagram
+fn sequence_headless_strokes_follow_mermaid_neo_endpoint_spacing() {
+    for (look, dotted_offset) in [("classic", 0.0), ("neo", 3.0)] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(
+            engine,
+            r#"sequenceDiagram
 participant A
 participant B
 A->B: Headless solid
-A-->B: Headless dotted"#,
-    );
-    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
-    let endpoints = |id: &str| {
-        let message = document
-            .descendants()
-            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
-            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
-        let coordinate = |name: &str| {
-            message
-                .attribute(name)
-                .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
-                .parse::<f64>()
-                .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+A-->B: Headless dotted
+B->A: Headless solid left
+B-->A: Headless dotted left"#,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let endpoints = |id: &str| {
+            let message = document
+                .descendants()
+                .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+                .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
+            assert!(message.attribute("marker-start").is_none());
+            assert!(message.attribute("marker-end").is_none());
+            let coordinate = |name: &str| {
+                message
+                    .attribute(name)
+                    .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
+                    .parse::<f64>()
+                    .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+            };
+            (coordinate("x1"), coordinate("x2"))
         };
-        (coordinate("x1"), coordinate("x2"))
-    };
 
-    assert_eq!(endpoints("i0"), endpoints("i1"));
+        // buildMessageModel exempts only SOLID_OPEN from the Neo target offset.
+        for (solid_id, dotted_id, target_offset) in
+            [("i0", "i1", -dotted_offset), ("i2", "i3", dotted_offset)]
+        {
+            let solid = endpoints(solid_id);
+            let dotted = endpoints(dotted_id);
+            assert_eq!(solid.0, dotted.0, "{look} headless start");
+            assert_eq!(solid.1 + target_offset, dotted.1, "{look} headless target");
+        }
+    }
 }
 
 #[test]
-fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
+fn sequence_classic_svg_honors_theme_css_options() {
     let svg = render_sequence_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
+        r##"%%{init: {"sequence": {"look": "classic", "noteFontWeight": 700}, "themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
 sequenceDiagram
 autonumber
 participant Alice
@@ -2131,10 +2394,20 @@ end"##,
         "expected note theme colors in Sequence CSS: {svg}"
     );
     assert!(
-        svg.contains(
-            r#".noteText,#merman .noteText>tspan{fill:#eeeeee;stroke:none;font-weight:600;}"#
-        ),
-        "expected note text theme color and weight in Sequence CSS: {svg}"
+        svg.contains(r#".noteText,#merman .noteText>tspan{fill:#eeeeee;stroke:none;}"#),
+        "expected note text theme color without a tspan weight override in Sequence CSS: {svg}"
+    );
+    let document = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+    let note_text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("noteText"))
+        .expect("note text");
+    assert!(
+        note_text
+            .attribute("style")
+            .unwrap()
+            .contains("font-weight: 700"),
+        "the configured note weight must reach the text that note tspans inherit"
     );
     assert!(
         svg.contains(r#".activation0{fill:#010203;stroke:#040506;}"#),
@@ -2607,7 +2880,7 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
 }
 
 #[test]
-fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
+fn sequence_central_connection_rtl_layout_uses_neo_marker_spacing() {
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -2640,7 +2913,12 @@ fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
         .expect("expected first central-connection edge");
     assert_eq!(edge.points.len(), 2);
     assert_eq!(edge.points[0].x, 442.0);
-    assert_eq!(edge.points[1].x, 83.0);
+    // The central-connection target boundary is 5px from the actor center; Neo spacing and
+    // arrowhead shortening add another 3px each for this right-to-left signal.
+    assert_eq!(
+        edge.points[1].x,
+        actor_center("actor-top-Alice") + 5.0 + 3.0 + 3.0
+    );
 }
 
 #[test]
@@ -2649,11 +2927,11 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
     let svg = render_sequence_svg_from_fixture(fixture);
 
     assert!(
-        svg.contains(r#"<text x="443" y="32.5""#),
+        svg.contains(r#"<text x="443" y="37""#),
         "expected Bob top actor center from layout to be preserved in SVG: {svg}"
     );
     assert!(
-        svg.contains(r#"<text x="820" y="32.5""#),
+        svg.contains(r#"<text x="820" y="37""#),
         "expected Charlie top actor center from layout to be preserved in SVG: {svg}"
     );
     assert!(
@@ -2661,10 +2939,10 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
             .into_iter()
             .any(|tag| {
                 tag.contains(r#"x1="442""#)
-                    && tag.contains(r#"x2="83""#)
+                    && tag.contains(r#"x2="86""#)
                     && tag.contains(r#"class="messageLine"#)
             }),
-        "expected first message x positions to stay near layout/golden spacing: {svg}"
+        "expected first message to preserve layout centers and Neo marker spacing: {svg}"
     );
 }
 
@@ -2739,4 +3017,852 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         !svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && !svg.contains(r#"Answer: $$2$$"#),
         "expected mixed sequence message formulas to replace source delimiters: {svg}"
     );
+}
+
+#[test]
+fn sequence_neo_shadow_and_participant_paints_are_scoped_and_look_specific() {
+    for (look, theme, flood) in [
+        ("neo", "redux", "#000000"),
+        ("neo", "default", "#FFFFFF"),
+        ("classic", "redux", ""),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look": look,
+            "theme": theme
+        })));
+        let svg = render_sequence_svg_from_text_with_engine(
+            engine,
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: hello\nactivate Bob\nNote over Bob: note\nBob-->>Alice: done\ndeactivate Bob\n",
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+        let filters: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("filter") && node.attribute("id") == Some("merman-drop-shadow")
+            })
+            .collect();
+        assert_eq!(filters.len(), usize::from(look == "neo"));
+        if let Some(filter) = filters.first() {
+            assert_eq!(filter.attribute("height"), Some("130%"));
+            assert_eq!(filter.attribute("width"), Some("130%"));
+            let shadow = filter
+                .children()
+                .find(|node| node.has_tag_name("feDropShadow"))
+                .unwrap();
+            assert_eq!(shadow.attribute("flood-color"), Some(flood));
+            assert_eq!(shadow.attribute("flood-opacity"), Some("0.06"));
+            let definitions: Vec<_> = doc
+                .root_element()
+                .children()
+                .filter(|node| node.has_tag_name("defs"))
+                .collect();
+            assert_eq!(
+                definitions.last().unwrap().first_element_child(),
+                Some(*filter)
+            );
+        }
+        for rect in doc.descendants().filter(|node| node.has_tag_name("rect")) {
+            let class = rect.attribute("class").unwrap_or("");
+            if class.starts_with("actor ") || class.starts_with("activation") || class == "note" {
+                assert_eq!(
+                    rect.attribute("data-look"),
+                    (look == "neo").then_some("neo")
+                );
+            }
+            if class.starts_with("actor ") {
+                assert_eq!(
+                    rect.attribute("rx"),
+                    Some(if look == "neo" { "6" } else { "3" })
+                );
+                assert_eq!(
+                    rect.attribute("filter"),
+                    (look == "neo").then_some("url(#merman-drop-shadow)")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
+    let source = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join("participant_types.mmd"),
+    )
+    .unwrap();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"look": "neo"}),
+    ));
+    let svg = render_sequence_svg_from_text_with_engine(engine, &source);
+    let doc = roxmltree::Document::parse(&svg).expect("Sequence participant-types SVG");
+    for (name, kind) in [("boundary", "boundary"), ("C", "control"), ("E", "entity")] {
+        let node = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("name") == Some(name) && node.attribute("data-type") == Some(kind)
+            })
+            .expect("participant glyph");
+        if kind == "control" {
+            assert_eq!(node.attribute("filter"), None);
+            assert_eq!(
+                node.descendants()
+                    .find(|child| child.has_tag_name("circle"))
+                    .and_then(|circle| circle.attribute("filter")),
+                Some("url(#merman-drop-shadow)")
+            );
+        } else {
+            assert_eq!(
+                node.attribute("filter"),
+                Some("url(#merman-drop-shadow)"),
+                "{name}"
+            );
+        }
+        let label = node
+            .descendants()
+            .find(|child| child.has_tag_name("text"))
+            .expect("glyph label");
+        assert_eq!(
+            label.attribute("y"),
+            Some("62"),
+            "{name} label should share the Neo band"
+        );
+    }
+    let footer_names: Vec<_> = doc
+        .descendants()
+        .filter(|node| {
+            matches!(
+                node.attribute("class"),
+                Some("actor-man actor-bottom") | Some("actor actor-bottom")
+            )
+        })
+        .filter(|node| matches!(node.attribute("name"), Some("boundary" | "C" | "E")))
+        .filter_map(|node| node.attribute("name"))
+        .collect();
+    assert_eq!(footer_names, ["boundary", "C", "E"]);
+}
+
+#[test]
+fn sequence_actor_glyphs_follow_overlays_and_precede_messages_and_popups() {
+    for look in ["classic", "neo"] {
+        for mirror_actors in [false, true] {
+            for actor_type in ["actor", "boundary", "control", "entity"] {
+                let source = format!(
+                    "sequenceDiagram\nparticipant A@{{ \"type\": \"{actor_type}\" }}\nparticipant B\nlinks B: {{\"Docs\": \"https://example.com\"}}\nNote over A: overlay\nloop repeat\nA->>B: ping\nend"
+                );
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "look": look,
+                        "sequence": {"mirrorActors": mirror_actors, "forceMenus": true}
+                    })));
+                let svg = render_sequence_svg_from_text_with_engine(engine, &source);
+                let doc = roxmltree::Document::parse(&svg).expect("Sequence actor order SVG");
+                let children: Vec<_> = doc
+                    .root_element()
+                    .children()
+                    .filter(|n| n.is_element())
+                    .collect();
+                let note = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("note"))
+                    .expect("note");
+                let control = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("control-structure"))
+                    .expect("loop");
+                let actor = children
+                    .iter()
+                    .position(|n| {
+                        n.attribute("data-id") == Some("A")
+                            && n.attribute("data-et") == Some("participant")
+                    })
+                    .expect("top actor glyph");
+                let message = children
+                    .iter()
+                    .position(|n| n.attribute("data-et") == Some("message"))
+                    .expect("message");
+                let popup = children
+                    .iter()
+                    .position(|n| n.attribute("class") == Some("actorPopupMenu"))
+                    .expect("popup");
+                assert!(
+                    note < actor && control < actor && actor < message && message < popup,
+                    "{look}/{actor_type}/mirror={mirror_actors}"
+                );
+                let footer = children.iter().position(|n| {
+                    n.has_tag_name("g")
+                        && n.attribute("name") == Some("A")
+                        && n.attribute("class").is_some_and(|class| {
+                            class
+                                .split_ascii_whitespace()
+                                .any(|part| part == "actor-bottom")
+                        })
+                });
+                if mirror_actors {
+                    let footer = footer.expect("bottom actor glyph");
+                    assert!(message < footer && footer < popup, "{look}/{actor_type}");
+                } else {
+                    assert!(footer.is_none(), "{look}/{actor_type}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting() {
+    let source = "sequenceDiagram\nparticipant Idle\nparticipant A\ncreate participant B\nA->>+B: create\nactivate B\nB-->>A: nested\ndeactivate B\nB-->>-A: done\nactivate A\nA->>B: last\ndeactivate A";
+    for theme in ["redux-color", "redux-dark-color", "default"] {
+        for look in ["classic", "neo"] {
+            for backgrounds in [
+                serde_json::json!(["#110000", "#220000", "#330000"]),
+                serde_json::json!([]),
+            ] {
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                        "look": look,
+                        "theme": theme,
+                        "themeVariables": {
+                            "borderColorArray": ["#000011", "#000022"],
+                            "bkgColorArray": backgrounds,
+                            "mainBkg": "#445566"
+                        }
+                    })));
+                let svg = render_sequence_svg_from_text_with_engine(engine, source);
+                let doc =
+                    roxmltree::Document::parse(&svg).expect("Sequence activation palette SVG");
+                let activations: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("rect")
+                            && node
+                                .attribute("class")
+                                .is_some_and(|class| class.starts_with("activation"))
+                    })
+                    .collect();
+                assert_eq!(activations.len(), 3);
+                for (activation, actor_index) in activations.iter().zip([2, 2, 1]) {
+                    if theme == "default" {
+                        assert_eq!(activation.attribute("style"), None);
+                        continue;
+                    }
+                    let stroke = if actor_index == 2 {
+                        "rgb(0, 0, 17)"
+                    } else {
+                        "rgb(0, 0, 34)"
+                    };
+                    let fill = if backgrounds.as_array().unwrap().is_empty() {
+                        "rgb(68, 85, 102)"
+                    } else if actor_index == 2 {
+                        "rgb(51, 0, 0)"
+                    } else {
+                        "rgb(34, 0, 0)"
+                    };
+                    let expected = format!("stroke: {stroke}; fill: {fill};");
+                    assert_eq!(
+                        activation.attribute("style"),
+                        Some(expected.as_str()),
+                        "{theme}/{look}/actor={actor_index}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_popup_text_uses_resolved_actor_font_style() {
+    let source = "sequenceDiagram\nparticipant A\nlinks A: {\"Docs\": \"https://example.com\"}";
+    for (config, expected_size, expected_weight) in [
+        (
+            serde_json::json!({
+                "fontSize": 22,
+                "fontWeight": 600,
+                "sequence": {"forceMenus": true}
+            }),
+            "22px",
+            "600",
+        ),
+        (
+            serde_json::json!({
+                "sequence": {
+                    "forceMenus": true,
+                    "actorFontSize": 19,
+                    "actorFontWeight": "bold"
+                }
+            }),
+            "16px",
+            "bold",
+        ),
+    ] {
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            source,
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence popup SVG");
+        let text = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("class") == Some("actorPopupMenu")
+            })
+            .and_then(|popup| popup.descendants().find(|node| node.has_tag_name("text")))
+            .expect("popup text");
+        let style = text.attribute("style").expect("popup style");
+        assert!(
+            style.contains(&format!("font-size: {expected_size};")),
+            "{style}"
+        );
+        assert!(
+            style.contains(&format!("font-weight: {expected_weight};")),
+            "{style}"
+        );
+    }
+}
+
+#[test]
+fn sequence_popup_inherits_actor_rect_height_position_width_and_corner_radius() {
+    let source = "sequenceDiagram\nparticipant A as First<br/>Second<br/>Third<br/>Fourth\nlinks A: {\"Docs\": \"https://example.com\", \"A very long popup menu label requiring a wider panel\": \"https://example.com/long\"}";
+    for look in ["classic", "neo"] {
+        for theme in ["default", "redux-color"] {
+            for mirror_actors in [false, true] {
+                let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({
+                        "look": look,
+                        "theme": theme,
+                        "sequence": {"mirrorActors": mirror_actors, "forceMenus": true, "wrap": true},
+                        "themeVariables": {"nodeBorderRadius": 22}
+                    }),
+                ));
+                let svg = render_sequence_svg_from_text_with_engine(engine, source);
+                let doc = roxmltree::Document::parse(&svg).expect("Sequence popup SVG");
+                let actor = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect")
+                            && node.attribute("name") == Some("A")
+                            && node.attribute("class")
+                                == Some(if mirror_actors {
+                                    "actor actor-bottom"
+                                } else {
+                                    "actor actor-top"
+                                })
+                    })
+                    .expect("actor rect");
+                let popup = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("actorPopupMenu")
+                    })
+                    .expect("popup");
+                let panel = popup
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .expect("popup panel");
+                assert_eq!(popup.attribute("display"), Some("block !important"));
+                assert_eq!(panel.attribute("x"), actor.attribute("x"));
+                assert_eq!(panel.attribute("y"), actor.attribute("height"));
+                let radius = if look == "neo" { "6" } else { "3" };
+                assert_eq!(panel.attribute("rx"), Some(radius));
+                assert_eq!(panel.attribute("ry"), Some(radius));
+                let actor_height: f64 = actor.attribute("height").unwrap().parse().unwrap();
+                assert!(
+                    actor_height > 65.0,
+                    "wrapped actor must exceed configured height"
+                );
+                assert!(
+                    panel.attribute("width").unwrap().parse::<f64>().unwrap()
+                        > actor.attribute("width").unwrap().parse::<f64>().unwrap(),
+                    "long link label must widen popup panel"
+                );
+                let text = popup
+                    .descendants()
+                    .find(|node| node.has_tag_name("text"))
+                    .expect("popup text");
+                let text_y: f64 = text.attribute("y").unwrap().parse().unwrap();
+                assert_eq!(text_y, actor_height + 30.0);
+                let view_box: Vec<f64> = doc
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|n| n.parse().unwrap())
+                    .collect();
+                let popup_bottom =
+                    actor_height + panel.attribute("height").unwrap().parse::<f64>().unwrap();
+                assert!(
+                    view_box[1] + view_box[3] >= popup_bottom,
+                    "popup must fit the root bounds: {look}/{theme}/mirror={mirror_actors}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_labels_and_popups_share_resolved_weight() {
+    let source = "sequenceDiagram\nparticipant A\nlinks A: {\"Docs\": \"https://example.com\"}";
+    for (root, expected) in [
+        (serde_json::json!("bogus"), None),
+        (serde_json::json!(true), None),
+        (serde_json::json!("700; fill: red"), None),
+        (serde_json::json!("bolder"), Some("bolder")),
+        (serde_json::json!("inherit"), Some("inherit")),
+        (serde_json::json!(false), Some("700")),
+        (serde_json::json!(0), Some("700")),
+    ] {
+        let config = serde_json::json!({
+            "fontWeight": root,
+            "sequence": {"actorFontWeight": 700, "forceMenus": true}
+        });
+        let svg = render_sequence_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            source,
+        );
+        let doc = roxmltree::Document::parse(&svg).expect("Sequence SVG");
+        let texts =
+            doc.descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && (node.attribute("class").is_some_and(|class| {
+                            class.split_whitespace().any(|part| part == "actor")
+                        }) || node
+                            .ancestors()
+                            .any(|ancestor| ancestor.attribute("class") == Some("actorPopupMenu")))
+                })
+                .collect::<Vec<_>>();
+        assert_eq!(texts.len(), 3, "two actor labels and one menu label");
+        for text in texts {
+            let style = text.attribute("style").expect("text style");
+            match expected {
+                Some(weight) => assert!(
+                    style.contains(&format!("font-weight: {weight};")),
+                    "{config}: {style}"
+                ),
+                None => assert!(!style.contains("font-weight"), "{config}: {style}"),
+            }
+            assert!(!style.contains("fill: red"), "CSS must remain one value");
+        }
+    }
+}
+
+#[test]
+fn sequence_numeric_actor_weight_matches_string_in_popup_measurement_and_bounds() {
+    let mut outputs = Vec::new();
+    for weight in [serde_json::json!(700), serde_json::json!("700")] {
+        let config =
+            serde_json::json!({"sequence": {"actorFontWeight": weight, "forceMenus": true}});
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A\nlinks A: {{\"probe-long-popup-label\": \"https://example.com\"}}"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::WeightSensitiveMetrics,
+            "sequence-weight-probe",
+            RenderEnvironment::deterministic(),
+        );
+        let requests = observation
+            .requests
+            .iter()
+            .filter(|request| request.text == "probe-long-popup-label")
+            .collect::<Vec<_>>();
+        assert!(
+            requests.len() >= 2,
+            "root bounds and popup rendering must measure the menu"
+        );
+        for request in requests {
+            assert_eq!(request.font_weight.as_deref(), Some("700"), "{request:?}");
+        }
+        let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+        let popup = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("actorPopupMenu"))
+            .unwrap();
+        let panel = popup
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        let width: f64 = panel.attribute("width").unwrap().parse().unwrap();
+        assert!(
+            width >= 420.0,
+            "font-sensitive host width must reach popup geometry"
+        );
+        let viewbox = doc
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        let x: f64 = panel.attribute("x").unwrap().parse().unwrap();
+        assert!(
+            viewbox[0] + viewbox[2] >= x + width,
+            "root bounds must contain the menu"
+        );
+        outputs.push(observation.render.svg);
+    }
+    assert_eq!(
+        outputs[0], outputs[1],
+        "numeric and string weights must have identical geometry and SVG"
+    );
+}
+
+#[test]
+fn sequence_wrapped_actor_height_uses_host_text_dimensions() {
+    for description in [
+        "probe-one<br>probe-two<br>probe-three<br>probe-four",
+        "probe-one probe-two probe-three probe-four",
+    ] {
+        for (look, expected_height) in [("classic", 96.0), ("neo", 152.0)] {
+            let config = serde_json::json!({
+                "look": look,
+                "sequence": {"wrap": true, "mirrorActors": false}
+            });
+            let source = format!(
+                "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A as {description}"
+            );
+            let observation = render_sequence_with_host_environment(
+                &source,
+                SequenceHostResponse::WeightSensitiveMetrics,
+                "sequence-wrapped-actor-height",
+                RenderEnvironment::deterministic(),
+            );
+            let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+            let actor = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("name") == Some("A")
+                        && node.attribute("class") == Some("actor actor-top")
+                })
+                .expect("actor rectangle");
+            assert_eq!(
+                actor.attribute("height").unwrap().parse::<f64>().unwrap(),
+                expected_height,
+                "{look}/{description}: all four host-measured 24px lines must size the participant row"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_box_titles_share_measured_height_and_use_actor_font_when_drawn() {
+    let config = serde_json::json!({
+        "fontSize": 26,
+        "sequence": {"actorFontWeight": 700, "messageFontWeight": 400}
+    });
+    let source = format!(
+        "---\nconfig: {config}\n---\nsequenceDiagram\nbox probe-one<br>probe-two\nparticipant A\nend\nbox probe-other\nparticipant B\nend\nA->>B: hello"
+    );
+    let observation = render_sequence_with_host_environment(
+        &source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-box-height",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+    let actors = doc
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actors.len(), 2);
+    for actor in actors {
+        assert_eq!(
+            actor.attribute("y"),
+            Some("58"),
+            "10px margin plus tallest 48px title"
+        );
+    }
+    let titles = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(titles.len(), 3, "one text/tspan pair per title line");
+    let mut offsets = Vec::new();
+    for title in titles {
+        assert_eq!(
+            title.attribute("y"),
+            Some("29"),
+            "all boxes share the maximum title height"
+        );
+        let style = title.attribute("style").expect("title style");
+        assert!(style.contains("font-size: 26px;"), "{style}");
+        assert!(style.contains("font-weight: 700;"), "{style}");
+        let tspan = title
+            .children()
+            .find(|node| node.has_tag_name("tspan"))
+            .unwrap();
+        offsets.push(tspan.attribute("dy").unwrap().parse::<i32>().unwrap());
+    }
+    offsets.sort_unstable();
+    assert_eq!(offsets, [-13, 0, 13]);
+    for request in observation.requests.iter().filter(|request| {
+        request.text.starts_with("probe-")
+            && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+    }) {
+        assert_eq!(
+            f64::from_bits(request.font_size_bits),
+            26.0,
+            "box dimensions use the resolved messageFont"
+        );
+        assert_eq!(request.font_weight.as_deref(), Some("400"));
+    }
+}
+
+#[test]
+fn sequence_box_frames_use_source_padding_and_global_cursor() {
+    for (mirror, expected_height) in [(false, 139.0), (true, 264.0)] {
+        let config = serde_json::json!({
+            "look": "classic",
+            "sequence": {"boxMargin": 20, "boxTextMargin": 3, "mirrorActors": mirror}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nbox probe-one\nparticipant A\nend"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::WeightSensitiveMetrics,
+            "sequence-box-frame",
+            RenderEnvironment::deterministic(),
+        );
+        let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+        let frame = doc
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+            .unwrap();
+        assert_eq!(frame.attribute("x"), Some("-40"));
+        assert_eq!(frame.attribute("y"), Some("-10"));
+        assert_eq!(frame.attribute("width"), Some("236"));
+        assert_eq!(
+            frame.attribute("height").unwrap().parse::<f64>().unwrap(),
+            expected_height
+        );
+        let title = doc
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+            .unwrap();
+        assert_eq!(title.attribute("y"), Some("15"));
+    }
+}
+
+#[test]
+fn sequence_unnamed_narrow_box_still_reserves_wrap_padding() {
+    let config = serde_json::json!({
+        "sequence": {"width": 20, "wrap": true, "boxMargin": 0, "boxTextMargin": 5, "wrapPadding": 10}
+    });
+    let source = format!("---\nconfig: {config}\n---\nsequenceDiagram\nbox\nparticipant A\nend");
+    let observation =
+        render_sequence_with_environment(&source, &RenderEnvironment::deterministic());
+    let doc = roxmltree::Document::parse(&observation.svg).unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("x"), Some("10"));
+    let frame = doc
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+        .unwrap();
+    assert_eq!(frame.attribute("x"), Some("0"));
+    assert_eq!(frame.attribute("width"), Some("40"));
+    assert!(
+        !doc.descendants()
+            .any(|node| { node.has_tag_name("text") && node.attribute("class") == Some("text") })
+    );
+}
+
+#[test]
+fn sequence_box_wraps_title_before_measurement_and_emission() {
+    let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nbox probe-long-one probe-long-two probe-long-three\nparticipant A\nend";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-wrapped-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("y"), Some("82"));
+    let titles = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(titles.len(), 3);
+    let lines = titles
+        .iter()
+        .map(|node| {
+            node.children()
+                .find(|child| child.has_tag_name("tspan"))
+                .unwrap()
+                .text()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        ["probe-long-one", "probe-long-two", "probe-long-three"]
+    );
+    assert!(
+        observation
+            .requests
+            .iter()
+            .filter(|request| { request.text.starts_with("probe-") })
+            .all(|request| request.phase == TextMeasurementPhase::SvgBBox
+                && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions)
+    );
+}
+
+#[test]
+fn sequence_box_start_precedes_created_actor_half_width_spacing() {
+    let source = "---\nconfig: {look: classic, sequence: {boxMargin: 20, boxTextMargin: 3}}\n---\nsequenceDiagram\nparticipant A\ncreate participant B\nA->>B: hello\nbox probe-one\nparticipant B as Bee\nend";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-created-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    let frame = doc
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+        .unwrap();
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class") == Some("actor actor-top")
+                && node.attribute("name") == Some("B")
+        })
+        .unwrap();
+    let actor_x = actor.attribute("x").unwrap().parse::<f64>().unwrap();
+    let actor_width = actor.attribute("width").unwrap().parse::<f64>().unwrap();
+    assert_eq!(
+        frame.attribute("x").unwrap().parse::<f64>().unwrap(),
+        actor_x - 3.0 - actor_width / 2.0 - 40.0
+    );
+    assert_eq!(
+        frame.attribute("width").unwrap().parse::<f64>().unwrap(),
+        actor_width * 1.5 + 6.0 + 80.0
+    );
+    assert_eq!(
+        frame.attribute("y"),
+        Some("-10"),
+        "created actor's later y must not move the frame"
+    );
+}
+
+#[test]
+fn sequence_empty_box_is_measured_but_not_drawn() {
+    let source = "sequenceDiagram\nbox probe-empty\nend\nparticipant A";
+    let observation = render_sequence_with_host_environment(
+        source,
+        SequenceHostResponse::WeightSensitiveMetrics,
+        "sequence-empty-box",
+        RenderEnvironment::deterministic(),
+    );
+    let doc = roxmltree::Document::parse(&observation.render.svg).unwrap();
+    assert!(
+        !doc.descendants()
+            .any(|node| node.attribute("class") == Some("rect"))
+    );
+    assert!(
+        !doc.descendants()
+            .any(|node| node.attribute("class") == Some("text"))
+    );
+    let actor = doc
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+        })
+        .unwrap();
+    assert_eq!(actor.attribute("y"), Some("34"));
+}
+
+#[test]
+fn sequence_family_fonts_match_measurement_and_svg_with_falsy_or_string_global_size() {
+    for (global_size, override_size) in [
+        (serde_json::json!(""), None),
+        (serde_json::json!(0), None),
+        (serde_json::json!("22"), Some(22.0)),
+        (serde_json::json!("22px"), Some(22.0)),
+    ] {
+        let config = serde_json::json!({
+            "fontFamily": "",
+            "fontSize": global_size,
+            "sequence": {
+                "actorFontFamily": "serif",
+                "actorFontSize": "19px",
+                "noteFontFamily": "monospace",
+                "noteFontSize": "32",
+                "messageFontFamily": "sans-serif",
+                "messageFontSize": "12px"
+            }
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\nsequenceDiagram\nparticipant A as probe-actor\nA->>A: probe-message\nNote right of A: probe-note<br/>probe-note-second"
+        );
+        let observation = render_sequence_with_host_environment(
+            &source,
+            SequenceHostResponse::Missing,
+            "sequence-family-fonts",
+            RenderEnvironment::deterministic(),
+        );
+        let doc = roxmltree::Document::parse(&observation.render.svg).expect("Sequence SVG");
+        for (probe, class, family, size, expected_count) in [
+            ("probe-actor", "actor", "serif", 19.0, 2),
+            ("probe-note", "noteText", "monospace", 32.0, 2),
+            ("probe-message", "messageText", "sans-serif", 12.0, 1),
+        ] {
+            let size: f64 = override_size.unwrap_or(size);
+            let requests = observation
+                .requests
+                .iter()
+                .filter(|request| request.text.contains(probe))
+                .collect::<Vec<_>>();
+            assert!(!requests.is_empty(), "{config}: {probe} must be measured");
+            for request in &requests {
+                assert_eq!(
+                    request.font_size_bits,
+                    size.to_bits(),
+                    "{config}: {probe} must use the same size in every measurement phase: {request:?}"
+                );
+            }
+            assert!(
+                requests
+                    .iter()
+                    .any(|request| request.font_family.as_deref() == Some(family)),
+                "{config}: {probe} must reach its own configured font family"
+            );
+            let texts = doc
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node
+                            .attribute("class")
+                            .is_some_and(|value| value.split_whitespace().any(|part| part == class))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(texts.len(), expected_count, "{config}: {class}");
+            for text in texts {
+                let style = text.attribute("style").expect("inline font style");
+                assert!(
+                    style.contains(&format!("font-size: {size}px;")),
+                    "{config}: {class} has the wrong size: {style}"
+                );
+                assert!(
+                    style.contains(&format!("font-family: {family};")),
+                    "{config}: {class} has the wrong family: {style}"
+                );
+            }
+        }
+    }
 }

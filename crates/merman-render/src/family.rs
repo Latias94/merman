@@ -2,7 +2,11 @@ use crate::environment::RenderSession;
 #[cfg(feature = "diagram-sequence")]
 use crate::environment::TextMeasurementPhase;
 use crate::model::*;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 use crate::presentation::FlowchartPresentationPolicy;
 use crate::presentation::{
     PresentationAspectResolution, PresentationProfile, PresentationRenderPolicy,
@@ -59,6 +63,8 @@ pub enum RenderFamilyKind {
     Ishikawa,
     EventModeling,
     Venn,
+    Usecase,
+    Agentflow,
 }
 
 impl RenderFamilyKind {
@@ -97,6 +103,8 @@ impl RenderFamilyKind {
             Self::Ishikawa => "ishikawa",
             Self::EventModeling => "eventmodeling",
             Self::Venn => "venn",
+            Self::Usecase => "usecase",
+            Self::Agentflow => "agentflow",
         }
     }
 }
@@ -211,7 +219,11 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     render_context: diagrams::flowchart::FlowchartRenderContext,
@@ -219,7 +231,11 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     policy: Option<FlowchartPresentationPolicy>,
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 impl<L> FlowchartFamilyArtifact<L> {
     pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
         &self.pair
@@ -240,6 +256,11 @@ impl<L> FlowchartFamilyArtifact<L> {
 
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow {
+        semantic: Box<diagrams::agentflow::AgentflowDiagramRenderModel>,
+        flow: Box<FlowchartFamilyArtifact<FlowchartLayout>>,
+    },
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     #[cfg(feature = "diagram-mindmap")]
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
@@ -363,10 +384,21 @@ pub(crate) enum BuiltinFamilyArtifact {
     ),
     #[cfg(feature = "diagram-venn")]
     Venn(Box<FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>>),
+    #[cfg(feature = "diagram-usecase")]
+    Usecase(
+        Box<
+            FamilyPair<
+                diagrams::usecase::UsecaseDiagramRenderModel,
+                crate::usecase::UsecasePreparedArtifact,
+            >,
+        >,
+    ),
 }
 
 #[derive(serde::Serialize)]
 enum LayoutProjection<'a> {
+    #[cfg(feature = "diagram-agentflow")]
+    AgentflowDiagram(&'a FlowchartLayout),
     #[cfg(feature = "diagram-block")]
     BlockDiagram(&'a BlockDiagramLayout),
     #[cfg(feature = "diagram-requirement")]
@@ -384,6 +416,8 @@ enum LayoutProjection<'a> {
     TreemapDiagram(&'a TreemapDiagramLayout),
     #[cfg(feature = "diagram-venn")]
     VennDiagram(&'a VennDiagramLayout),
+    #[cfg(feature = "diagram-usecase")]
+    UsecaseDiagram(&'a crate::usecase::UsecaseDiagramLayout),
     #[cfg(feature = "diagram-xychart")]
     XyChartDiagram(&'a XyChartDiagramLayout),
     #[cfg(feature = "diagram-quadrant-chart")]
@@ -497,6 +531,8 @@ fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value
 impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow { .. } => RenderFamilyKind::Agentflow,
             Self::Error(_) => RenderFamilyKind::Error,
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
@@ -563,6 +599,8 @@ impl BuiltinFamilyArtifact {
             Self::EventModeling(_) => RenderFamilyKind::EventModeling,
             #[cfg(feature = "diagram-venn")]
             Self::Venn(_) => RenderFamilyKind::Venn,
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(_) => RenderFamilyKind::Usecase,
         }
     }
 
@@ -571,6 +609,8 @@ impl BuiltinFamilyArtifact {
         metadata: &ParseMetadata,
     ) -> merman_core::Result<serde_json::Value> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow { semantic, .. } => semantic.compatibility_json(metadata),
             Self::Error(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
@@ -637,11 +677,15 @@ impl BuiltinFamilyArtifact {
             Self::EventModeling(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "diagram-venn")]
             Self::Venn(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(pair) => pair.compatibility_json(metadata),
         }
     }
 
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow { flow, .. } => LayoutProjection::AgentflowDiagram(flow.pair.layout()),
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
@@ -708,6 +752,8 @@ impl BuiltinFamilyArtifact {
             Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
             #[cfg(feature = "diagram-venn")]
             Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(pair) => LayoutProjection::UsecaseDiagram(pair.layout().layout()),
         }
     }
 }
@@ -1079,11 +1125,26 @@ fn render_family_artifact_svg(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
+    #[cfg(feature = "diagram-agentflow")]
+    // Agentflow is adapted to the Flowchart renderer, while Mermaid's config namespace remains
+    // `agentflow`. Keep the public metadata untouched and project only the renderer input.
+    let projected_metadata = if matches!(&artifact.family, BuiltinFamilyArtifact::Agentflow { .. })
+    {
+        let mut metadata = artifact.metadata.clone();
+        metadata.effective_config = project_agentflow_flowchart_config(&metadata.effective_config);
+        Some(metadata)
+    } else {
+        None
+    };
+    #[cfg(feature = "diagram-agentflow")]
+    let metadata = projected_metadata.as_ref().unwrap_or(&artifact.metadata);
+    #[cfg(not(feature = "diagram-agentflow"))]
+    let metadata = &artifact.metadata;
     #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             pair,
-            &artifact.metadata.effective_config,
+            &metadata.effective_config,
             &artifact.session,
             &options,
             debug,
@@ -1091,7 +1152,7 @@ fn render_family_artifact_svg(
     }
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
-        &artifact.metadata,
+        metadata,
         &artifact.session,
         &options,
         debug,
@@ -1111,7 +1172,11 @@ fn prepare_pair<S, L>(
 struct FlowchartSvgLabelPreparation(bool);
 
 impl FlowchartSvgLabelPreparation {
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
     const fn enabled(self) -> bool {
         self.0
     }
@@ -1120,7 +1185,11 @@ impl FlowchartSvgLabelPreparation {
 const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
     FlowchartSvgLabelPreparation(true);
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     render_context: diagrams::flowchart::FlowchartRenderContext,
@@ -1145,6 +1214,64 @@ fn prepare_flowchart_artifact<L>(
         svg_label_sidecar,
         policy,
     }))
+}
+
+#[cfg(feature = "diagram-agentflow")]
+fn project_agentflow_flowchart_config(
+    config: &merman_core::MermaidConfig,
+) -> merman_core::MermaidConfig {
+    let mut projected = config.clone();
+    let root = config.as_value();
+    let agentflow = root.get("agentflow").unwrap_or(&serde_json::Value::Null);
+    // Agentflow's renderer owns the root viewport. Defaults here mirror its `??`
+    // expressions; normal Engine configuration already includes schema defaults.
+    // Overwrite even absent family values so unrelated Flowchart settings cannot leak in.
+    for (key, fallback) in [
+        ("diagramPadding", serde_json::json!(8)),
+        ("useMaxWidth", serde_json::json!(true)),
+        ("titleTopMargin", serde_json::json!(0)),
+    ] {
+        let value = agentflow.get(key).filter(|value| !value.is_null());
+        projected.set_value(
+            &format!("flowchart.{key}"),
+            value.cloned().unwrap_or(fallback),
+        );
+    }
+    // Dagre takes a truthy root override before the renderer's family spacing.
+    // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
+    // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
+    // Resolve registration first: an unavailable ELK loader executes Dagre instead.
+    let uses_dagre = crate::layout_backend::resolve_graph_layout(root).backend
+        == crate::layout_backend::GraphLayoutBackend::Dagre;
+    for key in ["nodeSpacing", "rankSpacing"] {
+        let value = uses_dagre
+            .then(|| {
+                root.get(key)
+                    .filter(|value| crate::config::json_value_is_truthy(value))
+                    .or_else(|| {
+                        agentflow
+                            .get(key)
+                            .filter(|value| crate::config::json_value_is_truthy(value))
+                    })
+            })
+            .flatten();
+        projected.set_value(
+            &format!("flowchart.{key}"),
+            value.cloned().unwrap_or_else(|| serde_json::json!(50)),
+        );
+    }
+    // AgentflowDB assigns these values to each node before the shared shape helpers
+    // read them. Node-specific values precede Flowchart configuration; only a falsy
+    // wrappingWidth falls through via labelHelper's JavaScript `||` expression.
+    for key in ["minNodeWidth", "wrappingWidth"] {
+        if let Some(value) = agentflow.get(key) {
+            if key == "wrappingWidth" && !crate::config::json_value_is_truthy(value) {
+                continue;
+            }
+            projected.set_value(&format!("flowchart.{key}"), value.clone());
+        }
+    }
+    projected
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1185,6 +1312,29 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(model) => {
+            crate::usecase::requires_math(model, &parsed.metadata().effective_config)
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(model) => model
+            .vertices
+            .iter()
+            .filter_map(|node| node.label.as_deref())
+            .chain(model.edges.iter().filter_map(|edge| edge.label.as_deref()))
+            .chain(
+                model
+                    .sub_graphs
+                    .iter()
+                    .filter_map(|graph| graph.title.as_deref()),
+            )
+            .chain(
+                model
+                    .connectors
+                    .iter()
+                    .filter_map(|connector| connector.title.as_deref()),
+            )
+            .any(crate::math::contains_delimited_math),
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1222,22 +1372,59 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
             required.push(RenderCapability::LayoutCytoscape);
         }
         #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(_)
-            if !crate::mindmap::uses_tidy_tree_layout(effective_config.as_value()) =>
-        {
-            required.push(RenderCapability::LayoutCytoscape);
+        RenderSemanticModel::Mindmap(_) => {
+            if let Some(capability) = crate::mindmap::required_layout_capability(effective_config) {
+                required.push(capability);
+            }
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
+        }
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
+        }
+        #[cfg(feature = "diagram-state")]
+        RenderSemanticModel::State(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
+        }
+        #[cfg(feature = "diagram-requirement")]
+        RenderSemanticModel::Requirement(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Flowchart(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(_) if crate::uses_elk_layout(effective_config) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Class(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(_) if crate::er::uses_elk_layout(effective_config.as_value()) => {
-            required.push(RenderCapability::LayoutElk);
+        RenderSemanticModel::Er(_) => {
+            required.extend(
+                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
+                    .required_capability(),
+            );
         }
         _ => {}
     }
@@ -1257,6 +1444,8 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
 pub fn supports_diagram_type(diagram_type: &str) -> bool {
     match merman_core::diagram_type_family_kind(diagram_type) {
         Some("error") => true,
+        Some("agentflow") => cfg!(feature = "diagram-agentflow"),
+        Some("usecase") => cfg!(feature = "diagram-usecase"),
         Some("flowchart") => cfg!(feature = "diagram-flowchart"),
         Some("swimlane") => cfg!(feature = "diagram-swimlane"),
         Some("mindmap") => cfg!(feature = "diagram-mindmap"),
@@ -1354,11 +1543,18 @@ pub fn plan_render_with_policy(
         RenderSemanticModel::Flowchart(_) => {
             meta.effective_config.get_str("layout") != Some("swimlane")
         }
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(_) => {
+            meta.effective_config.get_str("layout") != Some("swimlane")
+        }
         _ => false,
     };
     let presentation_aspects = render_policy.resolve_aspects(
         flowchart_svg_applicable,
-        crate::uses_elk_layout(&meta.effective_config),
+        crate::layout_backend::ElkRootAlgorithm::from_name(
+            crate::layout_backend::resolve_graph_layout(meta.effective_config.as_value()).requested,
+        )
+        .is_some(),
         capability_is_available(RenderCapability::LayoutElk, session),
     );
 
@@ -1376,19 +1572,11 @@ pub fn plan_render_with_policy(
 fn prepare_class_family(
     model: ClassDiagram,
     meta: &ParseMetadata,
-    diagram_type: &str,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
     Ok(BuiltinFamilyArtifact::Class(prepare_pair(
         model,
-        |model| {
-            crate::layout_class_typed_by_engine(
-                diagram_type,
-                model,
-                &meta.effective_config,
-                execution,
-            )
-        },
+        |model| crate::layout_class_typed_by_engine(model, &meta.effective_config, execution),
     )?))
 }
 
@@ -1404,9 +1592,8 @@ fn prepare_class_render(
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
-    let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
-    let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
+    let family = prepare_class_family(model, &meta, &execution)?;
 
     Ok(FamilyRenderArtifact {
         metadata: meta,
@@ -1533,6 +1720,8 @@ fn prepare_non_class_render(
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
                 )
             })?)
         }
@@ -1542,8 +1731,7 @@ fn prepare_non_class_render(
                 crate::state::layout_state_diagram_typed_with_work_meter(
                     model,
                     effective_config,
-                    execution.text_measurer(),
-                    execution.work_meter(),
+                    &execution,
                 )
             })?)
         }
@@ -1599,7 +1787,6 @@ fn prepare_non_class_render(
                 flowchart_svg_label_preparation,
                 |model, label_sources, svg_label_sidecar| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
-                        diagram_type,
                         model,
                         label_sources,
                         &meta.effective_config,
@@ -1752,7 +1939,9 @@ fn prepare_non_class_render(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.work_meter_ref(),
+                    execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
                 )
             })?)
         }
@@ -1906,6 +2095,44 @@ fn prepare_non_class_render(
                 )
             })?)
         }
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(model) => {
+            BuiltinFamilyArtifact::Usecase(prepare_pair(model, |model| {
+                crate::usecase::prepare_usecase_diagram(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.math_renderer(),
+                    execution.work_meter(),
+                    #[cfg(feature = "layout-elk")]
+                    execution.elk_operation_seed(),
+                )
+            })?)
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(model) => {
+            let (flowchart, render_context) = model.to_flowchart_model();
+            let agentflow_config = project_agentflow_flowchart_config(&meta.effective_config);
+            let flow = prepare_flowchart_artifact(
+                flowchart,
+                render_context,
+                render_policy.flowchart(),
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
+                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                        model,
+                        label_sources,
+                        &agentflow_config,
+                        &execution,
+                        svg_label_sidecar,
+                    )
+                },
+            )?;
+            BuiltinFamilyArtifact::Agentflow {
+                semantic: Box::new(model),
+                flow,
+            }
+        }
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }
@@ -1971,6 +2198,128 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn agentflow_layout_config_prioritizes_family_measurement_keys() {
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "agentflow": { "minNodeWidth": 180, "wrappingWidth": 240 },
+            "flowchart": { "minNodeWidth": 90 }
+        }));
+        let projected = project_agentflow_flowchart_config(&config);
+        let number = |config: &merman_core::MermaidConfig, path: &str| {
+            config
+                .as_value()
+                .pointer(path)
+                .and_then(serde_json::Value::as_f64)
+        };
+        assert_eq!(number(&projected, "/flowchart/minNodeWidth"), Some(180.0));
+        assert_eq!(number(&projected, "/flowchart/wrappingWidth"), Some(240.0));
+        assert_eq!(number(&config, "/flowchart/wrappingWidth"), None);
+        assert_eq!(number(&config, "/agentflow/minNodeWidth"), Some(180.0));
+    }
+
+    #[test]
+    fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
+        for wrapping in [json!(0), json!(null), json!(false), json!("")] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "agentflow": { "minNodeWidth": 0, "wrappingWidth": wrapping },
+                "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
+            assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
+        }
+    }
+
+    #[test]
+    fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings() {
+        for family in [json!({}), json!(null)] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "agentflow": family,
+                "flowchart": {
+                    "diagramPadding": 99, "titleTopMargin": 99, "useMaxWidth": false,
+                    "nodeSpacing": 99, "rankSpacing": 99,
+                    "padding": 17, "curve": "linear", "htmlLabels": false,
+                    "inheritDir": true, "subGraphTitleMargin": {"top": 7}
+                }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            assert_eq!(flow["diagramPadding"], 8);
+            assert_eq!(flow["titleTopMargin"], 0);
+            assert_eq!(flow["useMaxWidth"], true);
+            assert_eq!(flow["nodeSpacing"], 50);
+            assert_eq!(flow["rankSpacing"], 50);
+            for key in [
+                "padding",
+                "curve",
+                "htmlLabels",
+                "inheritDir",
+                "subGraphTitleMargin",
+            ] {
+                assert_eq!(flow[key], config.as_value()["flowchart"][key]);
+            }
+        }
+        for value in [json!(null), json!(0)] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "nodeSpacing": 90, "rankSpacing": 0,
+                "agentflow": {
+                    "diagramPadding": value, "titleTopMargin": value, "useMaxWidth": false,
+                    "nodeSpacing": 200, "rankSpacing": value
+                }
+            }));
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            assert_eq!(flow["diagramPadding"], if value.is_null() { 8 } else { 0 });
+            assert_eq!(flow["titleTopMargin"], 0);
+            assert_eq!(flow["useMaxWidth"], false);
+            assert_eq!(flow["nodeSpacing"], 90);
+            assert_eq!(flow["rankSpacing"], 50);
+        }
+    }
+
+    #[test]
+    fn agentflow_spacing_projection_follows_registered_backend_selection() {
+        for layout in [
+            "dagre",
+            "unknown",
+            "elk.layered",
+            "elk",
+            "elk.stress",
+            "elk.force",
+            "elk.mrtree",
+            "elk.sporeOverlap",
+            "elk.box",
+            "elk.rectpacking",
+        ] {
+            let config = merman_core::MermaidConfig::from_value(json!({
+                "layout": layout,
+                "nodeSpacing": 90, "rankSpacing": 110,
+                "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
+                "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
+            }));
+            let selected = crate::layout_backend::resolve_graph_layout(config.as_value());
+            let projected = project_agentflow_flowchart_config(&config);
+            let flow = &projected.as_value()["flowchart"];
+            let elk_registered = cfg!(feature = "layout-elk")
+                && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
+            assert_eq!(
+                selected.backend == crate::layout_backend::GraphLayoutBackend::Elk,
+                elk_registered,
+                "{layout}"
+            );
+            assert_eq!(
+                flow["nodeSpacing"],
+                if elk_registered { 50 } else { 90 },
+                "{layout}"
+            );
+            assert_eq!(
+                flow["rankSpacing"],
+                if elk_registered { 50 } else { 110 },
+                "{layout}"
+            );
+        }
     }
 
     #[test]
@@ -3057,7 +3406,14 @@ system - satisfies -> req1
             .begin_session()
             .unwrap();
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
     }
 
@@ -3175,7 +3531,14 @@ class Formula["$$x^2$$"]
             .unwrap();
 
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
         assert!(!plan.is_ready());
 
@@ -3236,7 +3599,14 @@ class Formula["$$x^2$$"]
             .unwrap();
 
         let plan = plan_render(&parsed, &session).unwrap();
-        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(
+            plan.required_capabilities(),
+            if cfg!(feature = "layout-elk") {
+                &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+            } else {
+                &[RenderCapability::Math][..]
+            }
+        );
         assert!(plan.missing_capabilities().is_empty());
         assert!(plan.is_ready());
 
@@ -3318,7 +3688,14 @@ $$interface$$ ()-- Formula
                 .unwrap();
 
             let plan = plan_render(&parsed, &session).unwrap();
-            assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+            assert_eq!(
+                plan.required_capabilities(),
+                if cfg!(feature = "layout-elk") {
+                    &[RenderCapability::LayoutElk, RenderCapability::Math][..]
+                } else {
+                    &[RenderCapability::Math][..]
+                }
+            );
             assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
 
             let svg = render_class_math(source);

@@ -30,6 +30,7 @@ required-features = ["binding-generation"]
 [features]
 # Diagram selection is independent of output formats and optional layout engines.
 all-diagrams = [
+    "diagram-agentflow",
     "diagram-architecture",
     "diagram-block",
     "diagram-c4",
@@ -58,6 +59,7 @@ all-diagrams = [
     "diagram-timeline",
     "diagram-tree-view",
     "diagram-treemap",
+    "diagram-usecase",
     "diagram-venn",
     "diagram-wardley",
     "diagram-xychart",
@@ -73,6 +75,8 @@ diagram-event-modeling = [
     "merman/diagram-event-modeling",
     "merman-bindings-core/diagram-event-modeling",
 ]
+diagram-agentflow = ["merman/diagram-agentflow", "merman-bindings-core/diagram-agentflow"]
+diagram-usecase = ["merman/diagram-usecase", "merman-bindings-core/diagram-usecase"]
 diagram-flowchart = ["merman/diagram-flowchart", "merman-bindings-core/diagram-flowchart"]
 diagram-gantt = ["merman/diagram-gantt", "merman-bindings-core/diagram-gantt"]
 diagram-git-graph = ["merman/diagram-git-graph", "merman-bindings-core/diagram-git-graph"]

@@ -67,6 +67,9 @@ fn direct_state_node(
         ry: None,
         shape: shape.to_string(),
         position: position.map(str::to_string),
+        color_index: None,
+        wrapping_width: None,
+        min_width: None,
     }
 }
 

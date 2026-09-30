@@ -19,7 +19,6 @@ use crate::graph::{
 use crate::options::{
     CycleBreakingStrategy, ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint,
     LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy, PortConstraints,
-    SpacingOptions,
 };
 use crate::random::RandomSeedAuthority;
 use crate::work::{NoopWorkControl, WorkControl, WorkError, ceil_log2, checked_mul, checked_sum};
@@ -46,8 +45,12 @@ pub struct ElkInputNode {
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
     pub port_constraints: Option<PortConstraints>,
+    pub port_alignment: Option<crate::options::PortAlignment>,
     pub node_label_placement: NodeLabelPlacement,
-    pub nested_spacing_base: Option<f64>,
+    pub node_flexibility: crate::options::NodeFlexibility,
+    pub ports_surrounding: Option<crate::options::SpacingMargin>,
+    /// Resolved options for the graph inside this node. Absent values use ELK defaults.
+    pub nested_options: Option<Box<LayeredOptions>>,
     pub label: Option<ElkInputLabel>,
 }
 
@@ -112,6 +115,8 @@ impl ElkInputLabel {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ImportError {
+    #[error(transparent)]
+    NodeSize(#[from] crate::options::NodeSizeError),
     #[error("ELK graph has duplicate node id: {id}")]
     DuplicateNode { id: String },
     #[error("ELK graph has duplicate edge id: {id}")]
@@ -1101,6 +1106,18 @@ fn import_hierarchical_graph(
                     &mut nested_graph,
                     &parent_graph.layerless_nodes[node_index],
                 );
+                // The input exposes a single owner title. This is the Mermaid-reachable
+                // NodeLabelAndSizeCalculator minimum used by ElkGraphImporter.
+                if node.node_label_placement == NodeLabelPlacement::InsideTopCenter
+                    && let Some(label) = node.label.as_ref()
+                {
+                    nested_graph
+                        .options
+                        .include_inside_top_center_label_minimum(LSize {
+                            width: label.width,
+                            height: label.height,
+                        })?;
+                }
                 parent_graph.layerless_nodes[node_index].compound = true;
                 Some((
                     node_index,
@@ -1373,25 +1390,13 @@ fn input_edge_containing_parent<'a>(
 }
 
 fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) -> LayeredOptions {
-    // Mirror Mermaid's selective subgraph option boundary rather than cloning the complete root
-    // configuration. buildSubgraphLayoutOptions forwards mergeEdges and nodePlacementStrategy;
-    // the former also keeps collector-port identity consistent across hierarchy boundaries.
-    let mut options = LayeredOptions {
-        random_seed: parent_options.random_seed,
-        direction: parent_options.direction,
-        hierarchy_handling: resolve_child_hierarchy_handling(
-            node.hierarchy_handling,
-            parent_options,
-        ),
-        port_constraints: node.port_constraints.unwrap_or(PortConstraints::Free),
-        inside_self_loops_activate: parent_options.inside_self_loops_activate,
-        merge_edges: parent_options.merge_edges,
-        node_placement_strategy: parent_options.node_placement_strategy,
-        ..LayeredOptions::default()
-    };
-    if let Some(spacing_base) = node.nested_spacing_base {
-        options.spacing = SpacingOptions::layered_base_value(spacing_base);
-    }
+    // ElkGraphImporter.createLGraph copies the container's own properties. Renderer-specific
+    // presets and overrides must arrive on that node rather than leak in from the root graph.
+    let mut options = node.nested_options.as_deref().cloned().unwrap_or_default();
+    options.direction = parent_options.direction;
+    options.hierarchy_handling =
+        resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
+    options.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
     options
 }
 
@@ -1526,6 +1531,7 @@ fn inside_node_label_cell(placement: NodeLabelPlacement) -> Option<(usize, usize
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
     let mut lnode = LNode::new(node.id.clone(), node.width, node.height, model_order);
     lnode.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
+    lnode.port_alignment = node.port_alignment;
     if let Some(layer_constraint) = node.layer_constraint {
         lnode.layer_constraint = layer_constraint;
         lnode.layer_constraint_explicit = true;
@@ -1534,6 +1540,8 @@ fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<u
         lnode.labels.push(label_to_lgraph(label));
     }
     lnode.node_label_placement = node.node_label_placement;
+    lnode.node_flexibility = node.node_flexibility;
+    lnode.ports_surrounding = node.ports_surrounding;
     graph.layerless_nodes.push(lnode);
     graph.layerless_nodes.len() - 1
 }
@@ -1827,11 +1835,15 @@ fn ensure_port_at_node(
     }
 
     let port = graph.layerless_nodes[node].ports.len();
-    graph.layerless_nodes[node].ports.push(LPort::new(
-        format!("{node_id}:{port:?}"),
-        node,
-        port_type,
-    ));
+    let mut implicit_port = LPort::new(format!("{node_id}:{port:?}"), node, port_type);
+    // Mirror Mermaid's ELK `LGraphUtil.createPort`: dedicated implicit ports receive
+    // a direction-derived side before direction preprocessing/transposition runs.
+    let default_side = port_side_from_direction(graph.options.direction);
+    implicit_port.set_side(match port_type {
+        PortType::Output => default_side,
+        PortType::Input => default_side.opposed(),
+    });
+    graph.layerless_nodes[node].ports.push(implicit_port);
     Ok(Some(PortRef { node, port }))
 }
 
@@ -2505,6 +2517,7 @@ fn detect_parent_cycles<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SpacingOptions;
     use crate::compound::preprocess_source_ported_compound_graph;
     use crate::graph::LNodeKind;
     use crate::options::OrderingStrategy;
@@ -2518,9 +2531,12 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -3049,6 +3065,10 @@ mod tests {
     fn merged_cross_edge_ports_use_constant_operation_local_probes() {
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        group.nested_options = Some(Box::new(LayeredOptions {
+            merge_edges: true,
+            ..Default::default()
+        }));
         let mut child = node("child");
         child.parent = Some("group".to_string());
         let edge_count = 32usize;
@@ -3398,7 +3418,10 @@ mod tests {
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         cluster.node_label_placement = NodeLabelPlacement::InsideTopCenter;
         cluster.label = Some(ElkInputLabel::center("Cluster", 64.0, 22.0));
-        cluster.nested_spacing_base = Some(30.0);
+        cluster.nested_options = Some(Box::new(LayeredOptions {
+            spacing: SpacingOptions::layered_base_value(30.0),
+            ..Default::default()
+        }));
         let mut child = node("A");
         child.parent = Some("cluster".to_string());
 
@@ -3416,13 +3439,20 @@ mod tests {
     fn importer_applies_nested_hierarchy_merge_without_cloning_root_options() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
-        cluster.nested_spacing_base = Some(30.0);
+        cluster.nested_options = Some(Box::new(LayeredOptions {
+            spacing: SpacingOptions::layered_base_value(30.0),
+            layering_strategy: crate::options::LayeringStrategy::LongestPath,
+            random_seed: 17,
+            ..Default::default()
+        }));
         let mut child = node("A");
         child.parent = Some("cluster".to_string());
         let mut input = graph(vec![cluster, child], vec![]);
         input.options.merge_hierarchy_edges = false;
         input.options.consider_model_order_strategy = OrderingStrategy::NodesAndEdges;
         input.options.spacing = SpacingOptions::layered_base_value(40.0);
+        input.options.layering_strategy = crate::options::LayeringStrategy::CoffmanGraham;
+        input.options.random_seed = 42;
 
         let lgraph = import_graph(&input).unwrap();
         let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
@@ -3435,6 +3465,11 @@ mod tests {
             OrderingStrategy::None
         );
         assert_eq!(nested.options.spacing.node_node, 30.0);
+        assert_eq!(
+            nested.options.layering_strategy,
+            crate::options::LayeringStrategy::LongestPath
+        );
+        assert_eq!(nested.options.random_seed, 17);
     }
 
     #[test]
@@ -3961,6 +3996,41 @@ mod tests {
     }
 
     #[test]
+    fn implicit_ports_have_directional_sides_before_preprocessing() {
+        for (direction, output_side, input_side) in [
+            (ElkDirection::Right, PortSide::East, PortSide::West),
+            (ElkDirection::Left, PortSide::West, PortSide::East),
+            (ElkDirection::Down, PortSide::South, PortSide::North),
+            (ElkDirection::Up, PortSide::North, PortSide::South),
+        ] {
+            let mut input = graph(
+                vec![node("A"), node("B")],
+                vec![edge("first", "A", "B"), edge("second", "A", "B")],
+            );
+            input.options.direction = direction;
+            let imported = import_graph(&input).unwrap();
+            let source = imported
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == "A")
+                .unwrap();
+            let target = imported
+                .layerless_nodes
+                .iter()
+                .find(|node| node.id == "B")
+                .unwrap();
+            assert_eq!(source.ports.len(), 2);
+            assert_eq!(target.ports.len(), 2);
+            for index in 0..2 {
+                assert_eq!(source.ports[index].side, output_side, "{direction:?}");
+                assert_eq!(target.ports[index].side, input_side, "{direction:?}");
+                assert_eq!(source.ports[index].outgoing_edges, vec![index]);
+                assert_eq!(target.ports[index].incoming_edges, vec![index]);
+            }
+        }
+    }
+
+    #[test]
     fn importer_keeps_dedicated_ports_when_node_port_constraints_are_side_fixed() {
         let mut a = node("A");
         a.port_constraints = Some(PortConstraints::FixedSide);
@@ -4229,6 +4299,10 @@ mod tests {
 
         let mut group = node("group");
         group.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        group.nested_options = Some(Box::new(LayeredOptions {
+            random_seed: 0,
+            ..Default::default()
+        }));
         let mut child = node("child");
         child.parent = Some("group".to_string());
         let mut input = graph(vec![group, child], vec![]);

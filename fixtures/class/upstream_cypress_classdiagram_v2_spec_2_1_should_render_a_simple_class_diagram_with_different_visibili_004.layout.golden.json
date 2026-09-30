@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "Class01",
-          "x": 110.88,
+          "x": 110.52,
           "y": 132.0,
-          "width": 221.76,
-          "height": 264.0,
+          "width": 197.04,
+          "height": 240.0,
           "is_cluster": false
         },
         {
           "id": "AveryLongClass",
-          "x": 110.88,
-          "y": 380.0,
-          "width": 128.0,
-          "height": 84.0,
+          "x": 110.52,
+          "y": 393.5,
+          "width": 115.0,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -29,23 +29,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 110.88,
-              "y": 264.0
+              "x": 110.52,
+              "y": 252.0
             },
             {
-              "x": 110.88,
-              "y": 301.0
-            },
-            {
-              "x": 110.88,
-              "y": 338.0
+              "x": 110.52,
+              "y": 353.0
             }
           ],
           "label": {
-            "x": 110.88,
-            "y": 301.0,
-            "width": 27.84,
-            "height": 24.0
+            "x": 110.2,
+            "y": 302.5,
+            "width": 24.36,
+            "height": 21.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -58,10 +54,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 221.76,
-        "max_y": 422.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 209.04,
+        "max_y": 434.0
       }
     }
   }

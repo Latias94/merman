@@ -132,7 +132,6 @@ export const mermaidExternalModuleRegistrar = createExternalModuleRegistrar({
     zenuml: async () => (await import("@mermaid-js/mermaid-zenuml")).default,
   },
   layoutModuleLoaders: {
-    elk: async () => (await import("@mermaid-js/layout-elk")).default,
     "tidy-tree": async () =>
       (await import("@mermaid-js/layout-tidy-tree")).default,
   },

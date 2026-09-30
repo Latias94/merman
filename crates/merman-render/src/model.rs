@@ -217,6 +217,9 @@ pub struct MindmapDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub bounds: Option<Bounds>,
+    /// Swimlane decoration owned by the selected renderer, not semantic Mindmap nodes.
+    #[serde(skip)]
+    pub swimlane_lanes: Vec<LayoutCluster>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -611,7 +614,11 @@ pub struct QuadrantChartDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -626,7 +633,12 @@ pub struct FlowchartLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub enum SwimlaneDirection {
     #[serde(rename = "TB")]
     Tb,
@@ -638,7 +650,12 @@ pub enum SwimlaneDirection {
     Rl,
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 impl SwimlaneDirection {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -651,7 +668,12 @@ impl SwimlaneDirection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneTitleRect {
     pub left: f64,
     pub right: f64,
@@ -660,7 +682,12 @@ pub struct SwimlaneTitleRect {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneNodeLayout {
     pub id: String,
     pub label: String,
@@ -682,7 +709,12 @@ pub struct SwimlaneNodeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneLaneLayout {
     pub id: String,
     pub title: String,
@@ -707,7 +739,12 @@ pub struct SwimlaneLaneLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneEdgeLayout {
     pub id: String,
     pub from: String,
@@ -720,7 +757,12 @@ pub struct SwimlaneEdgeLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-mindmap"
+))]
 pub struct SwimlaneLayout {
     pub direction: SwimlaneDirection,
     pub nodes: Vec<SwimlaneNodeLayout>,
@@ -736,6 +778,11 @@ pub struct StateDiagramLayout {
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Registered ELK layout uses its own edge painting projection.
+    #[serde(skip)]
+    pub uses_elk_adapter_dom: bool,
+    #[serde(skip)]
+    pub elk_edge_paths: std::collections::HashMap<String, Vec<LayoutPoint>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

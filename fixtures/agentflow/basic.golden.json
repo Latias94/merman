@@ -1,0 +1,45 @@
+{
+  "diagramType": "agentflow",
+  "model": {
+    "connectors": [],
+    "direction": "TB",
+    "diagnostics": [],
+    "subGraphs": [
+      {
+        "id": "support",
+        "title": "Support",
+        "nodes": [
+          "input",
+          "task"
+        ],
+        "type": "flow"
+      }
+    ],
+    "vertices": [
+      {
+        "id": "input",
+        "label": "Question",
+        "shape": "lean-right",
+        "vertexKind": "input"
+      },
+      {
+        "id": "task",
+        "label": "Resolve",
+        "shape": "roundedRect",
+        "vertexKind": "task"
+      }
+    ],
+    "edges": [
+      {
+        "start": "input",
+        "end": "task",
+        "id": "L_input_task_0",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      }
+    ],
+    "type": "agentflow"
+  }
+}

@@ -79,7 +79,7 @@ fn fixed_chunk_after<'a>(svg: &'a str, needle: &str, len: usize) -> &'a str {
 }
 
 fn cluster_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
-    let needle = format!(r#"<g class="cluster" id="{id}" data-look="handDrawn">"#);
+    let needle = format!(r#"<g class="cluster" id="{id}" data-look="handDrawn""#);
     let start = svg.find(&needle).expect("cluster start");
     let shape_end = svg[start..]
         .find(r#"<g class="cluster-label""#)
@@ -172,7 +172,7 @@ fn flowchart_svg_hand_drawn_basic_rect_uses_rough_node_wrapper_and_hachure_paths
     assert!(
         seed_7.contains(r#"<g class="basic label-container" style=""><path d=""#)
             && seed_7.contains(
-                r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+                r##"stroke="#f8fafc" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && seed_7.contains(
                 r##"stroke="#ef4444" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
@@ -211,8 +211,8 @@ fn flowchart_svg_hand_drawn_decision_hachure_keeps_diamond_silhouette() {
 
     let first_y = first_svg_move_y(first_path_d(chunk));
     assert!(
-        first_y > -80.0 && first_y < -40.0,
-        "hand-drawn decision hachure should start near the left edge, not the top vertex; y={first_y}: {chunk}"
+        first_y > -100.0 && first_y < -75.0,
+        "hand-drawn decision hachure should start at the top vertex with Mermaid 12 fill settings; y={first_y}: {chunk}"
     );
 }
 
@@ -241,7 +241,7 @@ fn flowchart_svg_hand_drawn_high_risk_shapes_keep_hachure_starts_in_bounds() {
     );
 
     for (node_id, min_y, max_y) in [
-        ("D", -80.0, -30.0),
+        ("D", -100.0, -75.0),
         ("H", -65.0, -20.0),
         ("LR", -65.0, -20.0),
         ("LL", -65.0, -20.0),
@@ -262,6 +262,11 @@ fn flowchart_svg_hand_drawn_high_risk_shapes_keep_hachure_starts_in_bounds() {
             path_element_count(chunk),
             2,
             "{node_id} should render one hachure fill path and one rough outline path: {chunk}"
+        );
+
+        assert!(
+            chunk.contains(r#"stroke-width="1.5" fill="none" stroke-dasharray="0 0""#),
+            "{node_id} hachure fill must use Mermaid 12's 1.5px fillWeight: {chunk}"
         );
 
         let first_y = first_svg_move_y(first_path_d(chunk));
@@ -329,7 +334,7 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
             r#"id="flowchart-seed-flowchart-A-0" transform="translate"#,
             r#"data-look="handDrawn""#,
             r#"<g transform="translate"#,
-            r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0""##,
+            r##"stroke="#f8fafc" stroke-width="1.5" fill="none" stroke-dasharray="0 0""##,
             r##"stroke="#ef4444" stroke-width="1.2999999523162842" fill="none" stroke-dasharray="0 0""##,
         ],
     );
@@ -439,7 +444,7 @@ linkStyle 0 stroke:#123456,stroke-width:2px
 
     let cluster_group_7 = fixed_chunk_after(
         &seed_7,
-        r#"<g class="cluster" id="flowchart-seed-surfaces-Group" data-look="handDrawn">"#,
+        r#"<g class="cluster" id="flowchart-seed-surfaces-Group" data-look="handDrawn""#,
         1600,
     );
     assert!(
@@ -476,7 +481,7 @@ fn class_svg_hand_drawn_seed_controls_visible_rough_paths() {
             r#"class="rough-node default" id="class-seed-classId-A-0""#,
             r#"class="edge-thickness-normal edge-pattern-solid transition relation""#,
             r##"stroke="#000" stroke-width="1" fill="none""##,
-            r##"stroke="#f8fafc" stroke-width="4""##,
+            r##"stroke="#f8fafc" stroke-width="1.5""##,
             r##"stroke="#ef4444" stroke-width="1.3""##,
         ],
     );
@@ -509,7 +514,7 @@ fn er_svg_hand_drawn_seed_controls_visible_rough_paths() {
             )
         },
         &[
-            r#"id="er-seed-entity-CUSTOMER-0" class="node default" data-look="classic""#,
+            r#"id="er-seed-entity-CUSTOMER-0" class="node default" data-look="neo""#,
             r#"class="outer-path""#,
             r##"fill="#eff6ff""##,
             r##"stroke="#2563eb""##,
@@ -526,6 +531,7 @@ fn requirement_svg_hand_drawn_seed_controls_visible_rough_paths() {
         |seed| {
             source_with_init(
                 json!({
+                    "look": "classic",
                     "handDrawnSeed": seed,
                     "themeVariables": {
                         "mainBkg": "#f0fdf4",

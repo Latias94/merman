@@ -18,8 +18,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -37,8 +40,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": null,
+        "colorIndex": 0,
+        "wrappingWidth": 120,
+        "minWidth": null,
         "centerLabel": true,
         "description": []
       },
@@ -57,8 +63,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "NotShooting",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": []
       },
@@ -77,8 +86,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "NotShooting",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true,
         "description": []
       },
@@ -97,8 +109,11 @@
         "padding": 8,
         "rx": 10,
         "ry": 10,
-        "look": "classic",
+        "look": "neo",
         "parentId": "NotShooting",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120,
         "centerLabel": true
       },
       {
@@ -113,8 +128,11 @@
         "type": "group",
         "isGroup": true,
         "padding": 16,
-        "look": "classic",
-        "position": "right of"
+        "look": "neo",
+        "position": "right of",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": null
       },
       {
         "labelStyle": "",
@@ -125,12 +143,15 @@
         "cssCompiledStyles": [],
         "id": "NotShooting----note-4",
         "domId": "state-NotShooting----note-4",
-        "type": "group",
-        "isGroup": true,
+        "type": "node",
+        "isGroup": false,
         "padding": 15,
-        "look": "classic",
+        "look": "neo",
         "position": "right of",
-        "parentId": "NotShooting----parent"
+        "parentId": "NotShooting----parent",
+        "colorIndex": null,
+        "wrappingWidth": 120,
+        "minWidth": 120
       }
     ],
     "edges": [
@@ -139,64 +160,64 @@
         "start": "root_start",
         "end": "NotShooting",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge1",
         "start": "NotShooting_start",
         "end": "Idle",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge2",
         "start": "Idle",
         "end": "Configuring",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvConfig",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "edge3",
         "start": "Configuring",
         "end": "Idle",
         "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
         "label": "EvConfig",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
+        "look": "neo"
       },
       {
         "id": "NotShooting-NotShooting----note-4",
@@ -211,7 +232,7 @@
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "look": "classic"
+        "look": "neo"
       }
     ],
     "other": {},
@@ -220,17 +241,6 @@
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
       "NotShooting": {
         "id": "NotShooting",
         "type": "default",
@@ -305,6 +315,17 @@
         "styles": [],
         "textStyles": [],
         "start": null
+      },
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
       }
     },
     "relations": [

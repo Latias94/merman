@@ -100,7 +100,7 @@ state Active {
 "##,
             expected_fragments: &[
                 r#"data-look="neo""#,
-                r##"[data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:#040404;stroke-width:4;}"##,
+                r##"[data-look="neo"][data-color-id="color-0"].statediagram-cluster rect.outer{stroke:#E879F9;fill:#FDF4FF;}"##,
             ],
         },
         LookDomCase {
@@ -162,6 +162,39 @@ mindmap
                 case.name
             );
         }
+        if matches!(case.name, "class" | "state" | "requirement") {
+            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            let paths: Vec<_> = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .collect();
+            assert!(
+                !paths.is_empty(),
+                "{} must exercise a shared edge",
+                case.name
+            );
+            for path in paths {
+                let style = path.attribute("style").expect("Neo edge mask style");
+                assert!(
+                    style.starts_with("stroke-dasharray: 0 0 "),
+                    "{}: {style}",
+                    case.name
+                );
+                assert!(
+                    style.contains("; stroke-dashoffset: 0;"),
+                    "{}: {style}",
+                    case.name
+                );
+                if case.name == "requirement" {
+                    assert!(
+                        style.contains("stroke-dashoffset: 0;fill:none;stroke-dasharray: 10,7"),
+                        "explicit Requirement dashes must override the generated prefix: {style}"
+                    );
+                }
+            }
+        }
         assert!(
             !svg.contains(r#"data-look="classic""#),
             "{} should not leak classic data-look when configured for neo: {svg}",
@@ -191,7 +224,7 @@ fn sequence_look_matrix_covers_css_theme_consumption() {
 
     assert!(
         svg.contains(
-            r#"#look-sequence .labelBox{stroke:#9370DB;fill:#ECECFF;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#
+            r#"#look-sequence .labelBox{stroke:#28253D;fill:#ffffff;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#
         ),
         "sequence should consume look=neo through presentation CSS/theme paths: {svg}"
     );

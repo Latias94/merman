@@ -2,7 +2,7 @@
 
 - Status: accepted; native prebuilt SKU policy superseded by ADR-0079; Rustdoc integration
   ownership amended by ADR-0082; default feature closure amended by ADR-0085 and ADR-0088;
-  diagram selectors and artifact schema superseded by [ADR-0089](0089-selectable-diagram-families.md).
+  diagram selectors and artifact schema superseded by [ADR-0091](0091-selectable-diagram-families.md).
   Original schema references and admission wording below record the earlier decision.
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`

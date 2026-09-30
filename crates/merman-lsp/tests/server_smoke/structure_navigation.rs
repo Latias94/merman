@@ -540,3 +540,167 @@ async fn lsp_service_smoke_handles_navigation_requests() {
     assert_eq!(document_changes[0].text_document.version, Some(1));
     assert_eq!(document_changes[0].edits.len(), 2);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn mermaid12_families_keep_navigation_and_tokens_after_partial_edits() {
+    use serde_json::json;
+
+    for (family, declaration, column) in [("agentflow", "A[Worker]", 0), ("usecase", "actor A", 6)]
+    {
+        let (mut service, socket) = MermanLanguageServer::service();
+        let (mut socket, _responses) = socket.split();
+        let uri = format!("file:///tmp/{family}.mmd");
+        let initialize = Request::build("initialize")
+            .params(json!({"capabilities": {
+                "workspace": {"workspaceEdit": {"documentChanges": true}},
+                "textDocument": {"publishDiagnostics": {"versionSupport": true}, "semanticTokens": {
+                    "requests": {"full": true},
+                    "tokenTypes": ["keyword", "variable", "operator", "string"],
+                    "tokenModifiers": [],
+                    "formats": ["relative"]
+                }}
+            }}))
+            .id(1)
+            .finish();
+        let initialized = service
+            .ready()
+            .await
+            .unwrap()
+            .call(initialize)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(initialized.is_ok(), "{family}: {initialized:?}");
+        let advertised = &initialized.result().unwrap()["capabilities"]["experimental"]["merman"]["diagramSupport"]
+            ["families"];
+        assert!(
+            advertised
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| { entry["diagramType"] == family && entry["semanticParser"] == true })
+        );
+
+        let complete =
+            format!("---\r\ntitle: 中文😀\r\n---\r\n{family}-beta\r\n{declaration}\r\nA --> B\r\n");
+        for version in [1, 2] {
+            let source = if version == 1 {
+                complete.clone()
+            } else {
+                format!("{complete}C -->")
+            };
+            let notification = if version == 1 {
+                Request::build("textDocument/didOpen")
+                    .params(json!({"textDocument": {
+                        "uri": uri, "languageId": "mermaid", "version": version, "text": source
+                    }}))
+                    .finish()
+            } else {
+                Request::build("textDocument/didChange")
+                    .params(json!({
+                        "textDocument": {"uri": uri, "version": version},
+                        "contentChanges": [{"text": source}]
+                    }))
+                    .finish()
+            };
+            assert!(
+                service
+                    .ready()
+                    .await
+                    .unwrap()
+                    .call(notification)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            let published = timeout(Duration::from_secs(5), socket.next())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(published.method(), "textDocument/publishDiagnostics");
+            let diagnostics: PublishDiagnosticsParams =
+                from_value(published.params().unwrap().clone()).unwrap();
+            assert_eq!(diagnostics.version, Some(version));
+            assert_eq!(
+                diagnostics
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.severity
+                        == Some(tower_lsp_server::ls_types::DiagnosticSeverity::ERROR)),
+                version == 2,
+                "{family} version {version}: {:?}",
+                diagnostics.diagnostics
+            );
+
+            let position =
+                json!({"textDocument": {"uri": uri}, "position": {"line": 5, "character": 0}});
+            let range = json!({"start": {"line": 4, "character": column}, "end": {"line": 4, "character": column + 1}});
+            for method in [
+                "textDocument/definition",
+                "textDocument/rename",
+                "textDocument/semanticTokens/full",
+            ] {
+                let mut params = position.clone();
+                if method == "textDocument/rename" {
+                    params["newName"] = json!("Renamed");
+                }
+                if method == "textDocument/semanticTokens/full" {
+                    params = json!({"textDocument": {"uri": uri}});
+                }
+                let response = service
+                    .ready()
+                    .await
+                    .unwrap()
+                    .call(Request::build(method).params(params).id(10).finish())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(
+                    response.is_ok(),
+                    "{family} version {version} {method}: {response:?}"
+                );
+                let result = response.result().unwrap();
+                match method {
+                    "textDocument/definition" => {
+                        assert_eq!(result["uri"], uri, "{family} version {version}");
+                        assert_eq!(result["range"], range);
+                    }
+                    "textDocument/rename" => {
+                        let edits = result["documentChanges"].as_array().unwrap();
+                        assert_eq!(edits.len(), 1);
+                        assert_eq!(
+                            edits[0]["textDocument"],
+                            json!({"uri": uri, "version": version})
+                        );
+                        let mut replacements = edits[0]["edits"].as_array().unwrap().clone();
+                        replacements
+                            .sort_by_key(|edit| edit["range"]["start"]["line"].as_u64().unwrap());
+                        assert_eq!(
+                            replacements,
+                            vec![
+                                json!({"range": range, "newText": "Renamed"}),
+                                json!({"range": {"start": {"line": 5, "character": 0}, "end": {"line": 5, "character": 1}}, "newText": "Renamed"})
+                            ]
+                        );
+                    }
+                    _ => {
+                        let data = result["data"].as_array().unwrap();
+                        assert!(!data.is_empty());
+                        let mut line = 0;
+                        let mut character = 0;
+                        assert!(
+                            data.chunks_exact(5).any(|token| {
+                                let delta = token[0].as_u64().unwrap();
+                                line += delta;
+                                character = if delta == 0 { character } else { 0 }
+                                    + token[1].as_u64().unwrap();
+                                line == 5 && character == 0 && token[2] == 1
+                            }),
+                            "{family} version {version} lacks the entity token"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

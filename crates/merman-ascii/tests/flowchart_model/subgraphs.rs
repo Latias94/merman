@@ -80,6 +80,7 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
     model.nodes.push(second_node);
     model.subgraphs = vec![
         merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "X".to_string(),
             title: "First".to_string(),
             dir: None,
@@ -90,6 +91,7 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
             nodes: vec!["A".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "X".to_string(),
             title: "Second".to_string(),
             dir: None,
@@ -124,6 +126,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
     model.nodes.push(second_node);
     model.subgraphs = vec![
         merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "X".to_string(),
             title: "First X".to_string(),
             dir: None,
@@ -134,6 +137,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             nodes: vec!["A".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "Y".to_string(),
             title: "Inner Y".to_string(),
             dir: None,
@@ -144,6 +148,7 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             nodes: vec!["B".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "X".to_string(),
             title: "Later X".to_string(),
             dir: None,
@@ -396,6 +401,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             length: 1,
         }],
         subgraphs: vec![merman_core::diagrams::flowchart::FlowSubgraph {
+            metadata: None,
             id: "one".to_string(),
             title: "LR Group".to_string(),
             dir: Some("LR".to_string()),

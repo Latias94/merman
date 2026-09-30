@@ -329,7 +329,7 @@ function assertPackageTypeConsumers(checked) {
       );
       let metadata;
       try {
-        metadata = npmPackRecord(result.stdout, item.descriptor.name);
+        metadata = npmPackRecord(result.stdout, item.descriptor.name, { allowNpm11: true });
       } catch (error) {
         throw new Error(
           `Unable to read npm pack metadata for ${item.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`,

@@ -5,42 +5,42 @@
       "nodes": [
         {
           "id": "Namespace1",
-          "x": 117.563,
-          "y": 77.0,
-          "width": 235.125,
-          "height": 154.0,
+          "x": 56.117,
+          "y": 142.0,
+          "width": 88.234,
+          "height": 260.0,
           "is_cluster": true
         },
         {
           "id": "C3",
-          "x": 306.406,
-          "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
+          "x": 160.352,
+          "y": 142.0,
+          "width": 40.234,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C4",
-          "x": 398.969,
-          "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
+          "x": 240.586,
+          "y": 142.0,
+          "width": 40.234,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C1",
-          "x": 58.781,
-          "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
+          "x": 56.117,
+          "y": 102.5,
+          "width": 40.234,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 176.344,
-          "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
+          "x": 56.117,
+          "y": 207.5,
+          "width": 40.234,
+          "height": 81.0,
           "is_cluster": false
         }
       ],
@@ -53,16 +53,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.063,
-              "y": 77.0
+              "x": 56.117,
+              "y": 143.0
             },
             {
-              "x": 117.563,
-              "y": 77.0
-            },
-            {
-              "x": 155.063,
-              "y": 77.0
+              "x": 56.117,
+              "y": 167.0
             }
           ],
           "label": null,
@@ -78,18 +74,18 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 117.563,
-          "y": 77.0,
-          "width": 235.125,
-          "height": 154.0,
+          "x": 56.117,
+          "y": 142.0,
+          "width": 88.234,
+          "height": 260.0,
           "diff": -15.0,
-          "offset_y": 16.5,
+          "offset_y": 13.5,
           "title": "Namespace1",
           "title_label": {
-            "x": 117.563,
-            "y": 12.0,
-            "width": 79.2,
-            "height": 24.0
+            "x": 56.117,
+            "y": 22.5,
+            "width": 69.3,
+            "height": 21.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -99,10 +95,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 420.25,
-        "max_y": 154.0
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 260.703,
+        "max_y": 272.0
       }
     }
   }

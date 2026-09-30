@@ -50,6 +50,16 @@ test("keeps the complete v2 defaults immutable and independent from caller defau
   );
 });
 
+test("shares automatic and explicit default appearance without reinterpreting old links", () => {
+  for (const diagramTheme of ["auto", "default", "forest"] as const) {
+    const snapshot = { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme };
+    assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
+  }
+  assert.equal(decodeShareHash(s2Payload({ theme: "default" }))?.diagramTheme, "auto");
+  assert.equal(decodeShareHash(s2Payload({ theme: "dark" }))?.diagramTheme, "dark");
+  assert.equal(decodeShareHash(s2Payload({ theme: "default", themeSelection: "default" })), null);
+});
+
 test("round-trips Unicode without changing byte-oriented validation", () => {
   const snapshot = {
     ...COMPLETE_SNAPSHOT,

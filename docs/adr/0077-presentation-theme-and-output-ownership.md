@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-02
+- Amended: 2026-09-20 for Mermaid 12 scoped layout selection and absent-loader fallback.
 
 ## Context
 
@@ -16,7 +17,7 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
 1. Host theme data, first-party presentation profiles, official Mermaid config, and SVG output policy have separate owners.
    - `HostTheme` owns optional appearance, typography, semantic roles, and a series palette.
    - `PresentationProfile` owns named Merman product behavior. The first profile is `merman-modern`.
-   - `MermaidConfig` remains the authority for official Mermaid fields such as `theme`, `themeVariables`, `themeCSS`, `look`, `layout`, `flowchart.defaultRenderer`, and `elk.*`.
+   - `MermaidConfig` remains the authority for official Mermaid fields such as `theme`, `themeVariables`, `themeCSS`, `look`, `layout`, `flowchart.layout`, and `elk.*`.
    - `SvgOutputPolicy` and `SvgPipeline` remain the only owners of parity, readable, resvg-safe, scoped CSS, background, CSS override, and duplicate-fallback behavior.
 
 2. The seven editor presets remain theme-only data. Selecting one does not change the SVG output pipeline or root background. Mermaid defaults are represented by no presentation selection, not a `mermaid` preset.
@@ -25,7 +26,7 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
    - Global defaults provide the Redux/slate palette and Neo look.
    - A private Flowchart SVG aspect provides compact routed corners and padded edge-label masks.
    - An optional Flowchart layout aspect defaults ordinary Flowcharts to ELK.
-   - Non-Flowchart inputs do not require ELK. An explicit non-ELK `flowchart.defaultRenderer` disables only the layout aspect for an ordinary Flowchart. A `flowchart-elk` source always requires ELK.
+   - This profile adds no ELK requirement to non-Flowchart inputs. An explicit non-ELK `flowchart.layout` disables only the layout aspect. Both ordinary Flowcharts and the `flowchart-elk` alias use Mermaid 12's registered-layout resolution: an absent ELK loader falls back to Dagre; a compiled backend denied by host policy remains an admission error. In a lean build, the ELK presentation aspect is blocked but the fallback operation is ready.
 
 4. The private Flowchart policy is typed and travels with the prepared render operation to the Flowchart SVG renderer. It does not enter `MermaidConfig` or `LayoutExecution`. Official effective config continues to own detector selection, Neo sizing, and ELK layout.
 

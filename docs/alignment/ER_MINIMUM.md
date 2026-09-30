@@ -64,3 +64,24 @@ semantic-label canary.
 - Full upstream lexical strictness (edge-case validation) is still being iterated.
 - Complete coverage of all relationship/cardinality spellings from the upstream spec suite.
 - Diagnostics alignment (error messages and offsets).
+
+## Mermaid 12 lexical boundary follow-up (2026-09-29)
+
+The lexical fixes below were checked against Mermaid `12.0.0`, source commit
+`98a0945418c76238f15df2afaddbba4272656c3b`, and its installed generated Jison lexer.
+They supplement the historical admission scope above without changing the selected reference graph.
+
+- Keyword boundaries use JavaScript's non-Unicode `\b`: ASCII letters, digits, and `_`
+  continue a name; `-` and non-ASCII characters do not. Unquoted `end-user`, `style-guide`,
+  and `end注文` are not entity names. Quoted equivalents remain valid.
+- `direction` remains an entity name unless a complete upstream direction rule matches.
+  Direction rules preserve their TB, BT, RL, LR priority, ECMAScript whitespace, and
+  consumed line suffix. Editor direction-value ranges identify the actual selected match.
+- Parent cardinality uses case-insensitive `u(?=[.\-|])`, without a preceding-character
+  condition. Unindented `u-table` is therefore rejected as an entity name; `"u-table"` is valid.
+- Style and class definitions require a nonempty style payload, so recognizing a keyword
+  prefix cannot silently accept an empty directive.
+
+Regression tests live in `crates/merman-core/src/tests/er.rs` and the ER lexer unit tests in
+`crates/merman-core/src/diagrams/er.rs`. The grammar's direction token retains its matched
+source range; regenerate the checked-in parser through `xtask gen-lalrpop-parsers`.

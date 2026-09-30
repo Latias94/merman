@@ -2475,9 +2475,12 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_alignment: None,
             port_constraints: None,
             node_label_placement: crate::options::NodeLabelPlacement::Fixed,
-            nested_spacing_base: None,
+            node_flexibility: crate::options::NodeFlexibility::None,
+            ports_surrounding: None,
+            nested_options: None,
             label: None,
         }
     }
@@ -2709,11 +2712,67 @@ mod tests {
     }
 
     #[test]
+    fn restorer_defaults_to_north_distribution_for_multiple_loops() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        let first_source = graph
+            .add_port(
+                node,
+                PortType::Output,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        let first_target = graph
+            .add_port(
+                node,
+                PortType::Input,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        let second_source = graph
+            .add_port(
+                node,
+                PortType::Output,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        let second_target = graph
+            .add_port(
+                node,
+                PortType::Input,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        graph.add_edge(self_loop_edge("first", "A", first_source, first_target));
+        graph.add_edge(self_loop_edge("second", "A", second_source, second_target));
+
+        preprocess_self_loops(&mut graph);
+        restore_self_loop_ports(&mut graph);
+
+        assert!(
+            graph.layerless_nodes[node]
+                .ports
+                .iter()
+                .all(|port| port.side == PortSide::North)
+        );
+    }
+
+    #[test]
     fn restorer_assigns_equal_distribution_targets_by_descending_loop_port_count() {
         let mut graph = LGraph::new(
             "root",
             LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
         );
+        // The Mermaid adapter default is node-scoped NORTH. Exercise the explicit
+        // node strategy here so this test continues to cover EQUALLY assignment.
+        graph.options.self_loop_distribution = SelfLoopDistributionStrategy::Equally;
         let node = add_node(&mut graph, "A");
         let single_port = graph
             .add_port(

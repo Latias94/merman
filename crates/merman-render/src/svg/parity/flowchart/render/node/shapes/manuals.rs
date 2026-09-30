@@ -25,7 +25,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
         common.node_styles,
     );
     let p = ctx.node_padding;
-    let w = metrics.width + p;
+    let w = metrics.width + if common.look_is_neo() { 2.0 * p } else { p };
     let h = (w + metrics.height).max(1.0);
     let pts = vec![
         (0.0, -h),
@@ -94,15 +94,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
-        None,
+        Some(common.layout_node),
         label.text,
         label.label_type,
         common.node_classes,
         common.node_styles,
     );
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(1.0);
-    let h = (metrics.height + 2.0 * p).max(1.0);
+    let padding_x = if common.look_is_neo() { 16.0 } else { p };
+    let padding_y = if common.look_is_neo() { 12.0 } else { p };
+    let w = (metrics.width + 2.0 * padding_x).max(1.0);
+    let h = (metrics.height + 2.0 * padding_y).max(1.0);
     let x = -w / 2.0;
     let y = -h / 2.0;
     let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
@@ -155,5 +157,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
         ctx.measurer
             .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
+    // Mermaid's slopedRect label transform uses authored padding against the shape's
+    // look-specific horizontal padding.
+    label.dx = -padding_x + p;
     label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
 }

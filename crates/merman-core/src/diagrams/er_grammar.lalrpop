@@ -2,7 +2,7 @@
 
 grammar;
 
-use crate::diagrams::er::{Action, Attribute, RelSpec, SpannedIdList, Tok};
+use crate::diagrams::er::{Action, Attribute, RelSpec, SpannedDirection, SpannedIdList, Tok};
 
 extern {
   type Location = usize;
@@ -22,7 +22,7 @@ extern {
     AccDescr => Tok::AccDescr(<String>),
     AccDescrMultiline => Tok::AccDescrMultiline(<String>),
 
-    Direction => Tok::Direction(<String>),
+    Direction => Tok::Direction(<SpannedDirection>),
 
     BlockStart => Tok::BlockStart,
     BlockStop => Tok::BlockStop,
@@ -131,7 +131,7 @@ AccStatement: Action = {
 };
 
 DirectionStatement: Action = {
-  Direction => Action::SetDirection(<>),
+  <direction:Direction> => Action::SetDirection(direction.value),
 };
 
 StyleStatement: Action = {
