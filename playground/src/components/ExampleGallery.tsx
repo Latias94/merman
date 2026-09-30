@@ -102,6 +102,25 @@ export function ExampleGallery({
   const activeCategory = visibleCategories.includes(selectedCategory)
     ? selectedCategory
     : "All";
+  const bindCategoryNavigation = useCallback((navigation: HTMLElement | null) => {
+    if (!navigation) return;
+    // Filtering can move a category without changing any observed dimensions.
+    const selected = navigation.querySelectorAll<HTMLElement>(
+      "[data-example-category]",
+    )[visibleCategories.indexOf(activeCategory)];
+    if (!selected) return;
+    const sidebar = navigation.parentElement;
+    const reveal = () => {
+      revealCategoryWithin(navigation, selected);
+      if (sidebar) revealCategoryWithin(sidebar, selected);
+    };
+    const observer = new ResizeObserver(reveal);
+    observer.observe(navigation);
+    observer.observe(selected);
+    if (sidebar) observer.observe(sidebar);
+    reveal();
+    return () => observer.disconnect();
+  }, [activeCategory, visibleCategories]);
   const filteredExamples = useMemo(
     () =>
       filterExamples({
@@ -224,12 +243,14 @@ export function ExampleGallery({
               className="mb-2 flex md:hidden"
             />
             <nav
+              ref={bindCategoryNavigation}
               className="scrollbar-thin flex gap-1 overflow-x-auto pb-1 md:block md:space-y-1 md:overflow-visible md:pb-0"
               aria-label={t("examples.categoriesLabel")}
             >
               {visibleCategories.map((category) => (
                 <button
                   key={category}
+                  data-example-category={category}
                   type="button"
                   onClick={() => {
                     resetScroll();
@@ -389,4 +410,22 @@ function AsciiCapabilityBadge({
       {t(asciiSupportLabelKey(capability))}
     </span>
   );
+}
+
+function revealCategoryWithin(container: HTMLElement, category: HTMLElement): void {
+  const bounds = container.getBoundingClientRect();
+  const item = category.getBoundingClientRect();
+  // Convert transformed dialog coordinates back to the container's scroll units.
+  if (bounds.width > 0 && container.scrollWidth > container.clientWidth) {
+    const offset = item.left < bounds.left
+      ? item.left - bounds.left
+      : Math.max(0, item.right - bounds.right);
+    container.scrollLeft += offset * container.offsetWidth / bounds.width;
+  }
+  if (bounds.height > 0 && container.scrollHeight > container.clientHeight) {
+    const offset = item.top < bounds.top
+      ? item.top - bounds.top
+      : Math.max(0, item.bottom - bounds.bottom);
+    container.scrollTop += offset * container.offsetHeight / bounds.height;
+  }
 }

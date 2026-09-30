@@ -12,7 +12,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kept Class relationships and arrowheads visible above ELK namespace backgrounds, and aligned relationship marker strokes with Mermaid 12.
 - Restored Usecase Neo shadows, note borders, and gradient resources, and preserved explicit ER table styling across Redux themes.
 - Kept RoughJS shape geometry independent of CSS color spelling and prevented malformed Unicode color values from causing a panic.
-- Made the Playground editor follow panel resizing and preserved Example Gallery filters and reading position when reopening or changing viewport width.
+- Made the Playground editor follow panel resizing and preserved Example Gallery filters, active-category visibility, and reading position when reopening or changing viewport width.
+- Respected reduced-motion preferences in Playground dialogs, menus, and tooltips, and restored the shared tooltip delay.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 
