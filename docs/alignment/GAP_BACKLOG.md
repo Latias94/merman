@@ -26,7 +26,7 @@ The release-strength root gate is:
 
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout`
 
-All 35 primary families participate in the root evidence contract. Family-specific browser or
+All 37 primary families participate in the root evidence contract. Family-specific browser or
 RoughJS movement remains visible through browser diagnostics and family owner documents; it is not
 silently skipped by a global family allowlist.
 
@@ -113,8 +113,10 @@ Legend:
 
 7. **Family-specific `look=handDrawn` parity**
    - Flowchart, Class, ER, Requirement, and State have focused rendered seed evidence. Venn and
-     Ishikawa RoughJS branches remain deferred family lanes and must be promoted only with
-     source-backed rendered tests.
+     Ishikawa also have source-backed seeded rendering and admitted structure-only RoughJS
+     fixtures. Further work concerns their documented path-geometry residuals, plus family-local
+     gaps such as Usecase theme/structure parity; it must not erase the admitted evidence or
+     imply full hand-drawn parity for every primary family.
    - Risk: H (shape/path output diverges substantially).
 
 8. **Mermaid-reachable ELK hardening**
