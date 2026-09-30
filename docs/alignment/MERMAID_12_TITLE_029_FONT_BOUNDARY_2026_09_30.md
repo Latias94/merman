@@ -10,13 +10,13 @@ The selection identity remains
 `9634181804174022a42a1288be799a7612226a4a95b3374642a32515348b40e7`, with receipt
 SHA-256 `5a77f613f2d1f380ddaa5d9bab5e8111adb2cd833f319462a916694bebf10e28`.
 
-This is a diagnosis and product-boundary decision record, not a claim that the
-canonical deterministic artifact has been repaired. No production code, reference,
-feature, dependency, residual receipt, comparator, or existing test was changed.
-The seven pre-existing stat-only working-tree entries and upstream SVG staging
-files were preserved.
+This records the initial diagnosis and subsequent exact residual admission, not a
+claim that the canonical deterministic artifact has been repaired. The original
+investigation changed no production code, reference, feature, dependency, receipt,
+or comparator. The later CI policy change is described below. Pre-existing local
+work and upstream SVG staging files remain outside this change.
 
-## Current evidence
+## Initial Windows evidence
 
 Chromium 151.0.7922.34 on Windows reproduced the issue with the current release
 comparison SVG. Its SHA-256 is
@@ -76,11 +76,59 @@ imported into the renderer without reversing the existing dependency direction.
 The `render_svg_monospace` example demonstrates a custom font-backed measurement
 profile, but its advance-based symmetric bounds are not a browser-bbox contract.
 
-## Disposition and next implementation boundary
+## Linux CI evidence and exact residual admission
 
-Keep the canonical failure visible. The verified solution for a browser-owned
-surface is the existing public browser measurement session, after the intended
-fonts are ready. That route is already implemented and passing.
+[CI run 36684543625](https://github.com/Latias94/merman/actions/runs/36684543625)
+reproduced the same artifact and title width on Linux at PR head
+`aacdc4e7f5d99f55ec10b14fbe68db09e2365e56`. Its Chromium 151.0.7922.34 audit
+reported 3,717 fixtures and one blocking containment failure: this fixture.
+The full workspace passed 8,790 tests (seven skipped), and the preceding DOM
+comparison suite passed. The Web owner, including the public host-measurement
+regression, also passed. This is a deterministic-versus-display measurement
+boundary, not evidence that Windows must imitate Linux rasterization.
+
+Both local and upstream audits report `active-filter`. Local structural side
+overflow is real, so the artifact must not be reclassified as contained or as
+pure text paint. The existing collected-only XYChart receipt cannot admit it.
+
+The maintainer authorized reasonable CI boundary changes and separate treatment
+of the font contract. Two independent reviews found no renderer semantic defect.
+The chosen admission extends the existing receipt mechanism with one closed
+reason and an exact paired audit fingerprint, without changing the renderer or
+ordinary oracle classifier. It binds:
+
+- the exact local and upstream SVG SHA-256 values;
+- both roots, geometry unions, capture dimensions and indeterminate reasons;
+- complete painted and structural overflow observations and structural pixel hashes;
+- browser and Playwright versions, platform, locale, timezone, and audit method.
+
+The paired evidence is eligible only when both roots exist, both reason lists
+contain only `active-filter`, and no violation reaches the capture boundary.
+Missing roots, capture limits, unbounded markers, image failures, different
+reasons, SVG changes, or changed audit evidence still reject the receipt. An
+unused receipt also blocks, so an artifact that no longer needs it requires its
+removal. The original blocking classification and complete evidence stay visible
+in the report alongside the explicit residual disposition.
+
+This supersedes the initial instruction to leave this known artifact blocking;
+it does not establish a general font tolerance or fix its actual clipping.
+The CI diagnostic artifact is `svg-parity-diagnostics-1`, containing
+`root-viewport-diagnostic.json`. The earlier temporary local evidence may no
+longer exist after build-directory cleanup; the remote artifact supplies the
+Linux admission evidence.
+
+The admission passed all 17 root-viewport owner tests and the browser-test
+TypeScript check. Replaying all 3,717 saved Linux audit entries through the same
+matching functions changed only this fixture's disposition, preserved the existing
+XYChart receipt, and left no blocking or unused receipt. Fresh rendering and
+Chromium capture remain owned by the full Linux CI lane; report replay alone is
+not a claim that a new browser capture has passed.
+
+## Remaining rendering boundary
+
+The verified solution for a browser-owned surface is the existing public browser
+measurement session, after the intended fonts are ready. That route is already
+implemented and passing.
 
 Eliminating this residual for standalone headless output requires a narrower new
 contract: identify the supported output surface and supply the actual font assets
@@ -91,7 +139,7 @@ can promise exact bounds for arbitrary later CSS or font substitution.
 
 Do not modify the deterministic estimator merely to pass this fixture. Padding
 coefficients, font-specific lookup tables, forcing `textLength`, changing the
-oracle to use host measurement silently, or relabeling the failure would conceal
-the missing font authority. A new optional font-backed capability needs a product
+oracle to use host measurement silently, or claiming the admitted artifact is
+contained would conceal the missing font authority. A new optional font-backed capability needs a product
 scope decision and the normal dependency, license, size, and platform admission;
 it is not required to fix an error in the current title-union implementation.
