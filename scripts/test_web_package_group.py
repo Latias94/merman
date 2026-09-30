@@ -646,7 +646,7 @@ class WebPackageArtifactTests(unittest.TestCase):
                 observation_attempts=2,
                 observation_delay_seconds=0,
             )
-        self.assertEqual(raised.exception.report["status"], "failed-during-publish")
+        self.assertEqual(raised.exception.report["status"], "pending-registry-visibility")
         self.assertEqual(raised.exception.report["published"], [first["name"]])
 
     def test_reconciliation_stops_when_publish_fails(self) -> None:
@@ -664,7 +664,7 @@ class WebPackageArtifactTests(unittest.TestCase):
                 observation_attempts=2,
                 observation_delay_seconds=0,
             )
-        self.assertEqual(raised.exception.report["status"], "failed-during-publish")
+        self.assertEqual(raised.exception.report["status"], "publish-outcome-unknown")
         self.assertEqual(raised.exception.report["published"], [])
         self.assertEqual(client.published, [])
 
@@ -702,10 +702,10 @@ class WebPackageArtifactTests(unittest.TestCase):
         self.assertEqual(report["status"], "released")
         self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
 
-    def test_default_observation_window_tolerates_three_minute_registry_delay(self) -> None:
+    def test_default_observation_uses_bounded_backoff(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)
-        client = FakeNpm(hidden_integrity_reads_after_publish=36)
+        client = FakeNpm(hidden_integrity_reads_after_publish=11)
         client.manifest = manifest
 
         with mock.patch("scripts.npm_package_group.time.sleep") as sleep:
@@ -713,7 +713,8 @@ class WebPackageArtifactTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "released")
         self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
-        self.assertEqual(sleep.call_count, 36)
+        self.assertEqual(sleep.call_count, 11)
+        self.assertLessEqual(max(call.args[0] for call in sleep.call_args_list), 30)
 
     def test_reconciliation_rejects_existing_version_with_different_integrity(self) -> None:
         path = self.create_manifest()

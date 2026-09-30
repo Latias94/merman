@@ -211,6 +211,10 @@ global installer, bundle, and attestation gates remain owned by the tagged relea
 The Web size gate measures the final wasm-bindgen binaries copied into the npm packages. It must not
 build and measure a second Cargo-only approximation of the same package.
 
+The tagged crates workflow reuses the strict feature matrix and Web build/smoke only from a successful full preflight with an explicit immutable source input and the exact same workflow commit. The read-only verifier binds repository, source commit/tree/version, run/attempt, and the downloaded artifact's ID and digest. Missing or stale evidence runs the original checks; fresh registry resolution, static gates, Typst, and publication barriers remain mandatory. This is a narrow source-check optimization, not a general release authorization cache.
+
+Ubuntu CLI-validator and wheel-repair dependency installation has a ten-minute step limit, bounded network timeouts, and finite retries. Failed package-index updates stop the step rather than silently using stale metadata; these limits prevent a stalled mirror from consuming the full build-job timeout.
+
 ## Evidence Ownership
 
 | Claim | Owning evidence |

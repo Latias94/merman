@@ -236,9 +236,11 @@ jobs:
           cache-targets: false
 
       - name: Install CLI asset validators
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
