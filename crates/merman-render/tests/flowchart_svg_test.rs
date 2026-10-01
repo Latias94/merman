@@ -4098,3 +4098,57 @@ A@{{ img: "https://mermaid.js.org/favicon.svg", label: "{label}", pos: "t", h: 6
         }
     }
 }
+
+#[test]
+fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
+    for look in ["neo", "classic"] {
+        for label in ["<br/><br/>", "<i class='fa fa-car'></i>", ""] {
+            let source = format!(
+                "%%{{init: {{\"look\": \"{look}\"}}}}%%\nflowchart LR\nA([\"{label}\"]) --> B[Rect]\n"
+            );
+            let parsed = block_on(
+                Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .expect("prepare diagram");
+            let layout: FlowchartLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+            )
+            .expect("flowchart layout");
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("render svg");
+            let node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                })
+                .and_then(|group| group.descendants().find(|node| node.has_tag_name("path")))
+                .and_then(|path| path.attribute("d"))
+                .expect("stadium path");
+            let numbers: Vec<f64> = path
+                .split(|ch: char| ch.is_ascii_alphabetic() || ch == ',' || ch.is_whitespace())
+                .filter(|token| !token.is_empty())
+                .map(|token| token.parse().expect("path number"))
+                .collect();
+            let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+            let height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+            assert!(
+                (height - node.height).abs() < 1e-6,
+                "{look}, {label:?}: painted height {height}, layout height {}",
+                node.height
+            );
+        }
+    }
+}
