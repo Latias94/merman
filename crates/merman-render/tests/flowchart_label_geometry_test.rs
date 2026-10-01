@@ -258,3 +258,43 @@ fn image_layout_and_paint_share_size_constraints() {
         }
     }
 }
+
+#[test]
+fn hourglass_fixture_labels_ignore_bounds_cached_before_the_label_was_cleared() {
+    for layout_mode in LAYOUTS {
+        for source in [
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006.mmd"
+            ),
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_md_html_false_054.mmd"
+            ),
+        ] {
+            let (_, svg) = render(source, layout_mode);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let hourglass = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.contains("flowchart-n44-"))
+                })
+                .expect("fixture hourglass node");
+            let label = hourglass
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+                .expect("cleared fixture label");
+            assert_eq!(
+                label.attribute("transform"),
+                Some("translate(0,0)"),
+                "{layout_mode}: {source}"
+            );
+            assert!(
+                !label.descendants().any(
+                    |node| node.is_text() && !node.text().unwrap_or_default().trim().is_empty()
+                )
+            );
+        }
+    }
+}

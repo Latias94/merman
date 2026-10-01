@@ -2151,30 +2151,48 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
 
 #[test]
 fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
-    let _session = merman_render::environment::RenderEnvironment::deterministic()
-        .begin_session()
-        .unwrap();
-    let text = r#"flowchart TB
-A@{ shape: hourglass, label: "Hourglass label" }
-"#;
-    let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let svg = render_flowchart_artifact(
-        parsed,
-        &layout_options,
-        _session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    assert!(
-        svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
-        "expected Mermaid 11.15 hourglass to keep markdown label class on the empty label: {svg}"
-    );
+    for html_labels in [true, false] {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let text = "flowchart TB\nA@{ shape: hourglass, label: \"Hourglass label\" }\n";
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": html_labels,
+            "flowchart": { "htmlLabels": html_labels },
+        })));
+        let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+        let svg = render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg");
+        if html_labels {
+            assert!(
+                svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
+                "hourglass must keep the markdown class on its cleared label: {svg}"
+            );
+        }
+        let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+            .expect("hourglass label group");
+        assert_eq!(
+            label.attribute("transform"),
+            Some("translate(0,0)"),
+            "clearing the label must also clear its measured offset (HTML={html_labels})"
+        );
+        if html_labels {
+            let bbox = label
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(bbox.attribute("width"), Some("0"));
+            assert_eq!(bbox.attribute("height"), Some("0"));
+        }
+    }
 }
 
 #[test]

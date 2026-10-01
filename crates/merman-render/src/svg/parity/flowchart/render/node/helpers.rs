@@ -425,6 +425,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
+    // Shapes such as hourglass clear their label after layout. Its cached bounds then belong
+    // to a different label; let the measurement layer handle the actual empty render payload.
+    let layout_node = layout_node.filter(|_| !label_text.is_empty());
     let prepared_metrics =
         || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, &node_text_style);
     let metrics = if let Some(layout_node) = layout_node {
