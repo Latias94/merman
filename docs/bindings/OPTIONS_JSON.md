@@ -561,7 +561,8 @@ batch job. `unbounded-for-trusted-input` must only be used inside an outer trust
 | Exceptional fully trusted diagram | Finite override of the reported limit; unbounded only if deliberately required | Host owns deadlines, concurrency and outer process limits | Caller owns final output limits |
 
 The general `interactive` layout allowance is 14,100,000 work units; `trusted-native` allows
-15,000,000 and `constrained` 125,000. The interactive candidate is being rechecked against the current registered ELK corpus.
+15,000,000 and `constrained` 125,000. These are the current source defaults after alpha.7; published
+alpha.7 still carries the former interactive ceiling.
 The two general-purpose profiles retain different source/model/output capacities. `constrained` deliberately accepts
 a smaller workload; it is not a claim that every ordinary document fits that profile. Work units
 are not milliseconds, nodes, or bytes. Adding a deadline does not silently raise a work ceiling.
@@ -609,10 +610,10 @@ Linux uses GNU `time -v`.
 Unsupported timing formats fail closed rather than silently omitting RSS.
 
 The [2026-08-07 interactive calibration](../performance/interactive_layout_work_calibration_2026-08-07.md)
-is historical evidence for its recorded backend and corpus. It does not establish current ELK
-coverage at the former 800,000-unit ceiling. The
-[native calibration](../performance/native_layout_work_calibration_2026-10-01.md) records the
-current corpus maximum; the refreshed interactive confirmation is pending in this working change.
+is historical evidence for its recorded backend and corpus. The current interactive decision is
+recorded in the [2026-10-01 interactive calibration](../performance/interactive_layout_work_calibration_2026-10-01.md);
+the [native calibration](../performance/native_layout_work_calibration_2026-10-01.md) records the
+separate CLI/rustdoc decision. Neither receipt creates a latency or memory SLO.
 
 For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
 peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.

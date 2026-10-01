@@ -320,10 +320,11 @@ SHA-256, then link a dated decision receipt from `PERF_PLAN.md`. Record the resu
 `accepted-structural` only; stage elapsed and RSS observations do not create latency, memory, or
 host-SLO claims.
 
-The current native policy example is
-[`native_layout_work_calibration_2026-10-01.md`](native_layout_work_calibration_2026-10-01.md).
-The [interactive receipt](interactive_layout_work_calibration_2026-08-07.md) remains historical
-for its recorded backend and corpus; it does not establish current Mermaid 12 coverage at 800,000.
+The current policy receipts are the [interactive calibration](interactive_layout_work_calibration_2026-10-01.md)
+for the general library/Web default and the [native calibration](native_layout_work_calibration_2026-10-01.md)
+for CLI/rustdoc. The [2026-08-07 interactive receipt](interactive_layout_work_calibration_2026-08-07.md)
+remains historical for its recorded backend and corpus; it does not establish current Mermaid 12
+coverage at 800,000.
 
 Run the native memory harness only when the owner unit registers that gate:
 

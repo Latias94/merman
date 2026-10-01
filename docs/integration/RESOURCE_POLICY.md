@@ -21,7 +21,8 @@ Interactive is intended to admit ordinary diagrams from the supported corpus. Co
 intentionally accepts a smaller subset and is not a drop-in promise to render the same documents.
 Profiles also set source, model, nesting, SVG, and other limits: changing profile changes more
 than layout work. Use `RenderResourcePolicy::apply_override` to change only a relevant limit.
-The current native layout allowance is 15,000,000 work units; constrained remains 125,000.
+The current interactive layout allowance is 14,100,000 work units, trusted-native is 15,000,000,
+and constrained remains 125,000. Published alpha.7 predates the interactive recalibration.
 See the [resource catalog](../bindings/OPTIONS_JSON.md#resource-options) for available dimensions.
 In Rust, inspect each `ResourceLimitId` with `RenderResourcePolicy::value()` for its effective limit.
 
