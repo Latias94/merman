@@ -96,9 +96,11 @@ jobs:
           if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             test "$source_sha" = "$EXPECTED_SOURCE_REF"
           fi
-          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
-          printf 'source_tree=%s\n' "$source_tree" >> "$GITHUB_OUTPUT"
-          printf 'source_date_epoch=%s\n' "$source_date_epoch" >> "$GITHUB_OUTPUT"
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+            printf 'source_date_epoch=%s\n' "$source_date_epoch"
+          } >> "$GITHUB_OUTPUT"
 
   versions-and-packages:
     needs: validate-inputs

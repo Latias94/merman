@@ -255,6 +255,10 @@ Prefer native tools such as Cargo, nextest, actionlint, npm, and package install
 repository scripts into partial parsers for Rust, Cargo, GitHub Actions, or shell merely to prove a
 workflow row or source line is safe.
 
+For local workflow checks, make ShellCheck available on `PATH` or pass its executable with
+`actionlint -shellcheck <path>`. Without ShellCheck, actionlint skips the shell-script diagnostics
+that the Linux CI runner enforces.
+
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
 security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
 the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
