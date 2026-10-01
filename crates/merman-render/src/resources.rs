@@ -295,10 +295,11 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
     [Some(250_000), Some(125_000), Some(1_000_000), None],
     // A policy budget, not a Mermaid limit. Families charge deterministic
-    // units for derived geometry and inspected layout candidates. The interactive
-    // ceiling admits the repository's normal large public fixtures with calibration
-    // headroom while the constrained profile remains the untrusted-input boundary.
-    [Some(800_000), Some(125_000), Some(1_000_000), None],
+    // units for derived geometry and inspected layout candidates. Interactive and
+    // constrained profiles bound latency-sensitive and untrusted work; trusted-native
+    // admits offline documentation, including nested ELK layouts. See the dated
+    // layout-work calibration receipts in docs/performance.
+    [Some(800_000), Some(125_000), Some(15_000_000), None],
     [Some(MAX_RESVG_TREE_NODES); RESOURCE_PROFILE_COUNT],
     [Some(MAX_RESVG_TREE_DEPTH); RESOURCE_PROFILE_COUNT],
 ];
@@ -1317,6 +1318,24 @@ mod tests {
     };
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
+
+    #[test]
+    fn layout_work_defaults_distinguish_interactive_and_offline_workloads() {
+        for (profile, expected) in [
+            (RenderResourceProfile::Constrained, Some(125_000)),
+            (RenderResourceProfile::Interactive, Some(800_000)),
+            (RenderResourceProfile::TrustedNative, Some(15_000_000)),
+            (RenderResourceProfile::UnboundedForTrustedInput, None),
+        ] {
+            let policy = RenderResourcePolicy::for_profile(profile);
+            assert_eq!(policy.value(ResourceLimitId::MaxLayoutWorkUnits), expected);
+            assert!(policy.explicit_overrides().next().is_none());
+        }
+        assert_eq!(
+            RenderResourcePolicy::default(),
+            RenderResourcePolicy::interactive()
+        );
+    }
 
     #[test]
     fn resource_contract_is_complete_unique_and_drives_every_profile() {

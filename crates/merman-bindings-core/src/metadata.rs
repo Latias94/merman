@@ -1309,7 +1309,18 @@ mod tests {
         #[cfg(not(feature = "svg"))]
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
-        assert_eq!(interactive.limits["max_layout_work_units"], Some(800_000));
+        {
+            assert_eq!(interactive.limits["max_layout_work_units"], Some(800_000));
+            let trusted_native = resources
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "trusted-native")
+                .expect("trusted-native profile");
+            assert_eq!(
+                trusted_native.limits["max_layout_work_units"],
+                Some(15_000_000)
+            );
+        }
         let json: Value =
             serde_json::from_slice(&contract.runtime_catalog_json(2).unwrap()).unwrap();
         assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);

@@ -283,8 +283,18 @@ fn rustdoc_layout_budgets_are_configurable_inherited_and_per_diagram() {
             "#[merman_rustdoc::merman]\n#[doc = {documentation:?}]\npub fn default_budget() {{}}"
         ),
     );
-    assert!(!default_output.status.success());
-    let stderr = String::from_utf8_lossy(&default_output.stderr);
+    assert_success(&default_output);
+    let default_html = read_page(&temp.0, "fn.default_budget.html");
+    assert_eq!(diagram_svgs(&default_html).len(), 2);
+
+    let strict_output = rustdoc(
+        &temp.0,
+        &format!(
+            "#[merman_rustdoc::merman(resource_profile = \"interactive\")]\n#[doc = {documentation:?}]\npub fn strict_budget() {{}}"
+        ),
+    );
+    assert!(!strict_output.status.success());
+    let stderr = String::from_utf8_lossy(&strict_output.stderr);
     assert!(stderr.contains("max_layout_work_units"), "{stderr}");
 
     let repeated_documentation = format!("{documentation}\n\n{documentation}");
@@ -332,18 +342,22 @@ pub mod resource_options {{
         2,
         "changing the resource profile must preserve the inherited explicit limit"
     );
-    for page in ["local_limit", "reset_budget"] {
-        let html = read_page(&temp.0, &format!("resource_options/fn.{page}.html"));
-        assert!(diagram_svgs(&html).is_empty(), "budget must fail in {page}");
-        assert_eq!(
-            preformatted_text(&html, "classDiagram")
-                .trim()
-                .lines()
-                .collect::<Vec<_>>(),
-            diagram.trim().lines().collect::<Vec<_>>(),
-            "keep-source must retain the complete diagram in {page}"
-        );
-    }
+    let reset = read_page(&temp.0, "resource_options/fn.reset_budget.html");
+    assert_eq!(
+        diagram_svgs(&reset).len(),
+        2,
+        "inherit=off restores offline defaults"
+    );
+    let rejected = read_page(&temp.0, "resource_options/fn.local_limit.html");
+    assert!(diagram_svgs(&rejected).is_empty());
+    assert_eq!(
+        preformatted_text(&rejected, "classDiagram")
+            .trim()
+            .lines()
+            .collect::<Vec<_>>(),
+        diagram.trim().lines().collect::<Vec<_>>(),
+        "keep-source must retain the complete rejected diagram"
+    );
 }
 
 #[test]

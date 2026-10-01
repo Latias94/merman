@@ -81,7 +81,8 @@ impl Default for Options {
             source: SourceMode::Hide,
             sanitize: SanitizeMode::Strict,
             theme: ThemeMode::Rustdoc,
-            resource_profile: RenderResourcePolicy::default().profile(),
+            // Documentation is an offline native build, like the CLI's trusted local workflow.
+            resource_profile: ResourceProfile::TrustedNative,
             max_layout_work_units: None,
             background: "transparent".to_string(),
             id_prefix: None,
@@ -570,7 +571,7 @@ mod resource_tests {
     fn omitted_layout_limit_preserves_profile_defaults() {
         assert_eq!(
             Options::default().resource_policy().unwrap(),
-            RenderResourcePolicy::default()
+            RenderResourcePolicy::trusted_native()
         );
         for profile in ResourceProfile::ALL {
             let name = profile.id();
@@ -703,7 +704,7 @@ mod resource_tests {
             .with_parent(&parent);
         assert_eq!(
             defaults.resource_policy().unwrap(),
-            RenderResourcePolicy::default()
+            RenderResourcePolicy::trusted_native()
         );
     }
 }

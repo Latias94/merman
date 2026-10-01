@@ -59,6 +59,26 @@ is not measured RSS and does not promise an operating-system memory ceiling.
 Deployments that need a hard memory boundary must also use process or container
 isolation.
 
+## Layout Work And Backend Scheduling
+
+`trusted-native` allows 15,000,000 deterministic layout work units for offline files and
+batch jobs. Rustdoc selects the same profile. `interactive` remains at 800,000 and `constrained`
+at 125,000; the general library and Web defaults remain interactive. These counts do not denote
+milliseconds, resident bytes, source lines, or a guaranteed number of nodes. The native calibration
+uses both light and dark themes, including nested Class namespaces under the Mermaid 12 ELK default.
+
+For PNG/JPEG/PDF, the scheduler reserves a shared semantic/SVG prefix plus the larger of the
+layout and encoding phase weights. Layout artifacts are consumed before encoding starts, so their
+transient weights are not added together. The encoding phase's actual-weight check still includes
+the shared prefix. Raw-SVG imports have no Mermaid layout phase; their accounting is unchanged.
+
+The layout coefficient remains 64 scheduling bytes per allowed work unit and the native pool
+remains 2 GiB. With the default SVG and model limits, a 15,000,000-unit render reserves
+1,347,792,896 scheduling bytes, permitting one Mermaid graphical render at a time. `--jobs` remains an
+upper bound, not a promise of simultaneous rendering. This conservative tradeoff admits larger
+individual diagrams without raising the scheduler pool. It does not claim that small diagrams
+actually use that much memory. Avoid raising the pool solely to reproduce an older job count.
+
 ## Evidence And Margins
 
 The initial policy was reviewed on 2026-07-27 against the checked-in corpus:

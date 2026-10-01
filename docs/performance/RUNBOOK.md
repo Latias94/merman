@@ -285,10 +285,28 @@ CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
 
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \
-  --out-dir target/bench/layout-work-calibration-YYYY-MM-DD \
+  --resource-profile trusted-native --theme default \
+  --out-dir target/bench/layout-work-calibration-YYYY-MM-DD-default \
   --timeout-seconds 300 \
   --full-repeats 5
 ```
+
+Run a second independent output directory with `--theme dark`. The probe defaults to the
+historical interactive profile; select the profile being calibrated explicitly. A candidate
+`--layout-work-limit N` overrides only that dimension and is recorded in every report. Headroom is
+`W + max(100,000, ceil(W / 10))`, rounded upward to 100,000 units for interactive or 1,000,000 units
+for trusted-native. This is a policy margin over the closed corpus, not a bound for arbitrary graphs.
+
+The native `pipeline` layout, render, and end-to-end benchmarks explicitly use trusted-native,
+including the matching input policy for the public end-to-end operation. Older receipts using
+interactive remain historical; compare the same selected policy when claiming latency changes.
+Successful SVG bytes are unchanged by this policy choice. The full/stress suites include the two
+nested-Class controls; the canary, quick, standard, and cross-family selections are unchanged.
+
+Windows uses a Job Object with a gated launcher for descendant cleanup and reads the target
+process's actual peak working set while its handle remains open. The legacy
+`maximum_resident_set_size_bytes` field is labeled `windows-peak-working-set` in that lane;
+do not compare it directly with Linux/macOS RSS. Outer elapsed time includes launcher overhead.
 
 The source probe owns the closed corpus and registered headroom rule. The wrapper must bind five
 byte-identical full reports, isolated semantic/layout/SVG/end-to-end paths, the exact corpus

@@ -246,9 +246,10 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
-    fn nested_class_diagram_accepts_an_explicit_layout_work_budget() {
+    fn nested_class_diagram_uses_offline_defaults_and_respects_explicit_limits() {
         let source = include_str!("../tests/fixtures/class_nested_namespaces.mmd");
-        let error = render(source, 0, Options::default()).unwrap_err();
+        let strict = Options::parse(quote::quote! { resource_profile = "interactive" }).unwrap();
+        let error = render(source, 0, strict).unwrap_err();
         assert!(
             error.to_string().contains("max_layout_work_units"),
             "{error}"
@@ -260,19 +261,34 @@ mod tests {
             "{error}"
         );
 
-        let options = Options::parse(quote::quote! {
-            max_layout_work_units = 2_000_000
+        let explicit = Options::parse(quote::quote! {
+            resource_profile = "interactive", max_layout_work_units = 2_000_000
         })
         .unwrap();
-        let RenderedDiagram::RustdocTheme { light, dark } = render(source, 0, options).unwrap()
-        else {
-            panic!("expected both rustdoc theme variants");
-        };
-        for svg in [&light, &dark] {
-            let document = roxmltree::Document::parse(svg).unwrap();
-            assert_eq!(document.root_element().tag_name().name(), "svg");
-            assert!(svg.contains("C19"));
+        let default_render = render(source, 0, Options::default()).unwrap();
+        let explicit_render = render(source, 0, explicit).unwrap();
+        for rendered in [&default_render, &explicit_render] {
+            let RenderedDiagram::RustdocTheme { light, dark } = rendered else {
+                panic!("expected both rustdoc theme variants");
+            };
+            for svg in [light, dark] {
+                let document = roxmltree::Document::parse(svg).unwrap();
+                assert_eq!(document.root_element().tag_name().name(), "svg");
+                assert!(svg.contains("C19"));
+            }
         }
+        let RenderedDiagram::RustdocTheme { light, dark } = default_render else {
+            unreachable!()
+        };
+        let RenderedDiagram::RustdocTheme {
+            light: explicit_light,
+            dark: explicit_dark,
+        } = explicit_render
+        else {
+            unreachable!()
+        };
+        assert_eq!(light, explicit_light);
+        assert_eq!(dark, explicit_dark);
     }
 
     #[test]
@@ -282,7 +298,8 @@ mod tests {
             .value(merman::svg::ResourceLimitId::MaxSourceBytes)
             .unwrap();
         let source = format!("flowchart TD\nA-->B\n%%{}\n", " ".repeat(source_limit));
-        let error = render(&source, 0, Options::default()).unwrap_err();
+        let strict = Options::parse(quote::quote! { resource_profile = "interactive" }).unwrap();
+        let error = render(&source, 0, strict).unwrap_err();
         assert!(error.to_string().contains("max_source_bytes"), "{error}");
         assert!(
             !error
@@ -291,7 +308,7 @@ mod tests {
         );
 
         let options = Options::parse(quote::quote! {
-            resource_profile = "trusted-native", theme = "default"
+            theme = "default"
         })
         .unwrap();
         assert!(matches!(

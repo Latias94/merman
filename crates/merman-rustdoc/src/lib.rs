@@ -9,9 +9,9 @@
 //!
 //! # Install
 //!
-//! The dependency examples use `0.8.0-alpha.7` for the basic workflow. The `resource_profile`
-//! and `max_layout_work_units` options require this source checkout or a later release;
-//! they are not available in published alpha.7.
+//! The dependency examples use `0.8.0-alpha.7` for the basic workflow. The offline resource defaults
+//! and `resource_profile` / `max_layout_work_units` options require this checkout or a later release.
+//! Published alpha.7 uses an interactive 800,000-unit budget and does not expose these options.
 //!
 //! Keep the renderer out of ordinary builds with an optional documentation dependency:
 //!
@@ -155,7 +155,7 @@
 //! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
 //! | `background` | CSS color | `transparent` | Sets the embedded SVG canvas background independently of the theme. |
 //! | `id_prefix` | ASCII letters, digits, `-`, `_` | automatic | Adds an optional namespace to automatically isolated diagram IDs. |
-//! | `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `interactive` | Select the input, model, layout, and SVG resource policy. |
+//! | `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `trusted-native` | Select the input, model, layout, and SVG resource policy. |
 //! | `max_layout_work_units` | Positive integer literal | Selected profile's limit | Override only the layout work budget for each diagram and theme variant. |
 //! | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
 //!
@@ -189,15 +189,19 @@
 //!
 //! # Resource Budgets
 //!
-//! The default `interactive` profile allows 800,000 layout work units per diagram and theme variant.
-//! These are deterministic admission units, not elapsed time. Alpha.7's ELK default can require more
-//! units than Dagre for the same source, especially for Class diagrams with nested namespaces.
-//! Use a finite override to raise only that budget:
+//! The default `trusted-native` profile allows 15,000,000 layout work units per diagram and theme
+//! variant for offline builds, matching the CLI's local-file workflow. Source, model, nesting, and
+//! SVG limits remain finite. Ordinary documentation needs no budget configuration; the general
+//! library and Web defaults remain `interactive` at 800,000 units.
+//!
+//! Work units measure deterministic admission work, not elapsed time or memory. Alpha.7's ELK
+//! default can require more units than Dagre, especially for Class diagrams with nested namespaces.
+//! For an exceptional trusted diagram, use a finite override to raise only the reported budget:
 //!
 //! ```rust
 //! #[cfg_attr(
 //!     all(doc, feature = "doc-diagrams"),
-//!     merman_rustdoc::merman(max_layout_work_units = 2_000_000)
+//!     merman_rustdoc::merman(max_layout_work_units = 20_000_000)
 //! )]
 //! /// ```mermaid
 //! /// classDiagram
@@ -208,8 +212,8 @@
 //!
 //! The integer must be positive and fit the build host's `usize`. The example is not a universal
 //! budget: an error's `actual` is the first rejected charge, not the full work required to finish.
-//! The `resource_profile` option selects the broader input/model/output policy. Its
-//! `unbounded-for-trusted-input` value explicitly removes policy ceilings while retaining hard
+//! The `resource_profile` option selects the broader input/model/output policy. Use `interactive`
+//! or `constrained` for a restricted build environment. Its `unbounded-for-trusted-input` value explicitly removes policy ceilings while retaining hard
 //! implementation guards. An explicit layout limit applies after the selected profile.
 //!
 //! Both options inherit from parent trees independently; changing a child's profile preserves an

@@ -582,6 +582,26 @@
       "quality": ["svg_sanity", "dom_compare"]
     },
     {
+      "name": "class_nested_namespaces",
+      "family": "class",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/class_nested_namespaces.mmd",
+      "suites": ["stress"],
+      "features": ["namespaces", "nested_namespaces", "relations"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "class_nested_namespaces_large",
+      "family": "class",
+      "size": "large",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/class_nested_namespaces_large.mmd",
+      "suites": ["stress"],
+      "features": ["namespaces", "nested_namespaces", "relations"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
       "name": "state_tiny",
       "family": "state",
       "size": "tiny",
