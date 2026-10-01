@@ -282,6 +282,207 @@ class RendererComparisonContractsTest(unittest.TestCase):
         self.assertTrue(any("corpus changed" in error for error in errors))
         self.assertTrue(any("fixture inputs changed" in error for error in errors))
 
+    def test_reference_preparation_verifies_the_selected_workspace_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            artifact = workspace / "reference-runtime.js"
+            artifact.write_text("globalThis.mermanReferenceRuntime = {};", encoding="utf-8")
+            receipt = {
+                "artifact_path": str(artifact.resolve()),
+                "artifact_sha256": compare_mermaid_renderers._sha256_file(artifact),
+                "compiler_version": "0.28.1",
+            }
+            with (
+                mock.patch.object(compare_mermaid_renderers, "run", return_value=json.dumps(receipt)) as command,
+                mock.patch.object(compare_mermaid_renderers, "read_fixture_source", return_value="flowchart LR\nA-->B"),
+            ):
+                prepared = compare_mermaid_renderers.prepare_mermaid_js_reference(
+                    repo_root=ROOT, mermaid_cli_dir=workspace,
+                    exact_benches=["end_to_end/example"], fixtures_by_name={}, skip=False,
+                )
+                self.assertEqual(prepared, receipt)
+                self.assertEqual(command.call_count, 1)
+                self.assertEqual(command.call_args.args[0], [
+                    "node", str(ROOT / "tools/mermaid-cli/reference-runtime.mjs"),
+                    "--workspace", str(workspace),
+                ])
+                self.assertFalse(command.call_args.kwargs["merge_stderr"])
+                artifact.write_text("changed after build", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "SHA-256 changed"):
+                    compare_mermaid_renderers.prepare_mermaid_js_reference(
+                        repo_root=ROOT, mermaid_cli_dir=workspace,
+                        exact_benches=["end_to_end/example"], fixtures_by_name={}, skip=False,
+                    )
+
+    def test_optional_js_paths_never_prepare_a_reference_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            for benches, skip, cli, source in (
+                (["end_to_end/example"], True, workspace, "example"),
+                (["parse/example"], False, workspace, "example"),
+                (["end_to_end/example"], False, workspace / "missing", "example"),
+                (["end_to_end/example"], False, workspace, None),
+            ):
+                with (
+                    self.subTest(benches=benches, skip=skip, cli=cli, source=source),
+                    mock.patch.object(compare_mermaid_renderers, "run") as command,
+                    mock.patch.object(compare_mermaid_renderers, "read_fixture_source", return_value=source),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    self.assertIsNone(compare_mermaid_renderers.prepare_mermaid_js_reference(
+                        repo_root=ROOT, mermaid_cli_dir=cli, exact_benches=benches,
+                        fixtures_by_name={}, skip=skip,
+                    ))
+                    result = compare_mermaid_renderers.run_mermaid_js(
+                        repo_root=ROOT, mermaid_cli_dir=cli, exact_benches=benches,
+                        fixtures_by_name={}, sample_warm_up=1, sample_measurement=1, skip=skip,
+                    )
+                    self.assertIsNotNone(result["skip_reason"])
+                    command.assert_not_called()
+
+    def test_js_runner_reuses_and_checks_the_prepared_runtime_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            receipt = {
+                "artifact_path": str((workspace / "reference-runtime.js").resolve()),
+                "artifact_sha256": "a" * 64,
+                "compiler_version": "0.28.1",
+            }
+            for actual_receipt in (receipt, {**receipt, "artifact_sha256": "b" * 64}):
+                def invoke(command: list[str], **kwargs: object) -> str:
+                    payload = json.loads(Path(command[command.index("--in") + 1]).read_text(encoding="utf-8"))
+                    self.assertEqual(payload["referenceRuntime"], receipt)
+                    self.assertTrue(command[1].endswith("mermaid_js_bench.cjs"))
+                    output = {
+                        "schema_version": 3,
+                        "meta": {"mermaid": "12.0.0", "reference_runtime": actual_receipt},
+                        "method": {
+                            "measurement_stop_conditions": {"measure_ms": 1000, "max_samples": 10},
+                            "watchdogs": {"navigation_timeout_ms": 30000, "fixture_timeout_ms": 62000},
+                        },
+                        "results": {
+                            "example": {
+                                "times_ns": [100.0, 200.0, 300.0],
+                                "stop_reason": "measurement_time",
+                                "sample_cap": 10,
+                                "samples_truncated": False,
+                                "preflight": {
+                                    "svg_chars": 123, "svg_bytes": 123,
+                                    "svg_sha256": "c" * 64, "view_box": [0, 0, 100, 50],
+                                },
+                            },
+                        },
+                    }
+                    Path(command[command.index("--out") + 1]).write_text(json.dumps(output), encoding="utf-8")
+                    return ""
+
+                with (
+                    self.subTest(actual_receipt=actual_receipt),
+                    mock.patch.object(compare_mermaid_renderers, "run", side_effect=invoke) as command,
+                    mock.patch.object(compare_mermaid_renderers, "read_fixture_source", return_value="flowchart LR\nA-->B"),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    result = compare_mermaid_renderers.run_mermaid_js(
+                        repo_root=ROOT, mermaid_cli_dir=workspace,
+                        exact_benches=["end_to_end/example"], fixtures_by_name={},
+                        sample_warm_up=1, sample_measurement=1, skip=False,
+                        reference_runtime=receipt,
+                    )
+                    self.assertEqual(command.call_count, 1)
+                    accepted = actual_receipt == receipt
+                    self.assertEqual("__runner__" in result["errors"], not accepted)
+                    status = "measured" if accepted else "error"
+                    self.assertEqual(
+                        compare_mermaid_renderers.mermaid_js_status(result, "end_to_end/example", "example"),
+                        status,
+                    )
+                    coverage = compare_mermaid_renderers.coverage_for_runner(result, ["end_to_end/example"])
+                    self.assertEqual(coverage["measured"], 1 if accepted else 0)
+                    self.assertEqual(coverage["errors"], 0 if accepted else 1)
+                    rows = compare_mermaid_renderers.build_rows(
+                        exact_benches=["end_to_end/example"], fixtures_by_name={},
+                        merman={"times_ns": {"end_to_end/example": 100.0}}, mmdr={},
+                        mermaid_js=result, fixture_inputs={},
+                    )
+                    self.assertEqual(rows[0]["status"]["mermaid_js"], status)
+                    self.assertEqual(rows[0]["times_ns"]["mermaid_js"], 200.0 if accepted else None)
+                    self.assertEqual(rows[0]["ratios"]["merman_over_mermaid_js"], 0.5 if accepted else None)
+                    if accepted:
+                        self.assertEqual(result["meta"]["reference_runtime"], receipt)
+                    else:
+                        self.assertEqual(result["times_ns"], {})
+                        self.assertEqual(result["raw_samples_ns"], {})
+                        self.assertIn("receipt differs", result["errors"]["__runner__"])
+
+    def test_js_runner_rejects_changed_artifact_before_browser_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            artifact = workspace / "reference-runtime.js"
+            artifact.write_text("changed artifact", encoding="utf-8")
+            input_path = workspace / "input.json"
+            input_path.write_text(json.dumps({
+                "fixtures": {"example": "flowchart LR\nA-->B"},
+                "configPath": "config.json", "theme": "default", "seed": "1",
+                "width": 800, "warmupMs": 1000, "measureMs": 1000,
+                "maxSamples": 10, "navigationTimeoutMs": 30000, "fixtureTimeoutMs": 62000,
+                "referenceRuntime": {
+                    "artifact_path": str(artifact.resolve()),
+                    "artifact_sha256": "a" * 64,
+                    "compiler_version": "0.28.1",
+                },
+            }), encoding="utf-8")
+            harness = r"""
+const Module = require('node:module');
+const resolve = Module._resolveFilename;
+const load = Module._load;
+Module._resolveFilename = function(name, ...args) {
+  return name === 'puppeteer' ? 'review-puppeteer-stub' : resolve.call(this, name, ...args);
+};
+Module._load = function(name, ...args) {
+  return name === 'review-puppeteer-stub'
+    ? { launch() { throw new Error('Unexpected browser launch'); } }
+    : load.call(this, name, ...args);
+};
+const [runner, input, output] = process.argv.slice(1);
+process.argv = [process.execPath, runner, '--in', input, '--out', output];
+require(runner);
+"""
+            result = subprocess.run([
+                "node", "-e", harness, str(ROOT / "tools/bench/mermaid_js_bench.cjs"),
+                str(input_path), str(workspace / "output.json"),
+            ], cwd=workspace, capture_output=True, text=True, timeout=10, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("artifact SHA-256 changed before browser loading", result.stderr)
+            self.assertNotIn("Unexpected browser launch", result.stderr)
+
+    def test_comparison_provenance_uses_the_prepared_artifact_and_builder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            artifact = workspace / "reference-runtime.js"
+            artifact.write_text("owned runtime", encoding="utf-8")
+            receipt = {
+                "artifact_path": str(artifact.resolve()),
+                "artifact_sha256": compare_mermaid_renderers._sha256_file(artifact),
+                "compiler_version": "0.28.1",
+            }
+            with (
+                mock.patch.object(compare_mermaid_renderers, "capture_git_provenance", return_value={}),
+                mock.patch.object(compare_mermaid_renderers, "compare_mmdr_fixture_inputs", return_value={}),
+                mock.patch.object(compare_mermaid_renderers, "prepare_mermaid_js_reference", return_value=receipt),
+                mock.patch.object(compare_mermaid_renderers, "snapshot_files", wraps=compare_mermaid_renderers.snapshot_files) as snapshots,
+                mock.patch.object(compare_mermaid_renderers, "prepare_criterion_runner", side_effect=RuntimeError("stop before native build")),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "stop before native build"):
+                    compare_mermaid_renderers.main([
+                        "--filter", "end_to_end/flowchart_tiny", "--mmdr-dir", str(workspace),
+                        "--out", str(workspace / "report.md"), "--json-out", str(workspace / "report.json"),
+                    ])
+            files = snapshots.call_args.args[0]
+            self.assertEqual(files["mermaid_reference_artifact"], artifact.resolve())
+            self.assertEqual(files["mermaid_reference_builder"], ROOT / "tools/mermaid-cli/reference-runtime.mjs")
+            self.assertNotIn("mermaid_bundle", files)
+            self.assertNotIn("mermaid_zenuml_bundle", files)
+
     def test_mermaid_js_output_retains_valid_raw_samples_and_recomputes_summary(self) -> None:
         method = {
             "measurement_stop_conditions": {

@@ -27,16 +27,23 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 ## Decision
 
 - Pin the shared browser, reference-CLI, and Rust generation baseline to the release-contract
-  version (`dompurify@3.4.15` for the Mermaid 12.0.0 reference graph).
+  version (`dompurify@3.4.16` for the Mermaid 12.0.0 reference graph).
 - For a dependency-only sanitizer patch, regenerate every upstream family once and inspect every
-  changed SVG before accepting baseline churn. The 3.4.13 refresh changed no generated allowlist
-  entries; its candidate SVG deltas were limited to generated node IDs, the wall-clock-dependent
-  Gantt `today` marker, and external-image loading. Those browser residuals were not admitted as
-  sanitizer semantics, so the canonical SVG bytes remain unchanged while the governed reference
-  package digests advance.
+  changed SVG before accepting baseline churn. The historical 3.4.13 refresh changed no generated
+  allowlist entries; its candidate SVG deltas were limited to generated node IDs, the wall-clock
+  Gantt `today` marker, and external-image loading. That comparison used Mermaid's published
+  bundle, which embeds its own sanitizer, and does not prove that the selected npm override ran.
+- Build reference execution from Mermaid's module entry point and the selected dependency graph.
+  The shared `tools/mermaid-cli/reference-runtime.mjs` builder exposes the same DOMPurify instance
+  imported by Mermaid. The renderer must observe a strict HTML-label render calling that instance
+  before recording its version and the built artifact's digest in baseline provenance.
 - The Mermaid 12 refresh adds the upstream SVG attributes `pointer-events` and `vector-effect`
   from DOMPurify 3.4.15. Browser DOM-node and in-place mutation fixes do not map to the Rust
   string-input sanitizer API.
+- DOMPurify 3.4.16 addresses GHSA-p98j-92pf-mc4p in live DOM-node sanitization with
+  in-place hooks. Mermaid and the Rust sanitizer use string inputs; no corresponding live-node
+  API is introduced. The published browser bundles are tested because this patch also changes
+  the upstream bundler from Rollup to Rolldown.
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`

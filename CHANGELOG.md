@@ -8,6 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Updated the Playground and reference renderer to DOMPurify 3.4.16 for GHSA-p98j-92pf-mc4p. Reference tools now build and verify the selected dependency graph instead of executing older dependencies embedded in Mermaid's published bundle; sanitizer-default generation rejects unsupported input instead of silently producing empty allowlists.
 - Corrected C4 relationship endpoints for people, components, databases, queues, and nested boundaries, including self-relations and near-overlapping centers.
 - Kept Class relationships and arrowheads visible above ELK namespace backgrounds, and aligned relationship marker strokes with Mermaid 12.
 - Restored Usecase Neo shadows, note borders, and gradient resources, and preserved explicit ER table styling across Redux themes.

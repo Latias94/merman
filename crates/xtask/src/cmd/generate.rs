@@ -1,7 +1,6 @@
 use crate::XtaskError;
 use crate::cmd::{
-    PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
-    ensure_content_addressed_js_script, spawn_timeout_managed_child,
+    PINNED_DOMPURIFY_VERSION, ensure_content_addressed_js_script, spawn_timeout_managed_child,
     upstream_svg_package_tree_sha256, wait_with_bounded_output, wait_with_timeout,
 };
 use crate::svgdom;
@@ -9,7 +8,7 @@ use crate::util::{extract_add_to_set_string_array, extract_frozen_string_array};
 use merman_fixture_render_context::{FixtureRenderContext, SecurityLevel};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -125,7 +124,7 @@ pub(super) fn upstream_svg_render_input(
     output_path: &Path,
     config_path: &Path,
     svg_id: &str,
-    browser_executable: &Path,
+    probe: &UpstreamSvgRenderProbe,
 ) -> JsonValue {
     serde_json::json!({
         "input_path": input_path.display().to_string(),
@@ -138,7 +137,9 @@ pub(super) fn upstream_svg_render_input(
         "height": 600,
         "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
         "background_color": scripted_renderer_background_color(diagram),
-        "browser_executable": browser_executable.display().to_string(),
+        "browser_executable": probe.browser_executable.display().to_string(),
+        "runtime_artifact_path": probe.runtime_artifact_path.display().to_string(),
+        "runtime_artifact_sha256": probe.render_environment.mermaid_runtime.artifact_sha256,
         "capture_parse_error_svg": captures_parse_error_svg(diagram),
     })
 }
@@ -267,49 +268,105 @@ pub(crate) fn validate_mermaid_cli_install(tools_root: &Path) -> Result<PathBuf,
 struct UpstreamSvgRuntimePackageRoots {
     mermaid: PathBuf,
     mermaid_cli: PathBuf,
+    dompurify: PathBuf,
+    compiler: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UpstreamSvgRenderProbe {
+pub(super) struct UpstreamSvgRenderProbe {
     render_environment: crate::cmd::UpstreamSvgRenderEnvironment,
-    browser_executable: PathBuf,
+    pub(super) browser_executable: PathBuf,
     runtime_package_roots: UpstreamSvgRuntimePackageRoots,
+    runtime_artifact_path: PathBuf,
+    sanitizer_probe_calls: u64,
+    sanitizer_probe_removed_event: bool,
+    #[serde(skip)]
+    selected_package_hashes: BTreeMap<String, String>,
+    #[serde(skip)]
+    tools_root: PathBuf,
 }
 
 impl UpstreamSvgRenderProbe {
-    fn verified_render_environment(
-        &self,
-    ) -> Result<crate::cmd::UpstreamSvgRenderEnvironment, XtaskError> {
-        self.render_environment.validate()?;
-        for (package_name, root, expected) in [
+    fn runtime_packages(&self) -> [(&str, &Path, &str); 4] {
+        let roots = &self.runtime_package_roots;
+        let runtime = &self.render_environment.mermaid_runtime;
+        [
             (
                 "mermaid",
-                &self.runtime_package_roots.mermaid,
-                self.render_environment
-                    .mermaid_runtime
-                    .mermaid_package_sha256
-                    .as_str(),
+                roots.mermaid.as_path(),
+                runtime.mermaid_package_sha256.as_str(),
             ),
             (
                 "@mermaid-js/mermaid-cli",
-                &self.runtime_package_roots.mermaid_cli,
-                self.render_environment
-                    .mermaid_runtime
-                    .mermaid_cli_package_sha256
-                    .as_str(),
+                roots.mermaid_cli.as_path(),
+                runtime.mermaid_cli_package_sha256.as_str(),
             ),
-        ] {
-            validate_upstream_svg_runtime_package_root(root, package_name)?;
-            let actual = upstream_svg_package_tree_sha256(root)?;
-            if actual != expected {
-                return Err(XtaskError::UpstreamSvgFailed(format!(
-                    "upstream SVG runtime package {package_name} changed after the render-environment probe: expected={expected}, actual={actual}"
-                )));
-            }
+            (
+                "dompurify",
+                roots.dompurify.as_path(),
+                runtime.dompurify_package_sha256.as_str(),
+            ),
+            (
+                "esbuild",
+                roots.compiler.as_path(),
+                runtime.compiler_package_sha256.as_str(),
+            ),
+        ]
+    }
+
+    fn verify_artifact(&self) -> Result<(), XtaskError> {
+        if !self.runtime_artifact_path.is_absolute() || !self.runtime_artifact_path.is_file() {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "upstream SVG render probe returned an invalid runtime artifact: {}",
+                self.runtime_artifact_path.display()
+            )));
         }
+        let bytes =
+            fs::read(&self.runtime_artifact_path).map_err(|source| XtaskError::ReadFile {
+                path: self.runtime_artifact_path.display().to_string(),
+                source,
+            })?;
+        let actual = crate::util::sha256_hex(&bytes);
+        if actual != self.render_environment.mermaid_runtime.artifact_sha256 {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "upstream SVG runtime artifact changed after the render-environment probe: {}",
+                self.runtime_artifact_path.display()
+            )));
+        }
+        Ok(())
+    }
+
+    pub(super) fn verified_render_environment(
+        &self,
+    ) -> Result<crate::cmd::UpstreamSvgRenderEnvironment, XtaskError> {
+        self.render_environment.validate()?;
+        self.verify_artifact()?;
+        verify_selected_runtime_packages(&self.tools_root, &self.selected_package_hashes)?;
         Ok(self.render_environment.clone())
     }
+}
+
+fn verify_selected_runtime_packages(
+    tools_root: &Path,
+    selected_hashes: &BTreeMap<String, String>,
+) -> Result<(), XtaskError> {
+    if selected_hashes.is_empty() {
+        return Err(XtaskError::UpstreamSvgFailed(
+            "upstream SVG runtime has no selected package content snapshot".to_string(),
+        ));
+    }
+    for (package_name, expected) in selected_hashes {
+        let root = tools_root.join("node_modules").join(package_name);
+        validate_upstream_svg_runtime_package_root(&root, package_name)?;
+        let actual = upstream_svg_package_tree_sha256(&root)?;
+        if &actual != expected {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "upstream SVG selected runtime package {package_name} content drift: expected={expected}, actual={actual}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_upstream_svg_runtime_package_root(
@@ -343,6 +400,8 @@ fn installed_mermaid_version(tools_root: &Path) -> Result<String, XtaskError> {
 fn validate_upstream_svg_render_probe(
     probe: UpstreamSvgRenderProbe,
     installed_mermaid_version: &str,
+    compiler_version: &str,
+    selected_hashes: &BTreeMap<String, String>,
 ) -> Result<UpstreamSvgRenderProbe, XtaskError> {
     probe.render_environment.validate()?;
     if !probe.browser_executable.is_absolute() || !probe.browser_executable.is_file() {
@@ -351,38 +410,39 @@ fn validate_upstream_svg_render_probe(
             probe.browser_executable.display()
         )));
     }
-    validate_upstream_svg_runtime_package_root(&probe.runtime_package_roots.mermaid, "mermaid")?;
-    validate_upstream_svg_runtime_package_root(
-        &probe.runtime_package_roots.mermaid_cli,
-        "@mermaid-js/mermaid-cli",
-    )?;
-
-    let runtimes = &probe.render_environment.mermaid_runtime;
-    if runtimes.esm_version != installed_mermaid_version
-        || runtimes.iife_version != installed_mermaid_version
+    probe.verify_artifact()?;
+    for (package_name, root, actual) in probe.runtime_packages() {
+        validate_upstream_svg_runtime_package_root(root, package_name)?;
+        if selected_hashes.get(package_name).map(String::as_str) != Some(actual) {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "installed runtime package content does not match the selected artifact: {package_name}={actual}"
+            )));
+        }
+    }
+    let runtime = &probe.render_environment.mermaid_runtime;
+    if runtime.mermaid_version != installed_mermaid_version
+        || runtime.dompurify_version != PINNED_DOMPURIFY_VERSION
+        || runtime.compiler_version != compiler_version
     {
         return Err(XtaskError::UpstreamSvgFailed(format!(
-            "upstream SVG render probe loaded unexpected Mermaid runtimes: ESM={}, IIFE={}, installed={installed_mermaid_version}",
-            runtimes.esm_version, runtimes.iife_version
+            "upstream SVG render probe loaded unexpected runtime versions: Mermaid={}, DOMPurify={}, esbuild={}",
+            runtime.mermaid_version, runtime.dompurify_version, runtime.compiler_version
         )));
     }
-    if runtimes.mermaid_package_sha256 != PINNED_MERMAID_PACKAGE_SHA256
-        || runtimes.mermaid_cli_package_sha256 != PINNED_MERMAID_CLI_PACKAGE_SHA256
-    {
-        return Err(XtaskError::UpstreamSvgFailed(format!(
-            "installed Mermaid runtime package content does not match the pinned {} artifacts: mermaid={}, mermaid-cli={}",
-            crate::cmd::PINNED_MERMAID_VERSION,
-            runtimes.mermaid_package_sha256,
-            runtimes.mermaid_cli_package_sha256
-        )));
+    if probe.sanitizer_probe_calls == 0 || !probe.sanitizer_probe_removed_event {
+        return Err(XtaskError::UpstreamSvgFailed(
+            "upstream SVG render probe did not prove the selected DOMPurify sanitized Mermaid output".to_string(),
+        ));
     }
-
     Ok(probe)
 }
 
-fn probe_upstream_svg_render_environment(
+pub(super) fn probe_upstream_svg_render_environment(
     tools_root: &Path,
 ) -> Result<UpstreamSvgRenderProbe, XtaskError> {
+    let selected_hashes = super::mermaid_reference::selected_runtime_package_hashes()?;
+    // Bind the build inputs before Node reads them, then recheck the same snapshot after probing.
+    verify_selected_runtime_packages(tools_root, &selected_hashes)?;
     let script_path = ensure_upstream_svg_render_environment_probe_script()?;
     let mut command = Command::new("node");
     command
@@ -414,18 +474,28 @@ fn probe_upstream_svg_render_environment(
         )));
     }
 
-    let probe: UpstreamSvgRenderProbe = serde_json::from_slice(&output.stdout).map_err(|err| {
-        XtaskError::UpstreamSvgFailed(format!(
-            "failed to decode upstream SVG render environment probe output: {err}"
-        ))
-    })?;
-    validate_upstream_svg_render_probe(probe, &installed_mermaid_version(tools_root)?)
-}
-
-pub(super) fn probe_upstream_svg_browser_executable(
-    tools_root: &Path,
-) -> Result<PathBuf, XtaskError> {
-    Ok(probe_upstream_svg_render_environment(tools_root)?.browser_executable)
+    let mut probe: UpstreamSvgRenderProbe =
+        serde_json::from_slice(&output.stdout).map_err(|err| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "failed to decode upstream SVG render environment probe output: {err}"
+            ))
+        })?;
+    probe.tools_root = tools_root.to_path_buf();
+    probe.selected_package_hashes = selected_hashes.clone();
+    probe.verified_render_environment()?;
+    let manifest_path = tools_root.join("package.json");
+    let manifest = read_package_manifest(&manifest_path)?;
+    let compiler_version = required_package_manifest_string(
+        &manifest,
+        &manifest_path,
+        &["devDependencies", "esbuild"],
+    )?;
+    validate_upstream_svg_render_probe(
+        probe,
+        &installed_mermaid_version(tools_root)?,
+        &compiler_version,
+        &selected_hashes,
+    )
 }
 
 #[derive(Debug)]
@@ -1531,7 +1601,7 @@ fn gen_upstream_svgs_impl(
                     &output_abs,
                     mermaid_config.path(),
                     &svg_id,
-                    &render_probe.browser_executable,
+                    render_probe,
                 );
                 input_json["capture_parse_error_svg"] =
                     JsonValue::Bool(fixture_captures_parse_error_svg(diagram, stem));
@@ -2124,8 +2194,8 @@ const requireFromMermaidCli = createRequire(path.join(mermaidCliRoot, 'src', 'cl
 const mermaidPackagePath = requireFromMermaidCli.resolve('mermaid/package.json');
 const mermaidRoot = path.dirname(mermaidPackagePath);
 const mermaidHtmlPath = path.join(mermaidCliRoot, 'dist', 'index.html');
-const mermaidEsmPath = path.join(mermaidRoot, 'dist', 'mermaid.esm.mjs');
-const mermaidIifePath = path.join(mermaidRoot, 'dist', 'mermaid.js');
+const dompurifyRoot = findPackageRoot(requireFromCwd.resolve('dompurify'), 'dompurify');
+const compilerRoot = findPackageRoot(requireFromCwd.resolve('esbuild'), 'esbuild');
 const puppeteerRoot = findPackageRoot(requireFromCwd.resolve('puppeteer'), 'puppeteer');
 const puppeteerPackagePath = path.join(puppeteerRoot, 'package.json');
 const FONT_PROBE_REVISION = 'mermaid-font-probe-v1';
@@ -2138,41 +2208,54 @@ function normalizeVersionText(value, runtime) {
   return match[1];
 }
 
-async function renderInfoVersion(browser, runtime) {
+async function probeOwnedRuntime(browser, runtimeSource) {
   const page = await browser.newPage();
   try {
     await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-    if (runtime === 'iife') {
-      await page.addScriptTag({ path: mermaidIifePath });
-    }
-
-    const version = await page.evaluate(
-      async ({ runtime, mermaidEsmUrl }) => {
-        const mermaid = runtime === 'esm'
-          ? (await import(mermaidEsmUrl)).default
-          : globalThis.mermaid;
-        if (!mermaid) {
-          throw new Error(`missing Mermaid ${runtime} runtime`);
-        }
-
-        mermaid.initialize({ startOnLoad: false });
-        const container = document.getElementById('container') || document.body;
-        const rendered = await mermaid.render(`merman-${runtime}-version-probe`, 'info showInfo', container);
-        const svg = typeof rendered === 'string' ? rendered : rendered && rendered.svg;
-        if (typeof svg !== 'string') {
-          throw new Error(`Mermaid ${runtime} info probe returned no SVG`);
-        }
-
-        const documentNode = new DOMParser().parseFromString(svg, 'image/svg+xml');
-        const versionNode = documentNode.querySelector('text.version');
-        return versionNode && versionNode.textContent;
-      },
-      {
-        runtime,
-        mermaidEsmUrl: url.pathToFileURL(mermaidEsmPath).href,
+    await page.addScriptTag({ content: runtimeSource });
+    const observed = await page.evaluate(async () => {
+      const runtime = globalThis.mermanReferenceRuntime;
+      if (!runtime?.mermaid || !runtime?.sanitizer) {
+        throw new Error('owned Mermaid runtime is unavailable');
       }
-    );
-    return normalizeVersionText(version, runtime);
+      const { mermaid, sanitizer } = runtime;
+      await mermaid.registerExternalDiagrams(runtime.externalDiagrams);
+      mermaid.registerLayoutLoaders(runtime.externalLayouts);
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+      const container = document.getElementById('container') || document.body;
+      const info = await mermaid.render('merman-owned-version-probe', 'info showInfo', container);
+      const infoDocument = new DOMParser().parseFromString(info.svg, 'image/svg+xml');
+      const version = infoDocument.querySelector('text.version')?.textContent;
+      let sanitizerCalls = 0;
+      const originalSanitize = sanitizer.sanitize;
+      sanitizer.sanitize = function (...args) {
+        sanitizerCalls += 1;
+        return Reflect.apply(originalSanitize, this, args);
+      };
+      let sanitized;
+      try {
+        sanitized = await mermaid.render(
+          'merman-owned-sanitizer-probe',
+          `flowchart TD\n A["<b onclick='mermanUnsafe()'>safe</b>"]`,
+          container,
+        );
+      } finally {
+        sanitizer.sanitize = originalSanitize;
+      }
+      const documentNode = new DOMParser().parseFromString(sanitized.svg, 'image/svg+xml');
+      const removedEvent = !documentNode.querySelector('[onclick]')
+        && documentNode.documentElement.textContent.includes('safe');
+      if (sanitizerCalls === 0 || !removedEvent) {
+        throw new Error('selected DOMPurify did not sanitize Mermaid HTML-label output');
+      }
+      return {
+        mermaid_version: version,
+        dompurify_version: sanitizer.version,
+        sanitizer_probe_calls: sanitizerCalls,
+        sanitizer_probe_removed_event: removedEvent,
+      };
+    });
+    return { ...observed, mermaid_version: normalizeVersionText(observed.mermaid_version, 'owned') };
   } finally {
     await page.close();
   }
@@ -2292,6 +2375,16 @@ async function resolveBrowserLocaleAndTimezone(browser) {
 (async () => {
   let browser;
   try {
+    const { prepareReferenceRuntime } = await import(
+      url.pathToFileURL(path.join(process.cwd(), 'reference-runtime.mjs')).href
+    );
+    const artifact = await prepareReferenceRuntime(process.cwd());
+    const runtimeBytes = fs.readFileSync(artifact.artifact_path);
+    const runtimeSha256 = crypto.createHash('sha256').update(runtimeBytes).digest('hex');
+    if (runtimeSha256 !== artifact.artifact_sha256) {
+      throw new Error('owned runtime changed before the render-environment probe');
+    }
+    const runtimeSource = runtimeBytes.toString('utf8');
     browser = await puppeteer.launch({
       browser: 'chrome',
       headless: 'shell',
@@ -2313,6 +2406,7 @@ async function resolveBrowserLocaleAndTimezone(browser) {
     }
     const { locale, timezone } = await resolveBrowserLocaleAndTimezone(browser);
 
+    const observed = await probeOwnedRuntime(browser, runtimeSource);
     const output = {
       render_environment: {
         browser: {
@@ -2331,8 +2425,12 @@ async function resolveBrowserLocaleAndTimezone(browser) {
           release: os.release(),
         },
         mermaid_runtime: {
-          esm_version: await renderInfoVersion(browser, 'esm'),
-          iife_version: await renderInfoVersion(browser, 'iife'),
+          mermaid_version: observed.mermaid_version,
+          dompurify_version: observed.dompurify_version,
+          compiler_version: artifact.compiler_version,
+          artifact_sha256: runtimeSha256,
+          dompurify_package_sha256: packageTreeSha256(dompurifyRoot),
+          compiler_package_sha256: packageTreeSha256(compilerRoot),
           mermaid_package_sha256: packageTreeSha256(mermaidRoot),
           mermaid_cli_package_sha256: packageTreeSha256(mermaidCliRoot),
         },
@@ -2342,9 +2440,14 @@ async function resolveBrowserLocaleAndTimezone(browser) {
         },
       },
       browser_executable: browserExecutable,
+      runtime_artifact_path: artifact.artifact_path,
+      sanitizer_probe_calls: observed.sanitizer_probe_calls,
+      sanitizer_probe_removed_event: observed.sanitizer_probe_removed_event,
       runtime_package_roots: {
         mermaid: mermaidRoot,
         mermaid_cli: mermaidCliRoot,
+        dompurify: dompurifyRoot,
+        compiler: compilerRoot,
       },
     };
     process.stdout.write(JSON.stringify(output));
@@ -2369,6 +2472,7 @@ async function resolveBrowserLocaleAndTimezone(browser) {
 pub(crate) fn ensure_seeded_upstream_svg_renderer_script() -> Result<PathBuf, XtaskError> {
     const JS: &str = r#"
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const url = require('url');
 const { createRequire } = require('module');
@@ -2391,9 +2495,6 @@ function findPackageRoot(entryPath, expectedName) {
 }
 const mermaidCliEntryPath = requireFromCwd.resolve('@mermaid-js/mermaid-cli');
 const mermaidCliRoot = findPackageRoot(mermaidCliEntryPath, '@mermaid-js/mermaid-cli');
-const requireFromMermaidCli = createRequire(path.join(mermaidCliRoot, 'src', 'cli.js'));
-const mermaidPackagePath = requireFromMermaidCli.resolve('mermaid/package.json');
-const mermaidRoot = path.dirname(mermaidPackagePath);
 
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const inputPath = String(input.input_path || '');
@@ -2409,24 +2510,23 @@ const backgroundColor = input.background_color === undefined
   ? 'white'
   : String(input.background_color);
 const browserExecutable = String(input.browser_executable || '');
+const runtimeArtifactPath = String(input.runtime_artifact_path || '');
+const runtimeArtifactSha256 = String(input.runtime_artifact_sha256 || '');
 const captureParseErrorSvg = input.capture_parse_error_svg === true;
 const debug = process.env.MERMAN_SEEDED_UPSTREAM_SVG_DEBUG === '1';
 
-if (!inputPath || !outputPath || !configPath || !browserExecutable) {
-  console.error('missing required input/output/config/browser executable path');
+if (!inputPath || !outputPath || !configPath || !browserExecutable || !runtimeArtifactPath
+    || !/^[a-f0-9]{64}$/.test(runtimeArtifactSha256)) {
+  console.error('missing required input/output/config/browser/runtime artifact identity');
   process.exit(2);
 }
 
 const mermaidHtmlPath = path.join(mermaidCliRoot, 'dist', 'index.html');
-const mermaidIifePath = path.join(mermaidRoot, 'dist', 'mermaid.js');
-const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
-const referenceManifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
-// Mermaid 12 owns ELK; the legacy plugin would replace its marker registry.
-const selectedLayoutUrls = ['tidy-tree']
-  .filter((name) => referenceManifest.devDependencies?.[`@mermaid-js/layout-${name}`])
-  .map((name) => url.pathToFileURL(path.join(process.cwd(), 'node_modules', '@mermaid-js',
-    `layout-${name}`, 'dist', `mermaid-layout-${name}.esm.mjs`)).href);
-
+const runtimeBytes = fs.readFileSync(runtimeArtifactPath);
+if (crypto.createHash('sha256').update(runtimeBytes).digest('hex') !== runtimeArtifactSha256) {
+  throw new Error('owned runtime changed after the render-environment probe');
+}
+const runtimeSource = runtimeBytes.toString('utf8');
 
 (async () => {
   const code = fs.readFileSync(inputPath, 'utf8');
@@ -2517,29 +2617,19 @@ const selectedLayoutUrls = ['tidy-tree']
     deviceScaleFactor: 1,
   });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-  await Promise.all([
-    page.addScriptTag({ path: mermaidIifePath }),
-    page.addScriptTag({ path: zenumlIifePath }),
-  ]);
+  await page.addScriptTag({ content: runtimeSource });
 
-  const svg = await page.evaluate(async ({ code, cfg, svgId, containerWidth, captureParseErrorSvg, debug, selectedLayoutUrls }) => {
-    const mermaid = globalThis.mermaid;
-    if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
+  const svg = await page.evaluate(async ({ code, cfg, svgId, containerWidth, captureParseErrorSvg, debug }) => {
+    const runtime = globalThis.mermanReferenceRuntime;
+    const mermaid = runtime?.mermaid;
+    if (!mermaid) throw new Error('owned Mermaid runtime is unavailable');
 
     if (document.fonts && typeof document.fonts[Symbol.iterator] === 'function') {
       await Promise.all(Array.from(document.fonts, (font) => font.load()));
     }
 
-    // Register only the companions explicitly selected by this reference workspace.
-    // Standard Mermaid 12 already owns ELK; the CLI's transitive plugin must not replace it.
-    const zenuml = globalThis['mermaid-zenuml'];
-    if (zenuml && typeof mermaid.registerExternalDiagrams === 'function') {
-      await mermaid.registerExternalDiagrams([zenuml]);
-    }
-    for (const moduleUrl of selectedLayoutUrls) {
-      const { default: layouts } = await import(moduleUrl);
-      mermaid.registerLayoutLoaders(layouts);
-    }
+    await mermaid.registerExternalDiagrams(runtime.externalDiagrams);
+    mermaid.registerLayoutLoaders(runtime.externalLayouts);
 
     mermaid.initialize(Object.assign({ startOnLoad: false }, cfg));
 
@@ -2749,7 +2839,7 @@ const selectedLayoutUrls = ['tidy-tree']
       return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
     }
     return xml;
-  }, { code, cfg, svgId, containerWidth, captureParseErrorSvg, debug, selectedLayoutUrls });
+  }, { code, cfg, svgId, containerWidth, captureParseErrorSvg, debug });
 
   if (debug) {
     if (typeof svg !== 'string') {
@@ -3230,12 +3320,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
-        PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS,
-        UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots, absolutize_workspace_path,
-        captures_parse_error_svg, create_upstream_svg_check_output_root, debug_svg_family,
-        ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
-        ensure_seeded_upstream_svg_renderer_script,
+        PINNED_DOMPURIFY_VERSION, PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE,
+        UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots,
+        absolutize_workspace_path, captures_parse_error_svg, create_upstream_svg_check_output_root,
+        debug_svg_family, ensure_content_addressed_js_script,
+        ensure_fresh_upstream_svg_output_is_empty, ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
         parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
         promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
@@ -3244,9 +3333,10 @@ mod tests {
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
         upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
-        use_or_acquire_upstream_svg_family_lock, validate_and_promote_upstream_svg_temp,
-        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
-        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
+        upstream_svg_render_input, use_or_acquire_upstream_svg_family_lock,
+        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
+        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
+        validate_upstream_svg_render_probe,
     };
     use crate::XtaskError;
     use crate::cmd::{
@@ -3254,6 +3344,7 @@ mod tests {
     };
     use crate::svgdom::DomMode;
     use serde_json::json;
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -3402,6 +3493,100 @@ mod tests {
             "mermaid",
             mermaid_version,
         );
+    }
+
+    fn dompurify_literal_array_fixture(quote: char) -> String {
+        [
+            ("html$1", "freeze(", &["DIV", "a"][..]),
+            ("svg$1", "freeze(", &["svg"]),
+            ("svgFilters", "freeze(", &["feBlend"]),
+            ("mathMl$1", "freeze(", &["math"]),
+            ("html", "freeze(", &["href"]),
+            ("svg", "freeze(", &["viewBox"]),
+            ("mathMl", "freeze(", &["mathvariant"]),
+            ("xml", "freeze(", &["xml:lang"]),
+            ("DEFAULT_DATA_URI_TAGS", "addToSet({}, ", &["audio", "img"]),
+            (
+                "DEFAULT_URI_SAFE_ATTRIBUTES",
+                "addToSet({}, ",
+                &["alt", "title"],
+            ),
+        ]
+        .into_iter()
+        .map(|(ident, call, values)| {
+            let elements = values
+                .iter()
+                .map(|value| format!("{quote}{value}{quote}"))
+                .collect::<Vec<_>>()
+                .join(",\n\t");
+            format!("const {ident} = {call}[\n\t{elements}\n]);\n")
+        })
+        .collect()
+    }
+
+    #[test]
+    fn dompurify_generation_preserves_all_groups_across_packagers() {
+        let temporary = tempfile::tempdir().expect("temporary generator root");
+        let source_path = temporary.path().join("purify.cjs.js");
+        let output_path = temporary.path().join("defaults.rs");
+        let owned = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        };
+        let expected = render_dompurify_defaults_rs(
+            &owned(&["a", "div", "feblend", "math", "svg"]),
+            &owned(&["href", "mathvariant", "viewbox", "xml:lang"]),
+            &owned(&["alt", "title"]),
+            &owned(&["audio", "img"]),
+        );
+        for quote in ['\'', '"'] {
+            fs::write(&source_path, dompurify_literal_array_fixture(quote))
+                .expect("source fixture");
+            super::gen_dompurify_defaults(vec![
+                "--src".to_string(),
+                source_path.to_string_lossy().into_owned(),
+                "--out".to_string(),
+                output_path.to_string_lossy().into_owned(),
+            ])
+            .expect("generate all four allowlists");
+            assert_eq!(
+                fs::read_to_string(&output_path).expect("generated output"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn dompurify_generation_rejects_incomplete_lists_without_overwriting_output() {
+        let temporary = tempfile::tempdir().expect("temporary generator root");
+        let source_path = temporary.path().join("purify.cjs.js");
+        let output_path = temporary.path().join("defaults.rs");
+        let valid = dompurify_literal_array_fixture('"');
+        for (original, replacement) in [
+            ("\"feBlend\"", ""),
+            ("\"viewBox\"", "\"viewBox\", unsupportedValue"),
+            ("\"audio\",\n\t\"img\"", ""),
+            ("\"alt\",\n\t\"title\"", "\"alt\" + \"title\""),
+        ] {
+            assert!(valid.contains(original));
+            fs::write(&source_path, valid.replace(original, replacement)).expect("invalid fixture");
+            fs::write(&output_path, "existing validated output\n").expect("existing output");
+            assert!(
+                super::gen_dompurify_defaults(vec![
+                    "--src".to_string(),
+                    source_path.to_string_lossy().into_owned(),
+                    "--out".to_string(),
+                    output_path.to_string_lossy().into_owned(),
+                ])
+                .is_err()
+            );
+            assert_eq!(
+                fs::read_to_string(&output_path).expect("preserved output"),
+                "existing validated output\n",
+            );
+        }
     }
 
     #[test]
@@ -3844,7 +4029,7 @@ mod tests {
             .find("await page.goto")
             .expect("find Mermaid CLI page navigation");
         let mermaid_load = script
-            .find("page.addScriptTag({ path: mermaidIifePath })")
+            .find("page.addScriptTag({ content: runtimeSource })")
             .expect("find Mermaid bundle load");
 
         assert!(injection < fixed_clock);
@@ -4479,26 +4664,46 @@ mod tests {
         remove_test_root(&tools_root);
     }
 
-    #[test]
-    fn render_probe_requires_real_browser_and_matching_runtime_versions() {
-        let test_root = unique_test_root("render-probe-validation");
-        fs::create_dir_all(&test_root).expect("create render probe test root");
-        let browser_executable = test_root.join("chrome.exe");
+    fn render_probe_fixture() -> (
+        tempfile::TempDir,
+        UpstreamSvgRenderProbe,
+        BTreeMap<String, String>,
+    ) {
+        let temporary = tempfile::tempdir().expect("temporary render probe root");
+        let root = temporary.path();
+        let browser_executable = root.join("chrome.exe");
         fs::write(&browser_executable, b"test browser").expect("write browser executable");
-        let mermaid_root = test_root.join("mermaid");
-        let mermaid_cli_root = test_root.join("mermaid-cli");
-        write_package_manifest(&mermaid_root.join("package.json"), "mermaid", "11.16.0");
-        write_package_manifest(
-            &mermaid_cli_root.join("package.json"),
-            "@mermaid-js/mermaid-cli",
-            "11.16.0",
-        );
+        let runtime_artifact_path = root.join("runtime.js");
+        let runtime_bytes = b"test owned runtime";
+        fs::write(&runtime_artifact_path, runtime_bytes).expect("write owned runtime");
         let runtime_package_roots = UpstreamSvgRuntimePackageRoots {
-            mermaid: mermaid_root,
-            mermaid_cli: mermaid_cli_root,
+            mermaid: root.join("node_modules/mermaid"),
+            mermaid_cli: root.join("node_modules/@mermaid-js/mermaid-cli"),
+            dompurify: root.join("node_modules/dompurify"),
+            compiler: root.join("node_modules/esbuild"),
         };
-
-        let environment = crate::cmd::UpstreamSvgRenderEnvironment {
+        let mut selected_hashes = BTreeMap::new();
+        for (name, path, version) in [
+            ("mermaid", &runtime_package_roots.mermaid, "12.0.0"),
+            (
+                "@mermaid-js/mermaid-cli",
+                &runtime_package_roots.mermaid_cli,
+                "12.0.0",
+            ),
+            (
+                "dompurify",
+                &runtime_package_roots.dompurify,
+                PINNED_DOMPURIFY_VERSION,
+            ),
+            ("esbuild", &runtime_package_roots.compiler, "0.28.1"),
+        ] {
+            write_package_manifest(&path.join("package.json"), name, version);
+            selected_hashes.insert(
+                name.to_string(),
+                upstream_svg_package_tree_sha256(path).expect("hash runtime package"),
+            );
+        }
+        let render_environment = crate::cmd::UpstreamSvgRenderEnvironment {
             browser: crate::cmd::UpstreamSvgBrowserEnvironment {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
@@ -4515,139 +4720,165 @@ mod tests {
                 release: "test".to_string(),
             },
             mermaid_runtime: crate::cmd::UpstreamSvgRuntimeEnvironment {
-                esm_version: "11.16.0".to_string(),
-                iife_version: "11.16.0".to_string(),
-                mermaid_package_sha256: PINNED_MERMAID_PACKAGE_SHA256.to_string(),
-                mermaid_cli_package_sha256: PINNED_MERMAID_CLI_PACKAGE_SHA256.to_string(),
+                mermaid_version: "12.0.0".to_string(),
+                dompurify_version: PINNED_DOMPURIFY_VERSION.to_string(),
+                compiler_version: "0.28.1".to_string(),
+                artifact_sha256: crate::util::sha256_hex(runtime_bytes),
+                dompurify_package_sha256: selected_hashes["dompurify"].clone(),
+                compiler_package_sha256: selected_hashes["esbuild"].clone(),
+                mermaid_package_sha256: selected_hashes["mermaid"].clone(),
+                mermaid_cli_package_sha256: selected_hashes["@mermaid-js/mermaid-cli"].clone(),
             },
             font_probe: crate::cmd::UpstreamSvgFontProbeEnvironment {
                 revision: "mermaid-font-probe-v1".to_string(),
-                sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                    .to_string(),
+                sha256: "a".repeat(64),
             },
         };
+        let probe = UpstreamSvgRenderProbe {
+            render_environment,
+            browser_executable,
+            runtime_package_roots,
+            runtime_artifact_path,
+            sanitizer_probe_calls: 13,
+            sanitizer_probe_removed_event: true,
+            selected_package_hashes: selected_hashes.clone(),
+            tools_root: root.to_path_buf(),
+        };
+        (temporary, probe, selected_hashes)
+    }
 
-        validate_upstream_svg_render_probe(
-            UpstreamSvgRenderProbe {
-                render_environment: environment.clone(),
-                browser_executable: browser_executable.clone(),
-                runtime_package_roots: runtime_package_roots.clone(),
-            },
-            "11.16.0",
-        )
-        .expect("matching runtime versions and a real executable are valid");
+    #[test]
+    fn render_probe_requires_real_browser_and_matching_runtime_versions() {
+        let (_temporary, probe, selected_hashes) = render_probe_fixture();
+        validate_upstream_svg_render_probe(probe.clone(), "12.0.0", "0.28.1", &selected_hashes)
+            .expect("the selected runtime and a real executable are valid");
 
-        let mut stale_environment = environment.clone();
-        stale_environment.mermaid_runtime.iife_version = "11.15.0".to_string();
-        let stale = validate_upstream_svg_render_probe(
-            UpstreamSvgRenderProbe {
-                render_environment: stale_environment,
-                browser_executable: browser_executable.clone(),
-                runtime_package_roots: runtime_package_roots.clone(),
-            },
-            "11.16.0",
-        )
-        .expect_err("a stale IIFE runtime must fail");
-        assert!(stale.to_string().contains("IIFE=11.15.0"));
+        for field in ["mermaid", "dompurify", "esbuild"] {
+            let mut stale = probe.clone();
+            let runtime = &mut stale.render_environment.mermaid_runtime;
+            match field {
+                "mermaid" => runtime.mermaid_version = "11.16.0".to_string(),
+                "dompurify" => runtime.dompurify_version = "3.4.12".to_string(),
+                "esbuild" => runtime.compiler_version = "0.28.0".to_string(),
+                _ => unreachable!(),
+            }
+            let error =
+                validate_upstream_svg_render_probe(stale, "12.0.0", "0.28.1", &selected_hashes)
+                    .expect_err("a stale loaded runtime must fail");
+            assert!(
+                error.to_string().contains("unexpected runtime versions"),
+                "{field}: {error}"
+            );
+        }
 
-        let mut modified_runtime = environment.clone();
-        modified_runtime.mermaid_runtime.mermaid_package_sha256 =
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
-        let modified = validate_upstream_svg_render_probe(
-            UpstreamSvgRenderProbe {
-                render_environment: modified_runtime,
-                browser_executable: browser_executable.clone(),
-                runtime_package_roots: runtime_package_roots.clone(),
-            },
-            "11.16.0",
-        )
-        .expect_err("same-version modified Mermaid runtime content must fail");
-        assert!(modified.to_string().contains("package content"));
+        let mut modified = selected_hashes.clone();
+        modified.insert("dompurify".to_string(), "0".repeat(64));
+        let error =
+            validate_upstream_svg_render_probe(probe.clone(), "12.0.0", "0.28.1", &modified)
+                .expect_err("same-version modified runtime content must fail");
+        assert!(error.to_string().contains("package content"));
 
-        fs::remove_file(&browser_executable).expect("remove browser executable");
-        let missing = validate_upstream_svg_render_probe(
-            UpstreamSvgRenderProbe {
-                render_environment: environment,
-                browser_executable,
-                runtime_package_roots,
-            },
-            "11.16.0",
-        )
-        .expect_err("a missing browser executable must fail");
-        assert!(missing.to_string().contains("invalid browser executable"));
-        remove_test_root(&test_root);
+        let mut missing = probe;
+        missing.browser_executable = missing.browser_executable.with_file_name("missing.exe");
+        let error =
+            validate_upstream_svg_render_probe(missing, "12.0.0", "0.28.1", &selected_hashes)
+                .expect_err("a missing browser executable must fail");
+        assert!(error.to_string().contains("invalid browser executable"));
+    }
+
+    #[test]
+    fn render_probe_requires_the_selected_sanitizer_to_remove_html_events() {
+        let (_temporary, probe, selected_hashes) = render_probe_fixture();
+        for (calls, removed_event) in [(0, true), (13, false)] {
+            let mut unproven = probe.clone();
+            unproven.sanitizer_probe_calls = calls;
+            unproven.sanitizer_probe_removed_event = removed_event;
+            let error =
+                validate_upstream_svg_render_probe(unproven, "12.0.0", "0.28.1", &selected_hashes)
+                    .expect_err("a version string alone cannot prove sanitizer execution");
+            assert!(
+                error
+                    .to_string()
+                    .contains("did not prove the selected DOMPurify")
+            );
+        }
     }
 
     #[test]
     fn runtime_package_drift_after_probe_rejects_the_attestation() {
-        let test_root = unique_test_root("render-probe-runtime-drift");
-        let mermaid_root = test_root.join("mermaid");
-        let mermaid_cli_root = test_root.join("mermaid-cli");
-        write_package_manifest(&mermaid_root.join("package.json"), "mermaid", "11.16.0");
-        write_package_manifest(
-            &mermaid_cli_root.join("package.json"),
-            "@mermaid-js/mermaid-cli",
-            "11.16.0",
-        );
-        fs::write(mermaid_root.join("runtime.js"), b"original runtime")
-            .expect("write Mermaid runtime");
-        fs::write(mermaid_cli_root.join("cli.js"), b"original CLI")
-            .expect("write Mermaid CLI runtime");
-        let mermaid_sha256 =
-            upstream_svg_package_tree_sha256(&mermaid_root).expect("hash Mermaid package");
-        let mermaid_cli_sha256 =
-            upstream_svg_package_tree_sha256(&mermaid_cli_root).expect("hash Mermaid CLI package");
-        let environment = crate::cmd::UpstreamSvgRenderEnvironment {
-            browser: crate::cmd::UpstreamSvgBrowserEnvironment {
-                product: "Chrome".to_string(),
-                version: "131.0.6778.204".to_string(),
-                revision: "@revision".to_string(),
-                locale: "en-US".to_string(),
-                timezone: "UTC".to_string(),
-            },
-            puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {
-                version: "23.11.1".to_string(),
-            },
-            operating_system: crate::cmd::UpstreamSvgOperatingSystemEnvironment {
-                platform: "win32".to_string(),
-                arch: "x64".to_string(),
-                release: "test".to_string(),
-            },
-            mermaid_runtime: crate::cmd::UpstreamSvgRuntimeEnvironment {
-                esm_version: "11.16.0".to_string(),
-                iife_version: "11.16.0".to_string(),
-                mermaid_package_sha256: mermaid_sha256,
-                mermaid_cli_package_sha256: mermaid_cli_sha256,
-            },
-            font_probe: crate::cmd::UpstreamSvgFontProbeEnvironment {
-                revision: "mermaid-font-probe-v1".to_string(),
-                sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                    .to_string(),
-            },
-        };
-        let probe = UpstreamSvgRenderProbe {
-            render_environment: environment.clone(),
-            browser_executable: PathBuf::new(),
-            runtime_package_roots: UpstreamSvgRuntimePackageRoots {
-                mermaid: mermaid_root.clone(),
-                mermaid_cli: mermaid_cli_root,
-            },
-        };
-        assert_eq!(
-            probe
+        for package_name in ["mermaid", "@mermaid-js/mermaid-cli", "dompurify", "esbuild"] {
+            let (_temporary, probe, _) = render_probe_fixture();
+            assert_eq!(
+                probe
+                    .verified_render_environment()
+                    .expect("unchanged package trees are valid"),
+                probe.render_environment,
+            );
+            let package_root = probe
+                .runtime_packages()
+                .into_iter()
+                .find(|(name, _, _)| *name == package_name)
+                .expect("find selected package")
+                .1;
+            fs::write(package_root.join("changed.js"), b"changed package content")
+                .expect("mutate runtime package after probe");
+            let error = probe
                 .verified_render_environment()
-                .expect("unchanged package trees are valid"),
-            environment
-        );
+                .expect_err("runtime package drift must reject the attestation");
+            assert!(error.to_string().contains("content drift"), "{error}");
+            assert!(error.to_string().contains(package_name), "{error}");
+        }
+    }
 
-        fs::write(mermaid_root.join("runtime.js"), b"modified runtime")
-            .expect("mutate Mermaid runtime after probe");
+    #[test]
+    fn selected_companion_drift_is_rechecked_after_runtime_preparation() {
+        let (_temporary, mut probe, _) = render_probe_fixture();
+        let package = "@mermaid-js/layout-tidy-tree";
+        let companion_root = probe.tools_root.join("node_modules").join(package);
+        write_package_manifest(&companion_root.join("package.json"), package, "0.2.1");
+        probe.selected_package_hashes.insert(
+            package.to_string(),
+            upstream_svg_package_tree_sha256(&companion_root).expect("hash selected companion"),
+        );
+        probe
+            .verified_render_environment()
+            .expect("unchanged companion is valid");
+        fs::write(companion_root.join("changed.js"), b"changed layout")
+            .expect("mutate companion after runtime preparation");
         let error = probe
             .verified_render_environment()
-            .expect_err("runtime drift must reject the attestation");
+            .expect_err("a self-contained artifact cannot conceal companion source drift");
+        assert!(error.to_string().contains(package), "{error}");
+    }
 
-        assert!(error.to_string().contains("changed after"), "{error}");
-        assert!(error.to_string().contains("mermaid"), "{error}");
-        remove_test_root(&test_root);
+    #[test]
+    fn runtime_artifact_drift_after_probe_rejects_rendering_and_attestation() {
+        let (_temporary, probe, selected_hashes) = render_probe_fixture();
+        let input = upstream_svg_render_input(
+            "flowchart",
+            Path::new("input.mmd"),
+            Path::new("output.svg"),
+            Path::new("config.json"),
+            "fixture",
+            &probe,
+        );
+        assert_eq!(
+            input["runtime_artifact_path"],
+            probe.runtime_artifact_path.display().to_string()
+        );
+        assert_eq!(
+            input["runtime_artifact_sha256"],
+            probe.render_environment.mermaid_runtime.artifact_sha256
+        );
+        fs::write(&probe.runtime_artifact_path, b"replaced artifact").expect("mutate artifact");
+        let error = probe
+            .verified_render_environment()
+            .expect_err("artifact drift must reject attestation");
+        assert!(
+            error.to_string().contains("runtime artifact changed after"),
+            "{error}"
+        );
+        validate_upstream_svg_render_probe(probe, "12.0.0", "0.28.1", &selected_hashes)
+            .expect_err("a replaced artifact must also reject initial probe validation");
     }
 }

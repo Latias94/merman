@@ -453,6 +453,10 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
+      - name: Test selected reference runtime builder
+        if: matrix.parity
+        run: node --test tools/mermaid-cli/reference-runtime.test.mjs
+
       - name: Verify pull-request architecture contracts
         if: matrix.parity
         run: |

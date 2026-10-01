@@ -258,7 +258,7 @@ fn check_upstream_renderability_for_parser_only(
     out_root: &Path,
     timeout: Duration,
     toolchain_read_guard: &crate::cmd::UpstreamSvgToolchainReadGuard,
-    browser_executable: &Path,
+    render_probe: &super::generate::UpstreamSvgRenderProbe,
 ) -> Result<UpstreamRenderCheck, XtaskError> {
     let fixture_rel = mmd_path
         .strip_prefix(workspace_root)
@@ -296,10 +296,10 @@ fn check_upstream_renderability_for_parser_only(
         &out_path,
         &pinned_config,
         &svg_id,
-        browser_executable,
+        render_probe,
     )
     .to_string();
-    let mut cmd = upstream_runtime_command(&renderer, &node_cwd, browser_executable);
+    let mut cmd = upstream_runtime_command(&renderer, &node_cwd, &render_probe.browser_executable);
 
     let log_file = fs::File::create(&log_path).map_err(|source| XtaskError::WriteFile {
         path: log_path.display().to_string(),
@@ -585,8 +585,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         let tools_root = crate::cmd::mermaid_cli_root();
         let toolchain_read_guard =
             crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
-        let browser_executable =
-            super::generate::probe_upstream_svg_browser_executable(&tools_root)?;
+        let render_probe = super::generate::probe_upstream_svg_render_environment(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -612,7 +611,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     &out_root,
                     timeout,
                     &toolchain_read_guard,
-                    &browser_executable,
+                    &render_probe,
                 )?;
                 results_by_diagram
                     .entry(diagram.clone())
@@ -631,6 +630,8 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
         }
+
+        render_probe.verified_render_environment()?;
 
         let mut actionable: Vec<(String, String)> = Vec::new();
         for (diagram, results) in &results_by_diagram {
@@ -894,8 +895,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         let tools_root = crate::cmd::mermaid_cli_root();
         let toolchain_read_guard =
             crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
-        let browser_executable =
-            super::generate::probe_upstream_svg_browser_executable(&tools_root)?;
+        let render_probe = super::generate::probe_upstream_svg_render_environment(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -921,7 +921,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 &out_root,
                 timeout,
                 &toolchain_read_guard,
-                &browser_executable,
+                &render_probe,
             )?;
             results_by_group
                 .entry(ok.expected_group.clone())
@@ -944,6 +944,8 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     .or_default() += 1;
             }
         }
+
+        render_probe.verified_render_environment()?;
 
         promotable.sort();
 
