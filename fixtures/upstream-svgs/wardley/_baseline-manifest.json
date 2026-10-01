@@ -1,22 +1,22 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "source": {
     "mermaid_version": "12.0.0",
     "mermaid_cli_version": "11.17.0",
     "mermaid_source_tag": "mermaid@12.0.0",
     "mermaid_source_commit": "98a0945418c76238f15df2afaddbba4272656c3b",
-    "package_json_sha256": "35eb44a8c82b463e2e7053d10347f6fe199d0a07941f3a2108b0ed2a8d64fad8",
-    "package_lock_sha256": "124fcb86d02e6ab7d8668d462db6ea064950ae1f3fe4ddbafced3baf61cc10db",
+    "package_json_sha256": "3e6c0c720692dd522200fc1f5c6715609dfbf5edd54b0d8e10f18bdfd3489289",
+    "package_lock_sha256": "7b8087b87d3ca0c09b21a67b6394c000f9cd47ba3e35f2dbb9ca081d1eebb3aa",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v4"
+    "renderer_revision": "xtask-upstream-svg-v5"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "Edg",
-        "version": "153.0.4234.48",
-        "revision": "@cf31d6623d8718e7a3c3e181e55e59c1aae57a73",
+        "version": "154.0.4258.48",
+        "revision": "@80bb122d4912059dc0cf309273bbe3191ae80a62",
         "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
@@ -29,8 +29,12 @@
         "release": "10.0.26200"
       },
       "mermaid_runtime": {
-        "esm_version": "12.0.0",
-        "iife_version": "12.0.0",
+        "mermaid_version": "12.0.0",
+        "dompurify_version": "3.4.16",
+        "compiler_version": "0.28.1",
+        "artifact_sha256": "0c543708ce014d939a407037565804e40cb47d82c640e9cc9b80f655b7efed4c",
+        "dompurify_package_sha256": "8e62ee67206b530948d8db894569ddee4e258b9e7785dd7b796fae7136be65eb",
+        "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
         "mermaid_package_sha256": "df542ed953a0a169733d7a3d8f339a964d7ae19b196c83254ebfc4599904d333",
         "mermaid_cli_package_sha256": "6329cf1c54d9d59b8d94c16ca9f5eb2f394f5e7539b42a11c060f080f8b85078"
       },
@@ -45,52 +49,52 @@
     "upstream_cypress_wardley_spec_1_should_render_tea_shop_001": {
       "input_sha256": "088e16cee1482251bb8153fc3e327394a09ba7e411e933d5cfeeb8ba4110c756",
       "svg_sha256": "d03a3d23a0e98b8cb682d555712f673b56374851f629e5e7a51988f75ba71b4d",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_2_should_render_data_evolution_stages_002": {
       "input_sha256": "662772f4aa8cfafbfb6264de7952396e6468572cd5fad255590d29ff061734e3",
       "svg_sha256": "7a679ab3b498781b6ab6d1765d526d84c2539b9c04c17e5183c203dbc03cab71",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_3_should_render_pipelines_003": {
       "input_sha256": "31d76a47fcf121b9b02fa20e471f4a4990cb6c7a8452b794efcd9e004ab9f09a",
       "svg_sha256": "8b5d279e9737254d4a4900b5a83ca77f999afe2c7f7d06daff8e382166b3d052",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_4_should_render_link_types_and_annotations_004": {
       "input_sha256": "2777b53bb67e2dfcd15918d62e57cd469aa0db1e050ef4dbc7ef53a2836b42d7",
       "svg_sha256": "32bbacf2dbf06bd289a53293a40803f9b2056e8ece8e81df953f898e6c425eb2",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_5_should_render_custom_canvas_size_005": {
       "input_sha256": "e930def2832fa5bc924a8bc4aad9750d2c53e7c1a5ac39e97d2acc69eb03178f",
       "svg_sha256": "5842f96b1e6fe591c112099dca76c0fcd050e0a1d024099e4e35121b02884321",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_6_should_render_gpt_tokeniser_architecture_010": {
       "input_sha256": "e8cde7fa7a2242965232f97d7e58755365cd7841e503054b78b8c904a6cc6223",
       "svg_sha256": "4a24684d3dc2c6662b01ab3a161755e3a61fe87b93e8a02f9f917d4265c23516",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_should_render_under_the_base_theme_009": {
       "input_sha256": "7dcc333f58db0c807667d2b52d35b33975f193fc9eb8e2bce6cda4e29533a260",
       "svg_sha256": "d3eeb1cb13e7c626ca5bcfe81001de7c88336ec2824cc442d866280d5cd1eae9",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_should_render_under_the_dark_theme_006": {
       "input_sha256": "723e2acbeebf025409a6d999e6a088478317f7e14502c5424153f7bfa2012d4a",
       "svg_sha256": "01d742e559c852b7daba5587ce0754875933d9c39833a66ef2ec3364e0cde294",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_should_render_under_the_forest_theme_007": {
       "input_sha256": "c9631c44079be4f9ade8502e7b040ab3cf2e8ab002eace69f1e385d35f2ce73b",
       "svg_sha256": "c602f6c1411437b34672995d2ba354487eec8505cc7f23e27485e2593035dbd5",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_wardley_spec_should_render_under_the_neutral_theme_008": {
       "input_sha256": "e1025369f4168377d359501a88b9f05ead360176303929c2e42354bca1062501",
       "svg_sha256": "50d1bae40b146cb7bb57c349ce4239c183fcb3c2a04d7f349b2c5185f6e7e857",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },
   "excluded": {}
