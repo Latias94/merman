@@ -8,6 +8,8 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 > This guide and its dependency examples target `0.8.0-alpha.7`. New macro options, explicit family selectors, and math/ELK defaults below do not describe alpha.6; use its tagged documentation when maintaining an older dependency.
 
+> The resource-budget options documented below require this source checkout or a later release; they are not available in published `0.8.0-alpha.7`.
+
 ## Quick Start
 
 Keep the renderer out of ordinary builds by making it an optional documentation dependency:
@@ -240,6 +242,8 @@ pub fn configured() {}
 | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 | `background` | A CSS background color | `transparent` | Set the root SVG background independently of Mermaid theme configuration. |
 | `id_prefix` | A nonempty string of ASCII letters, digits, `-`, or `_` | Automatic namespace | Add an explicit namespace for generated documentation with overlapping source locations. |
+| `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `interactive` | Select the input, model, layout, and SVG resource policy. |
+| `max_layout_work_units` | Positive integer literal | Selected profile's limit | Override only the layout work budget for each diagram and theme variant. |
 
 `theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
 
@@ -331,6 +335,40 @@ supply distinct `id_prefix` values in the generated branches. The same explicit 
 applies to identical generated methods whose outer calls have the same line and column in
 different files. Stable procedural macros do not expose every outer expansion context; no
 process-global counter is used to disguise this boundary.
+
+## Resource Budgets
+
+The default `interactive` profile allows 800,000 layout work units per render. These are
+deterministic admission units, not milliseconds or a Mermaid syntax limit. Alpha.7 selects ELK
+for Class and other supported families when compiled in; diagrams that fit the former Dagre
+default can require a larger budget under ELK, particularly with nested namespaces.
+
+Increase only the layout budget when that is the limit reported by the diagnostic:
+
+```rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(max_layout_work_units = 2_000_000)
+)]
+/// include_mmd!("docs/diagrams/architecture.mmd")
+pub fn architecture() {}
+```
+
+The integer must be positive and fit the build host's `usize`; quoted numbers, expressions,
+and zero are rejected. The example value is not a guarantee for every diagram. A resource
+error's `actual` value identifies the charge that was rejected, not the total budget a successful
+render would need. Each diagram and each light/dark variant receives its own budget.
+
+Use `resource_profile` when intentionally changing the broader input/model/output policy.
+`trusted-native` allows 1,000,000 layout work units, so it can still reject a diagram that needs
+more. `unbounded-for-trusted-input` explicitly removes policy ceilings for trusted documentation;
+hard implementation guards remain. An explicit `max_layout_work_units` applies after the selected
+profile, including the unbounded profile.
+
+Both options follow `scope = "tree"` inheritance. A child overrides only the fields it supplies;
+changing its profile preserves an inherited explicit layout limit. `inherit = "off"` resets both
+to defaults before applying local options. Mermaid frontmatter and init directives cannot override
+these host limits, and the attribute macro does not read `merman-rustdoc.toml`.
 
 ## Supported Inputs
 

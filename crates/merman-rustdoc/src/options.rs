@@ -1,3 +1,9 @@
+use std::num::NonZeroUsize;
+
+use merman::{
+    resources::ResourceProfile,
+    svg::{RenderResourcePolicy, ResourceLimitId},
+};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Expr, ExprLit, Lit, MetaNameValue, Token, parse::Parser, punctuated::Punctuated};
@@ -56,6 +62,8 @@ pub(crate) struct Options {
     pub(crate) source: SourceMode,
     pub(crate) sanitize: SanitizeMode,
     pub(crate) theme: ThemeMode,
+    pub(crate) resource_profile: ResourceProfile,
+    pub(crate) max_layout_work_units: Option<NonZeroUsize>,
     pub(crate) background: String,
     pub(crate) id_prefix: Option<String>,
     pub(crate) inherit: bool,
@@ -73,6 +81,8 @@ impl Default for Options {
             source: SourceMode::Hide,
             sanitize: SanitizeMode::Strict,
             theme: ThemeMode::Rustdoc,
+            resource_profile: RenderResourcePolicy::default().profile(),
+            max_layout_work_units: None,
             background: "transparent".to_string(),
             id_prefix: None,
             inherit: true,
@@ -95,7 +105,7 @@ impl Options {
         for pair in pairs {
             let Some(ident) = pair.path.get_ident() else {
                 return Err(Error::new(
-                    "unsupported merman_rustdoc option path; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, or inherit",
+                    "unsupported merman_rustdoc option path; expected scope, pipeline, fail, source, sanitize, theme, resource_profile, max_layout_work_units, background, id_prefix, or inherit",
                 ));
             };
             let key = ident.to_string();
@@ -104,14 +114,21 @@ impl Options {
                     "duplicate merman_rustdoc option `{key}`"
                 )));
             }
+            if key == "max_layout_work_units" {
+                options.max_layout_work_units = Some(layout_work_limit(&pair.value)?);
+                continue;
+            }
             let value = literal_string(&pair.value)?;
-            match ident.to_string().as_str() {
+            match key.as_str() {
                 "scope" => options.scope = ScopeMode::parse(&value)?,
                 "pipeline" => options.pipeline = PipelineMode::parse(&value)?,
                 "fail" => options.fail = FailMode::parse(&value)?,
                 "source" => options.source = SourceMode::parse(&value)?,
                 "sanitize" => options.sanitize = SanitizeMode::parse(&value)?,
                 "theme" => options.theme = ThemeMode::parse(&value)?,
+                "resource_profile" => {
+                    options.resource_profile = value.parse().map_err(Error::new)?;
+                }
                 "inherit" => {
                     options.inherit = match value.as_str() {
                         "on" => true,
@@ -139,7 +156,7 @@ impl Options {
                 }
                 other => {
                     return Err(Error::new(format!(
-                        "unsupported merman_rustdoc option `{other}`; expected scope, pipeline, fail, source, sanitize, theme, background, id_prefix, or inherit"
+                        "unsupported merman_rustdoc option `{other}`; expected scope, pipeline, fail, source, sanitize, theme, resource_profile, max_layout_work_units, background, id_prefix, or inherit"
                     )));
                 }
             }
@@ -172,6 +189,12 @@ impl Options {
         if self.explicit.contains("theme") {
             merged.theme = self.theme;
         }
+        if self.explicit.contains("resource_profile") {
+            merged.resource_profile = self.resource_profile;
+        }
+        if self.explicit.contains("max_layout_work_units") {
+            merged.max_layout_work_units = self.max_layout_work_units;
+        }
         if self.explicit.contains("background") {
             merged.background.clone_from(&self.background);
         }
@@ -179,6 +202,16 @@ impl Options {
             merged.id_prefix.clone_from(&self.id_prefix);
         }
         merged
+    }
+
+    pub(crate) fn resource_policy(&self) -> Result<RenderResourcePolicy> {
+        let policy = RenderResourcePolicy::for_profile(self.resource_profile);
+        match self.max_layout_work_units {
+            Some(limit) => policy
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit.get())
+                .map_err(|error| Error::new(error.to_string())),
+            None => Ok(policy),
+        }
     }
 
     pub(crate) fn tokens(&self) -> TokenStream {
@@ -208,13 +241,19 @@ impl Options {
             ThemeMode::Mermaid => "mermaid",
             ThemeMode::Fixed(theme) => theme,
         };
+        let resource_profile = self.resource_profile.id();
+        let max_layout_work_units = self.max_layout_work_units.map(|limit| {
+            let value = limit.get();
+            quote! { max_layout_work_units = #value, }
+        });
         let background = &self.background;
         let id_prefix = self
             .id_prefix
             .as_ref()
             .map(|id| quote! { id_prefix = #id, });
         quote! { scope = #scope, pipeline = #pipeline, fail = #fail, source = #source,
-        sanitize = #sanitize, theme = #theme, background = #background, #id_prefix }
+        sanitize = #sanitize, theme = #theme, resource_profile = #resource_profile,
+        #max_layout_work_units background = #background, #id_prefix }
     }
 }
 
@@ -301,6 +340,22 @@ fn supported_mermaid_theme(value: &str) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|theme| *theme == value)
+}
+
+fn layout_work_limit(expr: &Expr) -> Result<NonZeroUsize> {
+    let invalid = || {
+        Error::new(
+            "merman_rustdoc max_layout_work_units must be a positive integer literal that fits usize",
+        )
+    };
+    let Expr::Lit(ExprLit {
+        lit: Lit::Int(value),
+        ..
+    }) = expr
+    else {
+        return Err(invalid());
+    };
+    value.base10_parse::<NonZeroUsize>().map_err(|_| invalid())
 }
 
 fn literal_string(expr: &Expr) -> Result<String> {
@@ -473,5 +528,182 @@ mod embedding_tests {
         assert_eq!(merged.sanitize, SanitizeMode::Strict);
         assert_eq!(merged.background, "transparent");
         assert_eq!(merged.id_prefix, None);
+    }
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use super::*;
+
+    #[test]
+    fn parses_resource_profiles_and_positive_layout_limits() {
+        for profile in ResourceProfile::ALL {
+            let expected = RenderResourcePolicy::for_profile(profile)
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 2_000_000)
+                .unwrap();
+            let profile = profile.id();
+            let options = Options::parse(quote! {
+                resource_profile = #profile, max_layout_work_units = 2_000_000
+            })
+            .unwrap();
+            assert_eq!(options.resource_policy().unwrap(), expected);
+            assert_eq!(
+                Options::parse(options.tokens())
+                    .unwrap()
+                    .resource_policy()
+                    .unwrap(),
+                expected
+            );
+        }
+        let maximum = usize::MAX;
+        let options = Options::parse(quote! { max_layout_work_units = #maximum }).unwrap();
+        assert_eq!(
+            options
+                .resource_policy()
+                .unwrap()
+                .value(ResourceLimitId::MaxLayoutWorkUnits),
+            Some(maximum)
+        );
+    }
+
+    #[test]
+    fn omitted_layout_limit_preserves_profile_defaults() {
+        assert_eq!(
+            Options::default().resource_policy().unwrap(),
+            RenderResourcePolicy::default()
+        );
+        for profile in ResourceProfile::ALL {
+            let name = profile.id();
+            let options = Options::parse(quote! { resource_profile = #name }).unwrap();
+            assert_eq!(options.max_layout_work_units, None);
+            assert_eq!(
+                options.resource_policy().unwrap(),
+                RenderResourcePolicy::for_profile(profile)
+            );
+            assert_eq!(
+                Options::parse(options.tokens())
+                    .unwrap()
+                    .max_layout_work_units,
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn resource_option_order_does_not_change_effective_options() {
+        let profile_first = Options::parse(quote! {
+            resource_profile = "constrained", max_layout_work_units = 2_000_000
+        })
+        .unwrap();
+        let limit_first = Options::parse(quote! {
+            max_layout_work_units = 2_000_000, resource_profile = "constrained"
+        })
+        .unwrap();
+        assert_eq!(profile_first, limit_first);
+    }
+
+    #[test]
+    fn rejects_invalid_or_duplicate_resource_options() {
+        for (tokens, expected) in [
+            (
+                quote! { resource_profile = "unknown" },
+                "unsupported resource profile",
+            ),
+            (
+                quote! { resource_profile = "interactive", resource_profile = "constrained" },
+                "duplicate merman_rustdoc option `resource_profile`",
+            ),
+            (
+                quote! { max_layout_work_units = 1, max_layout_work_units = 2 },
+                "duplicate merman_rustdoc option `max_layout_work_units`",
+            ),
+            (
+                quote! { max_layout_work_units = 0 },
+                "positive integer literal",
+            ),
+            (
+                quote! { max_layout_work_units = -1 },
+                "positive integer literal",
+            ),
+            (
+                quote! { max_layout_work_units = "2000000" },
+                "positive integer literal",
+            ),
+            (
+                quote! { max_layout_work_units = 1 + 2 },
+                "positive integer literal",
+            ),
+            (
+                quote! { max_layout_work_units = 340282366920938463463374607431768211455 },
+                "positive integer literal",
+            ),
+        ] {
+            let error = Options::parse(tokens).unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn resource_options_inherit_and_override_independently() {
+        let parent = Options::parse(quote! {
+            scope = "tree", resource_profile = "trusted-native", max_layout_work_units = 2_000_000
+        })
+        .unwrap();
+        for (child, expected) in [
+            (
+                quote! {},
+                quote! { resource_profile = "trusted-native", max_layout_work_units = 2_000_000 },
+            ),
+            (
+                quote! { resource_profile = "constrained" },
+                quote! { resource_profile = "constrained", max_layout_work_units = 2_000_000 },
+            ),
+            (
+                quote! { max_layout_work_units = 3_000_000 },
+                quote! { resource_profile = "trusted-native", max_layout_work_units = 3_000_000 },
+            ),
+        ] {
+            let merged = Options::parse(child).unwrap().with_parent(&parent);
+            let expected = Options::parse(expected).unwrap();
+            assert_eq!(
+                merged.resource_policy().unwrap(),
+                expected.resource_policy().unwrap()
+            );
+            assert_eq!(
+                Options::parse(merged.tokens())
+                    .unwrap()
+                    .resource_policy()
+                    .unwrap(),
+                expected.resource_policy().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn disabling_inheritance_resets_resource_options() {
+        let parent = Options::parse(quote! {
+            resource_profile = "trusted-native", max_layout_work_units = 2_000_000
+        })
+        .unwrap();
+        for child in [
+            quote! { inherit = "off" },
+            quote! { inherit = "off", resource_profile = "constrained" },
+            quote! { inherit = "off", max_layout_work_units = 3_000_000 },
+        ] {
+            let child = Options::parse(child).unwrap();
+            let merged = child.with_parent(&parent);
+            assert_eq!(merged, child);
+            assert_eq!(
+                merged.resource_policy().unwrap(),
+                child.resource_policy().unwrap()
+            );
+        }
+        let defaults = Options::parse(quote! { inherit = "off" })
+            .unwrap()
+            .with_parent(&parent);
+        assert_eq!(
+            defaults.resource_policy().unwrap(),
+            RenderResourcePolicy::default()
+        );
     }
 }

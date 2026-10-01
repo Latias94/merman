@@ -9,18 +9,15 @@
 //!
 //! # Install
 //!
-//! This checkout is ahead of published `0.8.0-alpha.6`. The dependency examples install alpha.6
-//! for the basic workflow. New `background`, `id_prefix`, and `inherit` options, Markdown container
-//! support, and the refactored behavior described here require this source checkout until the
-//! next workspace release; they are not available in alpha.6. This checkout also makes math
-//! opt-in. The quick-start recipe explicitly selects the smaller feature set because alpha.6
-//! still enables math by default.
+//! The dependency examples use `0.8.0-alpha.7` for the basic workflow. The `resource_profile`
+//! and `max_layout_work_units` options require this source checkout or a later release;
+//! they are not available in published alpha.7.
 //!
 //! Keep the renderer out of ordinary builds with an optional documentation dependency:
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg", "layout-cytoscape"], optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.7", optional = true }
 //!
 //! [features]
 //! doc-diagrams = ["dep:merman-rustdoc"]
@@ -38,16 +35,14 @@
 //! commit fragments with `merman-cli rustdoc build/check`, then consume them through standard
 //! `#[doc = include_str!("...")]`. This also supports crate-level documentation.
 //!
-//! This checkout defaults to `svg` and `layout-cytoscape`, without math, the optional EPL-2.0
-//! ELK implementation, or system clock, time-zone, random, or timing adapters. When upgrading
-//! from alpha.6, add `math` to the dependency's features for math labels, or select `complete-svg`
-//! to retain the previous SVG, Cytoscape, and math combination. The separate `merman` facade
-//! keeps its `complete-svg` default. Use `complete-svg-elk` only when the artifact intentionally
-//! carries the ELK closure and its notices. For base SVG only, use:
+//! The default selects `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`, including
+//! the EPL-2.0 ELK implementation. Math is opt-in; add `math` when upgrading diagrams that
+//! relied on alpha.6's math-enabled default. System clock, time-zone, random, and timing
+//! adapters are not enabled. To omit ELK and render only Flowchart with the base SVG renderer:
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.7", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
 //! ```
 //!
 //! Keep the documentation feature and docs.rs metadata above. Add `layout-cytoscape`, `layout-elk`,
@@ -129,7 +124,7 @@
 //!
 //! # Options
 //!
-//! The attribute accepts string options:
+//! Options use string literals, except `max_layout_work_units`, which uses a positive integer:
 //!
 //! ```rust
 //! #[cfg_attr(
@@ -160,6 +155,8 @@
 //! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
 //! | `background` | CSS color | `transparent` | Sets the embedded SVG canvas background independently of the theme. |
 //! | `id_prefix` | ASCII letters, digits, `-`, `_` | automatic | Adds an optional namespace to automatically isolated diagram IDs. |
+//! | `resource_profile` | `interactive`, `constrained`, `trusted-native`, `unbounded-for-trusted-input` | `interactive` | Select the input, model, layout, and SVG resource policy. |
+//! | `max_layout_work_units` | Positive integer literal | Selected profile's limit | Override only the layout work budget for each diagram and theme variant. |
 //! | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
 //!
 //! `parity` is the default because rustdoc pages target browsers, which render Mermaid's native
@@ -189,6 +186,36 @@
 //! `theme = "dark"` keeps the source details and changes the theme. Setting
 //! `inherit = "off", theme = "dark"` on that child restores `source = "hide"` and the other
 //! rendering defaults before selecting the dark theme.
+//!
+//! # Resource Budgets
+//!
+//! The default `interactive` profile allows 800,000 layout work units per diagram and theme variant.
+//! These are deterministic admission units, not elapsed time. Alpha.7's ELK default can require more
+//! units than Dagre for the same source, especially for Class diagrams with nested namespaces.
+//! Use a finite override to raise only that budget:
+//!
+//! ```rust
+//! #[cfg_attr(
+//!     all(doc, feature = "doc-diagrams"),
+//!     merman_rustdoc::merman(max_layout_work_units = 2_000_000)
+//! )]
+//! /// ```mermaid
+//! /// classDiagram
+//! ///     A --> B
+//! /// ```
+//! pub fn larger_diagram() {}
+//! ```
+//!
+//! The integer must be positive and fit the build host's `usize`. The example is not a universal
+//! budget: an error's `actual` is the first rejected charge, not the full work required to finish.
+//! The `resource_profile` option selects the broader input/model/output policy. Its
+//! `unbounded-for-trusted-input` value explicitly removes policy ceilings while retaining hard
+//! implementation guards. An explicit layout limit applies after the selected profile.
+//!
+//! Both options inherit from parent trees independently; changing a child's profile preserves an
+//! inherited explicit layout limit. Use `inherit = "off"` to start from defaults before local
+//! options. Each diagram and light/dark variant gets its own budget. Mermaid frontmatter and init
+//! directives cannot override these host policies.
 //!
 //! # Scope
 //!

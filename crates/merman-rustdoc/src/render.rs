@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use merman::{
     MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
-    SvgEnvironment, SvgRequest,
-    svg::{RenderCapability, SvgOutputPolicy, SvgPipelinePreset},
+    ResourceLimitCause, SvgEnvironment, SvgRequest,
+    svg::{RenderCapability, ResourceLimitId, SvgOutputPolicy, SvgPipelinePreset},
 };
 use serde_json::Value;
 
@@ -82,6 +82,7 @@ fn render_mermaid_svg(
     site_theme: Option<&str>,
     context: &str,
 ) -> Result<String> {
+    let resources = options.resource_policy()?;
     let mut engine = merman::Engine::new();
     if let Some(theme) = site_theme {
         let mut config = MermaidConfig::empty_object();
@@ -103,7 +104,7 @@ fn render_mermaid_svg(
         SanitizeMode::Off => policy.pipeline().with_rebased_ids(diagram_id),
     };
     let request = SvgRequest {
-        environment: SvgEnvironment::deterministic(),
+        environment: SvgEnvironment::deterministic().with_resource_policy(resources),
         pipeline: Some(pipeline),
         options: merman::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
@@ -113,9 +114,16 @@ fn render_mermaid_svg(
     };
     let rendered = Renderer::new()
         .with_engine(engine)
+        .with_resource_policy(*resources.input_policy())
         .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
             let hint = match &err {
+                RenderError::ResourceLimitExceeded(limit)
+                    if limit.id == ResourceLimitId::MaxLayoutWorkUnits.as_str()
+                        && limit.cause == ResourceLimitCause::Ceiling =>
+                {
+                    "; set a larger `max_layout_work_units` integer on `#[merman_rustdoc::merman(...)]`; `actual` reports where rendering stopped, not the total work required"
+                }
                 RenderError::Svg(error)
                     if error.missing_capability() == Some(RenderCapability::Math) =>
                 {
@@ -234,6 +242,62 @@ mod tests {
             svg.contains(".edge-pattern-dashed{stroke-dasharray:3;}"),
             "expected Class SVG to include Mermaid's shared dashed-edge CSS: {svg}"
         );
+    }
+
+    #[test]
+    #[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
+    fn nested_class_diagram_accepts_an_explicit_layout_work_budget() {
+        let source = include_str!("../tests/fixtures/class_nested_namespaces.mmd");
+        let error = render(source, 0, Options::default()).unwrap_err();
+        assert!(
+            error.to_string().contains("max_layout_work_units"),
+            "{error}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("set a larger `max_layout_work_units`"),
+            "{error}"
+        );
+
+        let options = Options::parse(quote::quote! {
+            max_layout_work_units = 2_000_000
+        })
+        .unwrap();
+        let RenderedDiagram::RustdocTheme { light, dark } = render(source, 0, options).unwrap()
+        else {
+            panic!("expected both rustdoc theme variants");
+        };
+        for svg in [&light, &dark] {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            assert_eq!(document.root_element().tag_name().name(), "svg");
+            assert!(svg.contains("C19"));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-flowchart")]
+    fn resource_profile_applies_to_source_admission_before_svg_rendering() {
+        let source_limit = merman::svg::RenderResourcePolicy::interactive()
+            .value(merman::svg::ResourceLimitId::MaxSourceBytes)
+            .unwrap();
+        let source = format!("flowchart TD\nA-->B\n%%{}\n", " ".repeat(source_limit));
+        let error = render(&source, 0, Options::default()).unwrap_err();
+        assert!(error.to_string().contains("max_source_bytes"), "{error}");
+        assert!(
+            !error
+                .to_string()
+                .contains("set a larger `max_layout_work_units`")
+        );
+
+        let options = Options::parse(quote::quote! {
+            resource_profile = "trusted-native", theme = "default"
+        })
+        .unwrap();
+        assert!(matches!(
+            render(&source, 0, options).unwrap(),
+            RenderedDiagram::Single(_)
+        ));
     }
 
     #[test]
