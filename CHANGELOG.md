@@ -14,6 +14,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kept RoughJS shape geometry independent of CSS color spelling and prevented malformed Unicode color values from causing a panic.
 - Made the Playground editor follow panel resizing and preserved Example Gallery filters, active-category visibility, and reading position when reopening or changing viewport width.
 - Respected reduced-motion preferences in Playground dialogs, menus, and tooltips, and restored the shared tooltip delay.
+- Removed the extra editing delay for Playground refreshes and preview-mode changes queued behind an active Compare render, while preserving typing debounce.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 
