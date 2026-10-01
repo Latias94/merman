@@ -114,7 +114,6 @@ fn render_mermaid_svg(
     };
     let rendered = Renderer::new()
         .with_engine(engine)
-        .with_resource_policy(*resources.input_policy())
         .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
             let hint = match &err {
@@ -248,7 +247,10 @@ mod tests {
     #[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
     fn nested_class_diagram_uses_offline_defaults_and_respects_explicit_limits() {
         let source = include_str!("../tests/fixtures/class_nested_namespaces.mmd");
-        let strict = Options::parse(quote::quote! { resource_profile = "interactive" }).unwrap();
+        let strict = Options::parse(quote::quote! {
+            resource_profile = "interactive", max_layout_work_units = 800_000
+        })
+        .unwrap();
         let error = render(source, 0, strict).unwrap_err();
         assert!(
             error.to_string().contains("max_layout_work_units"),
@@ -266,6 +268,10 @@ mod tests {
         })
         .unwrap();
         let default_render = render(source, 0, Options::default()).unwrap();
+        let interactive =
+            Options::parse(quote::quote! { resource_profile = "interactive" }).unwrap();
+        let interactive_render = render(source, 0, interactive).unwrap();
+        assert_eq!(default_render, interactive_render);
         let explicit_render = render(source, 0, explicit).unwrap();
         for rendered in [&default_render, &explicit_render] {
             let RenderedDiagram::RustdocTheme { light, dark } = rendered else {

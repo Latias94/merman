@@ -46,7 +46,7 @@ parallelism.
 | `max_icon_packs` | 8 | 16 | 16 | 16 hard capability |
 | `max_markdown_charts` | 256 | 1,024 | 8,192 | Unlimited |
 | `max_staged_bytes` | 512 MiB | 1 GiB | 8 GiB | Unlimited |
-| `max_scheduling_weight_bytes` | 576 MiB | 640 MiB | 2 GiB | Unlimited |
+| `max_scheduling_weight_bytes` | 576 MiB | 1 GiB | 2 GiB | Unlimited |
 | `max_jobs` | 2 | 4 | 32 | 64 hard guard |
 | default jobs | 1 | `min(CPU, 2)` | `min(max(CPU / 2, 1), 8)` | `min(max(CPU / 2, 1), 32)` |
 | `max_redirects` | 3 | 5 | 10 | 20 hard guard |
@@ -62,8 +62,8 @@ isolation.
 ## Layout Work And Backend Scheduling
 
 `trusted-native` allows 15,000,000 deterministic layout work units for offline files and
-batch jobs. Rustdoc selects the same profile. `interactive` remains at 800,000 and `constrained`
-at 125,000; the general library and Web defaults remain interactive. These counts do not denote
+batch jobs. Rustdoc selects the same profile. `interactive` allows 14,100,000 and `constrained`
+remains at 125,000; the general library and Web defaults remain interactive. These counts do not denote
 milliseconds, resident bytes, source lines, or a guaranteed number of nodes. The native calibration
 uses both light and dark themes, including nested Class namespaces under the Mermaid 12 ELK default. The
 [2026-10-01 calibration receipt](../performance/native_layout_work_calibration_2026-10-01.md)
@@ -81,6 +81,18 @@ remains 2 GiB. With the default SVG and model limits, a 15,000,000-unit render r
 upper bound, not a promise of simultaneous rendering. This conservative tradeoff admits larger
 individual diagrams without raising the scheduler pool. It does not claim that small diagrams
 actually use that much memory. Avoid raising the pool solely to reproduce an older job count.
+
+The refreshed 14,100,000-unit interactive profile reserves 970,360,832 scheduling bytes for a
+default Mermaid graphical operation. Its CLI pool is 1 GiB so default SVG, PNG, JPEG, and PDF
+remain admissible; the constrained pool remains 576 MiB. This does not raise or remove any limit
+in a library host such as an editor, mobile app, or browser.
+
+A proposed input-item/text-only layout estimate was rejected: long-rank Dagre edges can create
+large intermediate graphs before a work-limit error, even with few input items. The existing
+64-byte allowance is retained, alongside phase-peak accounting. Work units mix derived geometry
+and cumulative computation; they are not measured bytes, but removing the reserve requires a
+replacement that covers derived storage and failed operations too. No concurrency improvement
+or operating-system memory guarantee is claimed.
 
 ## Evidence And Margins
 

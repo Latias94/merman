@@ -1310,7 +1310,10 @@ mod tests {
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
         {
-            assert_eq!(interactive.limits["max_layout_work_units"], Some(800_000));
+            assert_eq!(
+                interactive.limits["max_layout_work_units"],
+                Some(14_100_000)
+            );
             let trusted_native = resources
                 .profiles
                 .iter()

@@ -150,8 +150,10 @@ optional monotonic deadline. Cancellation is observed at operation checkpoints; 
 callback already in progress may return before Merman reaches the next checkpoint.
 
 Resource limits are part of the request contract. Missing capabilities and exhausted limits return
-typed errors rather than partial output or a silent fallback. See the [resource and options guide]
-for the complete policy model.
+typed errors rather than partial output or a silent fallback. The
+[host integration guide](docs/integration/RESOURCE_POLICY.md) shows how to select a finite policy,
+run cancellable background previews, and keep layout work separate from host memory/concurrency.
+See the [resource and options guide] for the complete policy model.
 
 ## Internal flow
 

@@ -341,7 +341,7 @@ process-global counter is used to disguise this boundary.
 Rustdoc uses the `trusted-native` profile for offline documentation builds, matching the CLI's
 local-file workflow. It allows 15,000,000 layout work units per diagram and theme variant while
 retaining finite source, model, nesting, and SVG limits. Ordinary documentation needs no budget
-configuration. The general library and Web defaults remain `interactive` (800,000 units).
+configuration. The general library and Web defaults remain `interactive` (14,100,000 units).
 
 Work units measure deterministic admission work, not milliseconds, bytes, or a Mermaid syntax
 limit. Alpha.7 selects ELK for Class and other supported families when compiled in; nested

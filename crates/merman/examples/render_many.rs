@@ -1,4 +1,5 @@
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::svg::RenderResourcePolicy;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 use std::path::{Path, PathBuf};
 
 const DIAGRAMS: [(&str, &str); 3] = [
@@ -23,11 +24,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Reuse one configured renderer when many independent files share the same policy.
     let renderer = Renderer::new().with_parse_options(merman::ParseOptions::strict());
 
+    let request = SvgRequest {
+        environment: SvgEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::trusted_native()),
+        ..Default::default()
+    };
+
     for (name, source) in DIAGRAMS {
         let output = renderer.render(RenderRequest::svg(
             source,
             OperationControl::new(),
-            SvgRequest::default(),
+            request.clone(),
         ))?;
         let RenderOutput::Svg(Some(svg)) = output else {
             return Err(format!("no Mermaid diagram detected for {name}").into());

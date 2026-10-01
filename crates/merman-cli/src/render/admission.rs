@@ -13,6 +13,9 @@ const SOURCE_ALLOCATION_MULTIPLIER: u64 = 2;
 const MODEL_TEXT_ALLOCATION_MULTIPLIER: u64 = 2;
 const MODEL_ITEM_WEIGHT_BYTES: u64 = 256;
 #[cfg(feature = "svg")]
+// Work includes materialized geometry as well as repeated computation. Retain this conservative
+// allowance until a separate derived-storage limit exists: input item counts alone miss long-edge
+// dummy nodes, including allocations on rejected layouts. This is not a measured RSS bound.
 const LAYOUT_WORK_UNIT_WEIGHT_BYTES: u64 = 64;
 #[cfg(feature = "ascii")]
 const ASCII_GRID_CELL_WEIGHT_BYTES: u64 = 64;
@@ -641,12 +644,7 @@ mod tests {
             ResourceProfile::Interactive,
             ResourceProfile::TrustedNative,
         ] {
-            let mut policy = ResolvedResourcePolicy::for_profile(profile);
-            if profile == ResourceProfile::TrustedNative {
-                policy
-                    .apply_override("max_layout_work_units", 15_000_000)
-                    .unwrap();
-            }
+            let policy = ResolvedResourcePolicy::for_profile(profile);
             BackendAdmission::for_svg(&policy).expect("default SVG must fit its profile");
             #[cfg(any(feature = "png", feature = "jpeg"))]
             for bytes_per_pixel in [8, 10] {

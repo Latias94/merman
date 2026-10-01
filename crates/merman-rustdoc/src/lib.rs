@@ -192,7 +192,7 @@
 //! The default `trusted-native` profile allows 15,000,000 layout work units per diagram and theme
 //! variant for offline builds, matching the CLI's local-file workflow. Source, model, nesting, and
 //! SVG limits remain finite. Ordinary documentation needs no budget configuration; the general
-//! library and Web defaults remain `interactive` at 800,000 units.
+//! library and Web defaults remain `interactive` at 14,100,000 units.
 //!
 //! Work units measure deterministic admission work, not elapsed time or memory. Alpha.7's ELK
 //! default can require more units than Dagre, especially for Class diagrams with nested namespaces.

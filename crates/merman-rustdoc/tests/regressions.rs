@@ -290,7 +290,7 @@ fn rustdoc_layout_budgets_are_configurable_inherited_and_per_diagram() {
     let strict_output = rustdoc(
         &temp.0,
         &format!(
-            "#[merman_rustdoc::merman(resource_profile = \"interactive\")]\n#[doc = {documentation:?}]\npub fn strict_budget() {{}}"
+            "#[merman_rustdoc::merman(resource_profile = \"interactive\", max_layout_work_units = 800_000)]\n#[doc = {documentation:?}]\npub fn strict_budget() {{}}"
         ),
     );
     assert!(!strict_output.status.success());

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Changed
+
+- Raised the general `interactive` layout-work allowance from 800,000 to 14,100,000 units for ordinary diagrams under Mermaid 12's ELK default. CLI and rustdoc use finite `trusted-native` defaults with 15,000,000 units. Per-profile source/model/output values are unchanged; work units are not a deadline or memory guarantee. Preview hosts should cancel obsolete operations and bound their own concurrency. The CLI interactive scheduling pool is now 1 GiB so its default graphical requests remain admissible. #158
+
+### Fixed
+
+- Rust graphical requests now inherit source/model limits from their SVG environment when neither the request nor renderer explicitly sets an input policy. Existing explicit input overrides retain precedence, allowing one complete policy to configure a normal operation without duplicating it across two builders.
+- Added rustdoc `resource_profile` and positive `max_layout_work_units` options, with per-diagram/per-theme budgets, inheritance, and actionable limit errors. PNG/JPEG/PDF scheduling reserves the larger layout or encoding phase instead of adding non-overlapping workspaces. See the [host integration guide](docs/integration/RESOURCE_POLICY.md) for editor, document, and constrained-service recipes. #158
+
 ## [0.8.0-alpha.7] - 2026-09-30
 
 Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the compatibility baseline to Mermaid 12.0.0, adds Agentflow and Usecase, and makes diagram-family selection explicit for custom Rust builds. This is a breaking prerelease; see the [alpha.6 to alpha.7 upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating source dependencies, generated bindings, or snapshots. Package channels publish independently.
