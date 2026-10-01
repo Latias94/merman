@@ -452,6 +452,12 @@ def cli() -> argparse.ArgumentParser:
     reconcile.add_argument("--registry", default=NPMJS_REGISTRY_URL)
     reconcile.add_argument("--report", type=Path, required=True)
     reconcile.add_argument("--dry-run", action="store_true")
+    reconcile.add_argument("--recovery-report", type=Path)
+    reconcile.add_argument("--observe-only", action="store_true")
+    reconcile.add_argument("--publication-run-id")
+    reconcile.add_argument("--publication-attempt", type=int)
+    reconcile.add_argument("--recovery-run-id")
+    reconcile.add_argument("--recovery-attempt", type=int)
     return parser
 
 
@@ -482,7 +488,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"validated {len(manifest['packages'])} packed Node package(s)")
             return 0
         client = DryRunNpmClient(manifest) if args.dry_run else NpmCli(args.registry)
-        report = reconcile_group(manifest, args.artifact_dir, client)
+        recovery_report = None
+        if args.recovery_report:
+            try:
+                recovery_report = json.loads(args.recovery_report.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise PackageGroupError(f"cannot read recovery report: {exc}") from exc
+        report = reconcile_group(
+            manifest, args.artifact_dir, client,
+            recovery_report=recovery_report, report_path=args.report,
+            observe_only=args.observe_only,
+            publication_run_id=args.publication_run_id, publication_attempt=args.publication_attempt,
+            recovery_run_id=args.recovery_run_id, recovery_attempt=args.recovery_attempt,
+        )
         if isinstance(client, DryRunNpmClient):
             report["dry_run_operations"] = client.operations
         write_json(args.report, report)

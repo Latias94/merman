@@ -371,10 +371,19 @@ jobs:
     if: ${{ inputs.publish }}
     runs-on: ubuntu-24.04
     environment: crates.io
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout trusted recovery observer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
           persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
@@ -394,48 +403,96 @@ jobs:
           cmp \
             "$release_dir/tree-sitter-mermaid-$VERSION.crate" \
             "target/package/tree-sitter-mermaid-$VERSION.crate"
-      - name: Publish crate
+      - name: Inspect crate publication state
+        id: crate-state
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
-          candidate="$release_dir/tree-sitter-mermaid-$VERSION.crate"
+          candidate="$RUNNER_TEMP/tree-sitter-mermaid-release/tree-sitter-mermaid-$VERSION.crate"
           registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
           registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
           registry_user_agent="merman-tree-sitter-release/$VERSION (+https://github.com/Latias94/merman)"
-
-          if curl --fail --silent --show-error --location \
-            --user-agent "$registry_user_agent" \
-            --output "$registry_copy" "$registry_url"; then
+          registry_status="$(curl --silent --show-error --location --max-time 30 \
+            --user-agent "$registry_user_agent" --write-out '%{http_code}' \
+            --output "$registry_copy" "$registry_url")"
+          if [[ "$registry_status" == "200" ]]; then
             cmp "$candidate" "$registry_copy"
-            echo "crates.io already contains the verified candidate"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
+          elif [[ "$registry_status" != "404" ]]; then
+            echo "::error::Cannot establish registry state: crates.io returned HTTP $registry_status." >&2
+            exit 1
+          fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          history="$(python3 trusted/scripts/release_attempt_history.py \
+            --owner grammar-crates --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --before-attempt "$RUN_ATTEMPT")"
+          if [ "$history" = "never-attempted" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify crate release tag before upload
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
           test "$observed" = "$SOURCE_SHA" || {
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           }
+
+      - name: Publish crate
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
           publish_status=0
           cargo publish --locked --no-verify -p tree-sitter-mermaid \
             --registry crates-io --token "$CARGO_REGISTRY_TOKEN" || publish_status=$?
-          for _ in {1..6}; do
-            if curl --fail --silent --show-error --location \
+          echo "cargo publish returned $publish_status; confirming the immutable candidate."
+
+      - name: Observe the original crate after publication
+        if: ${{ steps.crate-state.outputs.exists == 'false' }}
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/tree-sitter-mermaid-release/tree-sitter-mermaid-$VERSION.crate"
+          registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
+          registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
+          registry_user_agent="merman-tree-sitter-release/$VERSION (+https://github.com/Latias94/merman)"
+          deadline=$((SECONDS + 300))
+          delay=5
+          for attempt in $(seq 1 12); do
+            remaining=$((deadline - SECONDS))
+            [ "$remaining" -gt 0 ] || break
+            timeout=$((remaining < 30 ? remaining : 30))
+            if curl --fail --silent --show-error --location --max-time "$timeout" \
               --user-agent "$registry_user_agent" \
               --output "$registry_copy" "$registry_url"; then
               cmp "$candidate" "$registry_copy"
               exit 0
             fi
-            sleep 10
+            [ "$attempt" -lt 12 ] || break
+            remaining=$((deadline - SECONDS))
+            [ "$remaining" -gt 0 ] || break
+            wait=$((delay < remaining ? delay : remaining))
+            sleep "$wait"
+            delay=$((delay < 15 ? delay * 2 : 30))
           done
-          echo "::error::crates.io did not expose the verified candidate; cargo status=$publish_status" >&2
+          echo "::error::The original crate remains pending registry visibility. Preserve this run's candidate and resume observation; do not republish." >&2
           exit 1
 
   publish-npm:
@@ -445,8 +502,15 @@ jobs:
     environment: npm
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
+      - name: Checkout trusted registry observer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -461,63 +525,95 @@ jobs:
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
-      - name: Publish npm package
+      - name: Inspect npm publication state
+        id: npm-state
         env:
           GH_TOKEN: ${{ github.token }}
           NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
-          candidates=("$release_dir"/mermanjs-tree-sitter-mermaid-*.tgz)
+          candidates=("$RUNNER_TEMP/tree-sitter-mermaid-release"/mermanjs-tree-sitter-mermaid-*.tgz)
           test "${#candidates[@]}" -eq 1
           candidate="${candidates[0]}"
           registry_copy="$RUNNER_TEMP/mermanjs-tree-sitter-mermaid-$VERSION-registry.tgz"
-
-          verify_dist_tag() {
-            local observed
-            observed="$(npm view "@mermanjs/tree-sitter-mermaid" "dist-tags.$NPM_DIST_TAG" 2>/dev/null || true)"
-            [[ "$observed" == "$VERSION" ]] || {
-              echo "::error::npm dist-tag $NPM_DIST_TAG resolves to ${observed:-<missing>}, expected $VERSION." >&2
-              return 1
-            }
-          }
-
-          registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
-          if [[ -n "$registry_url" ]]; then
+          registry_state="$(python3 trusted/scripts/npm_package_group.py inspect \
+            --package @mermanjs/tree-sitter-mermaid \
+            --version "$VERSION" --tag "$NPM_DIST_TAG" --tarball "$candidate")"
+          if [[ "$registry_state" == "exact" ]]; then
+            registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball)"
             curl --fail --silent --show-error --location \
               --output "$registry_copy" "$registry_url"
             cmp "$candidate" "$registry_copy"
-            verify_dist_tag
-            echo "npm already contains the verified candidate"
+            if [ "$RUN_ATTEMPT" -eq 1 ]; then
+              observed="$(npm view "@mermanjs/tree-sitter-mermaid" "dist-tags.$NPM_DIST_TAG")"
+              test "$observed" = "$VERSION"
+            else
+              python3 trusted/scripts/npm_package_group.py observe \
+                --package @mermanjs/tree-sitter-mermaid \
+                --version "$VERSION" --tag "$NPM_DIST_TAG" --tarball "$candidate"
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          history="$(python3 trusted/scripts/release_attempt_history.py \
+            --owner grammar-npm --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --before-attempt "$RUN_ATTEMPT")"
+          if [ "$history" = "never-attempted" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
 
+      - name: Verify npm release tag before upload
+        if: ${{ steps.npm-state.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+        run: |
+          set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
           test "$observed" = "$SOURCE_SHA" || {
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           }
+
+      - name: Publish npm package
+        if: ${{ steps.npm-state.outputs.publish == 'true' }}
+        env:
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+        run: |
+          set -euo pipefail
+          candidates=("$RUNNER_TEMP/tree-sitter-mermaid-release"/mermanjs-tree-sitter-mermaid-*.tgz)
+          test "${#candidates[@]}" -eq 1
           publish_status=0
-          npm publish "$candidate" --access public --provenance --ignore-scripts --tag "$NPM_DIST_TAG" || \
+          npm publish "${candidates[0]}" --access public --provenance --ignore-scripts --tag "$NPM_DIST_TAG" || \
             publish_status=$?
-          for _ in {1..6}; do
-            registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
-            if [[ -n "$registry_url" ]]; then
-              curl --fail --silent --show-error --location \
-                --output "$registry_copy" "$registry_url"
-              cmp "$candidate" "$registry_copy"
-              if verify_dist_tag; then
-                exit 0
-              fi
-            fi
-            sleep 10
-          done
-          echo "::error::npm did not expose the verified candidate; npm status=$publish_status" >&2
-          exit 1
+          echo "npm publish returned $publish_status; confirming the immutable candidate."
+
+      - name: Observe the original npm candidate after publication
+        if: ${{ steps.npm-state.outputs.exists == 'false' }}
+        env:
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidates=("$RUNNER_TEMP/tree-sitter-mermaid-release"/mermanjs-tree-sitter-mermaid-*.tgz)
+          test "${#candidates[@]}" -eq 1
+          candidate="${candidates[0]}"
+          python3 trusted/scripts/npm_package_group.py observe \
+            --package @mermanjs/tree-sitter-mermaid \
+            --version "$VERSION" --tag "$NPM_DIST_TAG" --tarball "$candidate"
+          registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball)"
+          registry_copy="$RUNNER_TEMP/mermanjs-tree-sitter-mermaid-$VERSION-registry.tgz"
+          curl --fail --silent --show-error --location \
+            --output "$registry_copy" "$registry_url"
+          cmp "$candidate" "$registry_copy"
 
   publish-github:
     needs: [validate-inputs, assemble, attest, publish-crates, publish-npm]

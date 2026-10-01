@@ -223,12 +223,12 @@
           "to": "SystemAA",
           "rel_type": "birel",
           "start_point": {
-            "x": 360.838,
-            "y": 307.946
+            "x": 363.147,
+            "y": 307.679
           },
           "end_point": {
             "x": 516.0,
-            "y": 325.226
+            "y": 289.946
           },
           "offset_x": 5.0,
           "offset_y": null,
@@ -247,11 +247,11 @@
           "to": "SystemC",
           "rel_type": "rel",
           "start_point": {
-            "x": 604.067,
+            "x": 585.596,
             "y": 332.834
           },
           "end_point": {
-            "x": 412.863,
+            "x": 392.028,
             "y": 612.152
           },
           "offset_x": null,
@@ -277,12 +277,12 @@
           "to": "customerA",
           "rel_type": "rel",
           "start_point": {
-            "x": 367.555,
+            "x": 350.928,
             "y": 612.152
           },
           "end_point": {
-            "x": 321.261,
-            "y": 406.152
+            "x": 321.222,
+            "y": 405.885
           },
           "offset_x": -50.0,
           "offset_y": 20.0,

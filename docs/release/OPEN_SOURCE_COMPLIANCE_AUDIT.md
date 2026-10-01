@@ -2,6 +2,7 @@
 
 Status: engineering gates implemented; final-artifact evidence and legal review remain release duties
 Audit date: 2026-09-24
+Scope: dated engineering audit for the Mermaid 12 / Merman `0.8.0-alpha.7` release line. References to the worktree and initial findings describe this audit, not a live compliance certificate. Maintained procedures are in [Releasing](RELEASING.md); completed channel evidence is in the [alpha.7 publication snapshot](PUBLISH_ORDER.md#alpha7-publication-snapshot).
 Repository license expression: `MIT OR Apache-2.0`
 Mermaid behavior baseline: `mermaid@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
 

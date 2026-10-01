@@ -828,3 +828,101 @@ json Data@{"surrogate":"\ud800","values":["$$x^2$$"]}
         ));
     }
 }
+
+#[test]
+fn usecase_neo_applies_shared_shadow_and_stroke_rules_without_overriding_roles() {
+    let (_, svg) = render_config(
+        SOURCE,
+        json!({
+            "layout":"dagre", "theme":"default", "look":"neo", "htmlLabels":true,
+            "themeVariables": {
+                "nodeBorder":"#102030", "dropShadow":"drop-shadow(1px 2px 2px #b9b9b9)",
+                "usecaseActorBorder":"#405060", "usecaseBorder":"#708090"
+            }
+        }),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css: String = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect();
+    assert!(
+        css.contains(
+            r#"[data-look="neo"].node .outer-path{filter:drop-shadow(1px 2px 2px #b9b9b9);}"#
+        ),
+        "note outlines must receive the shared neo shadow: {css}"
+    );
+    assert!(css.contains(r#"[data-look="neo"].node path{stroke:#102030;stroke-width:1px;}"#));
+    assert!(css.contains(".node.usecase-actor .usecase-actor-glyph path"));
+    assert!(css.contains(r#"[data-look="neo"].node.usecase-element rect"#));
+    assert!(css.contains(r#"[data-look="neo"].node.usecase-element .usecase-business-marker"#));
+}
+
+#[test]
+fn usecase_note_renders_theme_colors_in_every_builtin_theme_and_look() {
+    for theme in [
+        "default",
+        "base",
+        "dark",
+        "forest",
+        "neutral",
+        "neo",
+        "neo-dark",
+        "redux",
+        "redux-dark",
+        "redux-color",
+        "redux-dark-color",
+    ] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let (_, svg) = render_config(
+                "usecase-beta\nA(Login)\nnote for A \"Remember\"",
+                json!({"layout":"dagre", "theme":theme, "look":look}),
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let note = document
+                .descendants()
+                .find(|node| node.attribute("data-usecase-kind") == Some("note"))
+                .unwrap_or_else(|| panic!("missing note for {theme}/{look}"));
+            assert!(note.descendants().any(|node| node.has_tag_name("path")));
+        }
+    }
+}
+
+#[test]
+fn usecase_neo_gradient_paint_references_have_scoped_resources() {
+    for theme in ["default", "neo", "neo-dark"] {
+        let (_, svg) = render_config(
+            SOURCE,
+            json!({
+                "layout":"dagre", "look":"neo", "theme":theme,
+                "themeVariables": {
+                    "useGradient":true, "gradientStart":"#102030", "gradientStop":"#405060"
+                }
+            }),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let gradient = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("linearGradient")
+                    && node.attribute("id") == Some("usecase-test-gradient")
+            })
+            .expect("common neo gradient resource");
+        let stops: Vec<_> = gradient
+            .children()
+            .filter(|node| node.has_tag_name("stop"))
+            .map(|node| node.attribute("stop-color").unwrap())
+            .collect();
+        assert_eq!(stops, ["#102030", "#405060"]);
+        let css: String = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(
+            css.contains("stroke:url(#usecase-test-gradient)"),
+            "{theme}"
+        );
+    }
+}

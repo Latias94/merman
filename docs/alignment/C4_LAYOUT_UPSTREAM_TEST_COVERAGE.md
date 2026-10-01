@@ -1,4 +1,4 @@
-# C4 Layout Upstream Test Coverage (Mermaid@11.16.1)
+# C4 Layout Upstream Test Coverage (Mermaid@12.0.0)
 
 This document tracks which **upstream Mermaid C4 layout behaviors** are covered in `merman` via:
 
@@ -11,13 +11,13 @@ This document tracks which **upstream Mermaid C4 layout behaviors** are covered 
 - the semantic edge-label gate activated by the same `--check-dom` flag. This gate is independent
   of canonical DOM normalization and binds each label to its ordered C4 relation.
 
-Scope: Mermaid tag `@11.16.1`.
+Scope: pinned Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`.
 
 ## Upstream sources (layout algorithm)
 
 Mermaid’s C4 layout math is implemented in:
 
-- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/c4Renderer.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/c4Renderer.ts`
 
 Unlike many other Mermaid diagrams, the C4 renderer does not have a dedicated, granular “layout
 unit test” suite. For parity work we treat the upstream SVG baselines as authoritative and use
@@ -47,3 +47,73 @@ presentation evidence, and consumes only exact signed browser-measurement residu
 For detailed expected fields and invariants, see:
 
 - `docs/alignment/C4_LAYOUT_MINIMUM.md`
+
+
+## Center-Based Relationship Geometry
+
+`c4Renderer.ts` supplies each unified shape with its grid-box center and passes the opposite
+shape or boundary center to its intersection function. `intersect/intersect-rect.js` owns the
+rectangle calculation; `shapes/cylinder.ts` and `shapes/tiltedCylinder.ts` apply their cap correction
+to that result. Person and framed-component endpoints follow `shapes/person.ts`,
+`shapes/subroutine.ts`, and `intersect/intersect-polygon.js`.
+
+The previous local rectangle routine incorrectly calculated its ray from the grid box's top-left
+corner. The five older C4 semantic-label receipts included that real routing error; their original
+browser-measurement explanation was incomplete. Correcting the geometry restores the System Context
+target port and removes the spurious bend in the Dynamic canary's leftward component relation.
+The first relation remains a `line`, and later relations retain Mermaid's quadratic `Q` representation.
+No constant was tuned to force a straight path.
+
+`crates/merman-render/tests/c4_relation_geometry_test.rs` exercises the complete parse, layout, and
+SVG render path. Its ten tests cover:
+
+- all five C4 headers, eight directions, rectangle and framed-component shapes;
+- bidirectional and reversed marker ownership;
+- database and queue horizontal/vertical ports and finite self relations;
+- Person/Person_Ext sampled outlines, self relations, and exact center overlap with an owning boundary;
+- a legal `c4ShapeMargin=0.25` containing-boundary relation whose nearest polygon intersection lies
+  opposite the center-to-target direction; the upstream helper queries the complete line, not only
+  the forward ray;
+- framed-component self relations, which return the polygon center rather than a rectangle port.
+
+A direct audit evaluated the pinned intersection functions with the exact same Rust-produced node
+boxes for five shapes, eight directions, and self relations. Maximum endpoint disagreement was
+`1.04e-11px`; the signed Dynamic canary's three relations matched exactly. Six additional legal
+owning-boundary and coincident-center cases differed by at most `1.17e-12px`. These values describe
+observed floating-point arithmetic, not comparator tolerances or a new admission rule. Focused
+renderer tests also establish finite SVG geometry for the degenerate relationships.
+
+## Reviewed Dynamic Canary Residual
+
+Only the five existing local geometry signatures for
+`upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010` were replaced after the routing correction.
+The input and upstream artifact remain bound to their original digests:
+
+- input SHA-256: `78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284`;
+- upstream SVG SHA-256: `393427fc0b4b21ae51e7816a72a3e452abcb8f3a9f946ceab9cef4c993326d4e`.
+
+The existing `MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES` collector produced five `review_required`
+candidates for this single fixture after verifying relation identities, label text, and presentation.
+The refreshed catalog preserves the upstream signatures, semantic keys, text, hashes, precision,
+comparator revision, and evidence kind. The new reasons explicitly supersede the earlier mixed
+routing/measurement explanation.
+
+Remaining differences are the propagation of browser text wrapping and bounding-box heights through
+C4's grid, plus relationship-label width measurement. The source owners are `c4LabelHelper.ts` /
+`createText.ts`, `c4Renderer.ts`'s `calcC4ShapeTextWH`, and `svgDraw.ts`'s unchanged midpoint and named
+offset placement. Given the same node boxes, all three canary edges agree with pinned Mermaid;
+node text measurement accounts for the remaining different boxes. Message and technology labels
+retain their source-defined offsets, text, styles, and line/Q ownership.
+
+| Relation and role | Local minus upstream anchor X | Local minus upstream anchor Y |
+| --- | ---: | ---: |
+| 1, message | -5.998px | -27.922px |
+| 1, technology | -5.998px | -27.922px |
+| 2, message | -7.500px | -42.290px |
+| 3, message | -6.880px | -27.923px |
+| 3, technology | -6.880px | -27.923px |
+
+The larger vertical offsets follow the signed upstream browser's taller wrapped nodes; they do not
+license routing changes. Admission still requires the complete exact local/upstream edge and label
+signatures. No comparator normalization, coordinate tolerance, production fixture branch, or upstream
+SVG was changed for this refresh.

@@ -2,9 +2,10 @@
 
 This document tracks high-level alignment milestones for the pinned Mermaid baseline.
 
-It is intentionally release-oriented (what “done” means) and should stay stable even as the
-fixture corpus grows. For the detailed post-parity hardening phases, see:
-`docs/alignment/PARITY_HARDENING_PLAN.md`.
+It defines release-oriented exit criteria, not the current gate result. Use
+[`STATUS.md`](STATUS.md) for current admission, [`GAP_BACKLOG.md`](GAP_BACKLOG.md) for active work,
+and verification output for the exact revision under review. The superseded
+[`PARITY_HARDENING_PLAN.md`](PARITY_HARDENING_PLAN.md) is retained as historical evidence.
 
 ## Baseline
 
@@ -13,7 +14,7 @@ fixture corpus grows. For the detailed post-parity hardening phases, see:
 
 ## Milestones
 
-### M0: Baseline parity for current corpus (Mermaid 12 integration pending)
+### M0: Baseline parity for the selected corpus
 
 Exit criteria:
 
@@ -41,12 +42,16 @@ Exit criteria:
 - No “silent drift”: new fixtures must include semantic + layout snapshots, and (when applicable)
   upstream SVG baselines.
 
-### M2: Eliminate fixture-scoped renderer special-cases
+### M2: Preserve fixture-free renderer behavior
+
+The family-owned architecture migration removed the former fixture-scoped production overrides.
+ADR-0062 and ADR-0073 define the maintained boundary; historical import notes do not authorize
+reintroducing those overrides.
 
 Goal:
 
-- Remove any diagram renderer behavior keyed to a specific fixture id (temporary debt used to keep
-  parity gates green during coverage expansion).
+- Derive renderer behavior from source semantics, geometry, configuration, and operation-owned
+  measurement rather than fixture identity.
 
 Exit criteria:
 
@@ -56,7 +61,7 @@ Exit criteria:
   - an algorithmic/layout/measurement improvement, or
   - an ADR that documents an unavoidable upstream ambiguity (rare).
 
-### M3: Eliminate fixture-scoped root viewport overrides
+### M3: Preserve computed root viewport ownership
 
 Goal:
 
@@ -123,4 +128,5 @@ For the prioritized gap list and execution plan, see:
 
 ## Release notes
 
-- Release/publishing gates are defined in `docs/releasing/PUBLISHING.md`.
+- The cross-channel workflow is [`../release/RELEASING.md`](../release/RELEASING.md).
+- The Cargo-specific gate summary is [`../releasing/PUBLISHING.md`](../releasing/PUBLISHING.md).

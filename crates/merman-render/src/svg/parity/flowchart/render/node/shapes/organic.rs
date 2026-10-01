@@ -41,8 +41,6 @@ fn render_organic_shape(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 super::super::roughjs::roughjs_hachure_paths_for_svg_path(
                     &path,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     HAND_DRAWN_FILL_WEIGHT,

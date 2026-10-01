@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
 from pathlib import Path
 import tempfile
 import unittest
@@ -108,6 +110,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                     side_effect=checksum,
                 )
             )
+            stack.enter_context(mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=self.DIGEST))
             yield
 
     def invoke(
@@ -115,17 +118,20 @@ class CratesIoReceiptTests(unittest.TestCase):
         root: Path,
         *,
         recovery: Path | None = None,
+        **kwargs,
     ) -> None:
+        receipts_dir = kwargs.pop("receipts_dir", root / "receipts")
         release.publish_receipted_release(
             root,
             {"target_directory": str(root / "target")},
             source_sha=self.SOURCE_SHA,
             source_tree=self.SOURCE_TREE,
-            receipts_dir=root / "receipts",
+            receipts_dir=receipts_dir,
             registry_token="test-token",
             recovery_receipts_dir=recovery,
             visibility_attempts=2,
             visibility_delay=0,
+            **kwargs,
         )
 
     def receipt(
@@ -154,12 +160,10 @@ class CratesIoReceiptTests(unittest.TestCase):
                 "fetch_crates_io_checksum",
                 side_effect=[None, self.DIGEST],
             ):
-                barrier = release.reconcile_registry_barrier(
-                    [item],
-                    registry_api=release.CRATES_IO_API,
-                    attempts=2,
-                    delay_seconds=0,
-                )
+                with mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=self.DIGEST):
+                    barrier = release.reconcile_registry_barrier(
+                        [item], registry_api=release.CRATES_IO_API, attempts=2, delay_seconds=0,
+                    )
         self.assertEqual(barrier.state, "complete")
 
     def test_registry_barrier_stops_on_different_bytes(self) -> None:
@@ -170,12 +174,10 @@ class CratesIoReceiptTests(unittest.TestCase):
                 "fetch_crates_io_checksum",
                 return_value="5" * 64,
             ):
-                barrier = release.reconcile_registry_barrier(
-                    [item],
-                    registry_api=release.CRATES_IO_API,
-                    attempts=2,
-                    delay_seconds=0,
-                )
+                with mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=self.DIGEST):
+                    barrier = release.reconcile_registry_barrier(
+                        [item], registry_api=release.CRATES_IO_API, attempts=2, delay_seconds=0,
+                    )
         self.assertEqual(barrier.state, "mismatch")
 
     def test_initial_preflight_dry_runs_only_missing_versions(self) -> None:
@@ -340,7 +342,9 @@ class CratesIoReceiptTests(unittest.TestCase):
         package_schema = schema["$defs"]["package"]
         artifact_schema = package_schema["properties"]["artifact"]
         registry_schema = package_schema["properties"]["registry"]
-        self.assertEqual(set(receipt), set(schema["required"]))
+        self.assertTrue(set(schema["required"]).issubset(receipt))
+        self.assertTrue(set(receipt).issubset(schema["properties"]))
+        self.assertIs(receipt["observe_only"], False)
         self.assertEqual(set(receipt["packages"][0]), set(package_schema["required"]))
         self.assertEqual(
             set(receipt["packages"][0]["artifact"]),
@@ -461,14 +465,10 @@ class CratesIoReceiptTests(unittest.TestCase):
             alpha = self.prepared(root, "alpha")
             beta = self.prepared(root, "beta")
             prior = root / "recovery" / "attempt-1"
-            release._write_receipt(
-                prior / "batch-000-prepared.json",
-                self.receipt(root, [alpha, beta], "prepared"),
-            )
-            release._write_receipt(
-                prior / "batch-000-result.json",
-                self.receipt(root, [alpha, beta], "pending_recovery"),
-            )
+            for state, suffix in [("prepared", "prepared"), ("pending_recovery", "result")]:
+                receipt = self.receipt(root, [alpha, beta], state)
+                receipt["publication"] = {"run_id": "42", "attempt": 1}
+                release._write_receipt(prior / f"batch-000-{suffix}.json", receipt)
             plan = publish.PublishPlan(
                 (("alpha", "beta"),),
                 ("alpha", "beta"),
@@ -486,7 +486,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                 run=run,
                 checksum=sequence(self.DIGEST, None, self.DIGEST, self.DIGEST),
             ):
-                self.invoke(root, recovery=root / "recovery")
+                self.invoke(root, recovery=root / "recovery", recovery_run_id="42", recovery_attempt=1)
             self.assertEqual(
                 [command[3] for command, _env in commands],
                 ["beta", "beta"],
@@ -496,6 +496,243 @@ class CratesIoReceiptTests(unittest.TestCase):
                 commands[0][1] or {},
             )
             self.assertEqual(commands[1][1]["CARGO_REGISTRY_TOKEN"], "test-token")
+
+    def test_api_acceptance_without_index_stops_before_preparing_next_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            alpha = self.prepared(root, "alpha")
+            beta = self.prepared(root, "beta", ("alpha",))
+            plan = publish.PublishPlan((("alpha",), ("beta",)), ("alpha", "beta"),
+                                       {"alpha": alpha.package, "beta": beta.package})
+            prepared_names = []
+
+            def prepare(_root, _target, package):
+                prepared_names.append(package.name)
+                return alpha if package.name == "alpha" else beta
+
+            with self.mocked_release(
+                plan, prepare=prepare,
+                run=lambda command, **kwargs: publish.subprocess.CompletedProcess(command, 0),
+                checksum=sequence(None, self.DIGEST, self.DIGEST),
+            ), mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "pending_recovery"):
+                    self.invoke(root)
+            self.assertEqual(prepared_names, ["alpha"])
+            result = json.loads((root / "receipts/batch-000-result.json").read_text())
+            self.assertEqual(result["packages"][0]["registry"]["status"], "accepted_pending_index")
+            self.assertIsNone(result["packages"][0]["registry"]["observed_index_checksum"])
+
+    def test_repeated_recovery_404_cannot_republish_an_attempted_upload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            recovery = root / "receipts"
+            release._write_receipt(recovery / "batch-000-prepared.json", self.receipt(root, [item], "prepared"))
+            prior = self.receipt(root, [item], "pending_recovery")
+            prior["packages"][0]["registry"]["status"] = "publish_started"
+            release._write_receipt(recovery / "batch-000-result.json", prior)
+            for _ in range(2):
+                with self.mocked_release(
+                    plan, prepare=lambda *_args: item,
+                    run=lambda *_args, **_kwargs: self.fail("an attempted upload cannot be sent twice"),
+                    checksum=lambda *_args, **_kwargs: None,
+                ), mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None):
+                    with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                        self.invoke(root, recovery=recovery)
+                result = json.loads((recovery / "batch-000-result.json").read_text())
+                self.assertEqual(result["packages"][0]["registry"]["status"], "publish_response_lost")
+
+    def test_receipt_attempt_gap_makes_old_missing_members_observation_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            alpha = self.prepared(root, "alpha")
+            beta = self.prepared(root, "beta")
+            plan = publish.PublishPlan((("alpha", "beta"),), ("alpha", "beta"),
+                                       {"alpha": alpha.package, "beta": beta.package})
+            recovery = root / "old-receipts"
+            for state, suffix in [("prepared", "prepared"), ("pending_recovery", "result")]:
+                receipt = self.receipt(root, [alpha, beta], state)
+                receipt["publication"] = {"run_id": "42", "attempt": 1}
+                if state != "prepared":
+                    receipt["packages"][0]["registry"]["status"] = "published"
+                    receipt["packages"][1]["registry"]["status"] = "missing"
+                release._write_receipt(recovery / f"batch-000-{suffix}.json", receipt)
+            with self.mocked_release(
+                plan, prepare=sequence(alpha, beta),
+                run=lambda *_args, **_kwargs: self.fail("missing attempt 2 may already have uploaded beta"),
+                checksum=lambda name, *_args, **_kwargs: self.DIGEST if name == "alpha" else None,
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                    self.invoke(root, recovery=recovery, publication_run_id="42", publication_attempt=3,
+                                recovery_run_id="42", recovery_attempt=2)
+            result = json.loads((root / "receipts/batch-000-result.json").read_text())
+            self.assertEqual(result["publication"], {"run_id": "42", "attempt": 3})
+            self.assertEqual(result["packages"][1]["registry"]["status"], "publish_response_lost")
+
+    def test_missing_recovery_artifact_never_downgrades_to_fresh_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            with self.mocked_release(
+                plan, prepare=lambda *_args: item,
+                run=lambda *_args, **_kwargs: self.fail("missing receipt evidence cannot authorize upload"),
+                checksum=lambda *_args, **_kwargs: None,
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                    self.invoke(root, publication_run_id="42", publication_attempt=2,
+                                recovery_run_id="42", recovery_attempt=1)
+
+    def test_complete_prefix_cannot_launder_unknown_later_batch_into_attempt_four(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            alpha = self.prepared(root, "alpha")
+            beta = self.prepared(root, "beta", ("alpha",))
+            plan = publish.PublishPlan((("alpha",), ("beta",)), ("alpha", "beta"),
+                                       {"alpha": alpha.package, "beta": beta.package})
+            uploads = []
+
+            def prepare(_root, _target, package):
+                return alpha if package.name == "alpha" else beta
+
+            def prepare_failure(_root, _target, package):
+                if package.name == "beta":
+                    raise release.CratesIoPublishError("temporary beta preparation failure")
+                return alpha
+
+            def checksum(name, *_args, **_kwargs):
+                return self.DIGEST if name == "alpha" else None
+
+            def run(command, **_kwargs):
+                if "--no-verify" in command:
+                    uploads.append(command[3])
+                    raise KeyboardInterrupt("runner lost after sending beta")
+                return publish.subprocess.CompletedProcess(command, 0)
+
+            # Attempt 1 leaves a complete alpha prefix, with beta never prepared.
+            with self.mocked_release(plan, prepare=prepare_failure, run=run, checksum=checksum):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "preparation failure"):
+                    self.invoke(root, receipts_dir=root / "attempt-1", publication_run_id="42", publication_attempt=1)
+            # Attempt 2 really sends beta, but none of its receipts survive as artifacts.
+            with self.mocked_release(plan, prepare=prepare, run=run, checksum=checksum):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.invoke(root, recovery=root / "attempt-1", receipts_dir=root / "attempt-2",
+                                publication_run_id="42", publication_attempt=2,
+                                recovery_run_id="42", recovery_attempt=1)
+            # Attempt 3 observes an exact alpha, then fails before preparing beta.
+            with self.mocked_release(plan, prepare=prepare_failure, run=run, checksum=checksum):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "preparation failure"):
+                    self.invoke(root, recovery=root / "attempt-1", receipts_dir=root / "attempt-3",
+                                publication_run_id="42", publication_attempt=3,
+                                recovery_run_id="42", recovery_attempt=2)
+            third = json.loads((root / "attempt-3/batch-000-result.json").read_text())
+            self.assertEqual(third["state"], "complete")
+            self.assertIs(third["observe_only"], True)
+            self.assertFalse((root / "attempt-3/batch-001-prepared.json").exists())
+            # Matching provenance on attempt 4 must not erase the inherited uncertainty.
+            with self.mocked_release(plan, prepare=prepare, run=run, checksum=checksum):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                    self.invoke(root, recovery=root / "attempt-3", receipts_dir=root / "attempt-4",
+                                publication_run_id="42", publication_attempt=4,
+                                recovery_run_id="42", recovery_attempt=3)
+            self.assertEqual(uploads, ["beta"])
+            fourth = json.loads((root / "attempt-4/batch-001-result.json").read_text())
+            self.assertIs(fourth["observe_only"], True)
+
+    def test_prepared_only_receipt_preserves_run_wide_observation_for_future_batches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            alpha = self.prepared(root, "alpha")
+            beta = self.prepared(root, "beta", ("alpha",))
+            plan = publish.PublishPlan((("alpha",), ("beta",)), ("alpha", "beta"),
+                                       {"alpha": alpha.package, "beta": beta.package})
+
+            def prepare(_root, _target, package):
+                return alpha if package.name == "alpha" else beta
+
+            def interrupted(*_args, **_kwargs):
+                raise KeyboardInterrupt()
+
+            with self.mocked_release(plan, prepare=prepare, run=lambda *_args, **_kwargs: self.fail("no upload"),
+                                     checksum=interrupted):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.invoke(root, observe_only=True, receipts_dir=root / "attempt-3",
+                                publication_run_id="42", publication_attempt=3)
+            third = json.loads((root / "attempt-3/batch-000-prepared.json").read_text())
+            self.assertIs(third["observe_only"], True)
+            self.assertFalse((root / "attempt-3/batch-000-result.json").exists())
+            with self.mocked_release(
+                plan, prepare=prepare, run=lambda *_args, **_kwargs: self.fail("unknown beta cannot be sent"),
+                checksum=lambda name, *_args, **_kwargs: self.DIGEST if name == "alpha" else None,
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                    self.invoke(root, recovery=root / "attempt-3", receipts_dir=root / "attempt-4",
+                                publication_run_id="42", publication_attempt=4,
+                                recovery_run_id="42", recovery_attempt=3)
+
+    def test_existing_version_evidence_survives_a_later_replica_404(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            with self.mocked_release(
+                plan, prepare=lambda *_args: item,
+                run=lambda *_args, **_kwargs: self.fail("an existing version cannot be uploaded"),
+                checksum=sequence(self.DIGEST, None, None),
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "pending_recovery"):
+                    self.invoke(root)
+            result = json.loads((root / "receipts/batch-000-result.json").read_text())
+            self.assertEqual(result["packages"][0]["registry"]["status"], "publish_response_lost")
+            with self.mocked_release(
+                plan, prepare=lambda *_args: item,
+                run=lambda *_args, **_kwargs: self.fail("earlier existence remains observation-only"),
+                checksum=lambda *_args, **_kwargs: None,
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "do not republish"):
+                    self.invoke(root, recovery=root / "receipts")
+
+    def test_recovery_lookup_failure_preserves_prior_upload_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            recovery = root / "receipts"
+            release._write_receipt(recovery / "batch-000-prepared.json", self.receipt(root, [item], "prepared"))
+            prior = self.receipt(root, [item], "pending_recovery")
+            prior["packages"][0]["registry"]["status"] = "publish_started"
+            release._write_receipt(recovery / "batch-000-result.json", prior)
+            def unavailable(*_args, **_kwargs):
+                raise release.CratesIoPublishError("HTTP 503")
+
+            with self.mocked_release(
+                plan, prepare=lambda *_args: item,
+                run=lambda *_args, **_kwargs: self.fail("cannot upload during a registry outage"),
+                checksum=unavailable,
+            ):
+                with self.assertRaisesRegex(release.CratesIoPublishError, "HTTP 503"):
+                    self.invoke(root, recovery=recovery)
+            result = json.loads((recovery / "batch-000-result.json").read_text())
+            self.assertEqual(result["packages"][0]["registry"]["status"], "publish_started")
+
+    def test_interruption_persists_upload_attempt_before_subprocess(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+
+            def run(command, **kwargs):
+                if "--no-verify" in command:
+                    raise KeyboardInterrupt()
+                return publish.subprocess.CompletedProcess(command, 0)
+
+            with self.mocked_release(plan, prepare=lambda *_args: item, run=run,
+                                     checksum=lambda *_args, **_kwargs: None):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.invoke(root)
+            result = json.loads((root / "receipts/batch-000-result.json").read_text())
+            self.assertEqual(result["packages"][0]["registry"]["status"], "publish_started")
 
     def test_recovery_rejects_toolchain_or_artifact_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -573,6 +810,96 @@ class CratesIoReceiptTests(unittest.TestCase):
             ):
                 self.invoke(root)
             self.assertEqual(prepared_names, ["alpha"])
+
+
+class SparseIndexBoundaryTests(unittest.TestCase):
+    @contextmanager
+    def registry(self, *, api_delay=0, index_delay=0, index_checksum=None, yanked=False):
+        state = {"now": 0, "paths": [], "sleeps": []}
+        digest = CratesIoReceiptTests.DIGEST
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_GET(self):
+                state["paths"].append(self.path)
+                is_api = self.path.startswith("/api/")
+                visible = state["now"] >= (api_delay if is_api else index_delay)
+                if not visible:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                if is_api:
+                    payload = {"version": {"checksum": digest}}
+                else:
+                    payload = {"name": "alpha", "vers": "1.0.0", "cksum": index_checksum or digest, "yanked": yanked}
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write((json.dumps(payload) + "\n").encode())
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+        thread.start()
+
+        def sleep(seconds):
+            state["sleeps"].append(seconds)
+            state["now"] += seconds
+
+        try:
+            with (tempfile.TemporaryDirectory() as temp_dir,
+                  mock.patch.object(release.time, "sleep", side_effect=sleep),
+                  mock.patch.object(release.time, "monotonic", side_effect=lambda: state["now"])):
+                item = CratesIoReceiptTests().prepared(Path(temp_dir))
+                endpoint = f"http://127.0.0.1:{server.server_port}"
+                yield item, endpoint, state
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def barrier(self, item, endpoint):
+        return release.reconcile_registry_barrier(
+            [item], registry_api=endpoint + "/api/v1", registry_index=endpoint,
+            attempts=4, delay_seconds=5,
+        )
+
+    def test_api_checksum_does_not_complete_before_consumable_index(self) -> None:
+        with self.registry(index_delay=30) as (item, endpoint, clock):
+            barrier = self.barrier(item, endpoint)
+        self.assertEqual(barrier.state, "complete")
+        self.assertEqual(clock["sleeps"], [5, 10, 20])
+        self.assertIn("/al/ph/alpha", clock["paths"])
+        self.assertEqual(barrier.index_checksums["alpha"], item.artifact_sha256)
+
+    def test_index_visibility_cannot_bypass_missing_api_checksum(self) -> None:
+        with self.registry(api_delay=1000) as (item, endpoint, clock):
+            barrier = self.barrier(item, endpoint)
+        self.assertEqual(barrier.state, "pending_recovery")
+        self.assertEqual(barrier.index_checksums["alpha"], item.artifact_sha256)
+        self.assertIsNone(barrier.checksums["alpha"])
+        self.assertIn("API propagation", barrier.errors["alpha"])
+
+    def test_conflicting_index_bytes_stop_on_first_observation(self) -> None:
+        with self.registry(index_checksum="f" * 64) as (item, endpoint, clock):
+            barrier = self.barrier(item, endpoint)
+        self.assertEqual(barrier.state, "mismatch")
+        self.assertEqual(clock["sleeps"], [])
+
+    def test_observation_budget_expires_before_attempt_limit(self) -> None:
+        with self.registry(index_delay=1000) as (item, endpoint, clock), \
+                mock.patch.object(release, "REGISTRY_OBSERVATION_SECONDS", 12):
+            barrier = self.barrier(item, endpoint)
+        self.assertEqual(barrier.state, "pending_recovery")
+        self.assertEqual(clock["now"], 12)
+        self.assertEqual(clock["sleeps"], [5, 7])
+
+    def test_yanked_index_version_is_a_conflict(self) -> None:
+        with self.registry(yanked=True) as (item, endpoint, clock):
+            barrier = self.barrier(item, endpoint)
+        self.assertEqual(barrier.state, "mismatch")
+        self.assertEqual(clock["sleeps"], [])
 
 
 if __name__ == "__main__":

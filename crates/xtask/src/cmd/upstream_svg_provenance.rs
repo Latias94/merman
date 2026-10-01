@@ -45,8 +45,8 @@ use transaction::{
 };
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
-const MANIFEST_SCHEMA_VERSION: u32 = 3;
-const RENDERER_REVISION: &str = "xtask-upstream-svg-v4";
+const MANIFEST_SCHEMA_VERSION: u32 = 4;
+pub(super) const RENDERER_REVISION: &str = "xtask-upstream-svg-v5";
 pub(crate) const UPSTREAM_SVG_FIXED_WALL_CLOCK_MS: i64 = 1_704_067_200_000;
 pub(crate) const GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX: u32 = 1_200;
 pub(crate) const GANTT_UPSTREAM_CONTAINER_WIDTH_PX: u32 = 1_184;
@@ -1428,7 +1428,7 @@ fn base_renderer_profile(diagram: &str) -> String {
             "seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}-viewport-{}-container-{}",
             GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX, GANTT_UPSTREAM_CONTAINER_WIDTH_PX,
         ),
-        _ => "mmdc-default".to_string(),
+        _ => format!("owned-runtime-seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}"),
     }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Code, Search, X } from "lucide-react";
 
@@ -52,6 +52,27 @@ export function ExampleGallery({
   const setCode = useAppStore((state) => state.setCode);
   const asciiSupport = useAsciiSupport();
   const searchRef = useRef<HTMLInputElement>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const scrollTopRef = useRef(0);
+  const viewportWidthRef = useRef(0);
+  const scrollAnchorRef = useRef<{ id: string; offset: number } | null>(null);
+  const restoreViewport = useCallback((viewport: HTMLDivElement | null) => {
+    viewportRef.current = viewport;
+    if (!viewport) return;
+    const anchor = scrollAnchorRef.current;
+    const card = anchor && viewport.querySelector<HTMLElement>(
+      `[data-example-id="${CSS.escape(anchor.id)}"]`,
+    );
+    // Responsive columns change pixel offsets but not the example being read.
+    viewport.scrollTop = card && viewport.clientWidth !== viewportWidthRef.current
+      ? card.offsetTop - anchor.offset
+      : scrollTopRef.current;
+  }, []);
+  const resetScroll = () => {
+    scrollTopRef.current = 0;
+    scrollAnchorRef.current = null;
+    if (viewportRef.current) viewportRef.current.scrollTop = 0;
+  };
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [asciiOnly, setAsciiOnly] = useState(false);
@@ -81,6 +102,25 @@ export function ExampleGallery({
   const activeCategory = visibleCategories.includes(selectedCategory)
     ? selectedCategory
     : "All";
+  const bindCategoryNavigation = useCallback((navigation: HTMLElement | null) => {
+    if (!navigation) return;
+    // Filtering can move a category without changing any observed dimensions.
+    const selected = navigation.querySelectorAll<HTMLElement>(
+      "[data-example-category]",
+    )[visibleCategories.indexOf(activeCategory)];
+    if (!selected) return;
+    const sidebar = navigation.parentElement;
+    const reveal = () => {
+      revealCategoryWithin(navigation, selected);
+      if (sidebar) revealCategoryWithin(sidebar, selected);
+    };
+    const observer = new ResizeObserver(reveal);
+    observer.observe(navigation);
+    observer.observe(selected);
+    if (sidebar) observer.observe(sidebar);
+    reveal();
+    return () => observer.disconnect();
+  }, [activeCategory, visibleCategories]);
   const filteredExamples = useMemo(
     () =>
       filterExamples({
@@ -161,7 +201,10 @@ export function ExampleGallery({
                 ref={searchRef}
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  resetScroll();
+                  setQuery(event.target.value);
+                }}
                 placeholder={t("examples.searchPlaceholder")}
                 aria-label={t("examples.searchLabel")}
                 className="pl-9"
@@ -182,26 +225,37 @@ export function ExampleGallery({
             <AsciiFilter
               id="ascii-only-desktop"
               asciiOnly={asciiOnly}
-              onChange={setAsciiOnly}
+              onChange={(checked) => {
+                resetScroll();
+                setAsciiOnly(checked);
+              }}
               label={t("examples.asciiOnly")}
               className="mb-2 hidden md:flex"
             />
             <AsciiFilter
               id="ascii-only-mobile"
               asciiOnly={asciiOnly}
-              onChange={setAsciiOnly}
+              onChange={(checked) => {
+                resetScroll();
+                setAsciiOnly(checked);
+              }}
               label={t("examples.asciiOnly")}
               className="mb-2 flex md:hidden"
             />
             <nav
+              ref={bindCategoryNavigation}
               className="scrollbar-thin flex gap-1 overflow-x-auto pb-1 md:block md:space-y-1 md:overflow-visible md:pb-0"
               aria-label={t("examples.categoriesLabel")}
             >
               {visibleCategories.map((category) => (
                 <button
                   key={category}
+                  data-example-category={category}
                   type="button"
-                  onClick={() => setSelectedCategory(category)}
+                  onClick={() => {
+                    resetScroll();
+                    setSelectedCategory(category);
+                  }}
                   aria-pressed={activeCategory === category}
                   className={cn(
                     "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
@@ -223,7 +277,29 @@ export function ExampleGallery({
             </nav>
           </div>
 
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea
+            className="min-h-0 flex-1"
+            viewportProps={{
+              ref: restoreViewport,
+              onScroll: (event) => {
+                if (!open) return;
+                const viewport = event.currentTarget;
+                scrollTopRef.current = viewport.scrollTop;
+                viewportWidthRef.current = viewport.clientWidth;
+                const card = Array.from(
+                  viewport.querySelectorAll<HTMLElement>("[data-example-id]"),
+                ).find(
+                  (card) => card.offsetTop + card.offsetHeight > viewport.scrollTop,
+                );
+                scrollAnchorRef.current = card
+                  ? {
+                      id: card.dataset.exampleId!,
+                      offset: card.offsetTop - viewport.scrollTop,
+                    }
+                  : null;
+              },
+            }}
+          >
             <div className="border-b px-4 py-2 text-xs text-muted-foreground">
               {asciiOnly
                 ? t("examples.asciiFilterActive", {
@@ -246,6 +322,7 @@ export function ExampleGallery({
                 {filteredExamples.map((example) => (
                   <button
                     key={example.id}
+                    data-example-id={example.id}
                     type="button"
                     onClick={() => handleSelectExample(example)}
                     className="group rounded-md border bg-card p-4 text-left transition-[border-color,box-shadow,transform] hover:border-primary/50 hover:shadow-sm active:scale-[0.99]"
@@ -333,4 +410,22 @@ function AsciiCapabilityBadge({
       {t(asciiSupportLabelKey(capability))}
     </span>
   );
+}
+
+function revealCategoryWithin(container: HTMLElement, category: HTMLElement): void {
+  const bounds = container.getBoundingClientRect();
+  const item = category.getBoundingClientRect();
+  // Convert transformed dialog coordinates back to the container's scroll units.
+  if (bounds.width > 0 && container.scrollWidth > container.clientWidth) {
+    const offset = item.left < bounds.left
+      ? item.left - bounds.left
+      : Math.max(0, item.right - bounds.right);
+    container.scrollLeft += offset * container.offsetWidth / bounds.width;
+  }
+  if (bounds.height > 0 && container.scrollHeight > container.clientHeight) {
+    const offset = item.top < bounds.top
+      ? item.top - bounds.top
+      : Math.max(0, item.bottom - bounds.bottom);
+    container.scrollTop += offset * container.offsetHeight / bounds.height;
+  }
 }

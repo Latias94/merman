@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
@@ -220,30 +220,135 @@ test("deduplicates only when both the operation and facade authority are unchang
   assert.equal(firstRenderCalls, 1);
 });
 
-test("freezes only the latest input after the debounce window", async () => {
-  const frozenSources: string[] = [];
-  const coordinator = createRenderCoordinator({
-    compare: fakeCompare([]),
-    debounceMs: 10,
-    freezeOperation(input: FreezeRenderOperationInput) {
-      frozenSources.push(input.workspace.code);
-      return freezeRenderOperation(input);
-    },
-  });
-
-  coordinator.setInput(input("first"));
-  coordinator.setInput(input("second"));
-  coordinator.setInput(input("third"));
-
+test("freezes only the latest input after the complete debounce window", async (t) => {
+  const { coordinator, domainFacade, renderedSources, frozenSources } = timedCoordinator(t);
+  coordinator.setInput(input("first", domainFacade));
+  await advanceClock(t, 299);
   assert.deepEqual(frozenSources, []);
-  const pending = coordinator.store.getState();
-  assert.equal(pending.status, "pending");
-  await waitFor(() => coordinator.store.getState().status === "success");
-  assert.deepEqual(frozenSources, ["third"]);
-  const completed = coordinator.store.getState();
-  assert.equal(completed.status, "success");
-  if (completed.status !== "success") return;
-  assert.equal(completed.snapshot.operation.source, "third");
+  coordinator.setInput(input("latest", domainFacade));
+  await advanceClock(t, 200);
+  coordinator.setInput(input("latest", domainFacade));
+  await advanceClock(t, 99);
+  assert.deepEqual(frozenSources, []);
+  await advanceClock(t, 1);
+  assert.deepEqual(frozenSources, ["latest"]);
+  assert.deepEqual(renderedSources, ["latest"]);
+  assert.equal(coordinator.store.getState().status, "success");
+});
+
+for (const change of ["refresh", "features", "resume", "reenable"] as const) {
+  test(`immediate ${change} request retains its deadline while Compare settles`, async (t) => {
+    const pending = deferred<MermaidRealmRenderResult>();
+    let compareCalls = 0;
+    const compare: MermaidRealmController = {
+      dispose() {},
+      reset() {},
+      render() {
+        compareCalls += 1;
+        return compareCalls === 1
+          ? pending.promise
+          : Promise.resolve(mermaidSuccess("latest"));
+      },
+    };
+    const { coordinator, domainFacade, renderedSources } = timedCoordinator(t, compare);
+    coordinator.setFeatures({
+      asciiEnabled: false,
+      compareEnabled: true,
+      diagnosticsEnabled: false,
+    });
+    coordinator.setInput(input("initial", domainFacade));
+    await advanceClock(t, 300);
+    assert.deepEqual(renderedSources, ["initial"]);
+    if (change === "refresh") {
+      coordinator.refresh();
+    } else if (change === "resume") {
+      coordinator.suspend();
+      coordinator.resume();
+    } else if (change === "reenable") {
+      coordinator.setEnabled(false);
+      coordinator.setEnabled(true);
+    } else {
+      coordinator.setFeatures({
+        asciiEnabled: true,
+        compareEnabled: true,
+        diagnosticsEnabled: false,
+      });
+    }
+    await advanceClock(t, 0);
+    assert.equal(compareCalls, 1);
+    assert.deepEqual(renderedSources, ["initial"]);
+
+    pending.resolve(mermaidSuccess("stale"));
+    await advanceClock(t, 0);
+    assert.equal(compareCalls, 1);
+    assert.equal(coordinator.store.getState().status, "pending");
+    await advanceClock(t, 0);
+    assert.equal(compareCalls, 2);
+    assert.equal(renderedSources.length, 2);
+    assert.equal(coordinator.store.getState().status, "success");
+  });
+}
+
+test("a later edit replaces an immediate request queued behind Compare", async (t) => {
+  const pending = deferred<MermaidRealmRenderResult>();
+  const compare: MermaidRealmController = {
+    dispose() {},
+    reset() {},
+    render: () => pending.promise,
+  };
+  const { coordinator, domainFacade, renderedSources } = timedCoordinator(t, compare);
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
+  coordinator.setInput(input("initial", domainFacade));
+  await advanceClock(t, 300);
+  coordinator.refresh();
+  await advanceClock(t, 100);
+  coordinator.setInput(input("edited", domainFacade));
+  pending.resolve(mermaidSuccess("initial"));
+  await advanceClock(t, 299);
+  assert.deepEqual(renderedSources, ["initial"]);
+  await advanceClock(t, 1);
+  assert.deepEqual(renderedSources, ["initial", "edited"]);
+});
+
+for (const gate of ["disabled", "suspended", "disposed"] as const) {
+  test(`immediate requests still honor the ${gate} lifecycle gate`, async (t) => {
+    const { coordinator, domainFacade, renderedSources } = timedCoordinator(t);
+    coordinator.setInput(input("initial", domainFacade));
+    coordinator.refresh();
+    if (gate === "disabled") coordinator.setEnabled(false);
+    if (gate === "suspended") coordinator.suspend();
+    if (gate === "disposed") coordinator.dispose();
+    await advanceClock(t, 300);
+    assert.deepEqual(renderedSources, []);
+
+    if (gate === "disabled") coordinator.setEnabled(true);
+    if (gate === "suspended") coordinator.resume();
+    assert.deepEqual(renderedSources, []);
+    await advanceClock(t, 0);
+    assert.deepEqual(renderedSources, gate === "disposed" ? [] : ["initial"]);
+  });
+}
+
+test("nested pauses release only the latest edit without waiting for its debounce", async (t) => {
+  const { coordinator, domainFacade, renderedSources } = timedCoordinator(t);
+  const firstRelease = await coordinator.pause();
+  const lastRelease = await coordinator.pause();
+  coordinator.setInput(input("initial", domainFacade));
+  coordinator.refresh();
+  coordinator.setInput(input("edited", domainFacade));
+  firstRelease();
+  await advanceClock(t, 0);
+  assert.deepEqual(renderedSources, []);
+  lastRelease();
+  await advanceClock(t, 0);
+  assert.deepEqual(renderedSources, ["edited"]);
+  lastRelease();
+  await advanceClock(t, 300);
+  assert.deepEqual(renderedSources, ["edited"]);
 });
 
 test("retains only the latest input while rendering is disabled", async () => {
@@ -1277,6 +1382,38 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
   assert.match(state.ascii.error.summary, /JSON|configuration/i);
   assert.equal(asciiCalls, 0);
 });
+
+function timedCoordinator(
+  t: TestContext,
+  compare: MermaidRealmController = fakeCompare([]),
+) {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  const renderedSources: string[] = [];
+  const frozenSources: string[] = [];
+  const baseFacade = facade();
+  const domainFacade: MermanDomainFacade = {
+    ...baseFacade,
+    render(operation) {
+      renderedSources.push(operation.source);
+      return baseFacade.render(operation);
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare,
+    now: Date.now,
+    freezeOperation(input: FreezeRenderOperationInput) {
+      frozenSources.push(input.workspace.code);
+      return freezeRenderOperation(input);
+    },
+  });
+  t.after(() => coordinator.dispose());
+  return { coordinator, domainFacade, renderedSources, frozenSources };
+}
+
+async function advanceClock(t: TestContext, elapsedMs: number): Promise<void> {
+  t.mock.timers.tick(elapsedMs);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
 
 function input(
   source: string,

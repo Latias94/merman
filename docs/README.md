@@ -19,7 +19,7 @@ owners rather than being duplicated across Markdown files.
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |
-| Upgrade from alpha.6 to alpha.7 | [Upgrade guide](release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) |
+| Upgrade between releases or native/query contracts | [Versioned upgrade index](release/README.md), including [0.8.0-alpha.6 → 0.8.0-alpha.7](release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) |
 | Align to another Mermaid release | [Mermaid upgrade playbook](release/MERMAID_UPGRADE_PLAYBOOK.md) |
 
 ## Documentation model

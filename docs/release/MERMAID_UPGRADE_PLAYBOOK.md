@@ -59,12 +59,15 @@ Move the source graph and all reference workspaces together. Before running the 
 3. Update `playground/package.json` and `tools/mermaid-cli/package.json`, including their exact
    `overrides`, then regenerate both package locks with lifecycle scripts disabled. The reference
    CLI's direct Mermaid, CLI, layout, external-diagram, and behavior-source versions must resolve to
-   the selected graph rather than whatever an upstream range happens to install.
+   the selected graph rather than whatever an upstream range happens to install. Before hashing,
+   ensure these reviewed JSON files use the LF endings required by `.gitattributes`: npm can write
+   CRLF on Windows. Workspace digests are byte-exact; local file bytes must match the bytes Git
+   will commit, or Linux verification will reject an otherwise valid selection.
 4. Recompute the descriptor's workspace hashes from those reviewed manifests, locks, and reference
    config. Record `installedContentSha256` for every package that can participate in reference
    execution: Mermaid, the parser, the sanitizer, the reference CLI, every external diagram and
-   layout module, each selected behavior package, and the complete browser-driver toolchain loaded
-   by the renderer. Do not copy old hashes forward.
+   layout module, each selected behavior package, the reference-runtime compiler, and the complete
+   browser-driver toolchain loaded by the renderer. Do not copy old hashes forward.
 
 When the selected identity changes, write a new `MERMAID_SELECTION_DECISION.json` from the reviewed
 admission outputs. Its previous/current identity digests, exact changed fields, npm version and
@@ -123,6 +126,13 @@ npm ci --ignore-scripts --prefix tools/mermaid-cli
 npm ls --all --prefix tools/mermaid-cli
 cargo nextest run -p merman-core baseline
 ```
+
+Run `node --test tools/mermaid-cli/reference-runtime.test.mjs` after installing the reference CLI.
+The shared builder compiles Mermaid's module entry point and selected companions into one browser
+artifact. The renderer probe verifies that Mermaid actually calls the selected DOMPurify instance;
+reading an installed package version cannot establish this. Published Mermaid bundles embed their
+own sanitizer and must not substitute for the owned artifact. Baseline provenance records the
+artifact digest and compiler identity, and promotion rejects package or artifact drift.
 
 Only after reviewed browser/reference evidence demonstrates that the new graph produced the intended
 baselines may the primary SVG provenance be regenerated:

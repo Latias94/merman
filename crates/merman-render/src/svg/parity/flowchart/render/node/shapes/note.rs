@@ -29,8 +29,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
                 y,
                 w,
                 h,
-                fill: &note_fill,
-                stroke: &note_stroke,
                 stroke_width: common.stroke_width,
                 randomness: common.hand_drawn_seed,
             })

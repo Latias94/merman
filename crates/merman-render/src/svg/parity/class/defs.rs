@@ -48,7 +48,11 @@ pub(super) fn class_markers(
 
     enum MarkerShape<'a> {
         Path(&'a str),
-        PathWithViewBox(&'a str, &'a str),
+        StyledPath {
+            d: &'a str,
+            view_box: Option<&'a str>,
+            stroke_width: &'a str,
+        },
         Polygon(&'a str),
         Circle {
             stroke: Option<&'a str>,
@@ -74,7 +78,7 @@ pub(super) fn class_markers(
             ctx.out.push_str("<defs>");
         }
         match spec.shape {
-            MarkerShape::Path(d) | MarkerShape::PathWithViewBox(d, _) => {
+            MarkerShape::Path(d) | MarkerShape::StyledPath { d, .. } => {
                 let _ = write!(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
@@ -94,20 +98,19 @@ pub(super) fn class_markers(
                 if let Some(view_box) = spec.view_box {
                     let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
                 }
-                if let MarkerShape::PathWithViewBox(_, path_view_box) = spec.shape {
-                    let _ = write!(
-                        ctx.out,
-                        r#"><path d="{}" viewBox="{}"/></marker>"#,
-                        escape_xml_display(d),
-                        path_view_box
-                    );
-                } else {
-                    let _ = write!(
-                        ctx.out,
-                        r#"><path d="{}"/></marker>"#,
-                        escape_xml_display(d)
-                    );
+                let _ = write!(ctx.out, r#"><path d="{}""#, escape_xml_display(d));
+                if let MarkerShape::StyledPath {
+                    view_box,
+                    stroke_width,
+                    ..
+                } = spec.shape
+                {
+                    if let Some(view_box) = view_box {
+                        let _ = write!(ctx.out, r#" viewBox="{}""#, view_box);
+                    }
+                    let _ = write!(ctx.out, r#" style="stroke-width: {};""#, stroke_width);
                 }
+                ctx.out.push_str("/></marker>");
             }
             MarkerShape::Polygon(points) => {
                 let _ = write!(
@@ -223,7 +226,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "2",
+                },
             },
         );
         marker(
@@ -238,7 +245,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "2",
+                },
             },
         );
     }
@@ -349,7 +360,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::PathWithViewBox("M 18,7 L9,13 L1,7 L9,1 Z", "0 0 15 15"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: Some("0 0 15 15"),
+                    stroke_width: "0",
+                },
             },
         );
         marker(
@@ -364,7 +379,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         );
     }
@@ -412,7 +431,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 5,7 L9,13 L1,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         );
         marker(
@@ -427,7 +450,11 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
+                shape: MarkerShape::StyledPath {
+                    d: "M 18,7 L9,13 L14,7 L9,1 Z",
+                    view_box: None,
+                    stroke_width: "0",
+                },
             },
         );
     }

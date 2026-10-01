@@ -1,7 +1,9 @@
 # Publish Order
 
-Status: maintained workspace publish order.
+Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
 Last updated: 2026-10-01
+
+Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
@@ -178,11 +180,7 @@ topological order. After the selected source revision has passed release preflig
 all existing versions and tags, then publishes missing exact versions directly under the requested
 final tag in manifest order, with `@mermanjs/web` last. A retry skips matching published members.
 
-The first version of a new split Web package cannot use npm Trusted Publishing before the package
-exists. Run `release-web.yml` without publication, download the verified package-group artifact,
-publish only the missing exact tarballs directly under the requested final tag with a maintainer's
-2FA-protected npm credential, configure Trusted Publishing for those package names, then rerun the
-workflow with publication enabled. Do not keep the bootstrap credential in GitHub Actions.
+The five existing Web packages have Trusted Publishing configured. If a future surface adds a new package name, follow the [npm bootstrap and recovery procedure](RELEASING.md#required-credentials) using its exact verified artifact. Do not rebuild a package group after a bootstrap or uncertain upload; a recovery run must consume the original artifact and retain its publication history.
 
 ## Node npm Package Group
 
@@ -203,22 +201,15 @@ immutable source and record its workflow run id. For alpha.6, run `33869785698` 
 published under `alpha` after exact artifact verification. All seven registry integrities and tags
 match that artifact, a fresh registry install/render smoke passed, and Trusted Publishing is now
 configured for all seven package names. The immutable manual bootstrap has no npm provenance;
-Trusted Publishing cannot add an attestation to an existing tarball. From the next version onward,
-dispatch `release-node.yml` with `publish_to_npm=true`; that run builds, verifies, and publishes its
-own same-run package group. If its publish job fails, rerun that job within the same workflow run.
-When a new run is unavoidable, pass `recovery_run_id` with the exact source SHA so the workflow
-downloads and verifies the original package-group artifact instead of rebuilding it. Do not keep an
-npm token in GitHub Actions.
+Trusted Publishing cannot add an attestation to an existing tarball. Alpha.7 subsequently published through Trusted Publishing, as recorded in its snapshot above. For a future publication, dispatch `release-node.yml` with `publish_to_npm=true` against the selected immutable source. Follow [Releasing](RELEASING.md#registry-propagation-and-recovery) for same-run retries or explicit `recovery_run_id` recovery; both preserve the original package-group bytes and attempt history. Do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
-documentation-only bootstrap defect: the source changelog is corrected, and the correction will
-first appear in a later immutable package version.
+documentation-only bootstrap defect in that immutable version; later packages carry their own dated changelogs.
 
 The immutable `@mermanjs/node@0.8.0-alpha.6` loader tarball was packed before post-publication
 documentation reconciliation, so its embedded README and changelog retain prepared-candidate
-wording. This is also a documentation-only bootstrap defect; the source is corrected for the next
-Node package version and the accepted registry bytes remain unchanged.
+wording. This documentation-only bootstrap defect was corrected in the alpha.7 package documentation; the accepted alpha.6 registry bytes remain unchanged.
 
 ## Pre-Publish Gates
 

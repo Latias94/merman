@@ -187,7 +187,7 @@ fn is_candidate_upstream_svg_failure(message: &str, fixture_path: &Path) -> bool
     }
 
     let fixture_path = fixture_path.display();
-    let exit_prefix = format!("mmdc failed for {fixture_path} (exit=");
+    let exit_prefix = format!("upstream SVG renderer failed for {fixture_path} (exit=");
     if let Some(exit_code) = message
         .strip_prefix(&exit_prefix)
         .and_then(|rest| rest.strip_suffix(')'))
@@ -197,7 +197,7 @@ fn is_candidate_upstream_svg_failure(message: &str, fixture_path: &Path) -> bool
             .is_ok_and(|exit_code| exit_code == 1);
     }
 
-    let validation_prefix = format!("mmdc output validation failed for {fixture_path}:");
+    let validation_prefix = format!("upstream SVG output validation failed for {fixture_path}:");
     let Some(validation) = message.strip_prefix(&validation_prefix) else {
         return false;
     };
@@ -523,15 +523,15 @@ mod tests {
         let path = candidate_path();
 
         assert!(is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd (exit=1)",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd (exit=1)",
             path,
         ));
         assert!(is_candidate_upstream_svg_failure(
-            "mmdc output validation failed for fixtures/flowchart/candidate.mmd: upstream renderer produced an empty temporary SVG",
+            "upstream SVG output validation failed for fixtures/flowchart/candidate.mmd: upstream renderer produced an empty temporary SVG",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/other.mmd (exit=1)",
+            "upstream SVG renderer failed for fixtures/flowchart/other.mmd (exit=1)",
             path,
         ));
     }
@@ -549,27 +549,27 @@ mod tests {
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd: process timed out",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd: process timed out",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd (exit=1); failed to clean temporary upstream SVG staging.svg: access denied",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd (exit=1); failed to clean temporary upstream SVG staging.svg: access denied",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd (exit=-1)",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd (exit=-1)",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd (exit=2)",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd (exit=2)",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc failed for fixtures/flowchart/candidate.mmd (exit=137)",
+            "upstream SVG renderer failed for fixtures/flowchart/candidate.mmd (exit=137)",
             path,
         ));
         assert!(!is_candidate_upstream_svg_failure(
-            "mmdc output validation failed for fixtures/flowchart/candidate.mmd: upstream renderer did not produce temporary SVG staging.svg: access denied",
+            "upstream SVG output validation failed for fixtures/flowchart/candidate.mmd: upstream renderer did not produce temporary SVG staging.svg: access denied",
             path,
         ));
     }

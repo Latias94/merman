@@ -319,7 +319,8 @@ pub(super) fn render_class_elk_adapter_dom(
     }
 
     // Mermaid 12 ELK uses the common layout painter. It inserts one root and four
-    // sibling groups; ELK's post-paint z-order is edge paths, clusters, edge labels, nodes.
+    // sibling groups in createGraph.ts order: clusters, edge paths, edge labels, nodes.
+    // Namespace fills must stay behind relation paths and their markers.
     let edges = root
         .edge_ids
         .iter()
@@ -340,8 +341,6 @@ pub(super) fn render_class_elk_adapter_dom(
         0.0,
         false,
     )?;
-    out.push_str(&split.edge_paths);
-
     detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
@@ -359,6 +358,7 @@ pub(super) fn render_class_elk_adapter_dom(
             emit: ctx.emit,
         },
     )?;
+    out.push_str(&split.edge_paths);
     out.push_str(&split.edge_labels);
 
     out.push_str(r#"<g class="nodes">"#);

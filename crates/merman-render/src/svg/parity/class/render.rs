@@ -184,7 +184,7 @@ fn render_class_diagram_svg_model_inner(
         timing,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         edge_paths_class: if layout.uses_elk_adapter_dom {
-            "edgePaths edges"
+            "edges edgePaths"
         } else {
             "edgePaths"
         },

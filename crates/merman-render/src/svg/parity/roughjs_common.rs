@@ -3,22 +3,21 @@
 use std::fmt::Write as _;
 
 pub(in crate::svg::parity) fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
-    let s = s.trim();
-    let hex = s.strip_prefix('#')?;
-    let (r, g, b) = match hex.len() {
-        6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            (r, g, b)
-        }
-        3 => {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-            (r, g, b)
-        }
-        _ => return None,
+    let hex = s.trim().strip_prefix('#')?;
+    // Validate ASCII hex digits before indexing bytes. Theme values are arbitrary CSS strings;
+    // malformed or non-ASCII values must be rejected without slicing at a non-character boundary.
+    if !matches!(hex.len(), 3 | 6) || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let byte = |pair: &str| u8::from_str_radix(pair, 16).ok();
+    let (r, g, b) = if hex.len() == 6 {
+        (byte(&hex[0..2])?, byte(&hex[2..4])?, byte(&hex[4..6])?)
+    } else {
+        (
+            byte(&hex[0..1].repeat(2))?,
+            byte(&hex[1..2].repeat(2))?,
+            byte(&hex[2..3].repeat(2))?,
+        )
     };
     Some(roughr::Srgba::new(
         r as f32 / 255.0,
@@ -118,8 +117,6 @@ pub(in crate::svg::parity) struct RoughRectSpec<'a> {
     pub(in crate::svg::parity) y: f64,
     pub(in crate::svg::parity) w: f64,
     pub(in crate::svg::parity) h: f64,
-    pub(in crate::svg::parity) fill: &'a str,
-    pub(in crate::svg::parity) stroke: &'a str,
     pub(in crate::svg::parity) stroke_width: f32,
     pub(in crate::svg::parity) randomness: &'a roughr::core::RoughRandomness,
 }
@@ -132,20 +129,16 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
         y,
         w,
         h,
-        fill,
-        stroke,
         stroke_width,
         randomness,
     } = spec;
 
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
+    // Geometry generation does not inspect paint colors. Callers retain the original
+    // CSS values when emitting SVG, including HSL/RGB, named colors, and CSS variables.
     let mut opts = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
-        .fill(fill)
-        .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![0.0, 0.0])
         .stroke_line_dash_offset(0.0)
@@ -188,4 +181,19 @@ pub(in crate::svg::parity) fn roughjs_circle_path_d(
         .ok()?;
     let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
     Some(ops_to_svg_path_d(&opset))
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::parse_hex_color_to_srgba;
+
+    #[test]
+    fn malformed_hex_color_never_slices_inside_utf8() {
+        for value in ["#😀ab", "#éa", "#猫", "#ééé", "#abcdefg", "#ggg", "red"] {
+            assert!(parse_hex_color_to_srgba(value).is_none(), "{value}");
+        }
+        for value in ["#abc", "#ABCDEF", " #ff0000 "] {
+            assert!(parse_hex_color_to_srgba(value).is_some(), "{value}");
+        }
+    }
 }

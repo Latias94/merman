@@ -1232,22 +1232,36 @@ pub(crate) fn render_er_diagram_svg_model(
             format!(r#"style="{}""#, escape_xml(&group_style))
         };
 
-        let mut override_decls: Vec<String> = Vec::new();
-        if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
-            override_decls.push(format!("stroke:{v}"));
-        }
-        if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
-            override_decls.push(format!("stroke-width:{v}"));
-        }
-        let override_style = if override_decls.is_empty() {
-            None
+        // Mermaid 12 lets explicit styles override every Redux table path, including
+        // palette colors. Other themes retain themed rows except for even-row overrides.
+        let redux_styles = matches!(
+            svg_theme.theme_name().as_str(),
+            "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+        );
+        let override_decls: Vec<String> = rect_style_decls
+            .iter()
+            .filter(|declaration| {
+                redux_styles
+                    || parse_style_decl(declaration).is_some_and(|(key, _)| key.contains("stroke"))
+            })
+            .cloned()
+            .collect();
+        let override_style_attr = if override_decls.is_empty() || data_look == "handDrawn" {
+            String::new()
         } else {
-            Some(style_decls_with_important(&override_decls))
+            format!(
+                r#" style="{}""#,
+                escape_xml(&style_decls_with_important(&override_decls))
+            )
         };
-        let override_style_attr = override_style
-            .as_deref()
-            .map(|s| format!(r#" style="{}""#, escape_xml(s)))
-            .unwrap_or_default();
+        let node_style_attr = if rect_style_decls.is_empty() || data_look == "handDrawn" {
+            String::new()
+        } else {
+            format!(
+                r#" style="{}""#,
+                escape_xml(&style_decls_with_important_join(&rect_style_decls, ";"))
+            )
+        };
 
         // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
         //
@@ -1391,27 +1405,11 @@ pub(crate) fn render_er_diagram_svg_model(
                 r#"<g {} class="{}">"#,
                 group_style_attr, row_class
             );
-            let row_override_style_attr =
-                if !is_odd && last_style_value(&rect_style_decls, "fill").is_some() {
-                    let mut decls: Vec<String> = Vec::new();
-                    if let Some(v) = last_style_value(&rect_style_decls, "fill") {
-                        decls.push(format!("fill:{v}"));
-                    }
-                    if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
-                        decls.push(format!("stroke:{v}"));
-                    }
-                    if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
-                        decls.push(format!("stroke-width:{v}"));
-                    }
-                    if decls.is_empty() {
-                        override_style_attr.clone()
-                    } else {
-                        let s = style_decls_with_important_join(&decls, ";");
-                        format!(r#" style="{}""#, escape_xml(&s))
-                    }
-                } else {
-                    override_style_attr.clone()
-                };
+            let row_override_style_attr = if is_odd {
+                &override_style_attr
+            } else {
+                &node_style_attr
+            };
             // RoughJS omits the fill path when the theme does not supply a row color.
             if let Some(row_fill) = row_fill.filter(|fill| !fill.is_empty() && *fill != "none") {
                 let _ = write!(
@@ -1602,14 +1600,16 @@ pub(crate) fn render_er_diagram_svg_model(
             x1: f64,
             y1: f64,
             fill: &str,
+            fill_style_attr: &str,
             divider_path_attrs: &str,
         ) {
             let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
             let _ = write!(
                 out,
-                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"/><path d="{}"{} /></g>"#,
+                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"{}/><path d="{}"{} /></g>"#,
                 roughjs46_rect_fill_path_d(rx0, ry0, rx1, ry1),
                 escape_xml(fill),
+                fill_style_attr,
                 rough_rect_border_path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
                 divider_path_attrs
             );
@@ -1623,6 +1623,7 @@ pub(crate) fn render_er_diagram_svg_model(
             box_x1,
             sep_y,
             &box_fill,
+            &override_style_attr,
             &divider_path_attrs,
         );
 
@@ -1643,6 +1644,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 x,
                 box_y1,
                 &box_fill,
+                &override_style_attr,
                 &divider_path_attrs,
             );
         }
@@ -1655,6 +1657,7 @@ pub(crate) fn render_er_diagram_svg_model(
             box_x1,
             sep_y,
             &box_fill,
+            &override_style_attr,
             &divider_path_attrs,
         );
 

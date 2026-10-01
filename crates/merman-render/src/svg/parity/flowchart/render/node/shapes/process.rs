@@ -23,8 +23,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
                 -height / 2.0,
                 width,
                 height,
-                common.fill_color,
-                common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
                 HAND_DRAWN_FILL_WEIGHT,

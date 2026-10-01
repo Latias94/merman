@@ -12,7 +12,7 @@ prose ownership boundary.
 | Dashboard | Active |
 | Upstream baseline | Mermaid `@12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-31; exact gate state belongs to the revision that ran it |
+| Dashboard review | Mermaid 12 additions and current authority links are reflected below; exact gate state belongs to the revision that ran it |
 | Admission | 37 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
@@ -61,6 +61,8 @@ not a quality ranking. Callers may select another supported mode explicitly.
 
 | Family | Corpus | Compare command | Default DOM mode |
 | --- | ---: | --- | --- |
+| `agentflow` | N | `compare-agentflow-svgs` | `parity` |
+| `usecase` | N | `compare-usecase-svgs` | `parity` |
 | `er` | N+D | `compare-er-svgs` | `parity` |
 | `flowchart` | N+D | `compare-flowchart-svgs` | `parity` |
 | `state` | N+D | `compare-state-svgs` | `structure` |
@@ -152,14 +154,16 @@ admission.
 
 ## Evidence Layers
 
-| Layer | Scope | Current worktree count |
-| --- | --- | ---: |
-| Semantic goldens | Parse and semantic JSON | 3,747 |
-| Layout goldens | Typed geometry and bounds | 3,744 |
-| Upstream SVG baselines | Pinned Mermaid CLI output | 3,696 |
+| Layer | Scope | Evidence owner |
+| --- | --- | --- |
+| Semantic goldens | Parse and semantic JSON | Family fixture inputs and their semantic goldens |
+| Layout goldens | Typed geometry and bounds | Family fixture inputs and their layout goldens |
+| Upstream SVG baselines | Pinned Mermaid reference output | Per-family `_baseline-manifest.json` and SVG files |
 
-Counts are an audit snapshot, not an API contract. `check-alignment` validates required evidence
-for each admission record rather than relying on these totals.
+`check-alignment` validates the required evidence for each admission record. Use its report and the
+per-family manifests for the checked revision; this dashboard does not maintain a second fixture
+count. Raw upstream inputs, deferred fixtures, and temporary staging directories are not admitted
+corpus merely because they contain matching file extensions.
 
 Refresh semantic and layout goldens with `cargo run -p xtask -- update-snapshots` and
 `cargo run -p xtask -- update-layout-snapshots`. The upstream baseline procedure lives in

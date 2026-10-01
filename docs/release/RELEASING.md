@@ -185,6 +185,22 @@ descriptors, artifact profiles, and workflows are the executable evidence. After
 the owning registry or `gh release view "v$VERSION"` directly instead of inferring availability from
 a repository-maintained status cache.
 
+### Reusing Immutable Preflight Evidence
+
+Finish version projections, dated changelogs, and packaged installation guidance before freezing the source SHA. A later source edit requires new evidence even when it changes only release documentation.
+
+A successful full preflight for an explicit 40-character source SHA uploads a small `release-preflight-<source>-attempt-<N>` evidence artifact. The tagged crates workflow may reuse its strict Cargo feature matrix and Web build/install smoke when the source commit, tree, version, repository, workflow commit, run attempt, and immutable artifact digest all match. Run preflight from the same reviewed workflow commit intended for publication to make reuse eligible. Branch/tag input preflights remain useful but do not issue reusable evidence.
+
+Missing, expired, older-workflow, or unverifiable evidence falls back to the original checks. Fresh registry consumer resolutions, independent-crate version checks, static contracts, the publish graph, Typst gates, and every publish-time dry-run and registry checksum barrier still execute. Reuse never authorizes publication or proves current registry availability.
+
+### Registry Propagation And Recovery
+
+An accepted upload can remain absent from a registry replica or its consumer index. npm publication records upload intent before sending and keeps the original manifest-bound package group; crates.io completes a batch only after both its API and Cargo sparse index expose matching, non-yanked checksums. Observation has a bounded wall-clock budget. A propagation timeout is a recoverable observation result, not permission to rebuild the artifact or resend an uncertain upload.
+
+Recovery reports bind their producing run and attempt. Workflows select the immediately preceding attempt, or the explicitly selected source run's current attempt. Missing reports, gaps in publication history, or incompatible older reports preserve observation-only mode across subsequent retries and all remaining batches. A successful prefix does not prove that a later package was never uploaded. Only complete job history showing that the actual upload step was skipped can establish that no send occurred.
+
+Keep the original run, artifact, and receipts when retrying. If observation still cannot establish the registry state, inspect that state before taking further publishing action; do not clear the uncertainty flag, substitute an older report, move the tag, or treat a 404 alone as evidence that an upload never happened. Conflicting hashes stop immediately.
+
 ## Version Checklist
 
 `Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. While no
@@ -279,7 +295,8 @@ Before tagging or publishing, run:
 ```bash
 VERSION="<version>"
 SOURCE_SHA="$(git rev-parse HEAD)"
-gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref="$SOURCE_SHA"
+PREFLIGHT_REF="<reviewed branch or tag at the intended workflow commit>"
+gh workflow run release-preflight.yml --ref "$PREFLIGHT_REF" -f version="$VERSION" -f source_ref="$SOURCE_SHA"
 ```
 
 The preflight workflow verifies release versions, the static release-surface contract,

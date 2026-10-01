@@ -114,8 +114,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
             helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_svg_path_single_set(
                     &path,
-                    &fill,
-                    &border,
                     effective_stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,

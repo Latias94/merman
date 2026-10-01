@@ -313,10 +313,7 @@ use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_in
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use roughjs_common::{
-    ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
-    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
-};
+use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_paths_for_rect};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

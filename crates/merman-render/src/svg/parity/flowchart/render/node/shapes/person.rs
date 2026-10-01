@@ -72,8 +72,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_svg_path_single_set(
                     &body_path,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     common.hand_drawn_seed,
@@ -104,8 +102,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
             super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_paths_for_circle(
                     head_radius * 2.0,
-                    common.fill_color,
-                    common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
                     true,

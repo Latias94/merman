@@ -153,13 +153,13 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
-Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence.
+Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence. For eligible source-check reuse, follow [Reusing Immutable Preflight Evidence](../../../docs/release/RELEASING.md#reusing-immutable-preflight-evidence); missing or stale evidence runs the original checks, and publication barriers still execute.
 
 For crates.io, inspect the derived topological batches before shipping. The credentialed workflow
-must emit a prepared receipt for every batch, and its result receipt must reach `complete` with each
-registry checksum equal to the locally prepared `.crate` digest before the next batch begins. The
-receipt schema is owned by `distribution/crates-io/receipt-schema-v1.json`; do not generalize it to
-other registries.
+must emit a prepared receipt for every batch, and its result receipt must reach `complete` only
+after the crates.io API and Cargo sparse index expose matching, non-yanked checksums equal to the
+locally prepared `.crate` digest. The next batch waits for that barrier. The receipt schema is owned
+by `distribution/crates-io/receipt-schema-v1.json`; do not generalize it to other registries.
 
 Within one crates.io batch, every missing member must complete `cargo publish --dry-run --locked`
 before any member is uploaded. A later dry-run failure must therefore leave the whole batch
@@ -185,9 +185,11 @@ When a Web package-group publication is partial, reuse the exact artifact from t
 `release-web.yml` run. Do not rebuild the group from the same source and assume npm tarball
 bytes will match: a rebuilt tarball can differ while the source commit is identical. Use the
 workflow's `recovery_run_id` input with `source_ref` set to the artifact manifest's full 40-character
-source SHA; the recovery path verifies the prior run identity, downloads its single unexpired
-package-group artifact, and publishes only registry members whose exact version is still missing.
-If the existing integrity differs, stop and require an explicitly authorized maintainer decision.
+source SHA. The recovery path verifies the prior run identity and its single unexpired
+package-group artifact, then reconciles the attempt-bound publication report. Only members proven
+not to have been attempted may be uploaded; an absent registry version alone does not prove this.
+Unknown acceptance remains observation-only across retries. If existing integrity differs, stop
+and require an explicitly authorized maintainer decision.
 
 Apply the same recovery rule to Node package groups with `release-node.yml`: a new recovery run must
 use the prior run id and the artifact manifest's exact source SHA, verify the workflow/repository
@@ -271,54 +273,9 @@ Workflow success is not publication evidence. Registry and GitHub state must agr
 
 ### Crates.io Receipt Inspection
 
-Download the exact `release-crates.yml` receipt artifact for read-only inspection. Use the
-preflighted source SHA, not the workflow head SHA of a manual recovery run:
+For registry observation or recovery, read [Registry Propagation And Recovery](../../../docs/release/RELEASING.md#registry-propagation-and-recovery). Keep the frozen source commit/tree/version, original artifact, producing run/attempt, and registry identities together. Use the workflow-owned verifier and `distribution/crates-io/receipt-schema-v1.json`; do not reproduce their validation in a second ad hoc parser or treat the workflow head SHA as the immutable release source.
 
-```bash
-CRATES_RUN_ID="<release-crates-run-id>"
-SOURCE_SHA="<preflighted-40-character-source-sha>"
-CRATES_ATTEMPT="$(gh run view "$CRATES_RUN_ID" --json attempt --jq .attempt)"
-RECEIPTS_DIR="target/crates-io-receipts/$CRATES_RUN_ID"
-RECEIPT_SCHEMA="distribution/crates-io/receipt-schema-v1.json"
-
-gh run download "$CRATES_RUN_ID" \
-  --name "crates-io-receipts-${SOURCE_SHA}-attempt-${CRATES_ATTEMPT}" \
-  --dir "$RECEIPTS_DIR"
-
-jq -s -e --slurpfile schema "$RECEIPT_SCHEMA" '
-  def fields_match($shape):
-    (($shape.required - keys) | length == 0)
-    and ((keys - ($shape.properties | keys)) | length == 0);
-  ($schema[0]) as $schema
-  | all(.[];
-      fields_match($schema)
-      and (.source | fields_match($schema.properties.source))
-      and (.toolchain | fields_match($schema.properties.toolchain))
-      and all(.packages[];
-        fields_match($schema["$defs"].package)
-        and (.artifact | fields_match($schema["$defs"].package.properties.artifact))
-        and (.registry | fields_match($schema["$defs"].package.properties.registry))))
-' "$RECEIPTS_DIR"/batch-*.json
-
-jq -s -e --arg source_sha "$SOURCE_SHA" '
-  all(.[];
-    .schema_version == 1
-    and .schema == "distribution/crates-io/receipt-schema-v1.json"
-    and .channel == "crates.io"
-    and .kind == "topological-batch"
-    and .source.commit == $source_sha)
-  and ((map(select(.state == "prepared") | .batch_index) | sort)
-    == (map(select(.state != "prepared") | .batch_index) | sort))
-  and all(.[];
-    .state == "prepared"
-    or (.state == "complete"
-      and all(.packages[];
-        .registry.observed_checksum != null
-        and .registry.observed_checksum == .artifact.sha256)))
-' "$RECEIPTS_DIR"/batch-*.json
-```
-
-These commands only download and inspect evidence; they do not authorize recovery or publication.
+Download the exact attempt's `crates-io-receipts-<source-sha>-attempt-<N>` artifact for inspection. Every derived topological batch needs both its prepared receipt and a `complete` result with matching package checksums. A missing batch, an unresolved acceptance state, or a conflicting checksum leaves delivery incomplete. The owning publisher checks both crates.io and Cargo's sparse index; a successful API lookup alone is insufficient. Read-only evidence inspection does not authorize another upload.
 
 ### Post-Publication Documentation Reconciliation
 
@@ -353,8 +310,10 @@ Classify the failure before changing anything:
 - Partial crates.io publication: retain the receipt artifact and rerun from the exact same immutable
   source. A rerun must download the prior attempt receipts; a new workflow run supplies the prior
   run id through `recovery_run_id`. Deterministic re-packaging must match the prior source, tree,
-  toolchain, plan, manifest, artifact identities, and every existing registry checksum; matching
-  members are skipped and missing members continue only after the current batch barrier completes.
+  toolchain, plan, manifest, artifact identities, and every existing registry checksum. Matching
+  members are skipped; only proven-unattempted members may proceed through the current batch
+  barrier. Missing or incompatible reports and gaps in attempt history retain observation-only
+  mode across retries and remaining batches; a complete prefix does not clear that uncertainty.
 - A crates.io `pending_recovery` result means visibility or response status is unresolved. Wait and
   rerun the same workflow; do not issue a second manual publish attempt while acceptance is unknown.
 - A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never

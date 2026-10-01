@@ -139,8 +139,6 @@ fn write_flowchart_cluster_shape(
 
         if let Some((fill_d, stroke_d)) = super::node::roughjs::roughjs_hachure_paths_for_svg_path(
             &path,
-            fill,
-            stroke,
             stroke_width,
             stroke_dasharray,
             FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,

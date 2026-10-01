@@ -59,8 +59,6 @@ fn write_swimlane_rect(
                 y,
                 width,
                 height,
-                fill.unwrap_or("#000000"),
-                stroke,
                 stroke_width,
                 stroke_dasharray,
                 SWIMLANE_HAND_DRAWN_FILL_WEIGHT,
