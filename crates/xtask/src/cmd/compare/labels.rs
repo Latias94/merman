@@ -285,7 +285,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "architecture",
         fixture: ARCHITECTURE_PARALLEL_LABEL_FIXTURE,
         input_sha256: "855b615e05d77a3fdebf0eb28561ba977ce1bee3cec16876c3aa85ab51f9788b",
-        upstream_svg_sha256: "af2a3dcbecef491117c06b16ec3c95580606ea0d38a5966dc1fb25125882fa93",
+        upstream_svg_sha256: "696776a6d467cc50d3e71a47acb5cf43e32157abbdde3836bfe2f1464e6d0d6c",
         adapter: SemanticLabelAdapter::Architecture,
     },
     SemanticLabelFixtureContract {
@@ -306,7 +306,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "class",
         fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
         input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-        upstream_svg_sha256: "8e8387d5cb031a1ab2730ae909f2f373d974d2892937985502f0d0b6ee2900b7",
+        upstream_svg_sha256: "da3329e3ffb63f6f18d30bad9f999018328712cb2b47e08a3549d9bc0171717e",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {

@@ -40,7 +40,7 @@
       ],
       "local_svg_signature_sha256": "ef30211f341bd46a1d840a3a839fc7980a838ada5866623feb64b1c8700f5535",
       "input_sha256": "5c62033a5bb8afe856358da051353623621105676cabde372adb97bf11d1da46",
-      "upstream_svg_sha256": "6872d895ae6caac99ccb0322d96919ccdc44147c863eee4e9420ee2500398354"
+      "upstream_svg_sha256": "12e9298f850162c5f58e2e510e1fdec3146b50dc5664a889cc28cd84b973125f"
     },
     {
       "diagram": "architecture",
@@ -52,7 +52,7 @@
       ],
       "local_svg_signature_sha256": "e7558f8abf12e97bf96e5bd04123a2c01c18a0a443b08b1e7b030377c85bcbdd",
       "input_sha256": "791d561fb7423a14bd6ee0d78a48afc6114ee5545bd614f7d96df68e12db6d3a",
-      "upstream_svg_sha256": "79b5da5f7de060b22f7b5b3f51b07e45330793aed8bf1bf3a192a2d74372d267"
+      "upstream_svg_sha256": "be794213611827c493d1a9951f13948d2953681c4b6525f33ee785b7f28b334d"
     },
     {
       "diagram": "architecture",
@@ -64,7 +64,7 @@
       ],
       "local_svg_signature_sha256": "19502acf1922c48c8a5ba9f441a7408ceade628bb5cda70e1a95cd8b3ce0c1db",
       "input_sha256": "1ee82cdd1baf22c01f8911da01f727f81ed51afcf34dbf46d1fb0deb846b8f37",
-      "upstream_svg_sha256": "ec145502a20ff5e5be2693d6a6c6bf9250bf9fb97f5466350e7ee6727fc3440c"
+      "upstream_svg_sha256": "e7edcea25387b35370b2329aa9b931b6926608f31330daa0da1b355a61667700"
     },
     {
       "diagram": "architecture",
@@ -88,7 +88,7 @@
       ],
       "local_svg_signature_sha256": "28b8cde6de5b20c03cdff898341f57e46053aee99a48b85f1323e46cf1722ecb",
       "input_sha256": "d8642fbcd331cc6e32432611693cf3a5c90c6c93b7a7fe9da23e2e9a3f32812e",
-      "upstream_svg_sha256": "7ab4c79b2216bf27d5b2800f9d364e899970202737d24a635f2059d5ce76ca69"
+      "upstream_svg_sha256": "49d703717276d9748ec11e59d6cf28a689f34f39ef820597e2ecc05fb61b8d98"
     },
     {
       "diagram": "architecture",
@@ -136,7 +136,7 @@
       ],
       "local_svg_signature_sha256": "87ce258418433c0af094ecd8f2a751d47801cc33a4b94ac7eb6cbd2a64b14795",
       "input_sha256": "43a1ed833e8d34ed0a0a1296cc55508913c7f04b8a8c9b3fc951b3a367d06f43",
-      "upstream_svg_sha256": "a9c048a7786547d57fa0c240500d47fc436422ed7db41f43cc24dab6c9a9aff5"
+      "upstream_svg_sha256": "c8b78dd436e7a36c54fc15ad0c3cb28f1122eef25c41d056af2515aed2bd9291"
     },
     {
       "diagram": "flowchart",
@@ -1282,7 +1282,7 @@
         "parity-root"
       ],
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "upstream_svg_sha256": "a78f8c3aaa9cf2c91bd3567bbfd99b1b4adc6f4888434f3bb41568139adcdddc",
+      "upstream_svg_sha256": "5b531c8d1021e828e3a5409151aa77fd0dfc255a888af1a07ec26c7e62e38d8e",
       "local_svg_signature_sha256": "33c2afaa843e721223b30bd6a1a29b088f51c3a5c38bc7d6a05681c70129169b"
     },
     {

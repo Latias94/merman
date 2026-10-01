@@ -100,10 +100,23 @@ An old/new compiled-render replay reproduced the previously admitted signature a
 proved that reversing only the six marker style additions and empty-group ordering/class
 change restored the old SVG byte-for-byte. All path geometry, text/tspan subtrees, CSS,
 and root attributes were unchanged, as were the input and pinned upstream SVG hashes.
-The original font residual remains: the first long member occupies two local text rows
-versus three upstream, retaining the same concatenated-text space difference. Receipt
-modes, precision, and comparator policy are unchanged; this refresh admits no new font
-or layout difference.
+At that point, the first long member occupied two local text rows versus three upstream,
+with a concatenated-text space difference. Receipt modes, precision, and comparator policy
+were unchanged by that local-renderer correction.
+
+The owned-runtime baseline refresh on 2026-10-01 also refreshed the upstream binding.
+On Edge `154.0.4258.48`, replaying the previous Mermaid IIFE and the owned reference runtime
+produced byte-identical SVGs for this fixture and the adjacent numeric-font-size fixture
+`stress_class_svg_font_size_precedence_025`. The current upstream wraps each long member
+into two rows while preserving the `24px` stylesheet and complete member text. This is
+browser-dependent text measurement; the local SVG signature and admitted modes remain
+unchanged.
+
+The same browser replay reproduced `stress_class_many_relations_labels_020` byte-for-byte.
+Its only upstream differences are five HTML label `max-width` measurements. Relation
+identities, text, stylesheet, edge paths, label anchors, and descendant dimensions are unchanged,
+so its eight exact geometry residuals retain their existing upstream and local signatures.
+Only their upstream artifact digest and the signed canary digest were rebound.
 
 ## Remaining Gaps
 
