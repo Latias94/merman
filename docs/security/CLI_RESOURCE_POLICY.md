@@ -65,7 +65,10 @@ isolation.
 batch jobs. Rustdoc selects the same profile. `interactive` remains at 800,000 and `constrained`
 at 125,000; the general library and Web defaults remain interactive. These counts do not denote
 milliseconds, resident bytes, source lines, or a guaranteed number of nodes. The native calibration
-uses both light and dark themes, including nested Class namespaces under the Mermaid 12 ELK default.
+uses both light and dark themes, including nested Class namespaces under the Mermaid 12 ELK default. The
+[2026-10-01 calibration receipt](../performance/native_layout_work_calibration_2026-10-01.md)
+records the 12,759,734-unit corpus maximum, margin rule, exact rejection boundaries, and output
+controls. This source-checkout default is newer than the published alpha.7 release.
 
 For PNG/JPEG/PDF, the scheduler reserves a shared semantic/SVG prefix plus the larger of the
 layout and encoding phase weights. Layout artifacts are consumed before encoding starts, so their
