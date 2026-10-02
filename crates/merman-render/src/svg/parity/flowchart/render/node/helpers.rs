@@ -412,9 +412,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     node_classes: &[String],
     node_styles: &[String],
 ) -> crate::text::TextMetrics {
-    // Shared across many Flowchart v2 shape renderers.
-    //
-    // Keep behavior identical to the inlined implementations to preserve Mermaid SVG parity.
+    // Layout metrics are authoritative. Callers without them can reuse a prepared label or
+    // measure with the same effective styles as layout.
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -426,6 +425,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
+    // Shapes such as hourglass clear their label after layout. Its cached bounds then belong
+    // to a different label; let the measurement layer handle the actual empty render payload.
+    let layout_node = layout_node.filter(|_| !label_text.is_empty());
     let prepared_metrics =
         || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, &node_text_style);
     let metrics = if let Some(layout_node) = layout_node {
@@ -513,4 +515,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
             )
         });
     Some(metrics.with_label_min_width(label_text, min_width, None))
+}
+
+/// Match createText's wrapping decision for labels with an icon/image background.
+pub(in crate::svg::parity::flowchart::render::node) fn asset_label_div_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    label_bbox_width: f64,
+) -> String {
+    let width = fmt_display(ctx.wrapping_width);
+    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
+        && label_bbox_width >= ctx.wrapping_width
+    {
+        format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;"
+        )
+    } else {
+        format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px; text-align: center;"
+        )
+    }
 }
