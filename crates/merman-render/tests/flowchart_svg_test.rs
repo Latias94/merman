@@ -1809,6 +1809,61 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
 }
 
 #[test]
+fn flowchart_stadium_path_uses_html_label_font_size_for_fractional_theme_size() {
+    // Mermaid `stadium.ts` sizes its path from the `labelHelper(...)` bbox, i.e. the HTML label
+    // measured with the CSS `font-size: 12.5px`, not the integer `parseFontSize` number.
+    for look in ["neo", "classic"] {
+        let source = format!(
+            "%%{{init: {{\"look\": \"{look}\", \"themeVariables\": {{\"fontSize\": \"12.5px\"}}}}}}%%\nflowchart LR\nA([Client]) --> B[Rect]\n"
+        );
+        let parse = || {
+            block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected")
+        };
+        let layout = layout_flowchart_render_model(
+            parse(),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .expect("layout ok");
+        let svg = render_flowchart_artifact(
+            parse(),
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg");
+
+        let node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+        let path = document
+            .descendants()
+            .find(|n| {
+                n.has_tag_name("g")
+                    && n.attribute("id")
+                        .is_some_and(|id| id.ends_with("flowchart-A-0"))
+            })
+            .and_then(|group| group.descendants().find(|n| n.has_tag_name("path")))
+            .and_then(|path| path.attribute("d"))
+            .expect("stadium path");
+        let numbers: Vec<f64> = path
+            .split(|c: char| c.is_ascii_alphabetic() || c == ',' || c.is_whitespace())
+            .filter(|token| !token.is_empty())
+            .map(|token| token.parse().expect("path number"))
+            .collect();
+        let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+        let painted_height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+
+        assert!(
+            (painted_height - node.height).abs() < 1e-6,
+            "{look}: stadium path height {painted_height} must match layout height {}",
+            node.height
+        );
+    }
+}
+
+#[test]
 fn flowchart_folder_shape_renders_aliases_and_clips_edges_to_the_tab_polygon() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -4058,6 +4113,60 @@ A@{{ img: "https://mermaid.js.org/favicon.svg", label: "{label}", pos: "t", h: 6
                 );
                 assert!(!div_style.contains("; width:"), "{backend}: {div_style}");
             }
+        }
+    }
+}
+
+#[test]
+fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
+    for look in ["neo", "classic"] {
+        for label in ["<br/><br/>", "<i class='fa fa-car'></i>", ""] {
+            let source = format!(
+                "%%{{init: {{\"look\": \"{look}\"}}}}%%\nflowchart LR\nA([\"{label}\"]) --> B[Rect]\n"
+            );
+            let parsed = block_on(
+                Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .expect("prepare diagram");
+            let layout: FlowchartLayout = serde_json::from_value(
+                artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone(),
+            )
+            .expect("flowchart layout");
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("render svg");
+            let node = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("flowchart-A-0"))
+                })
+                .and_then(|group| group.descendants().find(|node| node.has_tag_name("path")))
+                .and_then(|path| path.attribute("d"))
+                .expect("stadium path");
+            let numbers: Vec<f64> = path
+                .split(|ch: char| ch.is_ascii_alphabetic() || ch == ',' || ch.is_whitespace())
+                .filter(|token| !token.is_empty())
+                .map(|token| token.parse().expect("path number"))
+                .collect();
+            let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+            let height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+            assert!(
+                (height - node.height).abs() < 1e-6,
+                "{look}, {label:?}: painted height {height}, layout height {}",
+                node.height
+            );
         }
     }
 }
